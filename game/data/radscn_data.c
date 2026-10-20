@@ -3,4 +3,3 @@
 
 u_short debugPadState;
 Object **trackObjects;
-u_short debugPadInput;

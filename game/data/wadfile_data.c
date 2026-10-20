@@ -2,7 +2,7 @@
 #include "functions.h"
 
 s32 loadTicks;
-s32 lastWadCurrent;
+int lastWadCurrent[1];
 u_short loadFrame;
 HeapBlock *heap;
 WADFILE *currentWad;

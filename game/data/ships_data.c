@@ -386,6 +386,7 @@ char *cdTrackArtists[13] = {
 };
 int cameraDroidHeight[25] = { 0 };
 unsigned short savedSelection[2] = { 0 };
+/* Port: declared unsigned short[2]; menus.c only uses [0] and savedTrackSelection follows at +2 */
 unsigned short savedClassSelection[2] = { 0 };
 unsigned short savedTrackSelection = 0;
 u16 savedMainSelection = 3;
@@ -492,9 +493,8 @@ short activeShipCount;
 short numTrackSections;
 int sharkVertCount;
 int proximity;
-Object *shipShapeTable[2];
-Object *sharkBodyModel;
-Object *sharkLegModel;
+/* Port: 30 ship shapes and the rescue droid model at [30] (RescueDroidModel); menuModels follows */
+Object *shipShapeTable[31];
 GhostClut ghostCluts[123];
 SharkVert sharkFootVerts[10];
 int shipTargetIndex[15];

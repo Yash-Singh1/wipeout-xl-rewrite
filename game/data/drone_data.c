@@ -23,6 +23,4 @@ int totalSampleMem = 0;
 u_char nextVoice = 0;
 s32 scoreTabFrame = 0;
 u8 msgSelect[8] = { 83, 69, 76, 69, 67, 84, 0, 1 };
-RaceLine raceLines[1];
-VECTOR racingLine[599];
-short shipOrder[14][2];
+RaceLine raceLines[600];

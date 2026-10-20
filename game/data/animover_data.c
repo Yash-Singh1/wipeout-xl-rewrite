@@ -6,7 +6,6 @@ u_char cheatTime = 0;
 u_char cheatMinigun = 0;
 short cheatfade = 0;
 int droidFlyin = 1000;
-Header *rambase = (union Header *)0x80100000;
+/* Port: holds 0x80100000, the first byte of console RAM above the program; only LoadProg (dead code) used it */
+Header *rambase = 0;
 Header progHeader[1];
-u_long progLoadAddr;
-int progSize;

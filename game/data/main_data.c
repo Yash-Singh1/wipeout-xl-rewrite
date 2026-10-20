@@ -18,7 +18,7 @@ WADFILE *textureWad;
 int raceContext;
 int cdMusicCount;
 int cdStatus;
-int savedLapTimes;
+int savedLapTimes[1];
 int raceResetWord0;
 int raceResetWord1;
 int raceResetWord2;

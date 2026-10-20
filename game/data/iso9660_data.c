@@ -10,7 +10,8 @@ int redBullFrame = 0;
 int spriteTick = 0;
 int spriteFrame = 0;
 short lightPhase[2] = { 0 };
-short advertAngle[4] = { 0, 0, 25390, 28781 };
+/* Port: declared short[4]; effects.c uses [0] and [1] only and trainCmpExt follows at +4 */
+short advertAngle[4] = { 0 };
 char trainCmpExt[] = ".cmp";
 char trainPrmExt[] = ".prm";
 int droidBlinkTick = 0;

@@ -1,6 +1,7 @@
 /* Global data of racectrl.c, generated from the executable by tools/gendata.py. */
 #include "functions.h"
 #include "hud.h"
+#include "pad.h"
 
 /* Types that racectrl.c declares privately. */
 typedef unsigned char u_char_eq1;
@@ -10,8 +11,6 @@ typedef struct { unsigned char pad0[20]; int x,y,z; unsigned char pad20[32]; sho
 typedef struct { unsigned char pad0[48]; Skeleton_eq1 *skeleton; } Object_eq1;
 typedef struct { TrackSection_eq1 *section; int word[5]; } CameraSections;
 typedef struct { unsigned char pad0[0x9000]; short count,draw,pad9004,mode,active; unsigned char tail[34]; } TrackCache;
-typedef struct { short value; unsigned char pad[4]; } CheckPointShort;
-typedef struct { signed char value; unsigned char pad[5]; } CheckPointByte;
 
 int linkFlashFrame;
 int weaponGrids;
@@ -26,28 +25,23 @@ int (*prevCameraUpdate)();
 u_short_eq1 sceneTextureCount;
 int savedUpperY;
 u_short savedTextureCount;
-int mainheapcopy;
+HeapBlock *mainheapcopy;
 u_char gameType;
-signed char smokeColour;
-signed char smokeColourGreen;
-signed char smokeColourBlue;
+CVECTOR smokeColour;
 TrackCache *trackCache;
 HeapBlock *reserveHeap;
 int raceStartVcount;
 int quadIndex;
 int raceEndTimer;
-void *volatile zeppelinObj;
-u_char_eq1 padBuf1[2];
+Object *zeppelinObj[1];
+PadPacket padBuf1;
 u_short_eq1 tempTextureCount;
 int savedHeap;
 Object *radar[6];
 Object *neonObject[12];
 CheckCell checkCells[8][4][6];
-CheckPointShort raceCheckpointResults[1][4][6];
-CheckPointByte raceCheckpointFlags[7][4][6];
 POLY_FT4 weaponIcons[2];
 Object *torchLight[20];
-int lightDroid;
 u_char_eq1 scoreTabData[36];
 u_char hudDisabled;
 Skeleton *residentSkeletons[1];
@@ -66,7 +60,7 @@ void *pylons[17];
 Object *redBull[20];
 Object *cameraDroids[25];
 void *videoObjects[10];
-int pauseState;
+volatile int pauseState[5];
 u_char_eq1 twoPlayerPauseStatus;
 signed char twoPlayerMode;
 signed char twoPlayerFlag;
@@ -76,7 +70,7 @@ Texture *weaponIconTextureTable[20];
 Object *fans[5];
 POLY_FT4 weaponIconPrims[2];
 char scenePath[64];
-short monoRailFlag;
+volatile short monoRailFlag[10];
 volatile int trainMuzzleX;
 volatile int trainMuzzleY;
 volatile int trainMuzzleZ;

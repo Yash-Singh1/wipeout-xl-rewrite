@@ -722,4 +722,7 @@ void AsmTrackLo(TrackSection *firstSection, Skeleton *camera, short loCount);
 void AsmTrackMed(TrackSection *firstSection, Skeleton *camera, short medCount);
 void RotTrans(SVECTOR *v, VECTOR *result, int *flag);
 
+/* Names that stand for a part of another global (tools/gendata.py). */
+#include "data_alias.h"
+
 #endif

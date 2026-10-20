@@ -1,5 +1,6 @@
 /* Global data of weapon.c, generated from the executable by tools/gendata.py. */
 #include "functions.h"
+#include "weapon.h"
 
 /* Types that weapon.c declares privately. */
 typedef struct SpeedDividers { int value[4]; } SpeedDividers;
@@ -86,10 +87,10 @@ short fadeAmount = 0;
 u_char minigunFrame = 0;
 int olddam = 0;
 u_char fadeActive;
-int weaponIndex;
+WeaponData *weaponIndex;
 ConfigData *tempGameData;
 CameraUpdateFunc CameraUpdate;
-int weaponBars;
+WeaponShape *weaponBars;
 short fadeBlue;
 int ambientVoice2;
 short fadeGreen;
@@ -104,7 +105,4 @@ DR_MODE shieldParams[192][2];
 POLY_G4 plasmacharge[2];
 int shieldRed[15];
 TILE fadeTile[2];
-u_char fadeTileRed[1];
-u_char fadeTileGreen[1];
-u_char fadeTileBlue[26];
 int shieldGreen[15];

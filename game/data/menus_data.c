@@ -2,7 +2,6 @@
 #include "functions.h"
 #include "card.h"
 #include "effects.h"
-#include "hiscores.h"
 #include "options.h"
 
 /* Types that menus.c declares privately. */
@@ -16,7 +15,6 @@ typedef struct ShipParameterBars {
 typedef union Chars4A { char bytes[4]; short align; } Chars4A;
 typedef struct Chars5 { char bytes[5]; } Chars5;
 typedef union Chars6A { char bytes[6]; short align; } Chars6A;
-typedef union Chars7A { char bytes[7]; short align; } Chars7A;
 typedef struct Chars8 { char bytes[8]; } Chars8;
 typedef struct Chars9 { char bytes[9]; } Chars9;
 typedef struct Chars10 { char bytes[10]; } Chars10;
@@ -86,7 +84,8 @@ u_char msgReturningToMenus[1136] = {
     69, 82, 83, 0, 0, 0, 70, 46, 83, 46, 79, 46, 76, 46, 0, 0, 0, 0,
 };
 char msgControllerRemoved[] = "CONTROLLER REMOVED";
-MenuText pauseTextContinue = { { 0x544e4f43, 0x45554e49, 0, 0x55544552 } };
+/* Port: declared as a 16-byte MenuText but the string slot is 12 bytes; options.c copies 9 bytes of it */
+MenuText pauseTextContinue = { { 0x544e4f43, 0x45554e49, 0, 0 } };
 MenuText pauseTextReturnToMenu = { { 0x55544552, 0x54204e52, 0x454d204f, 21838 } };
 MenuText pauseTextAudioConfig = { { 0x49445541, 0x4f43204f, 0x4749464e, 0 } };
 char labelCdTrack[] = "CD TRACK";
@@ -330,8 +329,8 @@ int remoteStartGame = 0;
 int currMenu = 0;
 short menuEditor = 0;
 short prevMenu = 0;
-unsigned char raceTracks = 1;
-short menuTextures = 0;
+unsigned char raceTracks[8] = { 1, 8, 13, 20, 2, 17, 6, 7 };
+u_short menuTextures[1] = { 0 };
 short buttonCount = 0;
 s32 screenCount = 0;
 u32 slideCount = 0;
@@ -348,7 +347,7 @@ s32 cardSettleCount1 = 0;
 int cardNum = 0;
 int heading = 0;
 int buttonTextures = 0;
-int cdFlag = 1;
+int cdFlag[1] = { 1 };
 s32 menuShip = 0;
 s32 menuActTrack = 0;
 s32 menuNormTrack = 0;
@@ -357,7 +356,7 @@ s32 menuFlag = 0;
 short keyDefineThrust = 0;
 char modelNameHarry[] = "harry";
 char modelNameJune[] = "june";
-int defaultCardName = 0x54504d45;
+Label6 defaultCardName[1] = { { { 69, 77, 80, 84, 89, 0 } } };
 s16 card1Exists = 1;
 s16 cardPresent1 = 1;
 s32 cardFlash = 0;
@@ -387,13 +386,13 @@ char hiScoreLabelName[] = "BEST";
 char hiScoreLabelTime[] = "RACE";
 char hiScoreLabelShip[] = "TIME";
 char hiScoreLabelLap[] = "LAP";
-char teamNameAuricom[8] = "AURICOM";
-char teamNameQirex[8] = "QIREX";
-char teamNameFeisar[8] = "FEISAR";
-char teamNamePiranha[8] = "PIRANHA";
-Chars7A hiScoreRank0 = { "VECTOR" };
-Chars6A hiScoreRank1 = { "VENOM" };
-Chars7A hiScoreRank2 = { "RAPIER" };
+char teamNameAuricom[] = "AURICOM";
+char teamNameQirex[] = "QIREX";
+char teamNameFeisar[] = "FEISAR";
+char teamNamePiranha[] = "PIRANHA";
+char hiScoreRank0[] = "VECTOR";
+char hiScoreRank1[] = "VENOM";
+char hiScoreRank2[] = "RAPIER";
 char hiScoreRank3[] = "PHANTOM";
 s32 blinkCounter = 0;
 u8 msgOn[4] = { 79, 78, 0, 0 };
@@ -453,8 +452,8 @@ unsigned char cardDirChanged0 = 0;
 unsigned char cardDirChanged1 = 0;
 s32 menuTitleBlink;
 s32 linkBlinkCount;
-s32 screenFills;
-s32 screenFill1;
+BLK_FILL *screenFills[1];
+BLK_FILL *screenFill1;
 u16 keyDefineThrustPad[2];
 s16 linkRetries;
 Skeleton *upperSkeleton;
@@ -494,21 +493,9 @@ Texture *endTextures[1];
 void *menuTexturePtrsC[1];
 void *menuTexturePtrs[1];
 Texture *menuTexturePtrsB[793];
-GlyphWidth menuGlyphWidth[39];
 DISPENV DispEnv0;
-u_short dispOffX0;
-u_short dispOffY0;
 DISPENV DispEnv1;
-u_short dispOffX1;
-u_short dispOffY1;
 s32 VertexNormal[280];
-GlyphWidth glyphWidth[39];
 CardSlot cardSlots[2];
-u8 cardUsed[1];
-u8 cardFileNames[32];
-u8 cardNames[32];
-CardFlags cardFlags[1][15];
-u_char linkPadAux0;
-u_char linkPadAux1;
 HiScore hiScoreTable[16][4];
 CardKeys savedKeyConfig;

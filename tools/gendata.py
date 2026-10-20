@@ -197,7 +197,8 @@ class Env:
 
 
 def clang_cmd(extra):
-    return (['clang'] + TARGET32 + ['-w', '-ferror-limit=0', '-isystem', STUBS,
+    # DATA_ALIAS_H keeps game/include/data_alias.h (macros for the names being decided here) out of the scan
+    return (['clang'] + TARGET32 + ['-w', '-ferror-limit=0', '-DDATA_ALIAS_H', '-isystem', STUBS,
             '-include', os.path.join(ROOT, 'platform', 'include', 'port.h'),
             '-I' + os.path.join(ROOT, 'game', 'include')] + extra)
 
@@ -724,7 +725,7 @@ def pack_table():
 # symbols: declarations, extents, types
 
 
-CONTAINERS = {a.container for a in D.ALIASES} | set(D.BIGGER_THAN_EXTENT)
+CONTAINERS = {a.container for a in D.ALIASES}
 ALIAS_NAMES = {a.name for a in D.ALIASES}
 
 
@@ -879,6 +880,11 @@ def choose_types(syms, order, report, widths=None):
     for sy in order:
         ds = list(sy.decls)
         good = [d for d in ds if not has_opaque(d.ty)]
+        # a declaration under another identifier (`int fooWord __asm__("foo")`, a word-wise view the
+        # decompiler used to get word copies) says how foo is accessed, not what it is
+        direct = [d for d in good if not d.via_label]
+        if direct:
+            good = direct
         if sy.name in D.PREFER:
             good = [d for d in good if d.qual == D.PREFER[sy.name]] or good
         if not good:
@@ -889,41 +895,36 @@ def choose_types(syms, order, report, widths=None):
             groups.setdefault(type_key(d.ty), []).append(d)
         sy.conflicts = [(k, [(d.tu, d.where[1]) for d in v]) for k, v in groups.items()]
 
-        def fits(d):
+        def elem_of(t):
+            while t.kind == 'arr':
+                t = t.elem
+            return t
+
+        def agrees(d):
+            # a scalar view narrower than an access the code makes at the address cannot be the object
+            seen = widths.get(sy.addr)
             t = d.ty
-            if t.kind == 'arr' and t.n is None:
-                return t.elem.size <= sy.extent
-            return t.size <= sy.extent
-
-        def authoritative(d):
-            # a complete type from a shared header is the game's own statement of the object, even
-            # when the executable names other symbols inside it
-            if sy.name in CONTAINERS and not (d.ty.kind == 'arr' and d.ty.n is None):
-                return True
-            return d.in_header and not (d.ty.kind == 'arr' and d.ty.n is None) and \
-                len({x.tu for x in good if type_key(x.ty) == type_key(d.ty)}) >= 2
-
-        cands = [d for d in good if fits(d) or authoritative(d)]
-        if not cands:
-            cands = good
-            sy.notes.append('no declaration fits the extent %d' % sy.extent)
-        complete = [d for d in cands if not (d.ty.kind == 'arr' and d.ty.n is None)]
-        pool = complete or cands
+            if seen and t.kind in ('int', 'float', 'ptr'):
+                return 1 if t.size >= max(seen) else 0
+            return 1
 
         def score(d):
             t = d.ty
-            size = t.size if not (t.kind == 'arr' and t.n is None) else 0
+            e = elem_of(t)
+            incomplete = t.kind == 'arr' and t.n is None
             private = any(u and '/game/src/' in u for u in d.uses)
-            seen = widths.get(sy.addr)
-            agree = 1
-            if seen and t.kind in ('int', 'float', 'ptr'):
-                agree = 1 if max(seen) == t.size else 0
-            return (agree if (size <= sy.extent or authoritative(d)) else 0, size, not private, not needs_sdk(d.uses), d.in_header, len(groups[type_key(d.ty)]))
+            # arrays and records stand for more of the object than scalars do: the scalar declarations
+            # are the decompiler's word-wise views (`u16 linkPadHead` for the head of a ControlInput)
+            rank = 2 if (t.kind in ('arr', 'rec') or e.kind == 'rec') else 1
+            # natively a pointer is 8 bytes: a declaration with pointers wins over a same-size view without
+            has_ptr = bool(pointer_slots(e)) or e.kind == 'ptr'
+            return (agrees(d), has_ptr, rank, e.kind == 'rec', e.size, 0 if incomplete else t.size, not private,
+                    d.in_header, len(groups[type_key(d.ty)]))
+        pool = list(good)
         pool.sort(key=score, reverse=True)
         sy.decl = pool[0]
         sy.ty = sy.decl.ty
         sy.qual = sy.decl.qual
-
 
 
 def spell_type(t):
@@ -1029,6 +1030,8 @@ class Emitter:
         self.func_refs = {}                  # symbol -> names of the functions its initialiser points to
         self.objs = []
         self.obj_addrs = []
+        self.absolute = []                  # (symbol, console address) written as 0: D.ABSOLUTE
+        self.limit = None                   # bytes from here on are not the symbol's (declared bigger than it is)
         self.partial = {}                   # symbol -> [(start address, end address)] not representable
 
     # -- pointer targets
@@ -1131,6 +1134,9 @@ class Emitter:
             self.sym_refs.setdefault(self.cur, set()).add(sy.name)
             self.problems.append((self.cur, 'pointer one past the end of %s (0x%x)' % (sy.name, t)))
             return '(%s)((char *)&%s + %d)' % (spell or 'void *', sy.cname, self.decl_size(sy))
+        if self.cur in D.ABSOLUTE:
+            self.absolute.append((self.cur, t))
+            return '0'
         self.problems.append((self.cur, 'pointer to 0x%x outside any defined object' % t))
         return '(%s)0x%x' % (spell or 'void *', t)
 
@@ -1162,7 +1168,10 @@ class Emitter:
     # -- values
 
     def raw(self, addr, n):
-        return self.pe.read(addr, n)
+        b = self.pe.read(addr, n)
+        if self.limit is not None and addr + n > self.limit:
+            b = b[:max(self.limit - addr, 0)] + b'\0' * (addr + n - max(self.limit, addr))
+        return b
 
     def has_reloc(self, addr, n):
         return any(a in self.env.relocs for a in range(addr - 3, addr + n))
@@ -1184,6 +1193,8 @@ class Emitter:
             return f
         if k == 'ptr':
             t = self.pe.u32(addr)
+            if self.limit is not None and addr >= self.limit:
+                return '0'
             if addr in self.env.relocs or (t != 0 and self.pe.in_image(t)):
                 return self.pointer(t, ty)
             if t == 0:
@@ -1406,12 +1417,6 @@ def finalize(env, syms, order):
             elif n <= 0:
                 n = 1
                 sy.notes.append('extent smaller than one element')
-                for other in order:
-                    d = other.addr - sy.addr
-                    if d >= e.size and d % e.size == 0 and d // e.size <= 16:
-                        n = d // e.size
-                        sy.notes.append('%d elements reach the symbol %s' % (n, other.name))
-                        break
             hi = max(const_idx.get(sy.name, {-1}))
             if hi >= n and not (e.kind == 'int' and e.spelling == 'char'):
                 f, ln = const_idx[sy.name][hi]
@@ -1628,6 +1633,14 @@ def symbol_comment(sy, em):
         out.append('Port: %s' % sy.synthetic)
     if sy.name in D.ARENAS:
         out.append('Port: %s; the original size is for 4-byte pointers.' % D.ARENAS[sy.name])
+    if sy.name in D.TRUNCATE:
+        out.append('Port: %s' % D.TRUNCATE[sy.name])
+    if sy.name in D.ALIGN:
+        out.append('Port: %s' % D.ALIGN[sy.name][1])
+    if sy.name in D.SIZES:
+        out.append('Port: %s' % D.SIZES[sy.name][1])
+    if sy.name in D.ABSOLUTE:
+        out.append('Port: %s' % D.ABSOLUTE[sy.name])
     if sy.name in em.partial:
         out.append('C89 initialises only the first member of the union; the executable holds more data after it.')
     if sy.inferred and sy.decl is None:
@@ -1652,9 +1665,15 @@ def symbol_text(sy, em, tys):
     text = decl_text(sy.qual, sy.cname, count, decl_tys)
     if sy.name in D.ARENAS:
         text = text.replace('[%d]' % count, '[%d * (sizeof(void *) / 4)]' % count)
+    if sy.name in D.ALIGN:
+        text += ' __attribute__((aligned(%d)))' % D.ALIGN[sy.name][0]
     if sy.kind == 'bss':
         return symbol_comment(sy, em) + text + ';'
-    val = em.value(sy.ty, sy.addr, 0)
+    em.limit = sy.addr + sy.extent if sy.name in D.TRUNCATE else None
+    try:
+        val = em.value(sy.ty, sy.addr, 0)
+    finally:
+        em.limit = None
     note = symbol_comment(sy, em)
     return '%s%s = %s;' % (note, text, val)
 
@@ -1885,11 +1904,12 @@ def compile_cmd(path, out, native):
 R_ARM_ABS32 = 2
 
 
-def compare_symbol(env, g, res, bad, co, name, sec, start, size, tag):
+def compare_symbol(env, g, res, bad, co, name, sec, start, size, tag, lim=None):
     """Bytes and relocations of one defined symbol of an object against the executable."""
     pe = env.pe
     names = env.names
     addr = names[name][0]
+    lim = size if lim is None else lim         # bytes from here on belong to the next global (TRUNCATE)
     res['%s: symbols checked' % tag] += 1
     res['%s: bytes compared' % tag] += size
     exp = pe.read(addr, size)
@@ -1906,16 +1926,25 @@ def compare_symbol(env, g, res, bad, co, name, sec, start, size, tag):
         addend = struct.unpack_from('<I', sec['data'], off_)[0]
         my[off] = (co.symbols[si], addend)
         masked.update(range(off, off + 4))
-    for off in range(0, size - 3):
-        if (addr + off) in env.relocs and off not in my:
+    for off in range(0, lim - 3):
+        if (addr + off) in env.relocs and off not in my and name not in D.ABSOLUTE:
             bad.append('%s+0x%x (%s): executable has a pointer (value 0x%x), the object has none' % (
                 name, off, tag, pe.u32(addr + off)))
     skip = set()
+    if name in D.ABSOLUTE:
+        for off in range(size - 3):
+            if (addr + off) in env.relocs:
+                skip.update(range(off, off + 4))
     for lo, hi in g['em'].partial.get(name, []):
         skip.update(range(lo - addr, hi - addr))
     res['%s: bytes not representable in C89 (union members)' % tag] += len(skip & set(range(size)))
     for off in range(size):
         if off in masked or off in skip:
+            continue
+        if off >= lim:
+            if got[off]:
+                bad.append('%s+0x%x (%s): byte 0x%02x beyond the extent of a truncated definition' % (name, off, tag, got[off]))
+                break
             continue
         if exp[off] != got[off]:
             bad.append('%s+0x%x (%s): byte 0x%02x, executable 0x%02x' % (name, off, tag, got[off], exp[off]))
@@ -1955,6 +1984,23 @@ def alias_includes(a):
     return ['#include "%s"' % h for h in a.includes]
 
 
+ALIAS_HEADER = os.path.join(ROOT, 'game', 'include', 'data_alias.h')
+
+
+def alias_header_text():
+    """game/include/data_alias.h: one macro per alias of tools/gendata_decisions.py."""
+    out = ['/* Names of the decompilation that stand for a part of another global, as macros onto the real',
+           '   storage. Generated by tools/gendata.py from tools/gendata_decisions.py, which records for',
+           '   each one what the machine code does with the addresses involved. The data files define the',
+           '   containers only. */',
+           '#ifndef DATA_ALIAS_H', '#define DATA_ALIAS_H', '']
+    for a in D.ALIASES:
+        out.append('/* %s: %s */' % (a.name, a.evidence))
+        out.append('#define %s %s' % (a.name, a.macro))
+    out += ['', '#endif', '']
+    return '\n'.join(out)
+
+
 def write_alias_tests(env, g):
     """tools/aliastest/alias_*.c: for every alias, a function that checks (natively) that the alias
     storage lies inside its container, that paired elements are the same object and that the
@@ -1969,8 +2015,11 @@ def write_alias_tests(env, g):
         off = aa - ca
         sy = g['syms'][a.name]
         exp = env.pe.read(aa, min(max(sy.extent, 1), 16)) if sy.kind in ('data', 'rdata') else b''
+        csy = g['syms'][a.container]
+        cdecl = 'extern ' + decl_text(csy.qual, csy.cname, getattr(csy, 'count', None), csy.decl.tys if csy.decl else None) + ';'
         head = ['/* Generated by tools/gendata.py from tools/gendata_decisions.py: alias %s. */' % a.name,
-                '#include <string.h>', '#include "functions.h"'] + alias_includes(a)
+                '#include <string.h>', '#include "functions.h"'] + alias_includes(a) + \
+            [d for d in a.decls if not d.startswith('extern ')] + [cdecl]
         snippet32 = head + [
             '/* In the executable %s is at %s + 0x%x. */' % (a.name, a.container, off),
             'typedef char alias_offset_%s[((char *)&(%s) - (char *)&(%s) == 0x%x) ? 1 : -1];' % (
@@ -2000,6 +2049,39 @@ def write_alias_tests(env, g):
     main += ['    printf("%d alias checks, %d failed\\n", ' + str(len(names)) + ', failures);', '    return failures != 0;', '}', '']
     open(os.path.join(ALIAS_DIR, 'alias_main.c'), 'w').write('\n'.join(main))
     return asserts
+
+
+def apply_aliases(dry=False):
+    """Remove the declarations of the alias names from game/src (the names are macros now) and declare
+    the container where a file uses an alias but not the container."""
+    report = []
+    for f in sorted(glob.glob(os.path.join(ROOT, 'game', 'src', '*.c'))):
+        lines = open(f, encoding='latin-1').read().split('\n')
+        drop = {}
+        for a in D.ALIASES:
+            pat = re.compile(r'^(?!\s)(?!#)[^;{}()=]*\b%s\b(?:\[[^\]]*\])*\s*;\s*(?:/\*.*\*/)?\s*$' % re.escape(a.name))
+            for i, line in enumerate(lines):
+                if pat.match(line) and not line.lstrip().startswith(('return', 'if', 'else')):
+                    drop[i] = a
+        if not drop:
+            continue
+        rest = '\n'.join(l for i, l in enumerate(lines) if i not in drop)
+        inserted = set()
+        out = []
+        for i, line in enumerate(lines):
+            if i not in drop:
+                out.append(line)
+                continue
+            a = drop[i]
+            if a.container_decl and a.container not in inserted and not re.search(r'\b%s\b' % re.escape(a.container), rest):
+                inserted.add(a.container)
+                out.append('%s /* Port: %s is a part of it, see data_alias.h */' % (a.container_decl, a.name))
+                report.append('%s: %s -> %s' % (os.path.basename(f), line.strip(), a.container_decl))
+            else:
+                report.append('%s: removed %s' % (os.path.basename(f), line.strip()))
+        if not dry:
+            open(f, 'w', encoding='latin-1').write('\n'.join(out))
+    return report
 
 
 def link_stubs(objs, tmp):
@@ -2109,7 +2191,8 @@ def check(env, g, outdir):
             sy = bycname[name]
             if real_size(sy) != symsize:
                 bad.append('%s: layout model says %d bytes, clang %d' % (name, real_size(sy), symsize))
-            compare_symbol(env, g, res, bad, co, name, sec, val, symsize, 'clang')
+            compare_symbol(env, g, res, bad, co, name, sec, val, symsize, 'clang',
+                           min(symsize, sy.extent) if name in D.TRUNCATE else None)
     for s_ in list(g['order']) + list(g['synthetic'].values()):
         if s_.name in g['results'] and s_.cname not in seen:
             bad.append('%s was generated but is not defined by any object' % s_.name)
@@ -2135,12 +2218,36 @@ def check(env, g, outdir):
         if sy_.decl.ty.n is None and sy_.ty.n != sy_.extent // sy_.ty.elem.size and not sy_.notes:
             bad.append('%s: %d elements but the extent holds %d of %d bytes' % (
                 sy_.name, sy_.ty.n, sy_.extent // sy_.ty.elem.size, sy_.ty.elem.size))
+    for sy_, inner in overlaps(g):
+        if sy_.name in D.TRUNCATE:
+            res['declared bigger than the object (TRUNCATE)'] += 1
+            continue
+        bad.append('%s (%d bytes, extent %d) contains the declared names %s: needs an alias or TRUNCATE decision' % (
+            sy_.name, real_size(sy_), sy_.extent, ' '.join('%s@+%d' % (o.name, o.addr - sy_.addr) for o in inner)))
     check_aliases(env, g, tmp, res, bad)
     return res, bad, native_bad, tmp
 
 
 # --------------------------------------------------------------------------
 # report
+
+
+def overlaps(g):
+    """Defined objects bigger than the space up to the next name the game declares, with the names
+    inside them. Each needs a decision (an alias, or TRUNCATE) in tools/gendata_decisions.py."""
+    order = g['order']
+    idx = {s.name: i for i, s in enumerate(order)}
+    out = []
+    for sy in order:
+        if sy.name not in g['results'] or sy.ty is None:
+            continue
+        sz = real_size(sy)
+        if sz <= sy.extent:
+            continue
+        inner = [o for o in order[idx[sy.name] + 1:] if o.addr < sy.addr + sz and o.decls and o.name not in ALIAS_NAMES]
+        if inner:
+            out.append((sy, inner))
+    return out
 
 
 def real_size(sy):
@@ -2299,15 +2406,21 @@ def main():
     ap.add_argument('--out', default=os.path.join(ROOT, 'game', 'data'))
     ap.add_argument('--check', action='store_true')
     ap.add_argument('--report', action='store_true')
+    ap.add_argument('--apply-aliases', action='store_true', help='drop the declarations of alias names from game/src')
     ap.add_argument('--conform', action='store_true', help='lay the code\'s accesses over the chosen types')
     ap.add_argument('--only', nargs='*', default=None)
     ap.add_argument('--evidence', nargs='+', default=None, help='names or 0xADDRESSes: declarations, labels, accesses, uses')
     ap.add_argument('--span', type=int, default=None)
     a = ap.parse_args()
+    if a.apply_aliases:
+        for line in apply_aliases():
+            print(line)
+        return 0
     env = Env(a.decomp)
     scan = scan_all(a.rescan)
     g = generate(env, scan)
     files = write_files(g, a.out)
+    open(ALIAS_HEADER, 'w').write(alias_header_text())
     print('wrote %d files' % len(files))
     if a.report:
         print(report(env, g))

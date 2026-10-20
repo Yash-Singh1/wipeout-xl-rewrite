@@ -50,7 +50,7 @@ u_short padType;
 int cdMusicTrack;
 void *continuesTexture;
 u_short idleTimer;
-u_short keysPressed;
+u_char_eq1 keysPressed[4];
 short droneSwitchStep;
 ShipData *shipIndex;
 u_char linkRaceDone;

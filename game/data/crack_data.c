@@ -3,5 +3,4 @@
 #include "crack.h"
 
 PolyFT3 medLoCrackPolys[8][2];
-PolyFT3 hiMedCrackPolysA[1][4];
-PolyFT3 hiMedCrackPolysB[8][4];
+PolyFT3 hiMedCrackPolysA[8][4];
