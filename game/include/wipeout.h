@@ -11,8 +11,8 @@ typedef short              s16;
 typedef unsigned short     u16;
 typedef int                s32;
 typedef unsigned int       u32;
-typedef int int          s64;
-typedef unsigned int int u64;
+typedef long long          s64;
+typedef unsigned long long u64;
 typedef float              f32;
 typedef double             f64;
 #endif
@@ -630,9 +630,7 @@ typedef struct ConfigData {
     char          phantomTrackCheatActive;
 } ConfigData;
 
-/* C library */
-int sprintf(char *buf, const char *fmt, ...);
-int printf(const char *fmt, ...);
+/* C library: sprintf, printf and the rest come from the standard headers (platform/include/port.h). */
 
 #define NonFatal 1
 #define Fatal    2

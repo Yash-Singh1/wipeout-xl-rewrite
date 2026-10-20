@@ -1,0 +1,6 @@
+/* Global data of radscn.c, generated from the executable by tools/gendata.py. */
+#include "functions.h"
+
+u_short debugPadState;
+Object **trackObjects;
+u_short debugPadInput;

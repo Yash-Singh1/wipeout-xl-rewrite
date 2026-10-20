@@ -1,0 +1,31 @@
+/* Global data of hud.c, generated from the executable by tools/gendata.py. */
+#include "functions.h"
+#include "hud.h"
+
+s16 rivalFinishPos;
+short finishPosition;
+short hudTexIndex8;
+int *OT[2];
+short hudTexIndex12;
+short continueAnimFrame;
+short hudTexIndex16;
+Texture *speedoMarkerTex;
+Texture *speedoFrameTex;
+ConfigData *gameData;
+short hudTexIndexAlt;
+u_char noCheckPoints;
+int raceType;
+int ghostShip;
+u_char linkRaceEnd;
+Texture *speedoShieldTex;
+u_char continuesLeft;
+Texture *speedoSpeedTex;
+char trackNameText[80];
+Texture *deleteTextures[1];
+FontGlyph fontGlyphs8[1];
+FontGlyph fontGlyphs12[40];
+FontGlyph fontGlyphs16[1];
+POLY_FT4 quadPool[1];
+u_short quadClutField[4];
+u_short quadTPageField[11989];
+POLY_FT4 continuePolys[3][2];

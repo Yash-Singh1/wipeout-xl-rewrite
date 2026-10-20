@@ -1,0 +1,45 @@
+/* Global data of sound.c, generated from the executable by tools/gendata.py. */
+#include "functions.h"
+
+short scrapeVol = 0;
+unsigned char controlledSoundOn = 0;
+int reverblev = 0;
+u_char sfxMode = 1;
+signed char undercover = 0;
+char sampleNameTwo[] = "two.vag";
+char sampleNameOne[] = "one.vag";
+char sampleNameGo[12] = "go.vag";
+char msgCrowdPrefix[] = "lost";
+unsigned char openSteps = 0;
+unsigned char closeSteps = 0;
+signed char settingRow = 0;
+unsigned char prevChoice = 0;
+unsigned char boxClosing = 0;
+unsigned char volumeRepeat = 0;
+short boxOpen = 0;
+short boxClosed = 0;
+char msgPaused[] = "PAUSED";
+s32 restartText[2] = { 0x54534552, 0x545241 };
+char labelAccept[] = "ACCEPT";
+char labelSelect[] = "SELECT";
+char nozzleShip[] = "MUSIC";
+char targang[] = "SFX";
+const unsigned char pauseMenuGap = 12;
+char labelYes[] = "YES";
+char labelNo[16] = "NO";
+char countdownActive = 1;
+int crowdsamp2;
+signed char cdSetMode;
+int enginesamp;
+int ambientVoice1;
+int scrapesamp;
+CameraUpdateFunc oldcameraupdate;
+int remoteSamp1;
+int remoteSamp2;
+char *sampleBuffer;
+WADFILE *sampleWad;
+int controlledSfxId;
+int crowdsamp;
+int turbulancesamp;
+int oldcam[3];
+int sampleHandle[128];
