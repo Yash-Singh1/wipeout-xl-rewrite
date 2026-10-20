@@ -1,4 +1,5 @@
 #include "functions.h"
+#include "../../platform/trace.h" /* Port: lockstep test hooks */
 #include "include_asm_g8.h"
 
 extern TrackData *track;
@@ -518,7 +519,9 @@ weaponByteReady:
                 PlayNote(0x2E, 0xFF, 15, 15, 0x100);
             }
         } else {
-            ship->autopilotCount--;
+            if (!PortAutopilot()) { /* Port: the lockstep tests' infinite autopilot keeps its count */
+                ship->autopilotCount--;
+            }
             if (ship->autopilotCount == 0) {
                 if ((u_short)(ship->roll + 49) < 99) {
                     ship->update = UpdatePlayerShip;

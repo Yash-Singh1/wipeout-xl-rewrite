@@ -28,6 +28,10 @@ void PortTraceReturn(uint32_t function, uint32_t value);
 /* The end of a game-loop iteration. */
 void PortTraceBoundary(uint32_t marker);
 
+/* WIPEOUT_AUTOPILOT: the console recorder's infinite autopilot (the player's
+   ship hands itself to the drone code and never takes control back). */
+int PortAutopilot(void);
+
 /* Loading screens (WIPEOUT_LOADS: the loading-screen frames of each load in
    a console recording, one number per line). The game draws its loading
    screen from the vertical-blank callback, which also advances the random
