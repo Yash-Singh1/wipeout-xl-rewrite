@@ -7,8 +7,9 @@ into frames at each drawing-environment change (PutDrawEnv's area packet).
 Frames are compared packet by packet, so the report names the first frame
 and the first packet in it where the port draws something else.
 
-Iterations the console spent in the movie player (boundaries that are not
-Swap or CallbackSwap) are left out: the port plays the movies itself.
+GPU traffic from the console's movie player (code loaded at 0x80119000) is
+left out: the port plays the movies itself. Game drawing that
+the console's DMA delivers after the player has been started still counts.
 """
 import argparse
 import hashlib
@@ -18,22 +19,37 @@ from pathlib import Path
 from reader import events
 from gp0 import Decoder
 
-GAME_MARKERS = {0x800684C4, 0x800686E8}
+MOVIE_LOW, MOVIE_HIGH = 0x80119000, 0x80140000
+ROM_LOW = 0xBFC00000  # the boot ROM's own writes (around Exec), not the game's
 META = {'iteration', 'frame', 'tick', 'address', 'order', 'words'}
 
 
-def movie_iterations(path):
-    """Iterations closed by a boundary that is not the game's own."""
-    return {e['iteration'] for e in events(path, kinds={'boundary'})
-            if e['words'][0] not in GAME_MARKERS}
+def foreign(pc):
+    return MOVIE_LOW <= pc < MOVIE_HIGH
 
 
-def frames(path, skip=frozenset()):
+def normalise(packet):
+    """The packet's values the GPU uses. Raw-textured primitives ignore their
+    colour, which the game often leaves uninitialised."""
+    p = {k: v for k, v in packet.items() if k not in META}
+    if p.get('raw_texture'):
+        p.pop('colour', None)
+        for v in p.get('vertices', ()):
+            v.pop('colour', None)
+    return p
+
+
+def frames(path):
     """Yield (iteration, packets) per frame; packets are decoded values."""
     decoder = Decoder()
-    current, start = [], None
-    for e in events(path, kinds={'gp0', 'gp1'}):
-        if e['iteration'] in skip:
+    current, start, started = [], None, False
+    dma = False
+    for e in events(path, kinds={'gp0', 'gp1', 'dma'}):
+        if e['kind'] == 'dma':
+            dma = True
+            continue
+        delivered, dma = dma, False
+        if foreign(e['pc']) or (e['pc'] >= ROM_LOW and not delivered):
             continue
         if e['kind'] == 'gp1':
             if e['words'][0] >> 24 == 0:
@@ -41,12 +57,16 @@ def frames(path, skip=frozenset()):
                 decoder.mode, decoder.offset, decoder.window = 0, [0, 0], 0
             continue
         for p in decoder.feed(e['words'], e):
-            if p['type'] == 'draw_area_min' and current:
-                yield start, current
+            if p['type'] == 'draw_area_min':
+                if current:
+                    yield start, current
                 current = []
+                started = True
+            elif not started:
+                continue  # the console's boot ROM draws before the game starts
             if not current:
                 start = p['iteration']
-            current.append({k: v for k, v in p.items() if k not in META})
+            current.append(normalise(p))
     if current:
         yield start, current
 
@@ -77,14 +97,15 @@ def main():
     args = p.parse_args()
 
     console = args.console / 'trace.bin.gz' if args.console.is_dir() else args.console
-    left = frames(console, movie_iterations(console))
-    right = frames(args.port, movie_iterations(args.port))
+    left, right = frames(console), frames(args.port)
     count = same = 0
     mismatched = []
     first = None
     while args.frames is None or count < args.frames:
         a, b = next(left, None), next(right, None)
-        if a is None and b is None:
+        if a is None:
+            if b is not None:
+                print('(the port ran on past the end of the console recording)')
             break
         count += 1
         if a is not None and b is not None and digest(a[1]) == digest(b[1]):

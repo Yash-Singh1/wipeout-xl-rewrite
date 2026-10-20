@@ -285,13 +285,13 @@ static void Rtp(int v, int last, int sf)
     uint32_t n;
     int32_t sx, sy;
 
-    mac1 = Check44(0, ((int64_t)c[TRX] << 12) + (int64_t)Low16(c[RT11RT12]) * vx);
+    mac1 = Check44(0, ((int64_t)c[TRX] * 4096) + (int64_t)Low16(c[RT11RT12]) * vx);
     mac1 = Check44(0, mac1 + (int64_t)High16(c[RT11RT12]) * vy);
     mac1 = mac1 + (int64_t)Low16(c[RT13RT21]) * vz;
-    mac2 = Check44(1, ((int64_t)c[TRY] << 12) + (int64_t)High16(c[RT13RT21]) * vx);
+    mac2 = Check44(1, ((int64_t)c[TRY] * 4096) + (int64_t)High16(c[RT13RT21]) * vx);
     mac2 = Check44(1, mac2 + (int64_t)Low16(c[RT22RT23]) * vy);
     mac2 = mac2 + (int64_t)High16(c[RT22RT23]) * vz;
-    mac3 = Check44(2, ((int64_t)c[TRZ] << 12) + (int64_t)Low16(c[RT31RT32]) * vx);
+    mac3 = Check44(2, ((int64_t)c[TRZ] * 4096) + (int64_t)Low16(c[RT31RT32]) * vx);
     mac3 = Check44(2, mac3 + (int64_t)High16(c[RT31RT32]) * vy);
     mac3 = mac3 + (int64_t)Low16(c[RT33]) * vz;
     SetIr(0, SetMac(0, mac1, shift), 0);
@@ -379,13 +379,13 @@ static void Mvmva(uint32_t command)
         vector[2] = Low16(gte.data[VZ0 + v * 2]);
     }
     if (cv == 0) {
-        add[0] = (int64_t)c[TRX] << 12;
-        add[1] = (int64_t)c[TRY] << 12;
-        add[2] = (int64_t)c[TRZ] << 12;
+        add[0] = (int64_t)c[TRX] * 4096;
+        add[1] = (int64_t)c[TRY] * 4096;
+        add[2] = (int64_t)c[TRZ] * 4096;
     } else if (cv == 1) {
-        add[0] = (int64_t)c[RBK] << 12;
-        add[1] = (int64_t)c[GBK] << 12;
-        add[2] = (int64_t)c[BBK] << 12;
+        add[0] = (int64_t)c[RBK] * 4096;
+        add[1] = (int64_t)c[GBK] * 4096;
+        add[2] = (int64_t)c[BBK] * 4096;
     } else if (cv == 2) {
         fprintf(stderr, "GTE: MVMVA with the far colour vector is not implemented\n");
         abort();

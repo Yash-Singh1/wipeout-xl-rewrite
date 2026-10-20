@@ -221,6 +221,17 @@ SIZES = {
     'tileSurfaces': (24, 'indexed by the face texture number (crack.c, trackasm.c, AsmLowResTile...): 24 textures of 2 surfaces, 252 bytes each; the object renderers keep their projected vertices in the 3584 bytes that follow, up to muzzleright (no face of any track uses a texture above 14)'),
     'textureTable': (800, 'the slots run up to the end of menuTexturePtrsB (3172 bytes at slot 7): 800 pointers'),
     'shipShapeTable': (31, '30 ship shapes and the rescue droid model at [30] (RescueDroidModel); menuModels follows'),
+    'menuModels': (11, 'LoadModel stores every object of harry.prm, which has 11, and raceOrderTable draws model 10'),
+}
+
+# Objects the console's code writes past, into the named neighbour, where the neighbour is never read
+# under its own name: natively the object gets the slots the code uses and the neighbour stays separate.
+# name -> (neighbours, why). The SIZES entry gives the length.
+OVERRUN = {
+    'menuModels': (('visibleObjects',),
+                   'the console has 10 slots and the 11th store lands on visibleObjects[0..1], which the race '
+                   'renderer only ever clears (draw.c, never read); the menus reload the models on entry, so '
+                   'the clearing is never seen through menuModels[10] either'),
 }
 
 # Declared bigger than the object really is: the code only reads the part inside the extent (the

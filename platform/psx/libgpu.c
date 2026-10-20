@@ -245,9 +245,11 @@ static void ApplyArea(void)
                    state.areaBottom - state.areaTop + 1, state.offsetX, state.offsetY);
 }
 
+/* A textured polygon's page attribute sets only the page, blend and colour
+   depth (bits 0-8); dithering and drawing to the display stay as E1 set them. */
 static void SetTexpage(uint32_t value)
 {
-    state.texpage = (state.texpage & ~0x7FFu) | (value & 0x7FF);
+    state.texpage = (state.texpage & ~0x1FFu) | (value & 0x1FF);
 }
 
 /* GP0 E1-E6 */
@@ -359,14 +361,25 @@ void SetDispMask(int mask)
     state.displayEnabled = mask != 0;
 }
 
+/* ResetGraph as the library's _reset: mode 0 resets the GPU (GP1 0), modes 1
+   and 3 only cancel drawing and flush its command buffer (GP1 2, GP1 1); all
+   then send a mode word built from the GPU status (the current texture page
+   and mask bits). */
 int ResetGraph(int mode)
 {
-    if (mode == 0 || mode == 3) {
+    uint32_t word;
+
+    GpuInit();
+    if ((mode & 3) == 0) {
+        PortTraceGp1(0x00000000u);
         memset(&state, 0, sizeof(state));
-        state.areaRight = 1023;
-        state.areaBottom = 511;
-        GpuInit();
+        ApplyArea();
+    } else {
+        PortTraceGp1(0x02000000u);
+        PortTraceGp1(0x01000000u);
     }
+    word = 0xE1001000u | (state.texpage & 0x7FF);
+    Submit(&word, 1);
     graphType = 0;
     return 0;
 }
@@ -483,14 +496,38 @@ int MoveImage(RECT *rect, int x, int y)
     return 0;
 }
 
+/* ClearImage as the library's _clr: a fill when the rectangle is aligned to
+   64 pixels, otherwise a rectangle drawn over the whole of video memory with
+   the drawing area and offset restored after it. */
 int ClearImage(RECT *rect, u_char r, u_char g, u_char b)
 {
-    uint32_t words[3];
+    uint32_t colour = (uint32_t)b << 16 | (uint32_t)g << 8 | r;
+    uint32_t xy = (uint32_t)(uint16_t)rect->y << 16 | (uint16_t)rect->x;
+    uint32_t size = (uint32_t)ClampY(rect->h) << 16 | (uint32_t)ClampX(rect->w);
+    uint32_t words[7];
 
-    words[0] = 0x02000000u | (uint32_t)b << 16 | (uint32_t)g << 8 | r;
-    words[1] = (uint32_t)(uint16_t)rect->y << 16 | (uint16_t)rect->x;
-    words[2] = (uint32_t)(uint16_t)rect->h << 16 | (uint16_t)rect->w;
-    Submit(words, 3);
+    if ((rect->x & 0x3F) || (ClampX(rect->w) & 0x3F)) {
+        words[0] = 0xE3000000u;
+        words[1] = 0xE4FFFFFFu;
+        words[2] = 0xE5000000u;
+        words[3] = 0xE6000000u;
+        words[4] = 0x60000000u | colour;
+        words[5] = xy;
+        words[6] = size;
+        Submit(words, 4);
+        Submit(words + 4, 3);
+        words[0] = 0xE3000000u | (uint32_t)state.areaTop << 10 | (uint32_t)state.areaLeft;
+        words[1] = 0xE4000000u | (uint32_t)state.areaBottom << 10 | (uint32_t)state.areaRight;
+        words[2] = 0xE5000000u | (uint32_t)(state.offsetY & 0x7FF) << 11 | (uint32_t)(state.offsetX & 0x7FF);
+        Submit(words, 3);
+    } else {
+        words[0] = 0xE6000000u;
+        words[1] = 0x02000000u | colour;
+        words[2] = xy;
+        words[3] = size;
+        Submit(words, 1);
+        Submit(words + 1, 3);
+    }
     return 0;
 }
 

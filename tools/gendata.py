@@ -1639,6 +1639,8 @@ def symbol_comment(sy, em):
         out.append('Port: %s; the original size is for 4-byte pointers.' % D.ARENAS[sy.name])
     if sy.name in D.TRUNCATE:
         out.append('Port: %s' % D.TRUNCATE[sy.name])
+    if sy.name in D.OVERRUN:
+        out.append('Port: %s' % D.OVERRUN[sy.name][1])
     if sy.name in D.ALIGN:
         out.append('Port: %s' % D.ALIGN[sy.name][1])
     if sy.name in D.SIZES:
@@ -2247,6 +2249,9 @@ def decisions_markdown(env, g):
     out += ['', '## Declared bigger than the object (`TRUNCATE`)', '', '| name | address | extent | why |', '|---|---|---|---|']
     for n, why in D.TRUNCATE.items():
         out.append('| `%s` | %s | %d | %s |' % (n, addr(n), g['syms'][n].extent, why))
+    out += ['', '## Written past the console object (`OVERRUN`)', '', '| name | address | neighbours | why |', '|---|---|---|---|']
+    for n, (inner, why) in D.OVERRUN.items():
+        out.append('| `%s` | %s | %s | %s |' % (n, addr(n), ', '.join('`%s`' % i for i in inner), why))
     out += ['', '## Lengths the extents cannot give (`SIZES`)', '', '| name | address | entries | why |', '|---|---|---|---|']
     for n, (k, why) in D.SIZES.items():
         out.append('| `%s` | %s | %d | %s |' % (n, addr(n), k, why))
@@ -2489,15 +2494,18 @@ def check(env, g, outdir):
         if sy_.name in D.TRUNCATE:
             res['declared bigger than the object (TRUNCATE)'] += 1
             continue
+        if sy_.name in D.OVERRUN and {o.name for o in inner} <= set(D.OVERRUN[sy_.name][0]):
+            res['written past the console object (OVERRUN)'] += 1
+            continue
         bad.append('%s (%d bytes, extent %d) contains the declared names %s: needs an alias or TRUNCATE decision' % (
             sy_.name, real_size(sy_), sy_.extent, ' '.join('%s@+%d' % (o.name, o.addr - sy_.addr) for o in inner)))
     link_check(env, g, tmp, files, res, bad)
     # decisions the sources no longer need
     stale = []
     live_overlap = {sy_.name for sy_, _ in overlaps(g)}
-    for n_ in D.TRUNCATE:
+    for n_ in list(D.TRUNCATE) + list(D.OVERRUN):
         if n_ not in live_overlap:
-            stale.append('TRUNCATE %s: no declared name inside it any more' % n_)
+            stale.append('TRUNCATE/OVERRUN %s: no declared name inside it any more' % n_)
     for n_ in list(D.SIZES) + list(D.ABSOLUTE) + list(D.ALIGN):
         if n_ not in g['results']:
             stale.append('%s: not a defined global any more' % n_)

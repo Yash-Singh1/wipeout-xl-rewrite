@@ -396,7 +396,9 @@ u_short keyDefineLBrake[2];
 u_short keyDefineRBrake[2];
 POLY_FT4 loadPolys0[2];
 POLY_FT4 loadPolys1[2];
-Object *menuModels[10];
+/* Port: the console has 10 slots and the 11th store lands on visibleObjects[0..1], which the race renderer only ever clears (draw.c, never read); the menus reload the models on entry, so the clearing is never seen through menuModels[10] either */
+/* Port: LoadModel stores every object of harry.prm, which has 11, and raceOrderTable draws model 10 */
+Object *menuModels[11];
 DB doubleBuffer[2];
 TrackCamera raceCamera;
 Object *shipModels[8];
