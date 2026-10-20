@@ -640,6 +640,11 @@ void GpuShowImage(const uint8_t *rgb, int width, int height)
         outW = windowWidth;
         outH = windowWidth * 3 / 4;
     }
+    /* square pixels, as the console's 320x240 picture: a wider image is
+       letterboxed */
+    if (outW * height / width < outH) {
+        outH = outW * height / width;
+    }
     outX = (windowWidth - outW) / 2;
     outY = (windowHeight - outH) / 2;
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
