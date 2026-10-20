@@ -31,7 +31,7 @@ short CurrentScreen;
 TrackData *track;
 u_long *OT[2];
 POLY_FT4 *TrackLoPolys[2], *TrackMedPolys[2], *TrackHiPolys[2];
-Surface tileSurfaces[32][2];
+Surface tileSurfaces[24][2];
 short loTileCount, medTileCount, hiTileCount;
 PrimPtr nextPrim;
 
@@ -534,6 +534,177 @@ static void RunParticles(World *w, int trials)
     (void)w;
 }
 
+/* ---- objects ---- */
+Texture *textureTable[800];
+
+/* The size of the packet the retail code builds, from its code byte. */
+static int PacketSizeByCode(int code)
+{
+    switch (code & ~2) {
+    case 0x20: return 0x14;
+    case 0x24: return 0x20;
+    case 0x28: return 0x18;
+    case 0x2C: return 0x28;
+    case 0x30: return 0x1C;
+    case 0x34: return 0x28;
+    case 0x38: return 0x24;
+    case 0x3C: return 0x34;
+    }
+    return 0;
+}
+
+static long objectPackets[3];
+static const int primitiveSize[24] = { 0, 0x10, 0x1C, 0x10, 0x20, 0x18, 0x24, 0x1C, 0x2C, 0, 0x10, 0x10 };
+
+static void RunObjects(World *w, int trials, int kind)
+{
+    static u_long nativeOt[0x2000];
+    static char nativeBuffer[0x10000];
+    static SVECTOR nativeVertices[400];
+    static unsigned char nativePrims[0x4000];
+    static CVECTOR nativeColour;
+    uint32_t emuBuffer = EmuAlloc(0x10000), emuOt = EmuAlloc(0x2000 * 4), emuVertices = EmuAlloc(400 * 8);
+    uint32_t emuPrims = EmuAlloc(0x4000), emuObject = EmuAlloc(0x40), emuColour = EmuAlloc(8);
+    uint32_t emuTextures = EmuAlloc(8 * 0x30), emuTableSym = Sym("textureTable");
+    static Texture nativeTextures[8];
+    const char *routine = kind == 0 ? "AsmDrawObject" : kind == 1 ? "AsmDrawObjectLit" : "AsmDrawObjectFixed";
+    int t, i, k;
+    static const int vertexCounts[] = { 3, 9, 40, 127, 129, 250, 1 };
+
+    OT[0] = OT[1] = nativeOt;
+    MipsStore32(Sym("OT"), emuOt);
+    MipsStore32(Sym("OT") + 4, emuOt);
+    /* textures for the sprites */
+    for (i = 0; i < 8; i++) {
+        short *f = (short *)&nativeTextures[i];
+
+        for (k = 0; k < (int)(sizeof(Texture) / 2); k++) f[k] = (short)(Rand() & 0x1FF);
+        for (k = 0; k < (int)(sizeof(Texture)); k++) MipsStore8(emuTextures + 0x30u * (uint32_t)i + (uint32_t)k, ((unsigned char *)&nativeTextures[i])[k]);
+        textureTable[i] = &nativeTextures[i];
+        MipsStore32(emuTableSym + 4u * (uint32_t)i, emuTextures + 0x30u * (uint32_t)i);
+    }
+    for (t = 0; t < trials; t++) {
+        int vertexCount = vertexCounts[t % 7];
+        int primitiveCount = RandRange(1, 40);
+        int translate[3], superTranslate[3] = { 0, 0, 0 };
+        Camera cam;
+        uint32_t emuSuper, emuSkeleton;
+        Object object;
+        int spread = (t % 3 == 0) ? 3500 : (t % 3 == 1) ? 1200 : 300;
+        int depth = (t % 5 == 0) ? RandRange(300, 1500) : RandRange(1800, 9000);
+        int offset = 0;
+        int roll = RandRange(0, 4095);
+
+        translate[0] = RandRange(-1500, 1500);
+        translate[1] = RandRange(-1500, 1500);
+        translate[2] = depth;
+        memset(&cam, 0, sizeof(cam));
+        SkeletonRandom(&cam.native[1], superTranslate);
+        SkeletonRandom(&cam.native[0], translate);
+        cam.native[0].super = &cam.native[1];
+        emuSuper = MarshalSkeleton(&cam.native[1], 0);
+        emuSkeleton = MarshalSkeleton(&cam.native[0], emuSuper);
+
+        for (i = 0; i < vertexCount; i++) {
+            nativeVertices[i].vx = (short)RandRange(-spread, spread);
+            nativeVertices[i].vy = (short)RandRange(-spread, spread);
+            nativeVertices[i].vz = (short)RandRange(-spread, spread);
+            nativeVertices[i].pad = (short)Rand();
+        }
+        memset(nativePrims, 0, sizeof(nativePrims));
+        for (i = 0; i < primitiveCount; i++) {
+            int type = RandRange(1, 11);
+            unsigned char *p;
+            int size;
+
+            if (type == 9) type = 6;
+            if (i == primitiveCount - 1 && t % 4 == 0) type = RandRange(12, 23);   /* ends the object */
+            size = primitiveSize[type] ? primitiveSize[type] : 0x10;
+            p = nativePrims + offset;
+            for (k = 0; k < size; k++) p[k] = (unsigned char)Rand();
+            *(short *)p = (short)type;
+            *(short *)(p + 2) = (short)(RandRange(0, 7));       /* flag: single sided / translucent bits */
+            if (type == 10 || type == 11) {
+                *(short *)(p + 4) = (short)RandRange(0, vertexCount - 1);
+                *(short *)(p + 6) = (short)RandRange(-100, 600);
+                *(short *)(p + 8) = (short)RandRange(-100, 600);
+                *(short *)(p + 10) = (short)RandRange(0, 7);
+            } else {
+                int n = (type == 1 || type == 2 || type == 5 || type == 6) ? 3 : 4;
+
+                if (type == 5 || type == 6 || type == 1 || type == 2) n = 3;
+                if (type == 3 || type == 4 || type == 7 || type == 8) n = 4;
+                for (k = 0; k < n; k++) *(short *)(p + 4 + 2 * k) = (short)RandRange(0, vertexCount - 1);
+            }
+            if (type > 11) size = 0x10;
+            offset += size;
+        }
+        memset(&object, 0, sizeof(object));
+        object.vertexCount = (short)vertexCount;
+        object.vertices = nativeVertices;
+        object.primitiveCount = (short)primitiveCount;
+        object.primitives = (Primitive *)nativePrims;
+        object.skeleton = &cam.native[0];
+        nativeColour.r = (u_char)Rand(); nativeColour.g = (u_char)Rand(); nativeColour.b = (u_char)Rand(); nativeColour.cd = (u_char)Rand();
+
+        memcpy(MipsPointer(emuVertices), nativeVertices, (size_t)vertexCount * 8);
+        memcpy(MipsPointer(emuPrims), nativePrims, (size_t)offset + 0x40);
+        memset(MipsPointer(emuObject), 0, 0x40);
+        MipsStore16(emuObject + 0x10, (uint16_t)vertexCount);
+        MipsStore32(emuObject + 0x14, emuVertices);
+        MipsStore16(emuObject + 0x20, (uint16_t)primitiveCount);
+        MipsStore32(emuObject + 0x24, emuPrims);
+        MipsStore32(emuObject + 0x30, emuSkeleton);
+        memcpy(MipsPointer(emuColour), &nativeColour, 4);
+
+        ClearOts(emuOt);
+        memset(nativeOt, 0, sizeof(nativeOt));
+        memset(nativeBuffer, 0, sizeof(nativeBuffer));
+        memset(MipsPointer(emuBuffer), 0, 0x10000);
+        linkedCount = 0;
+        CurrentScreen = (short)(t & 1);
+        MipsStore16(Sym("CurrentScreen"), (uint16_t)CurrentScreen);
+        MipsStore32(Sym("nextPrim"), emuBuffer);
+        nextPrim.ptr = nativeBuffer;
+
+        GteSetup();
+        MipsCall(Sym(routine), emuObject, 0, kind == 2 ? 8191u : (uint32_t)roll, kind == 1 ? emuColour : 0, 0, 0);
+        GteSetup();
+        if (kind == 0) AsmDrawObject(&object, 0, roll);
+        else if (kind == 1) AsmDrawObjectLit(&object, 0, roll, &nativeColour);
+        else AsmDrawObjectFixed(&object, 0, 8191);
+
+        /* where the buffer ended, and its contents packet by packet */
+        {
+            uint32_t endEmu = MipsLoad32(Sym("nextPrim")) - emuBuffer;
+            int endNative = (int)(nextPrim.ptr - nativeBuffer);
+            int pos = 0;
+
+            if ((int)endEmu != endNative) {
+                Fail("end of the primitive buffer", (int)endEmu, endNative);
+            } else {
+                while (pos < endNative) {
+                    unsigned char *a = MipsPointer(emuBuffer + (uint32_t)pos), *b = (unsigned char *)nativeBuffer + pos;
+                    int size = PacketSizeByCode(a[7]), m;
+
+                    if (!size) { Fail("packet code", a[7], b[7]); break; }
+                    for (m = 3; m < size; m++) {
+                        if (a[m] != b[m]) {
+                            if (failures < 20) printf("  %s trial %d packet at %d (code %02x) byte %d: retail %02x port %02x\n", routine, t, pos, a[7], m, a[m], b[m]);
+                            Fail("packet contents", pos, m);
+                            break;
+                        }
+                    }
+                    pos += size;
+                }
+            }
+        }
+        objectPackets[kind] += linkedCount;
+        CompareDrawn(routine, emuOt, emuBuffer, nativeBuffer, 4, 0);
+    }
+    (void)w;
+}
+
 int main(int argc, char **argv)
 {
     World world;
@@ -563,10 +734,15 @@ int main(int argc, char **argv)
                 }
                 emuNext = afterWorld;
                 RunParticles(&world, trials);
+                for (level = 0; level < 3; level++) {
+                    emuNext = afterWorld;
+                    RunObjects(&world, trials, level);
+                }
             }
             printf("track %d: %d trials each, %d failures so far\n", trackNumbers[k], trials, failures);
         }
     }
+    printf("object packets drawn: plain %ld, lit %ld, fixed %ld\n", objectPackets[0], objectPackets[1], objectPackets[2]);
     printf("%d checks, %ld packets compared, %d failures\n", checks, totalPackets, failures);
     return failures != 0;
 }

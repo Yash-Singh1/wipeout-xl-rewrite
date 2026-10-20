@@ -13,4 +13,11 @@ static inline int FitsInHalfword(int value)
     return (value >> 15) == 0 || (value >> 15) == -1;
 }
 
+/* Stores a packed screen position (x in the low half, y in the high half: SXYn of the GTE). */
+static inline void StoreScreenXY(short *x, short *y, int packed)
+{
+    *x = (short)packed;
+    *y = (short)(packed >> 16);
+}
+
 #endif

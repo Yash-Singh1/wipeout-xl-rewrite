@@ -72,10 +72,6 @@ function(port_platform_target name)
     endif()
 endfunction()
 
-option(PORT_ASM_STUBS "Temporary: stand-ins for the renderer's assembly routines that are not ported yet" OFF)
-if(PORT_ASM_STUBS)
-    list(APPEND PLATFORM_SOURCES ${CMAKE_SOURCE_DIR}/tools/asm_stubs.c)
-endif()
 add_executable(wipeoutxl ${PLATFORM_SOURCES})
 port_platform_target(wipeoutxl)
 

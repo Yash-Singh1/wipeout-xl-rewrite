@@ -722,7 +722,9 @@ void SetCharTextures(unsigned char size)
     case 12: widthTable = glyphWidths12; break;
     case 16: widthTable = glyphWidths16; break;
     }
-    for (glyphIndex = 0; glyphIndex < 40; glyphIndex++) {
+    /* Port: the console looped over 40 entries although each table holds 38; the two past the end
+       were the first entries of the next table, glyphs that are never drawn. */
+    for (glyphIndex = 0; glyphIndex < 38; glyphIndex++) {
         currentLetter = widthTable[glyphIndex];
         vramY = 0;
         row = currentLetter / 100;

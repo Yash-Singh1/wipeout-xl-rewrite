@@ -42,13 +42,6 @@ static void SetQuadTile(POLY_FT4 *poly, Tile *tile)
     poly->v3 = tile->v3;
 }
 
-/* Stores a packed screen position (x in the low half, y in the high half: SXYn of the GTE). */
-static void StoreScreenXY(short *x, short *y, int packed)
-{
-    *x = (short)packed;
-    *y = (short)(packed >> 16);
-}
-
 /* Loads corner `vertex` of the track, relative to the camera, into the GTE vertex register pair that starts at
    `reg` (xy in `reg`, z in `reg + 1`).  Returns 0, loading nothing, when a coordinate does not fit in 16 bits. */
 static int LoadCorner(VECTOR *vertex, int reg, int cameraX, int cameraY, int cameraZ)

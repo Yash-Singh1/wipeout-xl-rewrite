@@ -349,20 +349,17 @@ u_char weaponChance[5][11] = {
     { 25, 35, 40, 45, 45, 50, 55, 80, 100, 100, 0 }
 };
 u_char weaponDrone[12] = { 10, 30, 40, 60, 80, 100, 30, 70, 90, 90, 90, 100 };
-/* Port: SetCharTextures reads 40 entries of each width table; the executable lays them out 80 bytes apart (38 entries and 4 bytes of padding) */
-u_short glyphWidths16[40] = {
+u_short glyphWidths16[38] = {
     25, 24, 17, 24, 24, 17, 25, 18, 7, 17, 117, 117, 128, 117, 124, 124, 126, 124, 118, 117, 217,
-    217, 229, 224, 217, 218, 224, 210, 218, 217, 218, 318, 318, 318, 322, 325, 307, 307, 19, 19,
+    217, 229, 224, 217, 218, 224, 210, 218, 217, 218, 318, 318, 318, 322, 325, 307, 307,
 };
-/* Port: see glyphWidths16 */
-u_short glyphWidths12[40] = {
+u_short glyphWidths12[38] = {
     19, 19, 14, 19, 19, 13, 19, 14, 6, 13, 14, 14, 122, 114, 119, 118, 120, 119, 115, 114, 113,
-    113, 122, 219, 213, 214, 219, 208, 215, 213, 214, 215, 214, 215, 218, 219, 205, 205, 13, 13,
+    113, 122, 219, 213, 214, 219, 208, 215, 213, 214, 215, 214, 215, 218, 219, 205, 205,
 };
-/* Port: see glyphWidths16; on the console the two entries past the 38 were the first halfwords of the pointer table that follows (crapArray), which belong to glyphs that are never drawn */
-u_short glyphWidths8[40] = {
+u_short glyphWidths8[38] = {
     13, 13, 10, 13, 13, 9, 13, 10, 4, 9, 10, 10, 16, 10, 13, 13, 14, 113, 110, 109, 109, 109, 116,
-    114, 109, 110, 113, 106, 111, 110, 110, 111, 110, 110, 112, 114, 104, 104, 0x3f90, 0x8009,
+    114, 109, 110, 113, 106, 111, 110, 110, 111, 110, 110, 112, 114, 104, 104,
 };
 char *crapArray[8] = { "ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT" };
 int skyPos[15] = { -820, -2520, -1930, -5000, -5000, -5000, -2260, -40, -2700, 0, -240, -2120, -2700, 0, 0 };

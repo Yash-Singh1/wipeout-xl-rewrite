@@ -34,6 +34,5 @@ NOOP(GpuInit) NOOP(GpuFill) NOOP(GpuFlush) NOOP(GpuLine) NOOP(GpuPresent) NOOP(G
 NOOP(GpuTriangles) NOOP(GpuVramChanged) NOOP(PortTraceGp0) NOOP(PortTraceGp1) NOOP(PortTraceBoundary) NOOP(PortScriptFixedPad)
 NOOP(PortTracing)
 
-/* the movie player and the hand-written assembly drawing routines */
-NOOP(PsxPlayMovie) NOOP(AsmDrawObject) NOOP(AsmDrawObjectFixed) NOOP(AsmDrawObjectLit) NOOP(AsmDrawParticles)
-NOOP(AsmTrackHi) NOOP(AsmTrackLo) NOOP(AsmTrackMed)
+/* the movie player */
+NOOP(PsxPlayMovie)
