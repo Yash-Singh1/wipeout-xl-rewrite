@@ -47,8 +47,6 @@ extern u_char           linkSyncB;
 extern u_char           linkRaceEnd;
 extern u_char           cdMusicIndex;
 extern int              cdMusicTrack;
-extern u_char           linkPadAux0;
-extern u_char           linkPadAux1;
 extern ConfigData      *gameData;
 extern TrackData       *track;
 extern ShipData        *shipIndex;
@@ -174,7 +172,7 @@ void CheckForButtonPress(void)
                 idleTimer++;
             }
         } else if (gameType == padType) {
-            if (keysDown != 0 || (u_int)(linkPadAux1 - 0x7A) >= 14 || linkPadAux0 >= 31) {
+            if (keysDown != 0 || (u_int)(playerControl[0].steering - 0x7A) >= 14 || playerControl[0].thrust >= 31 /* Port: were the separate names linkPadAux1 and linkPadAux0 for these two bytes of playerControl[0] */) {
                 idleTimer = 0;
                 return;
             }

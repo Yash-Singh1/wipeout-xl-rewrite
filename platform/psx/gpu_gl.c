@@ -13,6 +13,7 @@
    known. */
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_opengl.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 

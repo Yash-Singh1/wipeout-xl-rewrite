@@ -37,11 +37,12 @@ def object_files(build):
     return objs
 
 
-def nm(objs):
-    """(defined, undefined) symbol name sets."""
+def nm(objs, game_dirs=('game.dir', 'gamedata.dir')):
+    """(defined, undefined) symbol name sets: defined anywhere, undefined in the game's objects."""
     strip = platform.system() == 'Darwin'
     defined, undefined = set(), set()
     for o in objs:
+        is_game = any(d in str(o) for d in game_dirs)
         out = subprocess.run(['nm', '-g', str(o)], capture_output=True, text=True).stdout
         for line in out.split('\n'):
             m = re.match(r'^\s*(?:[0-9a-fA-F]+\s+)?([A-Za-z])\s+(\S+)$', line)
@@ -51,7 +52,8 @@ def nm(objs):
             if strip and name.startswith('_'):
                 name = name[1:]
             if kind == 'U':
-                undefined.add(name)
+                if is_game:
+                    undefined.add(name)
             elif kind in 'TtDdBbRrSsCcAa' or kind == 'W' or kind == 'V':
                 defined.add(name)
     return defined, undefined
@@ -118,8 +120,10 @@ def main():
     out = subprocess.run(['nm', '-g', '-U', '/usr/lib/libSystem.B.dylib'], capture_output=True, text=True).stdout \
         if platform.system() == 'Darwin' else ''
     decls = xdecl.collect(sorted((ROOT / 'game/src').glob('*.c')))
-    libc = {'printf', 'sprintf', 'memcpy', 'memset', 'strcpy', 'strcat', 'strlen', 'strncmp', 'strcmp', 'abs', 'exit',
-            'srand', 'rand', 'toupper', 'malloc', 'free', 'memmove', 'puts', 'putchar'}
+    libc = {'printf', 'sprintf', 'snprintf', 'memcpy', 'memset', 'memmove', 'memcmp', 'strcpy', 'strcat', 'strlen',
+            'strncmp', 'strcmp', 'strncpy', 'abs', 'exit', 'srand', 'rand', 'toupper', 'tolower', 'malloc', 'free',
+            'puts', 'putchar', 'fputs', 'fprintf', 'fflush', 'abort', '__stderrp', '__stdoutp', '___stderrp',
+            'dyld_stub_binder', 'bzero'}
     funcs, data = [], []
     for name in missing:
         if name in libc or name.startswith(('__', 'dyld_stub')):
@@ -157,7 +161,7 @@ def main():
          '## Functions', '', 'Declaration as the game uses it (from `game/include/psyq.h` or the source file).', '']
     for name, ds in funcs:
         d = next((x for x in ds if x['proto'] or True), None) if ds else None
-        txt = declaration_text(d) if d else '(implicit declaration)'
+        txt = declaration_text(d) if d else '%s(): no declaration in the game sources' % name
         loc = '%s:%d' % (Path(d['file']).name, d['line']) if d else ''
         r.append('- `%s`  %s' % (txt or name, loc))
     r += ['', '## Data', '', 'Declared type and size the game assumes.', '']

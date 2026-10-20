@@ -422,9 +422,6 @@ extern s32 remoteShip;
 s16 linkTimedOut;
 s16 linkState;
 extern void *menuTexturePtrsC[];
-extern u16 linkPadHead;
-extern u8 linkPadAux0;
-extern u8 linkPadAux1;
 
 int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMemorySize)
 {
@@ -704,13 +701,13 @@ serial:
         }
         if (currMenu == 0) {
             if (negcon) {
-                if (linkPadHead != 0) goto idleReset;
-                if (linkPadAux0 >= 31) goto idleReset;
-                if ((unsigned)(linkPadAux1-120) >= 47) goto idleReset;
+                if (playerControl[0].buttons != 0) goto idleReset;
+                if (playerControl[0].thrust >= 31) goto idleReset;
+                if ((unsigned)(playerControl[0].steering-120) >= 47) goto idleReset;
                 idleCount = (s32)((u32)idleCount + 1);
                 goto idleCheck;
             } else {
-                if (linkPadHead == 0) {
+                if (playerControl[0].buttons == 0) {
                     idleCount = (s32)((u32)idleCount + 1);
                     goto idleCheck;
                 }
@@ -1512,7 +1509,6 @@ void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSele
 typedef union CardGridCell {
     s32 w;
     u16 h;
-    u8  padding[8];
     SaveSelection *volatile save;
 } CardGridCell;
 
@@ -1632,7 +1628,7 @@ int DisplayCardBack(MenuPolys *polys, int cursorArg, int cardArg, SaveSelection 
                                     do {
                                         fadePolyA = &polys->backdrop[entryIndex][fadeSprite];
                                         fadeSpriteNext = fadeSprite + 1;
-                                        fadeByte = grid[9].padding[0];
+                                        fadeByte = (u8)fadeValue;
                                         fadePolyA->r0 = fadeByte;
                                         fadeSprite = fadeSpriteNext;
                                         fadePolyA->g0 = fadeByte;
@@ -1644,7 +1640,7 @@ int DisplayCardBack(MenuPolys *polys, int cursorArg, int cardArg, SaveSelection 
                                     do {
                                         fadePolyB = &polys->backdrop[entryIndex + 0xF][fadeSprite];
                                         fadeSpriteNextB = fadeSprite + 1;
-                                        fadeByte = grid[9].padding[0];
+                                        fadeByte = (u8)fadeValue;
                                         fadePolyB->r0 = fadeByte;
                                         fadeSprite = fadeSpriteNextB;
                                         fadePolyB->g0 = fadeByte;
@@ -5816,6 +5812,7 @@ char *GetTrackName(short type, short x, short y, short draw)
         else return msgPhenitiaPark;
         break;
     }
+    return 0; /* Port: the console fell off the end here (draw != 0, or a type outside the table) and returned a stale $v0; no caller uses it then */
 }
 
 

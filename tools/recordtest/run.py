@@ -287,6 +287,9 @@ class Runner:
         return objects, len(data), len(actual), text, text2
 
 
+# The tracks the game races (raceTracks in menus.c); TRACK04 is on the disc but never loaded.
+RACED_TRACKS = (1, 2, 6, 7, 8, 13, 17, 20)
+
 PRIM_TYPES = {1: "F3", 2: "FT3", 3: "F4", 4: "FT4", 5: "G3", 6: "GT3", 7: "G4", 8: "GT4", 10: "SPR", 11: "SPR",
               12: "LSF3", 13: "LSFT3", 14: "LSF4", 15: "LSFT4", 16: "LSG3", 17: "LSGT3", 18: "LSG4", 19: "LSGT4",
               20: "Spline", 21: "InfiniteLight", 22: "PointLight", 23: "SpotLight"}
@@ -379,6 +382,7 @@ def main():
                 runner.fail("damaged PRM %d: %s" % (n, text.splitlines()[0]))
             else:
                 runner.ok()
+        check_loaders(runner, args, workdir)
         report(runner, prm_rows, track_rows, layouts)
         if args.keep:
             print("work directory:", workdir)
@@ -396,11 +400,14 @@ def s32(data, pos):
     return struct.unpack_from(">i", data, pos)[0]
 
 
-def expected_dump(entries, track):
+def expected_dump(entries, track, sky):
     """The lines loadtest writes for a track, computed from the WAD's files by reading the 32-bit records."""
     by_name = dict(entries)
     sections = by_name["track.trs"]
-    lines = ["T %d" % track]
+    vertices = by_name["track.trv"]
+    faces = by_name["track.trf"]
+    lines = ["T %d sky %d" % (track, sky)]
+    lines.append("N sections %d vertices %d faces %d" % (len(sections) // 156, len(vertices) // 16, len(faces) // 20))
     total = 0
     for i in range(len(sections) // 156):
         r = sections[i * 156:(i + 1) * 156]
@@ -420,53 +427,199 @@ def expected_dump(entries, track):
         line += " high %s med %s" % (" ".join(str(s16(r, 126 + 2 * k)) for k in range(4)),
                                       " ".join(str(s16(r, 134 + 2 * k)) for k in range(4)))
         lines.append(line)
+    for i in range(len(vertices) // 16):
+        lines.append("V %d %d %d %d" % ((i,) + struct.unpack_from(">iii", vertices, i * 16)))
+    for i in range(len(faces) // 20):
+        r = faces[i * 20:(i + 1) * 20]
+        v = struct.unpack_from(">4h", r, 0)
+        n = struct.unpack_from(">3h", r, 8)
+        texture, flags = struct.unpack_from("bb", r, 14)
+        red, green, blue = r[16], r[17], r[18]
+        lines.append("F %d %d %d %d %d n %d %d %d tex %d flags %d rgb %d %d %d copy %d %d %d" % (
+            (i,) + v + n + (texture, flags, red, green, blue, red, green, blue)))
     for index, name in enumerate(("scene.prm", "sky.prm")):
         d = by_name[name]
         pos = 0
         while pos < len(d):
-            vertices, prims = s16(d, pos + 16), s16(d, pos + 32)
+            vertices_n, prims = s16(d, pos + 16), s16(d, pos + 32)
             label = d[pos:pos + 16].split(b"\0")[0].decode("latin-1")
             line = "O %d %s extent %d primitives %d rel" % (index, label, s32(d, pos + 52), prims)
             line += "".join(" %d" % s16(d, pos + 64 + 2 * k) for k in range(9))
-            # WADInitScene moves the sky model to (0, skyPos, 0); the test's skyPos is 0.
-            relative_t = "0 0 0" if index == 1 and pos == 0 else " ".join(str(s32(d, pos + 64 + 20 + 4 * k)) for k in range(3))
+            # WADInitScene moves the sky model to (0, skyPos[track], 0): the value is the game's table, printed in the header
+            relative_t = "0 %d 0" % sky if index == 1 and pos == 0 else " ".join(str(s32(d, pos + 64 + 20 + 4 * k)) for k in range(3))
             line += " t %s abs %s update %d" % (relative_t,
                                                 " ".join(str(s32(d, pos + 64 + 52 + 4 * k)) for k in range(3)),
                                                 s16(d, pos + 64 + 64))
             lines.append(line)
-            end = pos + 144 + vertices * 8
+            end = pos + 144 + vertices_n * 8
             for _ in range(prims):
                 end += Layouts.PRIM_SIZE[s16(d, end)]
             pos = end
     return lines
 
 
-def check_loaders(runner, args, workdir):
-    """Runs the game's own loaders (tools/recordtest/loadtest) on every track and compares what they built."""
-    exe = os.path.join(workdir, "loadtest")
-    subprocess.run([sys.executable, os.path.join(HERE, "build_loadtest.py"), exe], check=True, stderr=subprocess.DEVNULL)
-    dump = os.path.join(workdir, "dump")
-    os.mkdir(dump)
-    env = dict(os.environ, LOADTEST_DUMP=dump, LOADTEST_GAME_SRC=os.path.join(ROOT, "game/src"))
-    proc = subprocess.run([exe, args.iso], capture_output=True, text=True, env=env)
-    print()
-    print(proc.stdout.rstrip())
-    if proc.returncode:
-        runner.fail("loadtest: the loaders failed or the original's heap model overflowed (exit %d)\n%s" % (proc.returncode, proc.stderr))
-    for track in sorted(d for d in os.listdir(args.iso) if re.match(r"TRACK\d\d$", d)):
-        number = int(track[5:])
-        path = os.path.join(dump, "track%02d.txt" % number)
-        if not os.path.exists(path):
+LOADTEST_HEADERS = ["functions.h", "track.h", "hud.h", "ayrace.h", "hiscores.h", "effects.h", "weapon.h", "sparks.h", "trails.h", "dynam.h"]
+
+# Findings in the game itself that the sanitizers report and that are documented (docs/RECORDS.md).
+# (kind, function that must be on the stack, what it is)
+KNOWN_FINDINGS = [
+    ("stack-buffer-overflow", "loadShipData",
+     "ships.c loadShipData: strcat appends .cmp/.prm to a 24-character path in the 25-character ShipPath union (28 bytes): "
+     "the terminating zero lands one byte after the variable (also read by the test's file name conversion)"),
+]
+
+
+def sanitizer_reports(text):
+    """Distinct sanitizer reports of a run: (kind, frames, detail)."""
+    reports = []
+    seen = set()
+    lines = text.split("\n")
+    i = 0
+    while i < len(lines):
+        m = re.search(r"ERROR: AddressSanitizer: (\S+)", lines[i])
+        if m:
+            frames = []
+            j = i + 1
+            while j < len(lines) and len(frames) < 8:
+                f = re.match(r"\s+#\d+ 0x[0-9a-f]+ in (\S+)", lines[j])
+                if f:
+                    frames.append(f.group(1).split("+")[0])
+                elif frames and not lines[j].startswith(" "):
+                    break
+                j += 1
+            key = (m.group(1), tuple(frames[:4]))
+            if key not in seen:
+                seen.add(key)
+                reports.append((m.group(1), frames, lines[i]))
+        m = re.search(r"([\w/\.\-]+:\d+:\d+): runtime error: (.*)", lines[i])
+        if m:
+            key = ("ubsan", m.group(1).split("/")[-1], m.group(2)[:60])
+            if key not in seen:
+                seen.add(key)
+                reports.append(("runtime error", [m.group(1).split("/")[-1]], m.group(2)))
+        i += 1
+    return reports
+
+
+def ps1_sizes(types, workdir):
+    """Writes the sizes file of loadtest: name, PlayStation size, native size."""
+    path = os.path.join(workdir, "loadtest_sizes.c")
+    with open(path, "w") as f:
+        for h in LOADTEST_HEADERS:
+            f.write('#include "%s"\n' % h)
+        f.write("const unsigned PortProbe[] = {\n")
+        for t in types:
+            f.write("    sizeof(%s),\n" % t)
+        f.write("};\n")
+    values = {}
+    for target in (gl.FILE_TARGET, gl.host_target()):
+        asm = gl.run_clang(target, path, ["-S", "-o", "-", "-O0"])
+        nums = gl.asm_values(asm)
+        if len(nums) != len(types):
+            raise SystemExit("sizes of the loadtest types: expected %d values, got %d" % (len(types), len(nums)))
+        values[target] = nums
+    out = os.path.join(workdir, "loadtest_sizes.txt")
+    with open(out, "w") as f:
+        for k, t in enumerate(types):
+            f.write("%s %d %d\n" % (t, values[gl.FILE_TARGET][k], values[gl.host_target()][k]))
+    return out
+
+
+def check_site_table(runner, sites_text):
+    """Every DAlloc in game/src is in loadtest's table (which says how the original's size is derived)."""
+    sites = [tuple(l.split("\t")) for l in sites_text.strip().split("\n")]
+    uncovered = []
+    count = 0
+    for fn in sorted(os.listdir(os.path.join(ROOT, "game/src"))):
+        if not fn.endswith(".c") or fn == "malloc.c":
             continue
-        expected = expected_dump(read_wad(os.path.join(args.iso, track, "TRACK.WAD")), number)
-        actual = open(path, encoding="latin-1").read().split("\n")[:-1]
-        if actual != expected:
-            at = next((i for i in range(min(len(actual), len(expected))) if actual[i] != expected[i]), min(len(actual), len(expected)))
-            runner.fail("%s: loaded track differs from the file at line %d\n  loaded:   %s\n  expected: %s" % (
-                track, at, actual[at] if at < len(actual) else "(missing)", expected[at] if at < len(expected) else "(missing)"))
+        for n, line in enumerate(open(os.path.join(ROOT, "game/src", fn), errors="replace"), 1):
+            code = line.split("/*")[0]
+            if "DAlloc(" not in code or code.strip().startswith(("//", "*")):
+                continue
+            count += 1
+            if not any(f == fn and t in line for f, t in sites):
+                uncovered.append("%s:%d: %s" % (fn, n, line.strip()))
+    if uncovered:
+        runner.fail("heap calls that loadtest.c's site table does not know (it must say how the original's size follows from the native one):\n  " + "\n  ".join(uncovered))
+    else:
+        runner.ok()
+        runner.stat("DAlloc calls in game/src, all classified in the load test", count)
+
+
+def check_loaders(runner, args, workdir):
+    """Runs the game's own start-up, menu and race loading (tools/recordtest/loadtest) and compares what it built."""
+    exe = os.path.join(workdir, "loadtest")
+    build = subprocess.run([sys.executable, os.path.join(HERE, "build_loadtest.py"), exe], capture_output=True, text=True)
+    if build.returncode:
+        runner.fail("loadtest could not be built:\n" + build.stderr[-3000:] + build.stdout[-1000:])
+        return
+    env = dict(os.environ, LOADTEST_GAME_SRC=os.path.join(ROOT, "game/src"), ASAN_OPTIONS="detect_leaks=0:halt_on_error=0",
+               UBSAN_OPTIONS="print_stacktrace=0")
+    sites = subprocess.run([exe, "--list-sites"], capture_output=True, text=True, env=env).stdout
+    check_site_table(runner, sites)
+    types = subprocess.run([exe, "--list-types"], capture_output=True, text=True, env=env).stdout.split()
+    sizes = ps1_sizes(types, workdir)
+
+    # the sanitizers must catch what the heap poisoning is for
+    selftest = subprocess.run([exe, args.iso, "--sizes", sizes, "--selftest"], capture_output=True, text=True, env=env)
+    expected_after = ["write one byte after the block", "write to a freed block", "write before the block (into its header)"]
+    got = [m.group(1) for m in re.finditer(r"selftest: (write [^\n]*)\n==\d+==ERROR: AddressSanitizer: use-after-poison", selftest.stderr)]
+    inside = re.search(r"selftest: write inside the block\nselftest: write one byte", selftest.stderr)
+    if got == expected_after and inside:
+        runner.ok()
+    else:
+        runner.fail("loadtest --selftest: the heap poisoning did not report exactly the writes outside the block (got %r)" % got)
+
+    # the run: once as it is, once with every new block filled with 0xCD: the loaders must not read bytes they did not write
+    outputs = {}
+    for label, extra in (("plain", []), ("filled", ["--fill", "CD"])):
+        dump = os.path.join(workdir, "dump_" + label)
+        os.mkdir(dump)
+        proc = subprocess.run([exe, args.iso, "--sizes", sizes, "--dump", dump] + extra, capture_output=True, text=True, env=env)
+        outputs[label] = (proc, dump)
+        if label == "plain":
+            print()
+            print(proc.stdout.rstrip())
+        if proc.returncode:
+            runner.fail("loadtest (%s): the loaders failed, the heap model disagreed or the heaps are too small (exit %d):\n%s" % (
+                label, proc.returncode, "\n".join(l for l in proc.stdout.split("\n") if l.startswith(("PROBLEM", "NOTE")) or "FAILED" in l)))
         else:
             runner.ok()
-            runner.stat("loaded sections and objects compared with the files", len(actual) - 1)
+    # sanitizer reports of the plain run: only the documented findings are allowed
+    proc = outputs["plain"][0]
+    found = []
+    for kind, frames, detail in sanitizer_reports(proc.stderr):
+        known = [what for k, fn, what in KNOWN_FINDINGS if kind == k and fn in frames]
+        if known:
+            found.append(known[0])
+        else:
+            runner.fail("sanitizer report in the game's loading: %s in %s: %s" % (kind, " < ".join(frames[:4]), detail))
+    runner.stat("distinct documented findings the sanitizers report in the game's loading", len(set(found)))
+    if not any(l.startswith("PROBLEM") for l in proc.stdout.split("\n")):
+        runner.ok()
+    # what the loaders built, against the files
+    for track in sorted(d for d in os.listdir(args.iso) if re.match(r"TRACK\d\d$", d)):
+        number = int(track[5:])
+        if number not in RACED_TRACKS:
+            continue
+        entries = read_wad(os.path.join(args.iso, track, "TRACK.WAD"))
+        for label in ("plain", "filled"):
+            path = os.path.join(outputs[label][1], "track%02d.txt" % number)
+            if not os.path.exists(path):
+                runner.fail("%s: loadtest (%s) wrote no dump" % (track, label))
+                continue
+            actual = open(path, encoding="latin-1").read().split("\n")[:-1]
+            sky = int(actual[0].split()[3]) if actual and actual[0].startswith("T ") else 0
+            expected = expected_dump(entries, number, sky)
+            if actual != expected:
+                at = next((i for i in range(min(len(actual), len(expected))) if actual[i] != expected[i]), min(len(actual), len(expected)))
+                runner.fail("%s (%s): loaded track differs from the file at line %d\n  loaded:   %s\n  expected: %s" % (
+                    track, label, at, actual[at] if at < len(actual) else "(missing)", expected[at] if at < len(expected) else "(missing)"))
+            else:
+                runner.ok()
+                if label == "plain":
+                    runner.stat("loaded sections, vertices, faces and objects compared with the files", len(actual) - 2)
 
 
 def write(workdir, name, data):
