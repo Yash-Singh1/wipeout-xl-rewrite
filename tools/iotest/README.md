@@ -23,3 +23,4 @@ two comparisons against the real console.
 - `test_pad`: the pad buffers the game reads (digital 0x4100, NeGcon 0x2300, active-low buttons), scripted input by field, the keyboard layout through SDL key events, focus loss, NeGcon on the keyboard.
 - `test_card`: memory card events and BIOS file calls over a real 128 KiB card image: create, write, read, firstfile/nextfile, rename, delete, multi-block files, a full card, format, a second session reading the file back, directory checksums.
 - `test_api`: BIOS events (polled and handler, critical sections), the drive's error event, exact field-to-sample timing, identical audio from two runs, the real-time mode with an audio device (SDL dummy driver) and a lock stress with a rendering thread.
+- `test_soak`: 3000 video fields of random but valid calls (voices, key commands, pitch and volume changes, reverb depth, CD music, data reads while music plays) with the clock and mix checked; run it under the sanitizers.
