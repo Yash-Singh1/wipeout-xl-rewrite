@@ -324,12 +324,12 @@ extern unsigned short StaticFlags[];
 extern VECTOR StaticRVert[];
 extern unsigned char envMapU[];
 extern unsigned char envMapV[];
-PrimPtr nextPrim;
-int envmapr;
-int envmapg;
-int envmapb;
-short CurrentScreen;
-unsigned char medalDisplay;
+extern PrimPtr nextPrim;
+extern int envmapr;
+extern int envmapg;
+extern int envmapb;
+extern short CurrentScreen;
+extern unsigned char medalDisplay;
 
 /* DrawEnvMap's stack frame. The gapNNN members stand for stack slots the function never uses; the
    struct is only a local, so its size and the offsets of its pointer members do not matter. */

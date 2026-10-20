@@ -3,16 +3,16 @@
 #include "include_asm_g8.h"
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
-Trail *shipTrails;
-int    plasmaPhaseA;
-int    plasmaPhaseB;
-int    plasmaPhaseC;
-int    flashNozzleShip;
-u_char plasmaShotBusy;
-short  lastTargetShip;
-u_char targetBank;
-int    targetSpin;
-u_char targetvalid;
+extern Trail *shipTrails;
+extern int    plasmaPhaseA;
+extern int    plasmaPhaseB;
+extern int    plasmaPhaseC;
+extern int    flashNozzleShip;
+extern u_char plasmaShotBusy;
+extern short  lastTargetShip;
+extern u_char targetBank;
+extern int    targetSpin;
+extern u_char targetvalid;
 extern short      missileLockTimer;
 extern u_char     targetFlags[];
 extern Trail      Plasma[];

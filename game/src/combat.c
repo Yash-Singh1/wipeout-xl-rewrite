@@ -2,25 +2,25 @@
 #include "include_asm_g8.h"
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
-int serialEvent;
-int serialReadFd;
-int serialWriteFd;
+extern int serialEvent;
+extern int serialReadFd;
+extern int serialWriteFd;
 
 extern char sioDevice[];
 
-Texture *linkSignTexture;
-int      combError;
-int      combErrorSeen;
+extern Texture *linkSignTexture;
+extern int      combError;
+extern int      combErrorSeen;
 
 extern s32 remoteShip;
 extern s16 CurrentScreen;
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
-int           serialResult;
-u_char        serialReadSeq;
-u_int         shakeCount;
-int           writeFlag;
-u_char        serialWriteSeq;
+extern int           serialResult;
+extern u_char        serialReadSeq;
+extern u_int         shakeCount;
+extern int           writeFlag;
+extern u_char        serialWriteSeq;
 extern short   menuRecvMode;
 extern short   menuRecvKey;
 extern u_char  menuRecvFlags;

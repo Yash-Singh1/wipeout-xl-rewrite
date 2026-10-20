@@ -6,18 +6,18 @@
 #include "port_widen.h"
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
-short fadeAmount;
-u_char fadeActive;
-u_char perfectLap;
-int olddam;
-short fadeRed;
-short fadeGreen;
-short fadeBlue;
-int seedWep;
-short missileLockTimer;
-u_char rearLockCycle;
-u_short minigunAmmo;
-u_char minigunFrame;
+extern short fadeAmount;
+extern u_char fadeActive;
+extern u_char perfectLap;
+extern int olddam;
+extern short fadeRed;
+extern short fadeGreen;
+extern short fadeBlue;
+extern int seedWep;
+extern short missileLockTimer;
+extern u_char rearLockCycle;
+extern u_short minigunAmmo;
+extern u_char minigunFrame;
 
 extern short cheatfade;
 extern short CurrentScreen;

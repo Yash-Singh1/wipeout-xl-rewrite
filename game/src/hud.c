@@ -63,19 +63,19 @@ extern char    msgAwarded[];
 
 
 /* Textures for the four speedo elements, one per element, loaded by InitSpeedo. */
-Texture *speedoFrameTex;
-Texture *speedoSpeedTex;
-Texture *speedoShieldTex;
-Texture *speedoMarkerTex;
+extern Texture *speedoFrameTex;
+extern Texture *speedoSpeedTex;
+extern Texture *speedoShieldTex;
+extern Texture *speedoMarkerTex;
 
-int raceInfoFrame;
-char classNameVector[7] __attribute__((aligned(4)));
-char classNameVenom[6] __attribute__((aligned(4)));
-char classNameRapier[7] __attribute__((aligned(4)));
-char classNamePhantom[8] __attribute__((aligned(4)));
+extern int raceInfoFrame;
+extern char classNameVector[7] __attribute__((aligned(4)));
+extern char classNameVenom[6] __attribute__((aligned(4)));
+extern char classNameRapier[7] __attribute__((aligned(4)));
+extern char classNamePhantom[8] __attribute__((aligned(4)));
 /* Globals the module owns; they live in the small-data area, so they are tentative definitions. */
-int     bonusFlashFrame;
-int     bonusFrames;
+extern int     bonusFlashFrame;
+extern int     bonusFrames;
 
 extern short           linkDropped;
 extern int             checkTimer;
@@ -215,7 +215,7 @@ void InitSpeedo(Speedo *speedo)
 typedef struct SpeedDividers { int value[4]; } SpeedDividers;
 extern SpeedDividers speedDividerTable;
 extern SpeedDividers speedDividerTableAlt;
-int energyBlinkFrame;
+extern int energyBlinkFrame;
 
 /* Port: was ((Speedo *)(CurrentScreen * sizeof(POLY_FT4) + (int)speedo)); the same quad of the current screen. */
 #define SPEEDO_QUAD(part) speedo->part[CurrentScreen]
@@ -920,9 +920,9 @@ extern char msgP[];
 extern char msgOf[];
 extern char msgCheck[];
 extern char msgPos[];
-int trackNameScroll;
-int trackNameOffset;
-int hudFrame;
+extern int trackNameScroll;
+extern int trackNameOffset;
+extern int hudFrame;
 
 void UpdateRaceHud(ShipData *shipIndex, Speedo *speedo, int choice, ConfigData *gameData, HiScoreData *scoreData)
 {

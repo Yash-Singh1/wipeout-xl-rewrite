@@ -1,7 +1,7 @@
 #include "functions.h"
 
 /* Debug pad state for the radius controls: the current pad word, and the raw input. */
-u_short debugPadState;
+extern u_short debugPadState;
 /* Port: debugPadInput is part of padBuf1; the uses read it directly. */
 #include "pad.h"
 

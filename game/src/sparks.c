@@ -2,18 +2,18 @@
 #include "sparks.h"
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
-int           snowCount;
-u_char        birdDelay;
-TrackSection *birdSectionA;
-TrackSection *birdSectionB;
-POLY_FT4     *birdPrims;
-Bird         *birds;
-int           missflareat;
-int           rockflareat;
-int           rockang;
-int           pitsparkat;
-int           exdelay;
-u8            partpos;
+extern int           snowCount;
+extern u_char        birdDelay;
+extern TrackSection *birdSectionA;
+extern TrackSection *birdSectionB;
+extern POLY_FT4     *birdPrims;
+extern Bird         *birds;
+extern int           missflareat;
+extern int           rockflareat;
+extern int           rockang;
+extern int           pitsparkat;
+extern int           exdelay;
+extern u8            partpos;
 extern ShipData     *shipIndex;
 extern int           ownShip;
 extern short         CurrentScreen;

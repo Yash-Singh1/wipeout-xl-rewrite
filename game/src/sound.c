@@ -2,25 +2,25 @@
 #include "include_asm_g8.h"
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
-int           remoteSamp1;
-int           remoteSamp2;
-short         scrapeVol;
-int           reverblev;
-unsigned char undercover;
-int           enginesamp;
-int           turbulancesamp;
-char         *sampleBuffer;
-WADFILE      *sampleWad;
-unsigned char sfxMode;
-unsigned char controlledSoundOn;
-int           controlledSfxId;
-int           scrapesamp;
-int           ambientVoice1;
-int           ambientVoice2;
-int           crowdsamp2;
-int           crowdsamp;
-signed char   cdSetMode;
-CameraUpdateFunc oldcameraupdate;
+extern int           remoteSamp1;
+extern int           remoteSamp2;
+extern short         scrapeVol;
+extern int           reverblev;
+extern unsigned char undercover;
+extern int           enginesamp;
+extern int           turbulancesamp;
+extern char         *sampleBuffer;
+extern WADFILE      *sampleWad;
+extern unsigned char sfxMode;
+extern unsigned char controlledSoundOn;
+extern int           controlledSfxId;
+extern int           scrapesamp;
+extern int           ambientVoice1;
+extern int           ambientVoice2;
+extern int           crowdsamp2;
+extern int           crowdsamp;
+extern signed char   cdSetMode;
+extern CameraUpdateFunc oldcameraupdate;
 
 extern char         msgCrowdPrefix[];
 extern int          cdMusicCount;

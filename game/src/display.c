@@ -22,10 +22,10 @@ extern short fastFrame;
 extern int primsDrawn;
 extern char errorString[];
 
-u_char menuSendFlags;
-short gpuWarning;
-short cpuWarning;
-int   max;
+extern u_char menuSendFlags;
+extern short gpuWarning;
+extern short cpuWarning;
+extern int   max;
 POLY_F4 *ClearScreen(short red, short green, short blue)
 {
     POLY_F4 *quad;

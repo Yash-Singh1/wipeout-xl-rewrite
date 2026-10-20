@@ -6,11 +6,11 @@
 #include "include_asm_g8.h"
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
-u_char cheatWeapon;
-u_char cheatDamage;
-u_char cheatTime;
-u_char cheatMinigun;
-short  cheatfade;
+extern u_char cheatWeapon;
+extern u_char cheatDamage;
+extern u_char cheatTime;
+extern u_char cheatMinigun;
+extern short  cheatfade;
 
 /* Pad state: the keys held now and last frame, and the pad type. */
 extern u_short keysDown;

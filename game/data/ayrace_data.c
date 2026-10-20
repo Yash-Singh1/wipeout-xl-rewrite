@@ -57,3 +57,4 @@ u_char linkRaceDone;
 u_char linkSyncB;
 HiScoreData scoreTabData;
 GhostReplay recordBuffer[1];
+ControlInput playerControl[1];

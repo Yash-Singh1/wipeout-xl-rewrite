@@ -408,6 +408,5 @@ SVECTOR VertexNormal[140];
 GhostReplay replayBuffer[1];
 FontGlyph fontGlyphs16[40];
 CardSlot cardSlots[2];
-ControlInput playerControl[1];
 HiScore hiScoreTable[16][4];
 struct CardKeys savedKeyConfig;

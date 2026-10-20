@@ -1,9 +1,9 @@
 #include "functions.h"
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
-short cameraTarget;
-int   raceExternalVel;
-int   droidViewVel;
+extern short cameraTarget;
+extern int   raceExternalVel;
+extern int   droidViewVel;
 extern u_char           medalDisplay;
 extern int              raceType;
 extern int              ownShip;

@@ -4,21 +4,21 @@
 #include "ttf.h"
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
-int           cardSwEvent0;
-int           cardSwEvent1;
-int           cardSwEvent2;
-int           cardSwEvent3;
-int           cardHwEvent0;
-int           cardHwEvent1;
-int           cardHwEvent2;
-int           cardHwEvent3;
-Texture      *cardIconInfo;
-unsigned char TrackHiCount;
-unsigned char cardDirLoaded1;
-unsigned char cardDirChanged0;
-unsigned char cardDirChanged1;
-CardDevice    cardPrefix0;
-CardDevice    cardPrefix1;
+extern int           cardSwEvent0;
+extern int           cardSwEvent1;
+extern int           cardSwEvent2;
+extern int           cardSwEvent3;
+extern int           cardHwEvent0;
+extern int           cardHwEvent1;
+extern int           cardHwEvent2;
+extern int           cardHwEvent3;
+extern Texture      *cardIconInfo;
+extern unsigned char TrackHiCount;
+extern unsigned char cardDirLoaded1;
+extern unsigned char cardDirChanged0;
+extern unsigned char cardDirChanged1;
+extern CardDevice    cardPrefix0;
+extern CardDevice    cardPrefix1;
 extern int           trackNameScroll;
 extern u_char        cdMusicIndex;
 extern int           cdMusicTrack;

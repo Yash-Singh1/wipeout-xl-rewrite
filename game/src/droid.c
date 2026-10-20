@@ -4,7 +4,7 @@
 extern TrackData    *track;
 extern VECTOR        droidTarget;
 
-int droidFlyin;
+extern int droidFlyin;
 
 
 void UpdateRescueDroid(ShipData *ships, Object **unused1, int shipNo, WeaponData *unused3, ControlInput *control)

@@ -3,19 +3,19 @@
 #include "include_asm_g8.h"
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
-u_char sfxInitialized;
-u_char reverbReserved;
-u_char reverbActive;
-u_char reverbDepth;
-u_char callbackPending;
-u_char sfxEnabled;
-u_char sfxGain;
-u_char driverMode;
-u_char nextVoice;
-u_char cdVolume;
-u_char globalVolume;
-void (*sfxCallback)(int sound);
-int    totalSampleMem;
+extern u_char sfxInitialized;
+extern u_char reverbReserved;
+extern u_char reverbActive;
+extern u_char reverbDepth;
+extern u_char callbackPending;
+extern u_char sfxEnabled;
+extern u_char sfxGain;
+extern u_char driverMode;
+extern u_char nextVoice;
+extern u_char cdVolume;
+extern u_char globalVolume;
+extern void (*sfxCallback)(int sound);
+extern int    totalSampleMem;
 extern SfxEffect effectList[SFX_EFFECTS];
 extern SfxVoice  voiceList[SFX_VOICES];
 extern SfxSound  playList[SFX_PLAYS];

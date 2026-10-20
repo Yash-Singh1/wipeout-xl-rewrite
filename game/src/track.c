@@ -8,7 +8,7 @@
 extern TrackData   *track;
 extern char         msgNewline[];
 
-short        drawCracks;
+extern short        drawCracks;
 void IntelVertex(void)
 {
     VECTOR *vert;

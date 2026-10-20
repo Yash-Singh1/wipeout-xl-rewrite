@@ -9,8 +9,8 @@
 #include "include_asm_g8.h"
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
-short continueAnimFrame;
-short droneSwitchStep;
+extern short continueAnimFrame;
+extern short droneSwitchStep;
 extern short            linkDropped;
 extern short            linkMyState;
 extern short            linkRemoteState;

@@ -3,7 +3,7 @@
 #include "control.h"
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
-int startCountdown;
+extern int startCountdown;
 
 extern int           ownShip;
 extern int           ghostShip;

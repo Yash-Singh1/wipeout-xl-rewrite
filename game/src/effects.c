@@ -34,28 +34,28 @@ extern int remoteShip;
 extern int lightUpdate;
 
 /* Module-private state. */
-Object *startBoomObjs[4];
-int trainLightSeed;
-int neonSignTick;
-int redBullTick;
-int redBullFrame;
-int spriteTick;
-int spriteFrame;
-short lightPhase[2];
-short advertAngle[4];
-short radarAngle;
-int lightUpdateTick;
-int lightChaseStep;
-short monoRailSettle;
-int zeppelinDrift;
-int shakeAmount;
-int droidBlinkTick;
-TrackSection *startDroidSection;
+extern Object *startBoomObjs[4];
+extern int trainLightSeed;
+extern int neonSignTick;
+extern int redBullTick;
+extern int redBullFrame;
+extern int spriteTick;
+extern int spriteFrame;
+extern short lightPhase[2];
+extern short advertAngle[4];
+extern short radarAngle;
+extern int lightUpdateTick;
+extern int lightChaseStep;
+extern short monoRailSettle;
+extern int zeppelinDrift;
+extern int shakeAmount;
+extern int droidBlinkTick;
+extern TrackSection *startDroidSection;
 #include "functions.h"
 #include "include_asm_g8.h"
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
-u_char   pitCycleFlag;
+extern u_char   pitCycleFlag;
 
 void AddEffects(WeaponData *weapons, ShipData *ships)
 {

@@ -15,18 +15,18 @@ extern u_char toc_loc[];
 extern u_char dirCache[];
 extern IsoFile fd_tab[];
 
-int track1_start_sec;
-int initIso;
-int num_of_open_files;
-HeapBlock *isoHeap;
-int cdReadEvent;
-int cdErrorEvent;
-u_char *pathTable;
-int pathTableSize;
-int cached_dir_loc;
-int cached_dir_start_loc;
-int cached_dir_file_len;
-int cache_size;
+extern int track1_start_sec;
+extern int initIso;
+extern int num_of_open_files;
+extern HeapBlock *isoHeap;
+extern int cdReadEvent;
+extern int cdErrorEvent;
+extern u_char *pathTable;
+extern int pathTableSize;
+extern int cached_dir_loc;
+extern int cached_dir_start_loc;
+extern int cached_dir_file_len;
+extern int cache_size;
 #define WINDOW_BITS 13
 #define WINDOW_SIZE (1 << WINDOW_BITS)
 #define WINDOW_MASK (WINDOW_SIZE - 1)

@@ -5,7 +5,7 @@ extern char msgAllocRequest[];
 extern char msgDFreeNotFound[];
 
 
-int lowTideMark;
+extern int lowTideMark;
 
 
 void InitDynamicMem(HeapBlock *head, int size)

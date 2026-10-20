@@ -11,15 +11,15 @@ extern void       *frameValues;
 /* Double-buffered polygon pools for the three tile levels: one pool per screen buffer.
    Port: these were the adjacent symbols TrackLoPolys/TrackLoPolysAlt, TrackMedPolys/...Alt and
    TrackHiPolys/...Alt, indexed by CurrentScreen in the assembly tile drawers. */
-POLY_FT4 *TrackLoPolys[2];
-POLY_FT4 *TrackMedPolys[2];
-POLY_FT4 *TrackHiPolys[2];
+extern POLY_FT4 *TrackLoPolys[2];
+extern POLY_FT4 *TrackMedPolys[2];
+extern POLY_FT4 *TrackHiPolys[2];
 
-Surface tileSurfaces[24][2];
+extern Surface tileSurfaces[24][2];
 
-short loTileCount;
-short medTileCount;
-short hiTileCount;
+extern short loTileCount;
+extern short medTileCount;
+extern short hiTileCount;
 void AsmLowResTile(TexTemplate *template, short index, short reversed)
 {
     Texture *texture;

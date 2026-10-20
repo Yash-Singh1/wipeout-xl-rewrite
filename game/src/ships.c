@@ -2,12 +2,12 @@
 #include "ships.h"
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
-int           proximity;
-int           sharkVertCount;
-int           sharkWiggle;
-u_char        sharkToggle;
-short         shipTex;
-short         bigGrid;
+extern int           proximity;
+extern int           sharkVertCount;
+extern int           sharkWiggle;
+extern u_char        sharkToggle;
+extern short         shipTex;
+extern short         bigGrid;
 
 typedef union ShipPath {
     char name[25];

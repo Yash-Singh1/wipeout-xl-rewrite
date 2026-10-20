@@ -3,27 +3,27 @@
 #include "include_asm_g8.h"
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
-s32            wadHandle;
-u8            *wadCache;
-volatile s32   wadRemaining;
-s32            wadSize;
-volatile s32   bufat;
-s32            loadPercent;
-short          loadFrame;
-s32            scanPhase;
-u8             vsyncBusy;
-int            lastWadCurrent;
-int            loadTicks;
-s32           *particleLife;
-s32           *particleX;
-s32           *particleY;
-s32           *particleVelX;
-s32           *particleVelY;
-POLY_F3       *particlePolys;
-LINE_F2       *linePrims;
-s32            lineat;
-s32            loopat;
-WADFILE       *currentWad;
+extern s32            wadHandle;
+extern u8            *wadCache;
+extern volatile s32   wadRemaining;
+extern s32            wadSize;
+extern volatile s32   bufat;
+extern s32            loadPercent;
+extern short          loadFrame;
+extern s32            scanPhase;
+extern u8             vsyncBusy;
+extern int            lastWadCurrent;
+extern int            loadTicks;
+extern s32           *particleLife;
+extern s32           *particleX;
+extern s32           *particleY;
+extern s32           *particleVelX;
+extern s32           *particleVelY;
+extern POLY_F3       *particlePolys;
+extern LINE_F2       *linePrims;
+extern s32            lineat;
+extern s32            loopat;
+extern WADFILE       *currentWad;
 
 extern u8              barHeight[];
 extern char            numberText[];

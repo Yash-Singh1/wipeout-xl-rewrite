@@ -1,9 +1,9 @@
 #include "raceinit.h"
 #include "ayrace.h"
 #include "include_asm_g8.h"
-int     attractStep;
-u_int   randSeed;
-u_char  cdMusicIndex;
+extern int     attractStep;
+extern u_int   randSeed;
+extern u_char  cdMusicIndex;
 extern int             ownShip;
 extern int             cdMusicCount;
 extern int             cdMusicTrack;

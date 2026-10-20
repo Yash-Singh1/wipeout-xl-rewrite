@@ -8,7 +8,7 @@
 #define CLUT8 0x01
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
-int shipClutCount;
+extern int shipClutCount;
 
 extern Texture       *textureTable[];
 extern unsigned short ghostClutX;

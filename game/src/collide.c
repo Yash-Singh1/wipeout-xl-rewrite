@@ -9,7 +9,7 @@ extern TrackData *track;
 extern short  beamCollide;
 extern short  scrapeVol;
 
-int collideMinAlpha;
+extern int collideMinAlpha;
 
 #include "dynam.h"
 
