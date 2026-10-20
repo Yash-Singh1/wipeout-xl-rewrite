@@ -16,8 +16,6 @@ typedef struct {
     char name[16];
 } File;
 
-typedef struct { uint8_t val0, val1, val2, val3; } Atv;
-
 enum { SYNC_COMPLETE = 2, SYNC_DISK_ERROR = 5, SYNC_NO_INTR = 0 };
 
 static struct {
@@ -143,15 +141,15 @@ static int param_count(int command, bool hasParam)
     }
 }
 
-static int issue(int command, const uint8_t *param, uint8_t *result, bool wait)
+static int issue(int com, const uint8_t *param, uint8_t *result, bool wait)
 {
     uint8_t response[16];
     int length, count;
     uint8_t setloc[3];
+    int command = com & 0xFF;
     bool locParam = param && (command == CDC_SEEKL || command == CDC_SEEKP || command == CDC_READN ||
                               command == CDC_READS);
 
-    command &= 0xFF;
     wait_ready();
     PsxLock();
     if (locParam) {
@@ -177,17 +175,17 @@ static int issue(int command, const uint8_t *param, uint8_t *result, bool wait)
     return rd.error ? 0 : 1;
 }
 
-int CdControl(int command, const uint8_t *param, uint8_t *result)
+int CdControl(uint8_t command, const uint8_t *param, uint8_t *result)
 {
     return issue(command, param, result, false);
 }
 
-int CdControlF(int command, const uint8_t *param)
+int CdControlF(uint8_t command, const uint8_t *param)
 {
     return issue(command, param, NULL, false);
 }
 
-int CdControlB(int command, const uint8_t *param, uint8_t *result)
+int CdControlB(uint8_t command, const uint8_t *param, uint8_t *result)
 {
     return issue(command, param, result, true);
 }
@@ -228,7 +226,7 @@ int CdReady(int mode, uint8_t *result)
     return 1; /* CdlDataReady */
 }
 
-int CdRead(int sectors, void *buffer, int mode)
+int CdRead(int sectors, uint32_t *buffer, int mode)
 {
     uint8_t response[16];
 
@@ -240,7 +238,7 @@ int CdRead(int sectors, void *buffer, int mode)
         CdDriveCommand(&g_io.cd, CDC_SETMODE, &m, 1, response);
     }
     rd.pending = sectors > 0;
-    rd.dest = buffer;
+    rd.dest = (uint8_t *)buffer;
     rd.sectors = sectors;
     rd.start = CdDriveReadTarget(&g_io.cd);
     rd.mode = (uint32_t)mode;
@@ -313,18 +311,15 @@ int CdGetToc2(int mode, void *toc)
     return CdGetToc(toc);
 }
 
-int CdMix(const Atv *volume)
+int CdMix(const uint8_t *volume)
 {
     PsxLock();
-    g_io.cd.mix[0] = volume->val0;
-    g_io.cd.mix[1] = volume->val1;
-    g_io.cd.mix[2] = volume->val2;
-    g_io.cd.mix[3] = volume->val3;
+    memcpy(g_io.cd.mix, volume, 4);
     PsxUnlock();
     return 1;
 }
 
-void CdIntToPos(int sector, Loc *loc)
+Loc *CdIntToPos(int sector, Loc *loc)
 {
     uint8_t msf[3];
 
@@ -332,6 +327,7 @@ void CdIntToPos(int sector, Loc *loc)
     loc->minute = msf[0];
     loc->second = msf[1];
     loc->sector = msf[2];
+    return loc;
 }
 
 int CdPosToInt(const Loc *loc)

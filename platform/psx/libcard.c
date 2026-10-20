@@ -1,4 +1,6 @@
-/* libcard and the BIOS file calls for the memory card ("bu00:" and "bu10:").
+/* libcard and the BIOS file calls for the memory card ("bu00:" and "bu10:"). The calls the
+   game makes as open, close, read, write and rename are PsyqOpen ... PsyqRename here (the game's
+   psyq.h maps them), so they cannot capture the C library's own calls.
 
    Each port has a 128 KiB card image kept in memory and saved to a file (memcard0.mcr,
    memcard1.mcr: the usual raw image format, so the files work in other programs too) whenever
@@ -306,7 +308,7 @@ static bool pattern_matches(const char *pattern, const char *name)
 
 /* ---- the BIOS file calls --------------------------------------------------------------------------- */
 
-int PsxBiosOpen(const char *path, int flags)
+int PsyqOpen(const char *path, int flags)
 {
     int port, fd, block;
     const char *name;
@@ -371,7 +373,7 @@ int PsxBiosOpen(const char *path, int flags)
     return fd;
 }
 
-int PsxBiosClose(int fd)
+int PsyqClose(int fd)
 {
     if (fd < 0 || fd >= MAX_FDS || !fds[fd].used) {
         return -1;
@@ -419,7 +421,7 @@ static int transfer(Fd *f, void *buffer, int count, bool write)
     return done;
 }
 
-int PsxBiosRead(int fd, void *buffer, int size)
+int PsyqRead(int fd, void *buffer, int size)
 {
     if (fd < 0 || fd >= MAX_FDS || !fds[fd].used) {
         return -1;
@@ -430,7 +432,7 @@ int PsxBiosRead(int fd, void *buffer, int size)
     return transfer(&fds[fd], buffer, size, false);
 }
 
-int PsxBiosWrite(int fd, void *buffer, int size)
+int PsyqWrite(int fd, void *buffer, int size)
 {
     if (fd < 0 || fd >= MAX_FDS || !fds[fd].used) {
         return -1;
@@ -444,7 +446,7 @@ int PsxBiosWrite(int fd, void *buffer, int size)
     return transfer(&fds[fd], buffer, size, true);
 }
 
-int PsxBiosDelete(const char *path)
+int delete(const char *path)
 {
     int port, block;
     const char *name;
@@ -470,7 +472,7 @@ int PsxBiosDelete(const char *path)
     return 1;
 }
 
-int PsxBiosRename(const char *from, const char *to)
+int PsyqRename(const char *from, const char *to)
 {
     int portA, portB, block;
     const char *nameA, *nameB;
@@ -493,7 +495,7 @@ int PsxBiosRename(const char *from, const char *to)
     return 1;
 }
 
-int PsxBiosFormat(const char *device)
+int format(const char *device)
 {
     int port;
     const char *name;
@@ -532,7 +534,7 @@ static DirEntry *fill_entry(DirEntry *dir)
     return NULL;
 }
 
-DirEntry *PsxBiosFirstFile(const char *pattern, DirEntry *dir)
+DirEntry *firstfile(const char *pattern, DirEntry *dir)
 {
     int port;
     const char *name;
@@ -546,7 +548,7 @@ DirEntry *PsxBiosFirstFile(const char *pattern, DirEntry *dir)
     return fill_entry(dir);
 }
 
-DirEntry *PsxBiosNextFile(DirEntry *dir)
+DirEntry *nextfile(DirEntry *dir)
 {
     return fill_entry(dir);
 }

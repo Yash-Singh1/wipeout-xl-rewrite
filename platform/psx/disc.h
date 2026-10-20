@@ -31,6 +31,8 @@ const DiscTrack *DiscTrackInfo(const Disc *disc, int index);
 int32_t DiscLeadOut(const Disc *disc);
 /* The 2352 raw bytes of a sector, or NULL outside the image. */
 const uint8_t *DiscRawSector(const Disc *disc, int32_t lba);
+/* Hints that these sectors are about to be read, so the audio thread does not wait for the disk. */
+void DiscPrefetch(const Disc *disc, int32_t lba, int sectors);
 /* The track containing lba (by INDEX 00), or NULL. */
 const DiscTrack *DiscTrackAt(const Disc *disc, int32_t lba);
 

@@ -183,14 +183,14 @@ int SpuInitMalloc(int num, void *records)
     return num;
 }
 
-int SpuMalloc(int size)
+uint32_t SpuMalloc(int size)
 {
     uint32_t rounded, address = SPU_MALLOC_BASE, end;
     unsigned slot = ALLOC_MAX, i;
     bool conflict;
 
     if (size <= 0 || size > (int)SPU_RAM_SIZE) {
-        return -1;
+        return (uint32_t)-1;
     }
     rounded = ((uint32_t)size + 7) & ~7u;
     PsxLock();
@@ -202,7 +202,7 @@ int SpuMalloc(int size)
     }
     if (slot == ALLOC_MAX) {
         PsxUnlock();
-        return -1;
+        return (uint32_t)-1;
     }
     /* the lowest gap that fits */
     do {
@@ -220,21 +220,21 @@ int SpuMalloc(int size)
     end = reverbReserved ? reverb_base(reverbMode) : SPU_RAM_SIZE;
     if (address + rounded > end) {
         PsxUnlock();
-        return -1;
+        return (uint32_t)-1;
     }
     allocation[slot].address = address;
     allocation[slot].size = rounded;
     PsxUnlock();
-    return (int)address;
+    return address;
 }
 
-void SpuFree(int address)
+void SpuFree(uint32_t address)
 {
     unsigned i;
 
     PsxLock();
     for (i = 0; i < allocationLimit; i++) {
-        if (allocation[i].size && allocation[i].address == (uint32_t)address) {
+        if (allocation[i].size && allocation[i].address == address) {
             allocation[i].size = 0;
         }
     }
@@ -287,7 +287,7 @@ static uint16_t volume_register(int16_t volume, int mode)
     if (mode >= 1 && mode <= 7) {
         unsigned rate = volume < 0 || volume > 127 ? 127 : (unsigned)volume;
 
-        return (uint16_t)(0x8000 + (mode - 1) * 0x1000 + rate);
+        return (uint16_t)(0x8000u + (unsigned)(mode - 1) * 0x1000u + rate);
     }
     return (uint16_t)volume & 0x7FFF;
 }

@@ -160,21 +160,20 @@ void InitPAD(void *buffer1, int length1, void *buffer2, int length2)
     bufferLengths[1] = length2;
 }
 
-void StartPAD(void)
+int StartPAD(void)
 {
     driverRunning = true;
+    return 1;
 }
 
-int StopPAD(void)
+void StopPAD(void)
 {
     driverRunning = false;
-    return 0;
 }
 
-int ChangeClearPAD(int mode)
+void ChangeClearPAD(int mode)
 {
     (void)mode;
-    return 0;
 }
 
 void PsxPadField(uint64_t field)

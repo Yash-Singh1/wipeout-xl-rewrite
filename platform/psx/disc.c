@@ -303,6 +303,38 @@ const uint8_t *DiscRawSector(const Disc *disc, int32_t lba)
     return NULL;
 }
 
+void DiscPrefetch(const Disc *disc, int32_t lba, int sectors)
+{
+#ifndef _WIN32
+    int i;
+
+    for (i = disc->fileCount - 1; i >= 0; i--) {
+        const DiscFile *f = &disc->files[i];
+
+        if (lba >= f->start) {
+            size_t first, length;
+            long page = sysconf(_SC_PAGESIZE);
+
+            if (lba >= f->start + f->sectors || page <= 0) {
+                return;
+            }
+            first = (size_t)(lba - f->start) * DISC_RAW_SECTOR;
+            length = (size_t)sectors * DISC_RAW_SECTOR;
+            if (first + length > f->size) {
+                length = f->size - first;
+            }
+            first -= first % (size_t)page;
+            madvise((void *)(f->data + first), length + (size_t)page, MADV_WILLNEED);
+            return;
+        }
+    }
+#else
+    (void)disc;
+    (void)lba;
+    (void)sectors;
+#endif
+}
+
 const DiscTrack *DiscTrackAt(const Disc *disc, int32_t lba)
 {
     int i;

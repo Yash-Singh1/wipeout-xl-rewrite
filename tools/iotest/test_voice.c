@@ -23,8 +23,8 @@ typedef struct {
 
 void SpuInit(void);
 int SpuInitMalloc(int, void *);
-int SpuMalloc(int);
-void SpuFree(int);
+uint32_t SpuMalloc(int);
+void SpuFree(uint32_t);
 uint32_t SpuSetTransferStartAddr(uint32_t);
 uint32_t SpuWrite(const void *, uint32_t);
 void SpuSetVoiceAttr(const VoiceAttr *);
@@ -37,7 +37,8 @@ int SpuGetKeyStatus(uint32_t);
 static int upload(int blocks, uint8_t firstFlags, uint8_t lastFlags)
 {
     uint8_t *data = calloc((size_t)blocks, 16);
-    int address, b, i;
+    int b, i;
+    uint32_t address;
 
     for (b = 0; b < blocks; b++) {
         data[b * 16] = 0x00;
@@ -50,10 +51,10 @@ static int upload(int blocks, uint8_t firstFlags, uint8_t lastFlags)
         }
     }
     address = SpuMalloc(blocks * 16);
-    SpuSetTransferStartAddr((uint32_t)address);
+    SpuSetTransferStartAddr(address);
     SpuWrite(data, (uint32_t)blocks * 16);
     free(data);
-    return address;
+    return (int)address;
 }
 
 /* Sets the voice up (volume, pitch, start address) as the game's SfxPlay does. */

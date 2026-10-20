@@ -122,6 +122,7 @@ static void begin_seek(CdDrive *cd, int32_t target, CdState after)
 
 static void finish_seek(CdDrive *cd)
 {
+    DiscPrefetch(cd->disc, cd->seekTarget, 512);
     cd->pos = cd->seekTarget;
     cd->state = cd->afterSeek;
     cd->phase = 0;
@@ -430,6 +431,9 @@ static void play_sample(CdDrive *cd, int16_t out[2])
     if (++cd->phase == DISC_SECTOR_FRAMES) {
         cd->phase = 0;
         cd->pos++;
+        if ((cd->pos & 255) == 0) {
+            DiscPrefetch(cd->disc, cd->pos + 256, 512);
+        }
         if ((cd->mode & CDM_AUTOPAUSE) && cd->pos < DiscLeadOut(cd->disc)) {
             const DiscTrack *before = DiscTrackAt(cd->disc, cd->pos - 1);
             const DiscTrack *after = DiscTrackAt(cd->disc, cd->pos);

@@ -36,8 +36,8 @@ typedef struct {
 
 void SpuInit(void);
 int SpuInitMalloc(int, void *);
-int SpuMalloc(int);
-void SpuFree(int);
+uint32_t SpuMalloc(int);
+void SpuFree(uint32_t);
 int SpuSetTransferMode(int);
 void SpuSetCommonAttr(const CommonAttr *);
 int SpuSetReverb(int);
@@ -223,15 +223,15 @@ int main(void)
 
         SpuInitMalloc(128, NULL);
         for (n = 0; n < 4; n++) {
-            int got = SpuMalloc(sizes[n]);
+            uint32_t got = SpuMalloc(sizes[n]);
 
-            CHECK_EQ_INT(got, (int)expect[n]);
+            CHECK_EQ_INT(got, expect[n]);
         }
         /* freed space is found again, lowest first; the reverb work area (0x79020 up) is protected */
         SpuFree(0x3B20);
         CHECK_EQ_INT(SpuMalloc(100), 0x3B20);
-        CHECK_EQ_INT(SpuMalloc(0x80000), -1);
-        CHECK_EQ_INT(SpuMalloc(0x79020 - 0x1010), -1); /* too big next to the allocated ones */
+        CHECK_EQ_INT(SpuMalloc(0x80000), (uint32_t)-1);
+        CHECK_EQ_INT(SpuMalloc(0x79020 - 0x1010), (uint32_t)-1); /* too big next to the allocated ones */
     }
 
     /* voice attributes: volumes are fixed 15-bit values (negative inverts the phase); the mask

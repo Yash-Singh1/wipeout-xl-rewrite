@@ -22,13 +22,13 @@ typedef struct Event {
     uint32_t eventClass;
     uint32_t spec;
     int mode;
-    void (*handler)(void);
+    int (*handler)(void);
     int status;
 } Event;
 
 static Event events[MAX_EVENTS];
 static int criticalDepth;
-static void (*pending[MAX_EVENTS * 2])(void);
+static int (*pending[MAX_EVENTS * 2])(void);
 static int pendingCount;
 
 static Event *lookup(int handle)
@@ -38,7 +38,7 @@ static Event *lookup(int handle)
     return index < MAX_EVENTS && events[index].used ? &events[index] : NULL;
 }
 
-int OpenEvent(uint32_t desc, int spec, int mode, void (*func)(void))
+int OpenEvent(uint32_t desc, int spec, int mode, int (*func)(void))
 {
     int i;
 
@@ -101,7 +101,7 @@ int CloseEvent(int handle)
 static void run_pending(void)
 {
     while (!criticalDepth) {
-        void (*handler)(void);
+        int (*handler)(void);
 
         PsxLock();
         if (!pendingCount) {
@@ -194,7 +194,7 @@ int EnterCriticalSection(void)
     return 1;
 }
 
-int ExitCriticalSection(void)
+void ExitCriticalSection(void)
 {
     PsxLock();
     if (criticalDepth > 0) {
@@ -202,7 +202,6 @@ int ExitCriticalSection(void)
     }
     PsxUnlock();
     run_pending();
-    return 0;
 }
 
 bool PsxInCriticalSection(void)
@@ -250,10 +249,9 @@ int Exec(void *block, int argc, char **argv)
 
 void AddCOMB(void) {}
 
-int ChangeClearSIO(int mode)
+void ChangeClearSIO(int mode)
 {
     (void)mode;
-    return 0;
 }
 
 int _comb_control(int operation, int reg, int value)

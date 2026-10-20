@@ -36,7 +36,7 @@ typedef struct {
 
 void SpuInit(void);
 int SpuInitMalloc(int, void *);
-int SpuMalloc(int);
+uint32_t SpuMalloc(int);
 uint32_t SpuSetTransferStartAddr(uint32_t);
 uint32_t SpuWrite(const void *, uint32_t);
 int SpuSetReverb(int);
@@ -58,7 +58,8 @@ typedef struct Stats {
 static void measure(Stats *s, int depth, int reverbOn, int seconds)
 {
     uint8_t block[16];
-    int address, n, window;
+    uint32_t address;
+    int n, window;
     long total = (long)seconds * SPU_SAMPLE_RATE;
     double sum[8] = {0};
     long count[8] = {0};
@@ -92,14 +93,14 @@ static void measure(Stats *s, int depth, int reverbOn, int seconds)
         SpuSetCommonAttr(&c);
     }
     address = SpuMalloc(16);
-    SpuSetTransferStartAddr((uint32_t)address);
+    SpuSetTransferStartAddr(address);
     SpuWrite(block, 16);
     memset(&a, 0, sizeof(a));
     a.voice = 1;
     a.mask = 0x93;
     a.volume.left = a.volume.right = 0x3FFF;
     a.pitch = 0x1000;
-    a.addr = (uint32_t)address;
+    a.addr = address;
     SpuSetVoiceAttr(&a);
     SpuSetKey(1, 1);
     memset(s, 0, sizeof(*s));
