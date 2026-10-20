@@ -85,7 +85,7 @@ def walk(tu_json, tu):
         t = node['type']
         info = {'name': name, 'link': link, 'kind': kind, 'type': norm(qual(t)),
                 'sugar': norm(t['qualType']), 'file': state['file'], 'line': loc.get('line', 0),
-                'tu': tu}
+                'tu': tu, 'storage': node.get('storageClass', '')}
         if kind == 'FunctionDecl':
             info['defined'] = any(s.get('kind') == 'CompoundStmt' for s in node.get('inner', []))
             params = [norm(qual(s['type'])) for s in node.get('inner', []) if s.get('kind') == 'ParmVarDecl']
@@ -101,17 +101,23 @@ def walk(tu_json, tu):
     return syms
 
 
+def collect(files, defines=()):
+    """{link name: [declaration info]} for the given sources."""
+    by_link = defaultdict(list)
+    for f in files:
+        data = dump(f, ['-D' + d for d in defines])
+        for s in walk(data, f.name):
+            by_link[s['link']].append(s)
+    return by_link
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('files', nargs='*')
     ap.add_argument('-D', action='append', default=[])
     args = ap.parse_args()
     files = [Path(f) for f in args.files] or sorted((ROOT / 'game/src').glob('*.c'))
-    by_link = defaultdict(list)
-    for f in files:
-        data = dump(f, ['-D' + d for d in args.D])
-        for s in walk(data, f.name):
-            by_link[s['link']].append(s)
+    by_link = collect(files, args.D)
     problems = 0
     for link, items in sorted(by_link.items()):
         vars_ = [i for i in items if i['kind'] == 'VarDecl']
