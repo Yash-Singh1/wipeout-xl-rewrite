@@ -492,8 +492,11 @@ int SfxChainId(int parent, int sample, int volume, int lrPan, u_char fbPan, int 
     int          mix;
     int          voicePitch;
 
-    if (!sfxInitialized) return;
-    if (sfxEnabled) return;
+    /* Port: the console left $v0 as it was after each test: the zero of !sfxInitialized, and the
+       sfxEnabled flag just found set.  The enabled test is the original's own (inverted: the function
+       does nothing while sound is on; no caller exists). */
+    if (!sfxInitialized) return 0;
+    if (sfxEnabled) return sfxEnabled;
     sound = GetFreePlayId();
     if (sound == -1) return -1;
     mix = (volume & 255) * sfxGain / 255;

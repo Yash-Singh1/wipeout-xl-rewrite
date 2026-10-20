@@ -216,8 +216,8 @@ void InitPop(void)
     i = 0;
     dirty = 1;
     shape = shipShapeTable;
-    SetSkeletonPosition(residentSkeletons[0], 0, 0, 0);
-    SetSkeletonDirection(residentSkeletons[0], 0, 0, 0);
+    SetSkeletonPosition(raceCamera.camPos, 0, 0, 0);
+    SetSkeletonDirection(raceCamera.camPos, 0, 0, 0);
     SetSkeletonPosition(upperSkeleton, 0, 0, 0);
     SetSkeletonDirection(upperSkeleton, 0, 0, 0);
     vsyncBusy = 0;

@@ -15,7 +15,6 @@ typedef struct HiScoreData HiScoreData;
 typedef struct MenuBox MenuBox;
 typedef struct MenuPrims MenuPrims;
 typedef struct MonoRailData MonoRailData;
-typedef struct RaceData RaceData;
 typedef struct ResetData ResetData;
 typedef struct SParticle SParticle;
 typedef struct TexTemplate TexTemplate;
@@ -40,6 +39,8 @@ struct SelectBox;
 #include "tim.h"
 #include "port_platform.h"
 struct InGameMenu;
+
+struct PauseMenu;
 
 /* main.c */
 int PsxMain(void); /* Port: the game's main(); the platform owns the program entry point */
@@ -270,7 +271,7 @@ void InitAttractMode(int mode, ShipData *ships);
 void InitCDAudio(ConfigData *menu, unsigned char *unused);
 void InitCheckPoints(CheckPoints *checkpoints, ConfigData *config);
 void InitInGameMenu(struct InGameMenu *menu);
-void InitRaceData(RaceData *arg0);
+void InitRaceData(struct PauseMenu *pause);
 void InitRaceLine(TrackData *track, ConfigData *game);
 void InitRaceResetData(struct ResetData *arg0, ShipData *arg1, ConfigData *arg2, WeaponData *arg3, WeaponShape *arg4, RescueData *arg5, Object **arg6, CheckPoints *arg7);
 void InitShufflePlay(void);
@@ -279,10 +280,9 @@ void InitWeaponGrids(WeaponGrid *weaponGrids, TrackData *context, int *noWeaponG
 int myrand(void);
 
 /* ayrace.c */
-struct PauseMenu;
 void Check2PlayerPause(u_char status, u_char *lastStatus, int *musicPaused);
 int CheckAttractOver(ConfigData *config);
-void CheckGamePause(ShipData *ships, int *pauseFlag, int unused, short *pauseChoice, int *pauseCounter);
+void CheckGamePause(ShipData *ships, int *pauseFlag, ConfigData *config, u_short *pauseChoice, int *pauseCounter);
 void InitiateTwoPlayerPause(struct PauseMenu *pause);
 void Perform2PlayerPauseCommand(struct PauseMenu *pause);
 int PerformPauseOperations(struct PauseMenu *pause, struct SelectBox *box, ConfigData *config);
@@ -299,7 +299,10 @@ void SetInGameCDTrack(signed char *bcd, struct WipeCdStatus *position, ConfigDat
 void InitResident(void);
 void ShowLinkBroken(void);
 void TrackSpecificFunctions(void);
-void race(void *gameData, int context, int scene);
+void race(ConfigData *gameData, int context, int scene);
+void LoadModel(Object **modelShapes, char *fileName);
+void AsmDrawObjectFixed(Object *object, Skeleton *camera, int scale);
+void AsmDrawParticles(SParticle *particles, Skeleton *camera, int mode);
 void racetidy(void);
 
 /* init.c */
@@ -343,11 +346,9 @@ void MuteControlledSound(void);
 void TerminateSound(void);
 
 /* options.c */
-struct PauseState;
-struct OptionsPolys;
 void DeSelectScreen(struct SelectBox *sel);
 void InGameConfirm(u_char *confirmed, int mode, int unused, u_char *selection, int *frameCount);
-void InGameReset(struct PauseState *state, ConfigData *game, struct OptionsPolys *polys);
+void InGameReset(struct PauseMenu *pause, ConfigData *game, struct InGameMenu *polys);
 void UpdateMusicBar(POLY_G4 bars[][2], ConfigData *game);
 void UpdateSfxBar(POLY_G4 bars[][2], ConfigData *game);
 char *GetCdTrackArtist(int track);
@@ -409,7 +410,7 @@ void _init_cont(void);
 void DrawLinkSign(ShipData *ships);
 void InitLinkUpSign(void);
 int _error(void);
-void doSerialGame(int unused, ShipData *ships);
+void doSerialGame(ConfigData *config, ShipData *ships);
 void doSerialMenu(ConfigData *config, MenuSelection *selection);
 int doSerialTransfer(u_char *send, u_char *recv, int count);
 int receiveSerialPacket(int unused, u_char *data, int len);
@@ -441,7 +442,7 @@ int my_error_handler(void);
 void AudioConfig(ConfigData *gameData, MenuPolys *polys, MenuSelection *selection, MusicScreen *musicScreen);
 int CheckCardFull(int card);
 void ClassSelect(ConfigData *gameData, MenuSelection *selection);
-void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSelection, KeyConfig *keyConfig, char *cardState);
+void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSelection, KeyConfig *keyConfig, HiScoreData *cardState);
 u_char DecodePassword(ConfigData *gameData, u_char *password);
 void DispHiScores(UnlockData *unlock, void *unused, unsigned char raceMode);
 int DisplayCardBack(MenuPolys *polys, int cursorArg, int cardArg, SaveSelection *selectionArg);
@@ -450,7 +451,7 @@ void DisplayPassword(ConfigData *gameData);
 void DisplayTexture(Texture *texture, s32 left, s32 top, POLY_FT4 *polys);
 void DoButton(short x, short y, int requestedIcon, char *text);
 void DoConfirm(SaveSelection *selection, MenuPolys *polys, short messageType);
-void DrawDrBox(int unused, DrBox *box);
+void DrawDrBox(Texture *unused, DrBox *box);
 void InitDrBox(Texture *texture, DrBox *box);
 void DisplayScreen(Texture *texture, DrBox *box);
 void DrawHighLight(POLY_F4 (*prim)[2], int x, int y, int width, int height, short lineNum);

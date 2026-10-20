@@ -212,20 +212,20 @@ void getWorldPoint(VECTOR *output, Object *object, Object *objectCollide, int po
     VECTOR worldPosition;
     int   flag;
 
-    cameraPosition.vx = residentSkeletons[0]->relative.t[0];
-    cameraPosition.vy = residentSkeletons[0]->relative.t[1];
-    cameraPosition.vz = residentSkeletons[0]->relative.t[2];
+    cameraPosition.vx = raceCamera.camPos->relative.t[0];
+    cameraPosition.vy = raceCamera.camPos->relative.t[1];
+    cameraPosition.vz = raceCamera.camPos->relative.t[2];
     worldPosition.vx = upperSkeleton->relative.t[0];
     worldPosition.vy = upperSkeleton->relative.t[1];
     worldPosition.vz = upperSkeleton->relative.t[2];
-    SetSkeletonPosition(residentSkeletons[0], 0, 0, 0);
-    SetSkeletonDirection(residentSkeletons[0], 0, 0, 0);
+    SetSkeletonPosition(raceCamera.camPos, 0, 0, 0);
+    SetSkeletonDirection(raceCamera.camPos, 0, 0, 0);
     SetSkeletonPosition(upperSkeleton, 0, 0, 0);
     SetSkeletonDirection(upperSkeleton, 0, 0, 0);
     SetSkeletonTransform(object->skeleton);
-    residentSkeletons[0]->relative.t[0] = cameraPosition.vx;
-    residentSkeletons[0]->relative.t[1] = cameraPosition.vy;
-    residentSkeletons[0]->relative.t[2] = cameraPosition.vz;
+    raceCamera.camPos->relative.t[0] = cameraPosition.vx;
+    raceCamera.camPos->relative.t[1] = cameraPosition.vy;
+    raceCamera.camPos->relative.t[2] = cameraPosition.vz;
     upperSkeleton->relative.t[0] = worldPosition.vx;
     upperSkeleton->relative.t[1] = worldPosition.vy;
     upperSkeleton->relative.t[2] = worldPosition.vz;

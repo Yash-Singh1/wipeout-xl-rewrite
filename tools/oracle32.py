@@ -26,6 +26,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 LLVM = Path('/opt/homebrew/opt/llvm/bin')
 OUT = Path('/tmp/oracle32')
+NOSP = bool(os.environ.get('ORACLE_NOSP'))   # ORACLE_NOSP=1: ignore stack slot numbers (locals were retyped)
 OPT = os.environ.get('ORACLE_OPT', '-O2')   # ORACLE_OPT=-O0 compares unoptimised code (no scheduling noise)
 FLAGS = ['-target', 'mipsel-unknown-none-elf', '-march=mips1', '-mabi=o32', OPT, '-fno-pic',
          '-mno-abicalls', '-msoft-float', '-ffreestanding', '-nostdinc', '-fsigned-char',
@@ -80,7 +81,13 @@ def split_functions(dis):
             line = re.sub(r'0x[0-9a-f]+\s*$', '@call', line)
         elif re.match(r'\s*(j|b\w*)\s', line):            # branch targets: relative to the function
             line = re.sub(r'0x([0-9a-f]+)\s*$', lambda mm: '@%x' % (int(mm.group(1), 16) - start), line)
-        funcs[cur].append(re.sub(r'\s+', ' ', line.strip()))
+        line = re.sub(r'\s+', ' ', line.strip())
+        if NOSP:                                            # ORACLE_NOSP=1: ignore stack slot numbers and the frame size
+            line = re.sub(r'-?0x[0-9a-f]+\(\$(sp|fp)\)', r'SLOT($\1)', line)
+            line = re.sub(r'(^|\s)@[0-9a-f]+$', r'\1@', line)
+            line = re.sub(r'addiu \$sp, \$sp, -?0x[0-9a-f]+', 'addiu $sp, $sp, FRAME', line)
+            line = re.sub(r'addiu (\$\w+), \$sp, -?0x[0-9a-f]+', r'addiu \1, $sp, SLOT', line)
+        funcs[cur].append(line)
     return funcs
 
 

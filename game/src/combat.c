@@ -216,12 +216,14 @@ typedef struct LinkPacket {
     int    attractShip;
     int    seedWep;
     u_short hdg, pitch, roll;
-    u_short control;
-    u_short padHead;
-    u_short padButtons;
-    u_short padPressed;
-    u_char  padAux0;
-    u_char  padAux1;
+    /* The sender's controller record, field for field: ControlInput.head, .buttons, .pressed,
+       .pad6 (viewed as one halfword), .thrust, .steering. */
+    u_short head;
+    u_short buttons;
+    u_short pressed;
+    u_short pad6;
+    u_char  thrust;
+    u_char  steering;
     u_char  state;
     u_char  position;
     u_char  finishPosition;
@@ -239,31 +241,20 @@ extern s16 linkTimer;
 extern s16 linkMyState;
 extern s16 linkRemoteState;
 extern s32 seedWep;
-extern u8 raceEndState;
+extern u_char raceEndState;
 extern s16 rivalFinishPos;
-extern u8 remoteRaceDone;
+extern u_char remoteRaceDone;
 extern s32 ownShip;
 extern s32 remoteBestLap;
 extern s32 myBestLap;
 extern s32 remoteBestRace;
 extern s32 linkRaceFlag;
-extern u8 linkRaceDone;
-extern u8 linkRaceEnd;
-extern u8 linkSyncB;
+extern u_char linkRaceDone;
+extern u_char linkRaceEnd;
+extern u_char linkSyncB;
 extern s32 myBestRace;
-extern u16 linkPadHead;
-extern u16 linkPadButtons;
-extern u16 linkPadPressed;
-extern u8 linkPadAux0;
-extern u8 linkPadAux1;
-extern u16 remoteControl;
-extern u16 remotePadHead;
-extern u16 remotePadButtons;
-extern u16 remotePadPressed;
-extern u8 remotePadAux0;
-extern u8 remotePadAux1;
 
-void doSerialGame(int unused, ShipData *ships)
+void doSerialGame(ConfigData *config, ShipData *ships)
 {
     LinkPacket send;
     LinkPacket recv;
@@ -274,24 +265,24 @@ void doSerialGame(int unused, ShipData *ships)
 
     /* values copied out of the globals before the packet is filled */
     int bestRace, attract, seed;
-    u_short buttons, pressed;
-    u_char aux0, aux1, state;
+    u_short pressed, pad6;
+    u_char thrust, steering, state;
     int px, py, pz;
     u_short hdg, pitch, roll;
 
     /* values read back from the received packet */
     int lap, race;
-    u_short hdgIn, pitchIn, rollIn, controlIn, padHeadIn, buttonsIn, pressedIn;
-    u_char aux0In, aux1In, stateIn, positionIn, finishIn, sendFlagIn, completeIn, endIn, doneIn;
+    u_short hdgIn, pitchIn, rollIn, headIn, buttonsIn, pressedIn, pad6In;
+    u_char thrustIn, steeringIn, stateIn, positionIn, finishIn, sendFlagIn, completeIn, endIn, doneIn;
     int value;
 
     attract = attractShip;
     seed = seedWep;
     bestRace = myBestRace;
-    buttons = linkPadButtons;
-    pressed = linkPadPressed;
-    aux0 = linkPadAux0;
-    aux1 = linkPadAux1;
+    pressed = playerControl[0].pressed;
+    pad6 = *(u_short *)playerControl[0].pad6;
+    thrust = playerControl[0].thrust;
+    steering = playerControl[0].steering;
     px = ships[ownShip].ppivot.vx;
     py = ships[ownShip].ppivot.vy;
     pz = ships[ownShip].ppivot.vz;
@@ -302,12 +293,12 @@ void doSerialGame(int unused, ShipData *ships)
     send.bestRace = bestRace;
     send.attractShip = attract;
     send.seedWep = seed;
-    send.padButtons = buttons;
-    send.padPressed = pressed;
-    send.padAux0 = aux0;
-    send.control = playerControl[0].head; /* Port: playerControl is a ControlInput; this is its first halfword */
-    send.padHead = linkPadHead;
-    send.padAux1 = aux1;
+    send.pressed = pressed;
+    send.pad6 = pad6;
+    send.thrust = thrust;
+    send.head = playerControl[0].head;
+    send.buttons = playerControl[0].buttons;
+    send.steering = steering;
     send.posX = px;
     send.posY = py;
     send.posZ = pz;
@@ -352,12 +343,12 @@ void doSerialGame(int unused, ShipData *ships)
         hdgIn = recv.hdg;
         pitchIn = recv.pitch;
         rollIn = recv.roll;
-        controlIn = recv.control;
-        padHeadIn = recv.padHead;
-        buttonsIn = recv.padButtons;
-        pressedIn = recv.padPressed;
-        aux0In = recv.padAux0;
-        aux1In = recv.padAux1;
+        headIn = recv.head;
+        buttonsIn = recv.buttons;
+        pressedIn = recv.pressed;
+        pad6In = recv.pad6;
+        thrustIn = recv.thrust;
+        steeringIn = recv.steering;
         stateIn = recv.state;
         positionIn = recv.position;
         finishIn = recv.finishPosition;
@@ -369,12 +360,12 @@ void doSerialGame(int unused, ShipData *ships)
         ship->hdg = hdgIn;
         ship->pitch = pitchIn;
         ship->roll = rollIn;
-        remoteControl = controlIn;
-        remotePadHead = padHeadIn;
-        remotePadButtons = buttonsIn;
-        remotePadPressed = pressedIn;
-        remotePadAux0 = aux0In;
-        remotePadAux1 = aux1In;
+        remoteControl[0].head = headIn;
+        remoteControl[0].buttons = buttonsIn;
+        remoteControl[0].pressed = pressedIn;
+        *(u_short *)remoteControl[0].pad6 = pad6In;
+        remoteControl[0].thrust = thrustIn;
+        remoteControl[0].steering = steeringIn;
         linkRemoteState = stateIn;
         remoteRacePos = positionIn;
         rivalFinishPos = finishIn;

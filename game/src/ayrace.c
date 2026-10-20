@@ -499,7 +499,7 @@ void RaceComplete(void *screen, void *unused, ConfigData *gameData, short *choic
 }
 
 
-void CheckGamePause(ShipData *ships, int *pauseFlag, int unused, short *pauseChoice, int *pauseCounter)
+void CheckGamePause(ShipData *ships, int *pauseFlag, ConfigData *config, u_short *pauseChoice, int *pauseCounter)
 {
     if ((ships[ownShip].attr & RACING) && (((GetMenuKey(6) << 0x10) != 0) || (padType == 0)) && (*pauseFlag == -1)) {
         *pauseCounter = 0;
@@ -570,9 +570,9 @@ int PerformPauseOperations(struct PauseMenu *pause, struct SelectBox *box, Confi
             UpdateNotes(0);
             SelectPauseOption(&pause->selection, pause->showOptions, config, pause);
             if (pause->showOptions) {
-                /* Port: InGameReset names the pause menu and its polygons by its own private views
-                   (PauseState, OptionsPolys) of the same memory. */
-                InGameReset((PauseState *)pause, config, (OptionsPolys *)box);
+                /* Port: box is the in-game menu block, whose first bytes are the SelectBox that
+                   DeSelectScreen takes; InGameReset uses the block's other polygons. */
+                InGameReset(pause, config, (struct InGameMenu *)box);
                 if (pause->musicPaused == 0 && CdControl(9, 0, 0) != 0) {
                     pause->musicPaused = 1;
                 }

@@ -13,4 +13,7 @@ typedef struct PadPacket {
     u_char  analog[3];
 } PadPacket;
 
+/* The controller packets the pad driver fills (one per port). */
+extern PadPacket padBuf1[];
+
 #endif

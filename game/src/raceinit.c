@@ -1,4 +1,5 @@
 #include "raceinit.h"
+#include "ayrace.h"
 #include "include_asm_g8.h"
 int     attractStep;
 u_int   randSeed;
@@ -377,7 +378,7 @@ void GetJoyPadPacketOnVsync(int flags)
 }
 
 
-void InitRaceData(RaceData *race)
+void InitRaceData(PauseMenu *race)
 {
     race->selection = -1;
     race->showOptions = 1;

@@ -1,5 +1,6 @@
 #include "hud.h"
 #include "hiscores.h"
+#include "ayrace.h"
 #include "include_asm_g8.h"
 
 /* Font textures are loaded at consecutive texture-table slots; the last one is the dimmed colour. */
@@ -1018,7 +1019,7 @@ void UpdateRaceHud(ShipData *shipIndex, Speedo *speedo, int choice, ConfigData *
             if ((unsigned)(trackNameScroll + 199) < 199) trackNameOffset = 0;
             if (trackNameOffset < -199) trackNameOffset += 200;
             if (trackNameOffset < 0) trackNameOffset = -trackNameOffset;
-            if (pauseState == -1) trackNameScroll -= 6;
+            if (pauseState.selection == -1) trackNameScroll -= 6;
             if (gameData->cdTrack == 1) cdMusicTrack = cdMusicTable[cdMusicIndex];
             else cdMusicTrack = gameData->cdTrack;
             trackName = GetCdTrackName(cdMusicTrack - 1);
@@ -1356,7 +1357,7 @@ void DisplayRaceInfo(ConfigData *state, HiScoreData *context, ShipData *scene)
             } while (nextLap < (int) classLaps[state->shipClass]);
         }
         if ((raceType == 0 || raceType == 4) && finishPosition < 4) {
-            DrawTeamShips(0x46, 0, 0xB4, cardNum, 0, teamShip);
+            DrawTeamShips(0x46, 0, 0xB4, cardNum, 0, teamShip[0]);
         }
         AddText(msgRaceTime, 0xF, 0xB4, 8, 0);
         if (raceType == 0 || raceType == 4 || raceType == 1) {

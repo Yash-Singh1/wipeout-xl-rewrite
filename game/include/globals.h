@@ -10,7 +10,10 @@
 
 extern HeapBlock       *heap;
 extern HeapBlock       *mainheapcopy;
-extern Skeleton        *residentSkeletons[];
+/* The race camera.  The console's symbols residentSkeletons (its first word: the camera skeleton) and
+   cameraSections (the following 24 bytes) are the one TrackCamera that cameraPtr points at and that
+   CameraUpdate and DrawShips take.  (Symbols 0x800BD2E0 and 0x800BD2E4.) */
+extern TrackCamera      raceCamera;
 extern Skeleton        *upperSkeleton;
 extern Object          *shipShapeTable[];
 extern unsigned short   TextureTableCount;
@@ -32,7 +35,8 @@ extern HiScore          hiScoreTable[][4];
 
 extern int              ambientVoice2;
 extern u_char           classLaps[];
-extern short            monoRailFlag[];
+/* The mono-rail carriage state (its first field, the step index, was the console symbol monoRailFlag). */
+extern MonoRailData     monoRail;
 extern Object          *monoRailObjs[];
 extern PrimPtr          nextPrim;
 extern short            numTrackSections;
@@ -54,10 +58,13 @@ extern short            finishPosition;
 extern int              linkSendFlag;
 extern u_long          *OT[];
 extern u_long          *OT2[];
-extern int              pauseState;
+/* The in-race pause menu state (the console symbol pauseState is its first word, selection). */
+extern struct PauseMenu pauseState;
 extern short            playerPosition;
 extern HeapBlock       *reserveHeap;
-extern Object          *teamShip;
+/* The team ship's model: LoadModel stores the objects of the model file here (each ship file has one
+   object); DrawTeamShips and its callers use the first. */
+extern Object          *teamShip[];
 extern ConfigData      *tempGameData;
 extern WADFILE         *textureWad;
 
@@ -78,6 +85,7 @@ extern Texture         *continuesTexture;
 extern u_short          keysPressed;
 extern u_short          padType;
 extern ControlInput     playerControl[];
+extern ControlInput     remoteControl[];
 extern u_char           raceCompleteFlag;
 extern struct CardKeys  savedKeyConfig;
 extern char             scenePath[];

@@ -889,7 +889,7 @@ void ResetMonoRail(void)
         current->skeleton->relative.t[2] = posMonoRail[index].vz;
         index++;
     } while (index < 6);
-    monoRailFlag[0] = 0;
+    monoRail.index = 0;
 }
 
 

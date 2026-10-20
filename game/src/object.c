@@ -322,8 +322,6 @@ extern DVECTOR StaticScreen[];
 extern unsigned short StaticDepth[];
 extern unsigned short StaticFlags[];
 extern VECTOR StaticRVert[];
-extern int StaticRVertY[][4];
-extern int StaticRVertZ[][4];
 extern unsigned char envMapU[];
 extern unsigned char envMapV[];
 PrimPtr nextPrim;
@@ -333,6 +331,8 @@ int envmapb;
 short CurrentScreen;
 unsigned char medalDisplay;
 
+/* DrawEnvMap's stack frame. The gapNNN members stand for stack slots the function never uses; the
+   struct is only a local, so its size and the offsets of its pointer members do not matter. */
 typedef struct EnvMapWork {
     VECTOR reflect, unusedVector, eye;
     MATRIX matrix;
@@ -358,12 +358,9 @@ typedef struct EnvMapWork {
     unsigned char gap202[6];
     s32 lastVertex;
     int gap212[17];
-    volatile u32 nextPrimitive;
+    F4 *volatile nextPrimitive;
 } EnvMapWork;
 
-/* Port: DrawEnvMap (proven-equivalent text, rewritten by the coordinator) names the primitive
-   cursor as a bare pointer; the shared declaration wraps it in PrimPtr. Remove with the rewrite. */
-#define nextPrim nextPrim.ptr
 void DrawEnvMap(Object *object, void *unused, SVECTOR *normals, int xOffsetIn, int yOffset, int scale)
 {
     EnvMapWork ws;
@@ -371,7 +368,7 @@ void DrawEnvMap(Object *object, void *unused, SVECTOR *normals, int xOffsetIn, i
     short v3, triangleUnused; int triangleLast, triangle0, triangle1; u16 clip0,clip1,clip2; int quadLast,quad0,quad1,quad3; int initialCount; unsigned int count;
     int dot,u,vertical,z,u0,u1,u2,u3,original0,original1,original2,original3;
     Primitive *primitive;
-    u32 primitiveAddress; u32 triangleNext;
+    F4 *primitiveCursor; F4 *triangleNext;
     SVECTOR *vertices;
     s32 pad[4];
 
@@ -396,8 +393,8 @@ void DrawEnvMap(Object *object, void *unused, SVECTOR *normals, int xOffsetIn, i
         short reflectIndex;
         for (reflectIndex = 0; reflectIndex < (short)count; reflectIndex++) {
             ws.reflect.vx = StaticRVert[reflectIndex].vx;
-            ws.reflect.vy = StaticRVertY[reflectIndex][0];
-            ws.reflect.vz = StaticRVertZ[reflectIndex][0];
+            ws.reflect.vy = StaticRVert[reflectIndex].vy;
+            ws.reflect.vz = StaticRVert[reflectIndex].vz;
             dot = DotProduct(&ws.reflect, &ws.eye);
             ws.reflect.vx = ((s32)((u32)ws.reflect.vx * (u32)dot) >> 11) - ws.eye.vx;
             ws.reflect.vz = ((s32)((u32)ws.reflect.vz * (u32)dot) >> 11) - ws.eye.vz;
@@ -409,13 +406,13 @@ void DrawEnvMap(Object *object, void *unused, SVECTOR *normals, int xOffsetIn, i
             envMapV[reflectIndex] = vertical;
         }
     }
-    primitiveAddress = (u32)object->primitives;
+    primitiveCursor = (F4 *)object->primitives;
     ws.i = 0;
     if ((short)*(volatile unsigned short *)&ws.primitiveCount <= 0) goto envDone;
-    ws.nextPrimitive = primitiveAddress + sizeof(F4);
+    ws.nextPrimitive = primitiveCursor + 1;
 envLoop:
     {
-        switch (((Primitive *)primitiveAddress)->type) {
+        switch (primitiveCursor->type) {
         case 1:
             triangle0 = ((F3 *)ws.nextPrimitive - 1)->coords[0];
             triangle1 = ((F3 *)ws.nextPrimitive - 1)->coords[1];
@@ -429,8 +426,8 @@ envLoop:
             triangleNext = ws.nextPrimitive;
             if ((clip0 | clip1 | clip2) & 0x460) goto triAdvanceCached;
             if (NormalClip((unsigned short)screen[triangle0].vx | ((u32)(unsigned short)screen[triangle0].vy << 16), (unsigned short)screen[triangle1].vx | ((u32)(unsigned short)screen[triangle1].vy << 16), (unsigned short)screen[triangleLast].vx | ((u32)(unsigned short)screen[triangleLast].vy << 16)) > 0) {
-                SetPolyFT3((POLY_FT3 *)nextPrim);
-                ((POLY_FT4 *)nextPrim)->tpage = GetTPage(1, 0, 640, 256);
+                SetPolyFT3((POLY_FT3 *)nextPrim.ptr);
+                ((POLY_FT4 *)nextPrim.ptr)->tpage = GetTPage(1, 0, 640, 256);
                 original0 = envMapU[triangle0];
                 original1 = envMapU[triangle1];
                 original2 = envMapU[triangleLast];
@@ -438,8 +435,8 @@ envLoop:
                 u1 = original1;
                 u2 = original2;
                 ws.reflect.vx = (StaticRVert[triangle0].vx + StaticRVert[triangle1].vx) >> 1;
-                ws.reflect.vy = (StaticRVertY[triangle0][0] + StaticRVertY[triangle1][0]) >> 1;
-                ws.reflect.vz = (StaticRVertZ[triangle0][0] + StaticRVertZ[triangle1][0]) >> 1;
+                ws.reflect.vy = (StaticRVert[triangle0].vy + StaticRVert[triangle1].vy) >> 1;
+                ws.reflect.vz = (StaticRVert[triangle0].vz + StaticRVert[triangle1].vz) >> 1;
                 Normalise(&ws.reflect);
                 dot = DotProduct(&ws.reflect, &ws.eye);
                 ws.reflect.vx = ((s32)((u32)ws.reflect.vx * (u32)dot) >> 11) - ws.eye.vx;
@@ -452,8 +449,8 @@ envLoop:
                 }
                 triangle1 = (s16)*(volatile u16 *)&ws.v1;
                 ws.reflect.vx = (StaticRVert[triangle1].vx + StaticRVert[v3].vx) >> 1;
-                ws.reflect.vy = (StaticRVertY[triangle1][0] + StaticRVertY[v3][0]) >> 1;
-                ws.reflect.vz = (StaticRVertZ[triangle1][0] + StaticRVertZ[v3][0]) >> 1;
+                ws.reflect.vy = (StaticRVert[triangle1].vy + StaticRVert[v3].vy) >> 1;
+                ws.reflect.vz = (StaticRVert[triangle1].vz + StaticRVert[v3].vz) >> 1;
                 Normalise(&ws.reflect);
                 dot = DotProduct(&ws.reflect, &ws.eye);
                 ws.reflect.vx = ((s32)((u32)ws.reflect.vx * (u32)dot) >> 11) - ws.eye.vx;
@@ -466,8 +463,8 @@ envLoop:
                 }
                 triangle0 = (s16)*(volatile u16 *)&ws.v0;
                 ws.reflect.vx = (StaticRVert[triangle0].vx + StaticRVert[v3].vx) >> 1;
-                ws.reflect.vy = (StaticRVertY[triangle0][0] + StaticRVertY[v3][0]) >> 1;
-                ws.reflect.vz = (StaticRVertZ[triangle0][0] + StaticRVertZ[v3][0]) >> 1;
+                ws.reflect.vy = (StaticRVert[triangle0].vy + StaticRVert[v3].vy) >> 1;
+                ws.reflect.vz = (StaticRVert[triangle0].vz + StaticRVert[v3].vz) >> 1;
                 Normalise(&ws.reflect);
                 dot = DotProduct(&ws.reflect, &ws.eye);
                 ws.reflect.vx = ((s32)((u32)ws.reflect.vx * (u32)dot) >> 11) - ws.eye.vx;
@@ -481,35 +478,35 @@ envLoop:
                         if (u < original0 || seam0) u0 = original0 + 64;
                     }
                 }
-                ((POLY_FT4 *)nextPrim)->u0 = u0;
-                ((POLY_FT4 *)nextPrim)->u1 = u1;
-                ((POLY_FT4 *)nextPrim)->u2 = u2;
+                ((POLY_FT4 *)nextPrim.ptr)->u0 = u0;
+                ((POLY_FT4 *)nextPrim.ptr)->u1 = u1;
+                ((POLY_FT4 *)nextPrim.ptr)->u2 = u2;
                 triangle0 = (s16)*(volatile u16 *)&ws.v0;
-                ((POLY_FT4 *)nextPrim)->v0 = envMapV[triangle0];
+                ((POLY_FT4 *)nextPrim.ptr)->v0 = envMapV[triangle0];
                 triangle1 = (s16)*(volatile u16 *)&ws.v1;
-                ((POLY_FT4 *)nextPrim)->v1 = envMapV[triangle1];
-                ((POLY_FT4 *)nextPrim)->v2 = envMapV[v3];
-                *(volatile u_short *)&((POLY_FT4 *)nextPrim)->clut = GetClut(704, 258);
-                ((POLY_FT4 *)nextPrim)->r0 = envmapr;
-                ((POLY_FT4 *)nextPrim)->g0 = envmapg;
-                ((POLY_FT4 *)nextPrim)->b0 = envmapb;
-                *(DVECTOR *)&((POLY_FT4 *)nextPrim)->x0 = screen[triangle0];
-                *(DVECTOR *)&((POLY_FT4 *)nextPrim)->x1 = screen[triangle1];
-                *(DVECTOR *)&((POLY_FT4 *)nextPrim)->x2 = screen[v3];
-                *(volatile short *)&((POLY_FT4 *)nextPrim)->x0 = ((((POLY_FT4 *)nextPrim)->x0 * scale) >> 8) + ws.savedX;
-                *(volatile short *)&((POLY_FT4 *)nextPrim)->x1 = ((((POLY_FT4 *)nextPrim)->x1 * scale) >> 8) + ws.savedX;
-                *(volatile short *)&((POLY_FT4 *)nextPrim)->x2 = ((((POLY_FT4 *)nextPrim)->x2 * scale) >> 8) + ws.savedX;
-                { POLY_FT4 *packet = (POLY_FT4 *)nextPrim; *(volatile short *)&packet->y0 = ((packet->y0 * scale) >> 8) + yOffset; }
-                { POLY_FT4 *packet = (POLY_FT4 *)nextPrim; *(volatile short *)&packet->y1 = ((packet->y1 * scale) >> 8) + yOffset; }
-                { POLY_FT4 *packet = (POLY_FT4 *)nextPrim; *(volatile short *)&packet->y2 = ((packet->y2 * scale) >> 8) + yOffset; }
+                ((POLY_FT4 *)nextPrim.ptr)->v1 = envMapV[triangle1];
+                ((POLY_FT4 *)nextPrim.ptr)->v2 = envMapV[v3];
+                *(volatile u_short *)&((POLY_FT4 *)nextPrim.ptr)->clut = GetClut(704, 258);
+                ((POLY_FT4 *)nextPrim.ptr)->r0 = envmapr;
+                ((POLY_FT4 *)nextPrim.ptr)->g0 = envmapg;
+                ((POLY_FT4 *)nextPrim.ptr)->b0 = envmapb;
+                *(DVECTOR *)&((POLY_FT4 *)nextPrim.ptr)->x0 = screen[triangle0];
+                *(DVECTOR *)&((POLY_FT4 *)nextPrim.ptr)->x1 = screen[triangle1];
+                *(DVECTOR *)&((POLY_FT4 *)nextPrim.ptr)->x2 = screen[v3];
+                *(volatile short *)&((POLY_FT4 *)nextPrim.ptr)->x0 = ((((POLY_FT4 *)nextPrim.ptr)->x0 * scale) >> 8) + ws.savedX;
+                *(volatile short *)&((POLY_FT4 *)nextPrim.ptr)->x1 = ((((POLY_FT4 *)nextPrim.ptr)->x1 * scale) >> 8) + ws.savedX;
+                *(volatile short *)&((POLY_FT4 *)nextPrim.ptr)->x2 = ((((POLY_FT4 *)nextPrim.ptr)->x2 * scale) >> 8) + ws.savedX;
+                { POLY_FT4 *packet = (POLY_FT4 *)nextPrim.ptr; *(volatile short *)&packet->y0 = ((packet->y0 * scale) >> 8) + yOffset; }
+                { POLY_FT4 *packet = (POLY_FT4 *)nextPrim.ptr; *(volatile short *)&packet->y1 = ((packet->y1 * scale) >> 8) + yOffset; }
+                { POLY_FT4 *packet = (POLY_FT4 *)nextPrim.ptr; *(volatile short *)&packet->y2 = ((packet->y2 * scale) >> 8) + yOffset; }
                 z = AverageZ3(ws.depth[triangle0], ws.depth[triangle1], ws.depth[v3]);
-                AddPrim(OT2[CurrentScreen] + z % 1600, nextPrim);
-                nextPrim += 32;
+                AddPrim(OT2[CurrentScreen] + z % 1600, nextPrim.ptr);
+                nextPrim.ptr += 32;
             }
             triangleNext = ws.nextPrimitive;
 triAdvanceCached:
-            primitiveAddress += sizeof(F4);
-            ws.nextPrimitive = triangleNext + sizeof(F4);
+            primitiveCursor++;
+            ws.nextPrimitive = triangleNext + 1;
             break;
         case 3:
             ws.v0 = *(volatile u16 *)&((F4 *)ws.nextPrimitive - 1)->coords[0];
@@ -524,8 +521,8 @@ triAdvanceCached:
                 clip0 = ws.clip[triangle0]; clip1 = ws.clip[triangle1]; clip2 = ws.clip[triangleLast]; quadClip3 = ws.clip[quadLast];
                 ws.v2 = quadLast;
                 if (!((clip0 | clip1 | clip2 | quadClip3) & 0x460) && NormalClip((unsigned short)screen[triangle0].vx | ((u32)(unsigned short)screen[triangle0].vy << 16), (unsigned short)screen[triangle1].vx | ((u32)(unsigned short)screen[triangle1].vy << 16), (unsigned short)screen[triangleLast].vx | ((u32)(unsigned short)screen[triangleLast].vy << 16)) > 0) {
-                    SetPolyFT4((POLY_FT4 *)nextPrim);
-                    ((POLY_FT4 *)nextPrim)->tpage = GetTPage(1, 0, 640, 256);
+                    SetPolyFT4((POLY_FT4 *)nextPrim.ptr);
+                    ((POLY_FT4 *)nextPrim.ptr)->tpage = GetTPage(1, 0, 640, 256);
                     original0 = envMapU[triangle0];
                     original1 = envMapU[triangle1];
                     original2 = envMapU[triangleLast];
@@ -534,8 +531,8 @@ triAdvanceCached:
                     u1 = original1;
                     u2 = original2;
                     ws.reflect.vx = (StaticRVert[triangle0].vx + StaticRVert[triangle1].vx) >> 1;
-                    ws.reflect.vy = (StaticRVertY[triangle0][0] + StaticRVertY[triangle1][0]) >> 1;
-                    ws.reflect.vz = (StaticRVertZ[triangle0][0] + StaticRVertZ[triangle1][0]) >> 1;
+                    ws.reflect.vy = (StaticRVert[triangle0].vy + StaticRVert[triangle1].vy) >> 1;
+                    ws.reflect.vz = (StaticRVert[triangle0].vz + StaticRVert[triangle1].vz) >> 1;
                     Normalise(&ws.reflect);
                     dot = DotProduct(&ws.reflect, &ws.eye);
                     ws.lastVertex = original3;
@@ -549,8 +546,8 @@ triAdvanceCached:
                     }
                     triangle1 = (s16)*(volatile u16 *)&ws.v1;
                     ws.reflect.vx = (StaticRVert[triangle1].vx + StaticRVert[v3].vx) >> 1;
-                    ws.reflect.vy = (StaticRVertY[triangle1][0] + StaticRVertY[v3][0]) >> 1;
-                    ws.reflect.vz = (StaticRVertZ[triangle1][0] + StaticRVertZ[v3][0]) >> 1;
+                    ws.reflect.vy = (StaticRVert[triangle1].vy + StaticRVert[v3].vy) >> 1;
+                    ws.reflect.vz = (StaticRVert[triangle1].vz + StaticRVert[v3].vz) >> 1;
                     Normalise(&ws.reflect);
                     dot = DotProduct(&ws.reflect, &ws.eye);
                     ws.reflect.vx = ((s32)((u32)ws.reflect.vx * (u32)dot) >> 11) - ws.eye.vx;
@@ -564,8 +561,8 @@ triAdvanceCached:
                     {
                         int lastIndex = (short)*(volatile unsigned short *)&ws.v2;
                         ws.reflect.vx = (StaticRVert[v3].vx + StaticRVert[lastIndex].vx) >> 1;
-                        ws.reflect.vy = (StaticRVertY[v3][0] + StaticRVertY[lastIndex][0]) >> 1;
-                        ws.reflect.vz = (StaticRVertZ[v3][0] + StaticRVertZ[lastIndex][0]) >> 1;
+                        ws.reflect.vy = (StaticRVert[v3].vy + StaticRVert[lastIndex].vy) >> 1;
+                        ws.reflect.vz = (StaticRVert[v3].vz + StaticRVert[lastIndex].vz) >> 1;
                     }
                     Normalise(&ws.reflect);
                     dot = DotProduct(&ws.reflect, &ws.eye);
@@ -581,8 +578,8 @@ triAdvanceCached:
                         int firstIndex = (short)*(volatile unsigned short *)&ws.v0;
                         int lastIndex = (short)*(volatile unsigned short *)&ws.v2;
                         ws.reflect.vx = (StaticRVert[firstIndex].vx + StaticRVert[lastIndex].vx) >> 1;
-                        ws.reflect.vy = (StaticRVertY[firstIndex][0] + StaticRVertY[lastIndex][0]) >> 1;
-                        ws.reflect.vz = (StaticRVertZ[firstIndex][0] + StaticRVertZ[lastIndex][0]) >> 1;
+                        ws.reflect.vy = (StaticRVert[firstIndex].vy + StaticRVert[lastIndex].vy) >> 1;
+                        ws.reflect.vz = (StaticRVert[firstIndex].vz + StaticRVert[lastIndex].vz) >> 1;
                     }
                     Normalise(&ws.reflect);
                     dot = DotProduct(&ws.reflect, &ws.eye);
@@ -597,40 +594,40 @@ triAdvanceCached:
                             if (u < original0 || seam3) u0 = original0 + 64;
                         }
                     }
-                    ((POLY_FT4 *)nextPrim)->u0 = u0;
-                    ((POLY_FT4 *)nextPrim)->u1 = u1;
-                    ((POLY_FT4 *)nextPrim)->u2 = u2;
-                    ((POLY_FT4 *)nextPrim)->u3 = *(volatile unsigned char *)&ws.lastVertex;
+                    ((POLY_FT4 *)nextPrim.ptr)->u0 = u0;
+                    ((POLY_FT4 *)nextPrim.ptr)->u1 = u1;
+                    ((POLY_FT4 *)nextPrim.ptr)->u2 = u2;
+                    ((POLY_FT4 *)nextPrim.ptr)->u3 = *(volatile unsigned char *)&ws.lastVertex;
                     quad0 = (short)*(volatile unsigned short *)&ws.v0;
-                    ((POLY_FT4 *)nextPrim)->v0 = envMapV[quad0];
+                    ((POLY_FT4 *)nextPrim.ptr)->v0 = envMapV[quad0];
                     quad1 = (short)*(volatile unsigned short *)&ws.v1;
-                    ((POLY_FT4 *)nextPrim)->v1 = envMapV[quad1];
-                    ((POLY_FT4 *)nextPrim)->v2 = envMapV[v3];
+                    ((POLY_FT4 *)nextPrim.ptr)->v1 = envMapV[quad1];
+                    ((POLY_FT4 *)nextPrim.ptr)->v2 = envMapV[v3];
                     quad3 = (short)*(volatile unsigned short *)&ws.v2;
-                    ((POLY_FT4 *)nextPrim)->v3 = envMapV[quad3];
-                    *(volatile u_short *)&((POLY_FT4 *)nextPrim)->clut = GetClut(704, 258);
-                    ((POLY_FT4 *)nextPrim)->r0 = envmapr;
-                    ((POLY_FT4 *)nextPrim)->g0 = envmapg;
-                    ((POLY_FT4 *)nextPrim)->b0 = envmapb;
-                    *(DVECTOR *)&((POLY_FT4 *)nextPrim)->x0 = screen[quad0];
-                    *(DVECTOR *)&((POLY_FT4 *)nextPrim)->x1 = screen[quad1];
-                    *(DVECTOR *)&((POLY_FT4 *)nextPrim)->x2 = screen[v3];
-                    *(DVECTOR *)&((POLY_FT4 *)nextPrim)->x3 = screen[quad3];
-                    *(volatile short *)&((POLY_FT4 *)nextPrim)->x0 = ((((POLY_FT4 *)nextPrim)->x0 * scale) >> 8) + ws.savedX;
-                    *(volatile short *)&((POLY_FT4 *)nextPrim)->x1 = ((((POLY_FT4 *)nextPrim)->x1 * scale) >> 8) + ws.savedX;
-                    *(volatile short *)&((POLY_FT4 *)nextPrim)->x2 = ((((POLY_FT4 *)nextPrim)->x2 * scale) >> 8) + ws.savedX;
-                    *(volatile short *)&((POLY_FT4 *)nextPrim)->x3 = ((((POLY_FT4 *)nextPrim)->x3 * scale) >> 8) + ws.savedX;
-                    *(volatile short *)&((POLY_FT4 *)nextPrim)->y0 = ((((POLY_FT4 *)nextPrim)->y0 * scale) >> 8) + yOffset;
-                    *(volatile short *)&((POLY_FT4 *)nextPrim)->y1 = ((((POLY_FT4 *)nextPrim)->y1 * scale) >> 8) + yOffset;
-                    *(volatile short *)&((POLY_FT4 *)nextPrim)->y2 = ((((POLY_FT4 *)nextPrim)->y2 * scale) >> 8) + yOffset;
-                    *(volatile short *)&((POLY_FT4 *)nextPrim)->y3 = ((((POLY_FT4 *)nextPrim)->y3 * scale) >> 8) + yOffset;
+                    ((POLY_FT4 *)nextPrim.ptr)->v3 = envMapV[quad3];
+                    *(volatile u_short *)&((POLY_FT4 *)nextPrim.ptr)->clut = GetClut(704, 258);
+                    ((POLY_FT4 *)nextPrim.ptr)->r0 = envmapr;
+                    ((POLY_FT4 *)nextPrim.ptr)->g0 = envmapg;
+                    ((POLY_FT4 *)nextPrim.ptr)->b0 = envmapb;
+                    *(DVECTOR *)&((POLY_FT4 *)nextPrim.ptr)->x0 = screen[quad0];
+                    *(DVECTOR *)&((POLY_FT4 *)nextPrim.ptr)->x1 = screen[quad1];
+                    *(DVECTOR *)&((POLY_FT4 *)nextPrim.ptr)->x2 = screen[v3];
+                    *(DVECTOR *)&((POLY_FT4 *)nextPrim.ptr)->x3 = screen[quad3];
+                    *(volatile short *)&((POLY_FT4 *)nextPrim.ptr)->x0 = ((((POLY_FT4 *)nextPrim.ptr)->x0 * scale) >> 8) + ws.savedX;
+                    *(volatile short *)&((POLY_FT4 *)nextPrim.ptr)->x1 = ((((POLY_FT4 *)nextPrim.ptr)->x1 * scale) >> 8) + ws.savedX;
+                    *(volatile short *)&((POLY_FT4 *)nextPrim.ptr)->x2 = ((((POLY_FT4 *)nextPrim.ptr)->x2 * scale) >> 8) + ws.savedX;
+                    *(volatile short *)&((POLY_FT4 *)nextPrim.ptr)->x3 = ((((POLY_FT4 *)nextPrim.ptr)->x3 * scale) >> 8) + ws.savedX;
+                    *(volatile short *)&((POLY_FT4 *)nextPrim.ptr)->y0 = ((((POLY_FT4 *)nextPrim.ptr)->y0 * scale) >> 8) + yOffset;
+                    *(volatile short *)&((POLY_FT4 *)nextPrim.ptr)->y1 = ((((POLY_FT4 *)nextPrim.ptr)->y1 * scale) >> 8) + yOffset;
+                    *(volatile short *)&((POLY_FT4 *)nextPrim.ptr)->y2 = ((((POLY_FT4 *)nextPrim.ptr)->y2 * scale) >> 8) + yOffset;
+                    *(volatile short *)&((POLY_FT4 *)nextPrim.ptr)->y3 = ((((POLY_FT4 *)nextPrim.ptr)->y3 * scale) >> 8) + yOffset;
                     z = AverageZ4(ws.depth[quad0], ws.depth[quad1], ws.depth[v3], ws.depth[quad3]);
-                    AddPrim(OT2[CurrentScreen] + z % 1600, nextPrim);
-                    nextPrim += 40;
+                    AddPrim(OT2[CurrentScreen] + z % 1600, nextPrim.ptr);
+                    nextPrim.ptr += 40;
                 }
             }
-            primitiveAddress = ws.nextPrimitive;
-            ws.nextPrimitive += sizeof(F4);
+            primitiveCursor = ws.nextPrimitive;
+            ws.nextPrimitive++;
             break;
         }
         ws.i++;
@@ -639,7 +636,6 @@ triAdvanceCached:
 envDone:
     medalDisplay = 1;
 }
-#undef nextPrim
 
 
 void InitFonts(void)

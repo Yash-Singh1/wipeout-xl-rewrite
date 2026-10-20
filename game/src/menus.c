@@ -374,8 +374,8 @@ typedef struct MenuWorkspace {
     volatile short musicWidth;
     volatile short musicHeight;
     char pad1924[164];
-    char selection[192];
-    char cardState[72];
+    MenuSelection selection;
+    HiScoreData cardState;
     MusicScreen musicScreen;
     char displayScreen[1168];
     volatile int cdTrack;
@@ -384,14 +384,11 @@ typedef struct MenuWorkspace {
     char pad235c[4];
     unsigned short fadeLevel;
     char pad2362[6];
-    volatile int musicTexture;
+    Texture *volatile musicTexture;
     char pad236c[4];
     unsigned short attractMode;
 } MenuWorkspace;
 
-/* Port: only MenuControl (left unchanged) still uses these __asm__ names for raceTracks and padBuf1. */
-u8 raceTrack __asm__("raceTracks");
-extern PadPacket padBufs[] __asm__("padBuf1");
 void InitMenuBox(MenuBars *bars);
 void ShowMenu(ConfigData *gameData, MenuBars *polys, MenuSelection *selection);
 void InitNewDisplay(ConfigData *gameData);
@@ -448,7 +445,7 @@ int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMem
     errorCount = 0;
     work.attractMode = 0;
     work.cdTrack = 1;
-    InitDynamicMem((HeapBlock *)reserveHeap, RESERVE_HEAP_SIZE);
+    InitDynamicMem(reserveHeap, RESERVE_HEAP_SIZE);
     keyDefineThrust = 1;
     fastFrame = 1;
     negconCentre = 0;
@@ -467,26 +464,26 @@ int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMem
         work.musicHeight = 320;
         turnDivisor = controllerCenter;
     }
-    SetSkeletonPosition((Skeleton *)residentSkeletons[0], 0, 0, 0);
-    SetSkeletonDirection((Skeleton *)residentSkeletons[0], 0, 0, 0);
-    SetSkeletonPosition((Skeleton *)upperSkeleton, 0, 0, 0);
-    SetSkeletonDirection((Skeleton *)upperSkeleton, 0, 0, 0);
+    SetSkeletonPosition(raceCamera.camPos, 0, 0, 0);
+    SetSkeletonDirection(raceCamera.camPos, 0, 0, 0);
+    SetSkeletonPosition(upperSkeleton, 0, 0, 0);
+    SetSkeletonDirection(upperSkeleton, 0, 0, 0);
     InitMenuDisplay(150, 0);
     {
         int setup;
-        Object **setupObject = (Object **)shipShapeTable;
+        Object **setupObject = shipShapeTable;
         for (setup = 0; setup < 15; setup++, setupObject++) {
-            InitMatrix((MATRIX *)(*setupObject)->skeleton);
-            InitMatrix((MATRIX *)((char *)(*setupObject)->skeleton + 32));
+            InitMatrix(&(*setupObject)->skeleton->relative);
+            InitMatrix(&(*setupObject)->skeleton->absolute);
             (*setupObject)->skeleton->update = 1;
         }
     }
-    ClearOTagR((u_long *)OT[CurrentScreen], 8192);
-    ClearOTagR((u_long *)OT2[CurrentScreen], 1600);
+    ClearOTagR(OT[CurrentScreen], 8192);
+    ClearOTagR(OT2[CurrentScreen], 1600);
     UpdateNotes(0);
     Swap();
-    menu = DAlloc((HeapBlock *)reserveHeap, 0x6A70);
-    menuLayout = DAlloc((HeapBlock *)reserveHeap, 0x10760);
+    menu = DAlloc(reserveHeap, 0x6A70);
+    menuLayout = DAlloc(reserveHeap, 0x10760);
     InitMenus();
     InitChallenges();
     if (!raceFlag) {
@@ -499,7 +496,7 @@ int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMem
             ownShip = 9;
             trackNo = 0;
             gameData->trackNum = 0;
-            gameData->actTrackNum = raceTrack;
+            gameData->actTrackNum = raceTracks[0];
             raceType = 99;
         }
     } else raceFlag = 0;
@@ -530,15 +527,15 @@ int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMem
     SetShake(0);
     InitMenuBox(&work.menus);
     InitScreenBox(&work.menuPolys);
-    InitTempData(gameData, (MenuSelection *)work.selection);
+    InitTempData(gameData, &work.selection);
     Init2DParticle();
     InitMenuTextures(&menuTextures);
     InitMenuPolys((MenuPrims *)&work.menuPolys);
     LoadCardTexture();
-    work.musicTexture = (int)textureTable[menuTextures];
-    InitDrBox((Texture *)work.musicTexture, (DrBox *)&work.musicScreen);
+    work.musicTexture = textureTable[menuTextures];
+    InitDrBox(work.musicTexture, (DrBox *)&work.musicScreen);
     InitMusicScreen(&work.musicScreen, menuTextures);
-    InitKeyConfig((KeyConfig *)savedKeyConfig);
+    InitKeyConfig((KeyConfig *)&savedKeyConfig);
     LoadMenuLineData();
     LoadModel(menuModels, modelNameHarry);
     LoadModel(shipModels, modelNameJune);
@@ -547,8 +544,8 @@ int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMem
         gameData->actTrackNum = gameData->savedActTrackNum;
         gameData->trackNum = gameData->savedTrackNum;
     }
-    InitScoreTabData((HiScoreData *)work.cardState);
-    *(short *)(work.cardState + 38) = 180;
+    InitScoreTabData(&work.cardState);
+    work.cardState.charX = 180;
     work.screenWidth = 320;
     work.screenHeight = 240;
     musicIndex = gameData->cdTrack;
@@ -559,18 +556,18 @@ int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMem
         musicIndex = cdMusicTable[q];
         cdMusicTrack = musicIndex;
     }
-    ((void (*)(int))CdMusicPlay)(musicIndex);
+    CdMusicPlay(musicIndex, 0);
     while (!negconCentre) {
         if ((unsigned)currMenu < 2 || currMenu == 2 || (unsigned)(currMenu - 17) < 2) fastFrame = 0;
         else fastFrame = 1;
         buttonCount = 0;
         SfxDoSfx();
-        buildFixedPad(padBufs);
-        buildGameKeyPad(padBufs, playerControl);
+        buildFixedPad(padBuf1);
+        buildGameKeyPad(padBuf1, playerControl);
         UpdateCheatSequence(1);
         quadIndex = CurrentScreen * 300;
-        ClearOTagR((u_long *)OT[CurrentScreen], 8192);
-        ClearOTagR((u_long *)OT2[CurrentScreen], 1600);
+        ClearOTagR(OT[CurrentScreen], 8192);
+        ClearOTagR(OT2[CurrentScreen], 1600);
         if (currMenu != 9) SetInGameCDTrack(cdPlaySeconds, (struct WipeCdStatus *)work.cdState, gameData, (int *)&work.cdTrack);
         {
             unsigned short fade = *(volatile unsigned short *)&work.fadeLevel;
@@ -589,15 +586,15 @@ int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMem
             menu[3].options[1].nextMenu = 10;
         }
         if (errorCount > 0 && !screenCount) {
-            PrintCX(msgCannotSelect, 160, 110, 8);
-            PrintCX(msgAsOtherPlayer, 160, 118, 8);
-            PrintCX(msgHasStarted, 160, 126, 8);
+            PrintCX(msgCannotSelect, 160, 110);
+            PrintCX(msgAsOtherPlayer, 160, 118);
+            PrintCX(msgHasStarted, 160, 126);
             AddPrim(OT[CurrentScreen], &work.menuPolys.topFill[CurrentScreen]);
             errorCount--;
             AddPrim(OT[CurrentScreen], &work.menuPolys.topBorder[CurrentScreen]);
         }
         if (!screenCount) {
-            ShowMenu(gameData, &work.menus, (MenuSelection *)work.selection);
+            ShowMenu(gameData, &work.menus, &work.selection);
             if (currMenu == 9) DrawMusicScreen(&work.musicScreen);
         } else {
             SlideScreen(&work.musicScreen);
@@ -608,7 +605,7 @@ int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMem
         Update2DParticle();
         DrawDrBox(work.musicTexture, (DrBox *)&work.musicScreen);
         DisplayScreen(menuTexturePtrsC[menuTextures], (DrBox *)work.displayScreen);
-        if (!screenCount) MenuFunction(gameData, &work.menuPolys, savedKeyConfig, work.selection, work.cardState, (int)&work.musicScreen);
+        if (!screenCount) MenuFunction(gameData, &work.menuPolys, &savedKeyConfig, &work.selection, &work.cardState, &work.musicScreen);
         if (work.inputDelay > 0) {
             steps = 2;
             work.inputDelay = *(volatile int *)&work.inputDelay - 1;
@@ -646,9 +643,9 @@ int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMem
                 if (gameData->shipClass == 3) savedTrackSelection = menu[8].selection;
                 savedMainSelection = menu[0].selection;
             } else if (menu[currMenu].numOptions && prevMenu != 10 && (unsigned short)(prevMenu - 22) >= 2 && prevMenu != 12 && (unsigned short)(prevMenu - 17) >= 2) {
-                CopyGameData(gameData, work.selection, 1, savedKeyConfig, work.cardState);
+                CopyGameData(gameData, &work.selection, 1, (KeyConfig *)&savedKeyConfig, &work.cardState);
                 currMenu = menu[currMenu].options[menu[currMenu].selection].nextMenu;
-                CopyGameData(gameData, work.selection, 0, savedKeyConfig, work.cardState);
+                CopyGameData(gameData, &work.selection, 0, (KeyConfig *)&savedKeyConfig, &work.cardState);
                 errorCount = 0;
                 InitMenuDisplay(currMenu == 4 ? 110 : 150, 0);
                 if (CurrentScreen) {
@@ -661,9 +658,9 @@ int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMem
                 InitSlider();
                 goto entered;
             } else if (currMenu != 10 && prevMenu != 10 && currMenu != 23 && prevMenu != 23 && currMenu != 22 && prevMenu != 22 && currMenu != 12 && prevMenu != 12 && currMenu != 17 && prevMenu != 17 && currMenu != 18 && prevMenu != 18) {
-                CopyGameData(gameData, work.selection, 1, savedKeyConfig, work.cardState);
+                CopyGameData(gameData, &work.selection, 1, (KeyConfig *)&savedKeyConfig, &work.cardState);
                 currMenu = menu[currMenu].nextMenu;
-                CopyGameData(gameData, work.selection, 0, savedKeyConfig, work.cardState);
+                CopyGameData(gameData, &work.selection, 0, (KeyConfig *)&savedKeyConfig, &work.cardState);
                 InitSlider();
                 errorCount = 0;
                 InitMenuDisplay(currMenu == 4 ? 110 : 150, 0);
@@ -687,7 +684,7 @@ cancel:
             }
             if (menu[currMenu].prevMenu != 999 && currMenu != 10 && prevMenu != 10 && currMenu != 23 && prevMenu != 23 && currMenu != 22 && prevMenu != 22 && currMenu != 12 && prevMenu != 12) {
                 PlayNote(49, 255, 15, 15, 256);
-                CopyGameData(gameData, work.selection, 0, savedKeyConfig, work.cardState);
+                CopyGameData(gameData, &work.selection, 0, (KeyConfig *)&savedKeyConfig, &work.cardState);
                 currMenu = menu[currMenu].prevMenu;
                 errorCount = 0;
                 InitMenuDisplay(currMenu == 4 ? 110 : 150, 0);
@@ -698,7 +695,7 @@ noCancel:
         prevMenu = 0;
 serial:
         if (linked) {
-            doSerialMenu(gameData, (u_char *)work.selection);
+            doSerialMenu(gameData, &work.selection);
             if (menuSendKey == 1 || menuRecvKey == 1) {
                 killLink();
                 raceType = 0;
@@ -739,16 +736,16 @@ idleCheck:
     if (linked) {
         while (menuRecvKey != 2) {
             SfxDoSfx();
-            buildFixedPad(padBufs);
+            buildFixedPad(padBuf1);
             quadIndex = CurrentScreen * 300;
-            ClearOTagR((u_long *)OT[CurrentScreen], 8192);
-            ClearOTagR((u_long *)OT2[CurrentScreen], 1600);
+            ClearOTagR(OT[CurrentScreen], 8192);
+            ClearOTagR(OT2[CurrentScreen], 1600);
             DisplayScreen(menuTexturePtrsC[menuTextures], (DrBox *)work.displayScreen);
             CentreText(msgWaitingForOtherPlayer, 1, 120, 8, 0);
-            doSerialMenu(gameData, (u_char *)work.selection);
+            doSerialMenu(gameData, &work.selection);
             Swap();
         }
-        ownShip = ((MenuSelection *)work.selection)->ship;
+        ownShip = work.selection.ship;
         remoteShip = menuRecvMode;
         if (ownShip == remoteShip) {
             if (gameType == 0) remoteShip++;
@@ -757,7 +754,7 @@ idleCheck:
     } else {
         remoteShip = -1;
         gameType = 2;
-        ownShip = ((MenuSelection *)work.selection)->ship;
+        ownShip = work.selection.ship;
         if (raceType == 4) {
             gameData->savedClass = gameData->shipClass;
             gameData->savedActTrackNum = gameData->actTrackNum;
@@ -786,8 +783,8 @@ idleCheck:
         return 1;
     }
     for (i = 0; i < 5; i++) {
-        ((void (*)(void))UpdateNotes)();
-        VSync();
+        UpdateNotes(0);
+        VSync(0);
     }
     return 0;
 }
@@ -1234,7 +1231,7 @@ void DisplayScreen(Texture *texture, DrBox *box)
 }
 
 
-void DrawDrBox(int unused, DrBox *box)
+void DrawDrBox(Texture *unused, DrBox *box)
 {
     short row;
 
@@ -1244,12 +1241,7 @@ void DrawDrBox(int unused, DrBox *box)
 }
 
 
-/* Port: only CopyGameData (left unchanged) still uses these __asm__ names for cdFlag and defaultCardName. */
-int cdFlagWord __asm__("cdFlag");
-int defaultCardNameWord __asm__("defaultCardName");
-
-
-void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSelection, KeyConfig *keyConfig, char *cardState)
+void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSelection, KeyConfig *keyConfig, HiScoreData *cardState)
 {
     short i;
     int tmp942, tmpc1, tmpc2;
@@ -1387,8 +1379,8 @@ void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSele
         StartControlledSound();
         SetCdVolume(((gameData->musicVolume * 255) / 100) & 255);
         SetSoundVolume(((gameData->effectVolume * 255) / 100) & 255);
-        SetVolume(*(short *)&ambientVoice1, 0);
-        cdFlagWord = 1;
+        SetVolume(ambientVoice1, 0);
+        cdFlag[0] = 1;
         break;
     case 10:
     case 22:
@@ -1449,16 +1441,16 @@ void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSele
             selection->moveScreen = 0;
             selection->internalView = gameData->internalView;
             strcpy(selection->fileName, gameData->name);
-            strcpy(cardState, selection->fileName);
+            strcpy((char *)cardState->nameEntered, selection->fileName);
             selection->current = 0;
             menu[currMenu].selection = 0;
-            InitDefaultName(gameData, (HiScoreData *)cardState, 1);
+            InitDefaultName(gameData, cardState, 1);
         } else {
             gameData->screenOffsetState = selection->screenOffsetState;
             gameData->weaponsOn = selection->weapons;
             gameData->moveScreen = 0;
             gameData->internalView = selection->internalView;
-            strcpy(selection->fileName, cardState);
+            strcpy(selection->fileName, (char *)cardState->nameEntered);
             strcpy(gameData->name, selection->fileName);
             menu[currMenu].selection = 0;
             selection->current = 0;
@@ -1491,7 +1483,7 @@ void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSele
             selection->scoreIndex = 0;
             selection->record = 0;
             for (i = 0; i < 10; i++) selection->scoreFlags[i] = 0;
-            __builtin_memcpy(&selection->scoreName, &defaultCardNameWord, 6);
+            __builtin_memcpy(&selection->scoreName, defaultCardName, 6);
             selection->highScoreScratchA6 = 0;
             selection->highScoreScratchA4 = 0;
             selection->highScoreScratchA8 = 0;
@@ -1521,13 +1513,12 @@ typedef union CardGridCell {
     s32 w;
     u16 h;
     u8  padding[8];
+    SaveSelection *volatile save;
 } CardGridCell;
 
 #define cursorSlot   (*(volatile s32 *)&grid[0].w)
 #define activeCard   (*(volatile s32 *)&grid[1].w)
-#define selection    (*(volatile s32 *)&grid[2].w)
-#define cardTimes2   (*(volatile s32 *)&grid[10].w)
-#define cursorTimes2 (*(volatile s32 *)&grid[11].w)
+#define selection    grid[2].save
 #define highlight    grid[8].w
 #define rowCount     grid[3].h
 #define colCount     grid[4].h
@@ -1541,10 +1532,8 @@ s32 cardFlash;
 s32 prevCard;
 int DisplayCardBack(MenuPolys *polys, int cursorArg, int cardArg, SaveSelection *selectionArg)
 {
-    CardGridCell grid[12];
-    CardGridCell gridExtra;
+    CardGridCell grid[10];
     u8 fadeByte;
-    s32 *slots;
     s16 bottom;
     s16 fadeSpriteNext;
     s16 fadeSpriteNextB;
@@ -1562,21 +1551,6 @@ int DisplayCardBack(MenuPolys *polys, int cursorArg, int cardArg, SaveSelection 
     s16 iconX;
     s16 nextEntry;
     s16 prevNext;
-    s32 backdropRow;
-    s32 prevCardOffset;
-    s32 polyBaseA;
-    s32 polyBaseIconA;
-    s32 polyBaseB;
-    s32 polyBaseIconB;
-    s32 entryOffset;
-    s32 prevEntryOffset;
-    s32 polyOffsetA;
-    s32 polyOffsetB;
-    s32 cardOffset;
-    s32 slotOffsetA;
-    s32 slotOffsetB;
-    s32 backgroundRow;
-    s32 backgroundColumn;
     s32 nameDiff;
     s32 plainSpriteShifted;
     s32 resetShiftedA;
@@ -1588,31 +1562,24 @@ int DisplayCardBack(MenuPolys *polys, int cursorArg, int cardArg, SaveSelection 
     Texture *iconTexture;
     u16 count4, count3, count5;
     s32 page;
-    s32 slotTimes4;
-    s32 cardUnits;
-    s32 otEntry;
-    s32 clutOffset;
-    s32 screenOffset40;
-    s32 otOffset;
-    s32 primBase;
-    s32 polyOffsetIcon;
-    s32 cardUnits16;
+    u_long *otEntry;
     u16 clutX;
     u16 clutY;
     u8 typeB;
     u8 typeA;
-    MenuPolys *background;
-    MenuPolys *backdrop;
-    MenuPolys *fadePolyA;
-    MenuPolys *fadePolyB;
-    MenuPolys *plainPoly;
-    MenuPolys *resetPolyA;
-    MenuPolys *resetPolyB;
-    MenuPolys *lastPoly;
+    POLY_F4 *background;
+    POLY_FT4 *backdrop;
+    POLY_FT4 *fadePolyA;
+    POLY_FT4 *fadePolyB;
+    POLY_F4 *plainPoly;
+    POLY_FT4 *resetPolyA;
+    POLY_FT4 *resetPolyB;
+    POLY_FT4 *lastPoly;
+    POLY_FT4 *iconPoly;
     iconX = 0x2D;
     cursorSlot = cursorArg;
     activeCard = cardArg;
-    selection = (s32)selectionArg;
+    selection = selectionArg;
     slotIndex = 0;
     iconYPos = 0x55;
     fadeValue = cardFlash % 255;
@@ -1622,8 +1589,6 @@ int DisplayCardBack(MenuPolys *polys, int cursorArg, int cardArg, SaveSelection 
         highlight = cursorSlot + 0xF;
     }
     cardCount = 0;
-    cardTimes2 = activeCard * 2;
-    cursorTimes2 = cursorSlot * 2;
     do {
         rowCount = 0;
         do {
@@ -1631,75 +1596,65 @@ int DisplayCardBack(MenuPolys *polys, int cursorArg, int cardArg, SaveSelection 
             do {
                 slotRow = (*(volatile u16 *)&slotIndex);
                 right = iconX + 0x10;
-                backgroundColumn = CurrentScreen * 0x18;
-                backgroundRow = (s16) slotRow * 0x30;
-                background = (MenuPolys *)(backgroundColumn + (backgroundRow + (s32)polys));
-                background->background[0][0].x0 = iconX;
+                background = &polys->background[slotRow][CurrentScreen];
+                background->x0 = iconX;
                 iconY = (*(volatile u16 *)&iconYPos);
-                background->background[0][0].x1 = right;
-                background->background[0][0].x2 = iconX;
-                background->background[0][0].x3 = right;
+                background->x1 = right;
+                background->x2 = iconX;
+                background->x3 = right;
                 bottom = iconY + 0x10;
-                background->background[0][0].y0 = iconY;
-                background->background[0][0].y1 = iconY;
-                background->background[0][0].y2 = bottom;
-                background->background[0][0].y3 = bottom;
-                backdropRow = (s16) slotRow * 0x50;
-                backdrop = (MenuPolys *)((CurrentScreen * 0x28) + (backdropRow + (s32)polys));
-                *(s16 *)&backdrop->backdrop[0][0].x0 = iconX;
-                *(s16 *)&backdrop->backdrop[0][0].y0 = iconY;
-                *(s16 *)&backdrop->backdrop[0][0].x1 = right;
-                *(s16 *)&backdrop->backdrop[0][0].y1 = iconY;
-                *(s16 *)&backdrop->backdrop[0][0].x2 = iconX;
-                *(s16 *)&backdrop->backdrop[0][0].y2 = bottom;
-                *(s16 *)&backdrop->backdrop[0][0].x3 = right;
-                *(s16 *)&backdrop->backdrop[0][0].y3 = bottom;
-                if (((SaveSelection *)selection)->selected != 0) {
+                background->y0 = iconY;
+                background->y1 = iconY;
+                background->y2 = bottom;
+                background->y3 = bottom;
+                backdrop = &polys->backdrop[slotRow][CurrentScreen];
+                backdrop->x0 = iconX;
+                backdrop->y0 = iconY;
+                backdrop->x1 = right;
+                backdrop->y1 = iconY;
+                backdrop->x2 = iconX;
+                backdrop->y2 = bottom;
+                backdrop->x3 = right;
+                backdrop->y3 = bottom;
+                if (selection->selected != 0) {
                     plainSprite = 0;
                     if (slotRow == highlight) {
-                        ((MenuPolys *)((s32)polys + (backgroundColumn + backgroundRow)))->background[0][0].r0 = 0x80;
-                        ((MenuPolys *)((s32)polys + ((CurrentScreen * 0x18) + backgroundRow)))->background[0][0].g0 = 0;
+                        polys->background[slotRow][CurrentScreen].r0 = 0x80;
+                        polys->background[slotRow][CurrentScreen].g0 = 0;
                         entryIndex = 0;
-                        slots = (s32 *)cardSlots;
-                        cardUnits = (cardTimes2 + activeCard)*15;
-                        ((MenuPolys *)((s32)polys + ((CurrentScreen * 0x18) + backgroundRow)))->background[0][0].b0 = 0;
-                        cardUnits16 = cardUnits * 16;
+                        polys->background[slotRow][CurrentScreen].b0 = 0;
                         do {
-                            cardOffset = (cardUnits16 - cardUnits) * 2;
-                            entryOffset = entryIndex * 0x5A;
-                            *(volatile s32 *)&gridExtra = (s32)slots;
-                            nameDiff = strncmp(cardOffset + (((cursorTimes2 + cursorSlot) * 0x1E) + slots) + 0xB, cardOffset + (entryOffset + slots) + 0xB, 0x14); /* Port: the original passed `slots` as an extra, unread fourth argument */
+                            nameDiff = strncmp(cardSlots[activeCard].entry[cursorSlot].filename, cardSlots[activeCard].entry[entryIndex].filename, 0x14);
                             nextEntry = entryIndex + 1;
-                            if ((nameDiff == 0) && ((((CardEntry *)((char *)cardSlots + entryOffset + cardOffset))->multi == 1) || (nextEntry = entryIndex + 1, (cursorSlot == entryIndex)))) {
+                            if ((nameDiff == 0) && ((cardSlots[activeCard].entry[entryIndex].multi == 1) || (nextEntry = entryIndex + 1, (cursorSlot == entryIndex)))) {
                                 fadeSprite = 0;
                                 if (activeCard == 0) {
                                     do {
-                                        fadePolyA = (MenuPolys *)((s32)polys + ((fadeSprite * 0x28) + (entryIndex * 0x50)));
+                                        fadePolyA = &polys->backdrop[entryIndex][fadeSprite];
                                         fadeSpriteNext = fadeSprite + 1;
                                         fadeByte = grid[9].padding[0];
-                                        ((MenuPolys *)fadePolyA)->backdrop[0][0].r0 = fadeByte;
+                                        fadePolyA->r0 = fadeByte;
                                         fadeSprite = fadeSpriteNext;
-                                        ((MenuPolys *)fadePolyA)->backdrop[0][0].g0 = fadeByte;
-                                        ((MenuPolys *)fadePolyA)->backdrop[0][0].b0 = fadeByte;
+                                        fadePolyA->g0 = fadeByte;
+                                        fadePolyA->b0 = fadeByte;
                                     }
                                     while (fadeSpriteNext < 2);
                                     nextEntry = entryIndex + 1;
                                 } else {
                                     do {
-                                        fadePolyB = (MenuPolys *)((s32)polys + ((fadeSprite * 0x28) + ((entryIndex + 0xF) * 0x50)));
+                                        fadePolyB = &polys->backdrop[entryIndex + 0xF][fadeSprite];
                                         fadeSpriteNextB = fadeSprite + 1;
                                         fadeByte = grid[9].padding[0];
-                                        ((MenuPolys *)fadePolyB)->backdrop[0][0].r0 = fadeByte;
+                                        fadePolyB->r0 = fadeByte;
                                         fadeSprite = fadeSpriteNextB;
-                                        ((MenuPolys *)fadePolyB)->backdrop[0][0].g0 = fadeByte;
-                                        ((MenuPolys *)fadePolyB)->backdrop[0][0].b0 = fadeByte;
+                                        fadePolyB->g0 = fadeByte;
+                                        fadePolyB->b0 = fadeByte;
                                     }
                                     while (fadeSpriteNextB < 2);
                                     nextEntry = entryIndex + 1;
                                 }
                             }
                             entryIndex = nextEntry;
-                            cardUnits16 = cardUnits * 16;
                         }
                         while (nextEntry < 0xF);
                     } else {
@@ -1707,18 +1662,16 @@ int DisplayCardBack(MenuPolys *polys, int cursorArg, int cardArg, SaveSelection 
                             plainSpriteShifted = plainSprite << 0x10;
                             plainSpriteNext = plainSprite + 1;
                             plainSprite = plainSpriteNext;
-                            plainPoly = (MenuPolys *)((s32)polys + (((plainSpriteShifted >> 0x10) * 0x18) + backgroundRow));
-                            ((MenuPolys *)plainPoly)->background[0][0].r0 = 0x27;
-                            ((MenuPolys *)plainPoly)->background[0][0].g0 = 0xC8;
-                            ((MenuPolys *)plainPoly)->background[0][0].b0 = 0xDE;
+                            plainPoly = &polys->background[slotRow][plainSpriteShifted >> 0x10];
+                            plainPoly->r0 = 0x27;
+                            plainPoly->g0 = 0xC8;
+                            plainPoly->b0 = 0xDE;
                         }
                         while (plainSpriteNext < 2);
                         prevEntry = 0;
                         do {
-                            prevCardOffset = prevCard * 0x546;
-                            prevEntryOffset = prevEntry * 0x5A;
-                            if (strncmp(prevCardOffset + (((cursorTimes2 + cursorSlot) * 0x1E) + (char *)cardSlots) + 0xB, prevCardOffset + (prevEntryOffset + (char *)cardSlots) + 0xB, 0x14) == 0) {
-                                if (((CardEntry *)((char *)cardSlots + prevEntryOffset + (prevCard * 0x546)))->multi == 0) {
+                            if (strncmp(cardSlots[prevCard].entry[cursorSlot].filename, cardSlots[prevCard].entry[prevEntry].filename, 0x14) == 0) {
+                                if (cardSlots[prevCard].entry[prevEntry].multi == 0) {
                                     prevNext = prevEntry + 1;
                                     if (cursorSlot != prevEntry) {
                                         goto unhighlight;
@@ -1734,10 +1687,10 @@ unhighlight:
                                         resetShiftedA = resetSprite << 0x10;
                                         resetNextA = resetSprite + 1;
                                         resetSprite = resetNextA;
-                                        resetPolyA = (MenuPolys *)((s32)polys + (((resetShiftedA >> 0x10) * 0x28) + (prevEntry * 0x50)));
-                                        ((MenuPolys *)resetPolyA)->backdrop[0][0].r0 = 0x80;
-                                        ((MenuPolys *)resetPolyA)->backdrop[0][0].g0 = 0x80;
-                                        ((MenuPolys *)resetPolyA)->backdrop[0][0].b0 = 0x80;
+                                        resetPolyA = &polys->backdrop[prevEntry][resetShiftedA >> 0x10];
+                                        resetPolyA->r0 = 0x80;
+                                        resetPolyA->g0 = 0x80;
+                                        resetPolyA->b0 = 0x80;
                                     }
                                     while (resetNextA < 2);
                                     prevNext = prevEntry + 1;
@@ -1746,10 +1699,10 @@ unhighlight:
                                         resetShiftedB = resetSprite << 0x10;
                                         resetNextB = resetSprite + 1;
                                         resetSprite = resetNextB;
-                                        resetPolyB = (MenuPolys *)((s32)polys + (((resetShiftedB >> 0x10) * 0x28) + ((prevEntry + 0xF) * 0x50)));
-                                        ((MenuPolys *)resetPolyB)->backdrop[0][0].r0 = 0x80;
-                                        ((MenuPolys *)resetPolyB)->backdrop[0][0].g0 = 0x80;
-                                        ((MenuPolys *)resetPolyB)->backdrop[0][0].b0 = 0x80;
+                                        resetPolyB = &polys->backdrop[prevEntry + 0xF][resetShiftedB >> 0x10];
+                                        resetPolyB->r0 = 0x80;
+                                        resetPolyB->g0 = 0x80;
+                                        resetPolyB->b0 = 0x80;
                                     }
                                     while (resetNextB < 2);
 unhighlightDone:
@@ -1761,74 +1714,64 @@ unhighlightDone:
                         while (prevNext < 0xF);
                         lastSprite = 0;
                         if (prevCard != activeCard) {
-                            s32 rowOffset = (s16)(*(volatile u16 *)&slotIndex) * 0x50;
+                            s16 lastSlot = (*(volatile u16 *)&slotIndex);
                             do {
                                 lastShifted = lastSprite << 0x10;
                                 lastNext = lastSprite + 1;
                                 lastSprite = lastNext;
-                                lastPoly = (MenuPolys *)((s32)polys + (((lastShifted >> 0x10) * 0x28) + rowOffset));
-                                ((MenuPolys *)lastPoly)->backdrop[0][0].r0 = 0x80;
-                                ((MenuPolys *)lastPoly)->backdrop[0][0].g0 = 0x80;
-                                ((MenuPolys *)lastPoly)->backdrop[0][0].b0 = 0x80;
+                                lastPoly = &polys->backdrop[lastSlot][lastShifted >> 0x10];
+                                lastPoly->r0 = 0x80;
+                                lastPoly->g0 = 0x80;
+                                lastPoly->b0 = 0x80;
                             }
                             while (lastNext < 2);
                         }
                     }
                 } else {
-                    ((MenuPolys *)((s32)polys + (backgroundColumn + backgroundRow)))->background[0][0].r0 = 0x27;
-                    ((MenuPolys *)((s32)polys + ((CurrentScreen * 0x18) + backgroundRow)))->background[0][0].g0 = 0xC8;
-                    ((MenuPolys *)((s32)polys + ((CurrentScreen * 0x18) + backgroundRow)))->background[0][0].b0 = 0xDE;
-                    ((MenuPolys *)((s32)polys + ((CurrentScreen * 0x28) + backdropRow)))->backdrop[0][0].r0 = 0x80;
-                    ((MenuPolys *)((s32)polys + ((CurrentScreen * 0x28) + backdropRow)))->backdrop[0][0].g0 = 0x80;
-                    ((MenuPolys *)((s32)polys + ((CurrentScreen * 0x28) + backdropRow)))->backdrop[0][0].b0 = 0x80;
+                    polys->background[slotRow][CurrentScreen].r0 = 0x27;
+                    polys->background[slotRow][CurrentScreen].g0 = 0xC8;
+                    polys->background[slotRow][CurrentScreen].b0 = 0xDE;
+                    polys->backdrop[slotRow][CurrentScreen].r0 = 0x80;
+                    polys->backdrop[slotRow][CurrentScreen].g0 = 0x80;
+                    polys->backdrop[slotRow][CurrentScreen].b0 = 0x80;
                 }
                 slotNow = (*(volatile u16 *)&slotIndex);
                 if ((((s32)slotNow / 15) << 0x10) == 0) {
                     if (card1Exists != 0) {
-                        if (((SaveSelection *)selection)->timer == 0) {
-                            slotOffsetA = slotNow * 0x5A;
-                            typeA = ((CardEntry *)((char *)cardSlots + slotOffsetA))->type;
-                            slotTimes4 = slotNow * 4;
+                        if (selection->timer == 0) {
+                            typeA = cardSlots[0].entry[slotNow].type;
                             if (typeA & 4) {
-                                polyOffsetA = (slotTimes4 + slotNow) * 16;
-                                polyBaseA = polyOffsetA + (s32)polys;
-                                ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseA))->backdrop[0][0].u0 = (s8) (u16)cardIconInfo->u0;
-                                ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseA))->backdrop[0][0].v0 = (s8) (u16)cardIconInfo->v0;
-                                ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseA))->backdrop[0][0].u1 = (s8) (u16)cardIconInfo->u1;
-                                ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseA))->backdrop[0][0].v1 = (s8) (u16)cardIconInfo->v1;
-                                ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseA))->backdrop[0][0].u2 = (s8) (u16)cardIconInfo->u2;
-                                ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseA))->backdrop[0][0].v2 = (s8) (u16)cardIconInfo->v2;
-                                ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseA))->backdrop[0][0].u3 = (s8) (u16)cardIconInfo->u3;
-                                ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseA))->backdrop[0][0].v3 = (s8) (u16)cardIconInfo->v3;
+                                polys->backdrop[slotNow][CurrentScreen].u0 = cardIconInfo->u0;
+                                polys->backdrop[slotNow][CurrentScreen].v0 = cardIconInfo->v0;
+                                polys->backdrop[slotNow][CurrentScreen].u1 = cardIconInfo->u1;
+                                polys->backdrop[slotNow][CurrentScreen].v1 = cardIconInfo->v1;
+                                polys->backdrop[slotNow][CurrentScreen].u2 = cardIconInfo->u2;
+                                polys->backdrop[slotNow][CurrentScreen].v2 = cardIconInfo->v2;
+                                polys->backdrop[slotNow][CurrentScreen].u3 = cardIconInfo->u3;
+                                polys->backdrop[slotNow][CurrentScreen].v3 = cardIconInfo->v3;
                                 page = GetTPage(0, 0, cardIconInfo->textureX, cardIconInfo->textureY);
                                 screenNow = CurrentScreen;
                                 iconTexture = cardIconInfo;
-                                screenOffset40 = (s32)((u32)(screenNow * 0x28)+1U);
-                                *(s16 *)(screenOffset40 + polyBaseA + 0xC05) = page;
-                                *(u16 *)((s32)polys + (screenOffset40 + polyOffsetA) + 0xBFD) = (u16) (u16)iconTexture->cba;
-                                otEntry = (s32)OT[screenNow];
-                                primBase = polyBaseA + 0xBF0;
-                                screenOffset40 = (s32)((u32)screenOffset40-1U);
+                                polys->backdrop[slotNow][screenNow].tpage = page;
+                                polys->backdrop[slotNow][screenNow].clut = iconTexture->cba;
+                                otEntry = OT[screenNow];
+                                iconPoly = &polys->backdrop[slotNow][screenNow];
                                 goto drawIcon;
                             }
                             if (typeA & 2) {
-                                polyOffsetIcon = (slotTimes4 + slotNow) * 16;
-                                polyBaseIconA = polyOffsetIcon + (s32)polys;
-                                ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseIconA))->backdrop[0][0].u0 = (u8) ((CardEntry *)((char *)cardSlots + slotOffsetA))->icon[0];
-                                ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseIconA))->backdrop[0][0].v0 = (u8) ((CardEntry *)((char *)cardSlots + slotOffsetA))->icon[1];
-                                ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseIconA))->backdrop[0][0].u1 = (u8) ((CardEntry *)((char *)cardSlots + slotOffsetA))->icon[2];
-                                ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseIconA))->backdrop[0][0].v1 = (u8) ((CardEntry *)((char *)cardSlots + slotOffsetA))->icon[3];
-                                ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseIconA))->backdrop[0][0].u2 = (u8) ((CardEntry *)((char *)cardSlots + slotOffsetA))->icon[4];
-                                ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseIconA))->backdrop[0][0].v2 = (u8) ((CardEntry *)((char *)cardSlots + slotOffsetA))->icon[5];
-                                ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseIconA))->backdrop[0][0].u3 = (u8) ((CardEntry *)((char *)cardSlots + slotOffsetA))->icon[6];
-                                ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseIconA))->backdrop[0][0].v3 = (u8) ((CardEntry *)((char *)cardSlots + slotOffsetA))->icon[7];
+                                polys->backdrop[slotNow][CurrentScreen].u0 = cardSlots[0].entry[slotNow].icon[0];
+                                polys->backdrop[slotNow][CurrentScreen].v0 = cardSlots[0].entry[slotNow].icon[1];
+                                polys->backdrop[slotNow][CurrentScreen].u1 = cardSlots[0].entry[slotNow].icon[2];
+                                polys->backdrop[slotNow][CurrentScreen].v1 = cardSlots[0].entry[slotNow].icon[3];
+                                polys->backdrop[slotNow][CurrentScreen].u2 = cardSlots[0].entry[slotNow].icon[4];
+                                polys->backdrop[slotNow][CurrentScreen].v2 = cardSlots[0].entry[slotNow].icon[5];
+                                polys->backdrop[slotNow][CurrentScreen].u3 = cardSlots[0].entry[slotNow].icon[6];
+                                polys->backdrop[slotNow][CurrentScreen].v3 = cardSlots[0].entry[slotNow].icon[7];
                                 page = GetTPage(0, 0, 0x280, 0);
-                                otOffset = CurrentScreen * 4;
-                                screenOffset40 = CurrentScreen * 0x28;
-                                ((MenuPolys *)(screenOffset40 + polyBaseIconA))->backdrop[0][0].tpage = page;
-                                clutY = ((CardEntry *)((char *)cardSlots + slotOffsetA))->y;
-                                clutX = ((CardEntry *)((char *)cardSlots + slotOffsetA))->x;
-                                clutOffset = screenOffset40 + polyOffsetIcon;
+                                polys->backdrop[slotNow][CurrentScreen].tpage = page;
+                                clutY = cardSlots[0].entry[slotNow].y;
+                                clutX = cardSlots[0].entry[slotNow].x;
+                                iconPoly = &polys->backdrop[slotNow][CurrentScreen];
                                 goto setClut;
                             }
                             goto drawError;
@@ -1836,55 +1779,45 @@ unhighlightDone:
                         goto rowRefresh;
                     }
                     goto rowDone;
-                } else if ((cardPresent1 != 0) && (((SaveSelection *)selection)->timer == 0)) {
-                    slotOffsetB = ((s16) slotNow - 0xF) * 0x5A;
-                    typeB = ((CardEntry *)((char *)cardSlots + 1350 + slotOffsetB))->type;
-                    slotTimes4 = slotNow * 4;
+                } else if ((cardPresent1 != 0) && (selection->timer == 0)) {
+                    typeB = cardSlots[1].entry[slotNow - 0xF].type;
                     if (typeB & 4) {
-                        polyOffsetB = (slotTimes4 + slotNow) * 16;
-                        polyBaseB = polyOffsetB + (s32)polys;
-                        ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseB))->backdrop[0][0].u0 = (s8) (u16)cardIconInfo->u0;
-                        ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseB))->backdrop[0][0].v0 = (s8) (u16)cardIconInfo->v0;
-                        ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseB))->backdrop[0][0].u1 = (s8) (u16)cardIconInfo->u1;
-                        ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseB))->backdrop[0][0].v1 = (s8) (u16)cardIconInfo->v1;
-                        ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseB))->backdrop[0][0].u2 = (s8) (u16)cardIconInfo->u2;
-                        ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseB))->backdrop[0][0].v2 = (s8) (u16)cardIconInfo->v2;
-                        ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseB))->backdrop[0][0].u3 = (s8) (u16)cardIconInfo->u3;
-                        ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseB))->backdrop[0][0].v3 = (s8) (u16)cardIconInfo->v3;
+                        polys->backdrop[slotNow][CurrentScreen].u0 = cardIconInfo->u0;
+                        polys->backdrop[slotNow][CurrentScreen].v0 = cardIconInfo->v0;
+                        polys->backdrop[slotNow][CurrentScreen].u1 = cardIconInfo->u1;
+                        polys->backdrop[slotNow][CurrentScreen].v1 = cardIconInfo->v1;
+                        polys->backdrop[slotNow][CurrentScreen].u2 = cardIconInfo->u2;
+                        polys->backdrop[slotNow][CurrentScreen].v2 = cardIconInfo->v2;
+                        polys->backdrop[slotNow][CurrentScreen].u3 = cardIconInfo->u3;
+                        polys->backdrop[slotNow][CurrentScreen].v3 = cardIconInfo->v3;
                         page = GetTPage(0, 0, cardIconInfo->textureX, cardIconInfo->textureY);
                         screenNow = CurrentScreen;
                         iconTexture = cardIconInfo;
-                        screenOffset40 = screenNow * 0x28;
-                        ((MenuPolys *)(screenOffset40 + polyBaseB))->backdrop[0][0].tpage = page;
-                        ((MenuPolys *)((s32)polys + (screenOffset40 + polyOffsetB)))->backdrop[0][0].clut = (u16) (u16)iconTexture->cba;
-                        otEntry = (s32)OT[screenNow];
-                        primBase = polyBaseB + 0xBF0;
+                        polys->backdrop[slotNow][screenNow].tpage = page;
+                        polys->backdrop[slotNow][screenNow].clut = iconTexture->cba;
+                        otEntry = OT[screenNow];
+                        iconPoly = &polys->backdrop[slotNow][screenNow];
                         goto drawIcon;
                     }
                     if (typeB & 2) {
-                        polyOffsetIcon = (slotTimes4 + slotNow) * 16;
-                        polyBaseIconB = polyOffsetIcon + (s32)polys;
-                        ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseIconB))->backdrop[0][0].u0 = (u8) ((CardEntry *)((char *)cardSlots + 1350 + slotOffsetB))->icon[0];
-                        ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseIconB))->backdrop[0][0].v0 = (u8) ((CardEntry *)((char *)cardSlots + 1350 + slotOffsetB))->icon[1];
-                        ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseIconB))->backdrop[0][0].u1 = (u8) ((CardEntry *)((char *)cardSlots + 1350 + slotOffsetB))->icon[2];
-                        ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseIconB))->backdrop[0][0].v1 = (u8) ((CardEntry *)((char *)cardSlots + 1350 + slotOffsetB))->icon[3];
-                        ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseIconB))->backdrop[0][0].u2 = (u8) ((CardEntry *)((char *)cardSlots + 1350 + slotOffsetB))->icon[4];
-                        ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseIconB))->backdrop[0][0].v2 = (u8) ((CardEntry *)((char *)cardSlots + 1350 + slotOffsetB))->icon[5];
-                        ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseIconB))->backdrop[0][0].u3 = (u8) ((CardEntry *)((char *)cardSlots + 1350 + slotOffsetB))->icon[6];
-                        ((MenuPolys *)((CurrentScreen * 0x28) + polyBaseIconB))->backdrop[0][0].v3 = (u8) ((CardEntry *)((char *)cardSlots + 1350 + slotOffsetB))->icon[7];
+                        polys->backdrop[slotNow][CurrentScreen].u0 = cardSlots[1].entry[slotNow - 0xF].icon[0];
+                        polys->backdrop[slotNow][CurrentScreen].v0 = cardSlots[1].entry[slotNow - 0xF].icon[1];
+                        polys->backdrop[slotNow][CurrentScreen].u1 = cardSlots[1].entry[slotNow - 0xF].icon[2];
+                        polys->backdrop[slotNow][CurrentScreen].v1 = cardSlots[1].entry[slotNow - 0xF].icon[3];
+                        polys->backdrop[slotNow][CurrentScreen].u2 = cardSlots[1].entry[slotNow - 0xF].icon[4];
+                        polys->backdrop[slotNow][CurrentScreen].v2 = cardSlots[1].entry[slotNow - 0xF].icon[5];
+                        polys->backdrop[slotNow][CurrentScreen].u3 = cardSlots[1].entry[slotNow - 0xF].icon[6];
+                        polys->backdrop[slotNow][CurrentScreen].v3 = cardSlots[1].entry[slotNow - 0xF].icon[7];
                         page = GetTPage(0, 0, 0x280, 0);
-                        otOffset = CurrentScreen * 4;
-                        screenOffset40 = CurrentScreen * 0x28;
-                        ((MenuPolys *)(screenOffset40 + polyBaseIconB))->backdrop[0][0].tpage = page;
-                        clutY = ((CardEntry *)((char *)cardSlots + 1350 + slotOffsetB))->y;
-                        clutX = ((CardEntry *)((char *)cardSlots + 1350 + slotOffsetB))->x;
-                        clutOffset = screenOffset40 + polyOffsetIcon;
+                        polys->backdrop[slotNow][CurrentScreen].tpage = page;
+                        clutY = cardSlots[1].entry[slotNow - 0xF].y;
+                        clutX = cardSlots[1].entry[slotNow - 0xF].x;
+                        iconPoly = &polys->backdrop[slotNow][CurrentScreen];
 setClut:
-                        ((MenuPolys *)((s32)polys + clutOffset))->backdrop[0][0].clut = (s16) ((clutY << 6) | ((s32) ((u32)clutX << 0x10) >> 0x14));
-                        otEntry = *(s32 *)((char *)OT+otOffset);
-                        primBase = (s32)polys + polyOffsetIcon + 0xBF0;
+                        iconPoly->clut = ((clutY << 6) | ((s32) ((u32)clutX << 0x10) >> 0x14));
+                        otEntry = OT[CurrentScreen];
 drawIcon:
-                        AddPrim(otEntry, primBase + screenOffset40);
+                        AddPrim(otEntry, iconPoly);
                     } else {
 drawError:
                         Print(msgE, iconX, (s16) (*(volatile u16 *)&iconYPos), 8);
@@ -1895,7 +1828,7 @@ rowRefresh:
 rowDone:
                 slotShifted = slotNow << 0x10;
                 slotIndex = slotNow+1;
-                AddPrim(OT[CurrentScreen], (s32)polys + (((slotShifted >> 0x10) * 0x30) + 0x650) + (CurrentScreen * 0x18), CurrentScreen);
+                AddPrim(OT[CurrentScreen], &polys->background[slotShifted >> 0x10][CurrentScreen]); /* Port: the original passed CurrentScreen as an extra, unread third argument */
                 iconX += 19;
                 count4 = (*(volatile u16 *)&colCount) + 1;
                 *(volatile u16 *)&colCount = count4;
@@ -1916,13 +1849,12 @@ rowDone:
     while ((s16)count5 < 2);
     prevCard = activeCard;
     cardFlash = (s32)((u32)cardFlash+0x14U);
+    return 0; /* Port: the console returned whatever was left in $v0; the only caller (LoadSave) ignores the result */
 }
 
 #undef cursorSlot
 #undef activeCard
 #undef selection
-#undef cardTimes2
-#undef cursorTimes2
 #undef highlight
 #undef rowCount
 #undef colCount
@@ -6224,7 +6156,7 @@ void DrawTeamShips(int x, int y, int z, int dir, int scale, Object *obj)
 {
     SetSkeletonPosition(obj->skeleton, x, y, z);
     SetSkeletonDirection(obj->skeleton, (short)scale, (short)dir, 0);
-    if (obj == teamShip) {
+    if (obj == teamShip[0]) {
         if (preCalcObject != obj) {
             PreCalcNormals(obj, VertexNormal);
             preCalcObject = obj;

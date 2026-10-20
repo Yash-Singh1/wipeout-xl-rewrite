@@ -151,17 +151,12 @@ int collideLineToPlane(int shipNo1, int shipNo2, Object **shipShapes, ShipData *
     ShipData *playerShip;
     char skeletonWorkspace[40];
 
-    playerShip = (ShipData *)(shipNo1 << 4);
-    playerShip = (ShipData *)((int)playerShip - shipNo1);
-    playerShip = (ShipData *)((int)playerShip << 4);
-    playerShip = (ShipData *)((int)playerShip + (int)shipIndex);
+    /* Port: the console computed shipIndex + shipNo * 240 with shifts and a subtract. */
+    playerShip = &shipIndex[shipNo1];
     shipShape = shipShapes[playerShip->highResTableIndex];
     SetSkeletonPosition(shipShape->skeleton, playerShip->ppivot.vx, playerShip->ppivot.vy, playerShip->ppivot.vz);
     SetSkeletonDirectionHPR(shipShape->skeleton, playerShip->hdg, playerShip->pitch, playerShip->roll);
-    playerShip = (ShipData *)(shipNo2 << 4);
-    playerShip = (ShipData *)((int)playerShip - shipNo2);
-    playerShip = (ShipData *)((int)playerShip << 4);
-    playerShip = (ShipData *)((int)playerShip + (int)shipIndex);
+    playerShip = &shipIndex[shipNo2];
     shipShape = shipShapes[playerShip->highResTableIndex];
     SetSkeletonPosition(shipShape->skeleton, playerShip->ppivot.vx, playerShip->ppivot.vy, playerShip->ppivot.vz);
     SetSkeletonDirectionHPR(shipShape->skeleton, playerShip->hdg, playerShip->pitch, playerShip->roll);
