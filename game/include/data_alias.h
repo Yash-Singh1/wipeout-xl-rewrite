@@ -74,11 +74,11 @@
 /* shipOrder: shipOrder[i][0] is shipRank + 2 + 4 * i = shipRank[i].shipNo (SortAllShips, getShipBehindLAP) */
 #define shipOrder ((short (*)[2])&shipRank[0].shipNo)
 /* fadeTileRed: UpdateFadeScreen stores bytes at fadeTile + 4, 5, 6: the colour of the first TILE */
-#define fadeTileRed fadeTile[0].r0
+#define fadeTileRed (&fadeTile[0].r0)
 /* fadeTileGreen: see fadeTileRed */
-#define fadeTileGreen fadeTile[0].g0
+#define fadeTileGreen (&fadeTile[0].g0)
 /* fadeTileBlue: see fadeTileRed */
-#define fadeTileBlue fadeTile[0].b0
+#define fadeTileBlue (&fadeTile[0].b0)
 /* progLoadAddr: LoadProg loads progHeader + 24 and + 28 (t_addr, t_size of the 136-byte PS-X EXE header it just read) */
 #define progLoadAddr (*(u_long *)(progHeader[0].bytes + 24))
 /* progSize: see progLoadAddr */
@@ -119,6 +119,30 @@
 #define remotePadAux0 remoteControl[0].thrust
 /* remotePadAux1: see remotePadHead */
 #define remotePadAux1 remoteControl[0].steering
+/* raceResetWord0: main() stores savedLapTimes + 0, 4, 8, 12, 16 in a row; hud.c indexes savedLapTimes[lap] (5 words up to recordBuffer) */
+#define raceResetWord0 savedLapTimes[1]
+/* raceResetWord1: see raceResetWord0 */
+#define raceResetWord1 savedLapTimes[2]
+/* raceResetWord2: see raceResetWord0 */
+#define raceResetWord2 savedLapTimes[3]
+/* raceResetWord3: see raceResetWord0 */
+#define raceResetWord3 savedLapTimes[4]
+/* menuTexturePtrsD: AudioConfig loads textureTable + 8; the pointer tables are 4 bytes apart and the last one runs to the 800th slot */
+#define menuTexturePtrsD (&textureTable[2])
+/* deleteTextures: see menuTexturePtrsD */
+#define deleteTextures (&textureTable[3])
+/* endTextures: see menuTexturePtrsD */
+#define endTextures (&textureTable[4])
+/* menuTexturePtrsC: see menuTexturePtrsD */
+#define menuTexturePtrsC ((void **)&textureTable[5])
+/* menuTexturePtrs: see menuTexturePtrsD */
+#define menuTexturePtrs ((void **)&textureTable[6])
+/* menuTexturePtrsB: see menuTexturePtrsD */
+#define menuTexturePtrsB (&textureTable[7])
+/* waterfallSaved: effects.c passes waterfallSaved - 4 (= waterfallBuf) to LoadImage; the three names are contiguous (+8, +30) */
+#define waterfallSaved ((u_short *)(waterfallBuf + 8))
+/* waterfallRow: see waterfallSaved */
+#define waterfallRow ((u_short *)(waterfallBuf + 30))
 /* sharkBodyModel: UpdateSharkModel loads shipShapeTable + 8 and CopySharkVerts + 16 without index: slots 2 and 4 */
 #define sharkBodyModel shipShapeTable[2]
 /* sharkLegModel: see sharkBodyModel */

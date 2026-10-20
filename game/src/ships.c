@@ -43,8 +43,6 @@ extern RaceLine    raceLines[];
 extern Texture *textureTable[];
 extern GhostClut   ghostCluts[];
 extern Object     *shipShapeTable[];
-extern Object     *sharkBodyModel;
-extern Object     *sharkLegModel;
 extern SharkVert   sharkBaseVerts[];
 extern SharkVert   sharkFootVerts[];
 extern int         sharkFootIndex[];

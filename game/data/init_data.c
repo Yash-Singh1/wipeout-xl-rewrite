@@ -21,7 +21,7 @@ u_char_eq1 rapierShipName[8] = { 114, 97, 112, 105, 101, 0, 0, 0 };
 u_char_eq1 phantomShipName[8] = { 112, 104, 97, 110, 116, 0, 0, 0 };
 u_char_eq1 overtakeMessage[8] = { 68, 65, 78, 71, 69, 82, 0, 0 };
 u_char msgRemoved[8] = { 82, 69, 77, 79, 86, 69, 68, 0 };
-char fmtTrackNumPadded[] = "%02d";
+char fmtTrackNumPadded[8] = "%02d";
 char fmtTrackNum[] = "%2d";
 int shipClutCount = 0;
 short seqTextureCount;

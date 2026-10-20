@@ -2,7 +2,8 @@
 
 /* Debug pad state for the radius controls: the current pad word, and the raw input. */
 u_short debugPadState;
-extern u_short debugPadInput;
+#include "pad.h"
+extern PadPacket padBuf1; /* Port: debugPadInput is a part of it, see data_alias.h */
 
 
 extern HeapBlock *heap;

@@ -14,7 +14,8 @@ extern s8           raceCompleteFlag;
 extern s32          myBestLap;
 extern s32          myBestRace;
 extern HiScore      hiScoreTable[][4];
-extern GlyphWidth   glyphWidth[];
+#include "hud.h"
+extern FontGlyph fontGlyphs16[]; /* Port: glyphWidth is a part of it, see data_alias.h */
 extern u8           msgSelect[];
 
 static const HiScoreNames defaultHiScoreNames = {{

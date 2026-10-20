@@ -13,8 +13,6 @@ extern char cdTrackLocs[];
 extern short CurrentScreen;
 #include "droid.h"
 extern Header       progHeader[];
-extern u_long       progLoadAddr;
-extern int         progSize;
 Header             *rambase;
 
 int CdRead(u_long sectors, void *buf, int mode);

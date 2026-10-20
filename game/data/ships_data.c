@@ -1,21 +1,15 @@
 /* Global data of ships.c, generated from the executable by tools/gendata.py. */
 #include "functions.h"
 
-/* Types that ships.c declares privately. */
-typedef struct {
-    u_short state[16];
-} ShipStartStates;
-
 extern u_char msgReturningToMenus[1136];
 extern u8 msgNameIsUsedAsDefaultHighScore[104];
-extern char msgThrust[7];
+extern char msgThrust[8];
 extern u8 msgWeapons[16];
 
-char msgInsufficientMemory[] = "insufficient continuous memory!\n";
-char msgAllocRequest[] = "requested:%d  -  free:%d\n";
+char msgInsufficientMemory[36] = "insufficient continuous memory!\n";
+char msgAllocRequest[28] = "requested:%d  -  free:%d\n";
 char msgDFreeNotFound[] = "error: DFree - memory block not found!\n";
 char msgSkeletonAllocFailed[] = "Skeleton.c:SkeletonRoot(): Failed to allocate skeleton\n";
-const ShipStartStates startStateTable = { { 16, 32, 64, 16, 32, 64, 16, 32, 64, 16, 32, 64, 16, 32, 64, 16 } };
 int clipNearTable1[8] = { 2048, 2048, 2048, 2048, 2048, 2048, 2048, 3072 };
 int clipFarTable1[8] = { 38200, 38200, 38200, 38200, 38200, 38200, 38200, 37000 };
 int clipNearTable2[8] = { 3072, 2048, 3072, 4096, 3072, 3072, 4096, 4096 };
@@ -484,8 +478,8 @@ int droidViewVel = 0;
 int sharkWiggle = 0;
 short shipTex = 0;
 u_char sharkToggle = 0;
-char shipCmpExt[] = ".cmp";
-char shipPrmExt[] = ".prm";
+char shipCmpExt[8] = ".cmp";
+char shipPrmExt[6] = ".prm";
 short bigGrid = 0;
 int startCountdown = 0;
 BrakeModes brakeModes[1] = { { { 0, 6, 12, 18 } } };
@@ -499,7 +493,6 @@ GhostClut ghostCluts[123];
 SharkVert sharkFootVerts[10];
 int shipTargetIndex[15];
 int sharkFootIndex[426];
-ShipRank shipRank[15];
 short gridPosition[12];
 short phantomGridPos[6];
 SharkVert sharkBaseVerts[40];

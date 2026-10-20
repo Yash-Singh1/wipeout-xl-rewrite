@@ -29,6 +29,16 @@ def A(name, container, macro, evidence, expr=None, pair=None, includes=(), decls
     return Alias(name, container, macro, expr or name, pair, tuple(includes), tuple(decls), container_decl, evidence)
 
 
+# Uses the aliases need rewritten, (file, old text, new text): a file that saw the container as one word.
+REWRITES = [
+    ('combat.c', 'extern u16 playerControl;', 'extern ControlInput playerControl[]; /* Port: the packet\'s control word is its head field */'),
+    ('combat.c', 'extern u16 remoteControl;', 'extern ControlInput remoteControl[]; /* Port: the packet\'s control word is its head field */'),
+    ('combat.c', '    send.control = playerControl;', '    send.control = playerControl[0].head;'),
+    ('combat.c', '    remoteControl = controlIn;', '    remoteControl[0].head = controlIn;'),
+    ('main.c', 'extern int savedLapTimes;', 'extern int savedLapTimes[]; /* Port: the lap times and the four words after them */'),
+    ('main.c', '        savedLapTimes = 0;', '        savedLapTimes[0] = 0;'),
+]
+
 ALIASES = [
     # smokeColour is passed to AnimateTexture by value (TrackSpecificFunctions loads the whole word) and
     # race() stores three bytes into it, one after the other: the r, g, b of one CVECTOR.
@@ -99,10 +109,10 @@ ALIASES = [
     A('menuGlyphWidth', 'fontGlyphs8', '((GlyphWidth *)&fontGlyphs8[0].width)',
       'SetCharTextures stores fontGlyphs8 + 0, +2, +4 and menuGlyphWidth + 0 with stride 6: the width field of the 6-byte glyphs',
       expr='menuGlyphWidth[0].width', pair=('menuGlyphWidth[7].width', 'fontGlyphs8[7].width'),
-      includes=['hiscores.h', 'hud.h'], decls=['extern FontGlyph fontGlyphs8[];'], container_decl='extern FontGlyph fontGlyphs8[];'),
+      includes=['hiscores.h', 'hud.h'], decls=['extern FontGlyph fontGlyphs8[];'], container_decl='#include "hud.h"\nextern FontGlyph fontGlyphs8[];'),
     A('glyphWidth', 'fontGlyphs16', '((GlyphWidth *)&fontGlyphs16[0].width)', 'see menuGlyphWidth',
       expr='glyphWidth[0].width', pair=('glyphWidth[7].width', 'fontGlyphs16[7].width'),
-      includes=['hiscores.h', 'hud.h'], decls=['extern FontGlyph fontGlyphs16[];'], container_decl='extern FontGlyph fontGlyphs16[];'),
+      includes=['hiscores.h', 'hud.h'], decls=['extern FontGlyph fontGlyphs16[];'], container_decl='#include "hud.h"\nextern FontGlyph fontGlyphs16[];'),
     # The display offsets are the screen rectangle of the DISPENVs (the halfword stores at +8 and +10).
     A('dispOffX0', 'DispEnv0', '(*(u_short *)&DispEnv0.screen.x)',
       'halfword stores at DispEnv0 + 8 and + 10 only (ShakeScreen, InitGameDisplay...): DISPENV.screen.x and .y',
@@ -148,10 +158,10 @@ ALIASES = [
       'shipOrder[i][0] is shipRank + 2 + 4 * i = shipRank[i].shipNo (SortAllShips, getShipBehindLAP)',
       expr='shipOrder[0][0]', pair=('shipOrder[3][0]', 'shipRank[3].shipNo'),
       includes=['ships.h'], decls=['extern ShipRank shipRank[];'], container_decl='extern ShipRank shipRank[];'),
-    A('fadeTileRed', 'fadeTile', 'fadeTile[0].r0', 'UpdateFadeScreen stores bytes at fadeTile + 4, 5, 6: the colour of the first TILE',
-      decls=['extern TILE fadeTile[];'], container_decl='extern TILE fadeTile[];'),
-    A('fadeTileGreen', 'fadeTile', 'fadeTile[0].g0', 'see fadeTileRed', decls=['extern TILE fadeTile[];'], container_decl='extern TILE fadeTile[];'),
-    A('fadeTileBlue', 'fadeTile', 'fadeTile[0].b0', 'see fadeTileRed', decls=['extern TILE fadeTile[];'], container_decl='extern TILE fadeTile[];'),
+    A('fadeTileRed', 'fadeTile', '(&fadeTile[0].r0)', 'UpdateFadeScreen stores bytes at fadeTile + 4, 5, 6: the colour of the first TILE',
+      expr='fadeTileRed[0]', decls=['extern TILE fadeTile[];'], container_decl='extern TILE fadeTile[];'),
+    A('fadeTileGreen', 'fadeTile', '(&fadeTile[0].g0)', 'see fadeTileRed', expr='fadeTileGreen[0]', decls=['extern TILE fadeTile[];'], container_decl='extern TILE fadeTile[];'),
+    A('fadeTileBlue', 'fadeTile', '(&fadeTile[0].b0)', 'see fadeTileRed', expr='fadeTileBlue[0]', decls=['extern TILE fadeTile[];'], container_decl='extern TILE fadeTile[];'),
     # LoadProg copied the 136-byte header of the program it loaded into progHeader and read the load address
     # and size at +24 and +28 (the PS-X EXE header).
     A('progLoadAddr', 'progHeader', '(*(u_long *)(progHeader[0].bytes + 24))',
@@ -184,7 +194,7 @@ ALIASES = [
     # The pad driver's packet: header, buttons, sticks. RadiusControl reads the buttons halfword on its own.
     A('debugPadInput', 'padBuf1', 'padBuf1.buttons',
       'RadiusControl loads padBuf1 + 2 and NegConConfig the byte at +4 (the packet\'s buttons and steering fields)',
-      includes=['pad.h'], decls=['extern PadPacket padBuf1;'], container_decl='extern PadPacket padBuf1;'),
+      includes=['pad.h'], decls=['extern PadPacket padBuf1;'], container_decl='#include "pad.h"\nextern PadPacket padBuf1;'),
     # doSerialGame sends the player's ControlInput as a link packet whose fields it names control, padHead,
     # padButtons, padPressed, aux0, aux1 (menus.c, combat.c): the halfwords at +2, +4, +6 and the bytes at +8, +9.
     A('linkPadHead', 'playerControl', 'playerControl[0].buttons',
@@ -209,6 +219,46 @@ ALIASES = [
       includes=['control.h'], decls=['extern ControlInput remoteControl[];'], container_decl='extern ControlInput remoteControl[];'),
     A('remotePadAux1', 'remoteControl', 'remoteControl[0].steering', 'see remotePadHead',
       includes=['control.h'], decls=['extern ControlInput remoteControl[];'], container_decl='extern ControlInput remoteControl[];'),
+    # main() clears savedLapTimes and the four words after it one by one; the lap times are indexed by lap.
+    A('raceResetWord0', 'savedLapTimes', 'savedLapTimes[1]',
+      'main() stores savedLapTimes + 0, 4, 8, 12, 16 in a row; hud.c indexes savedLapTimes[lap] (5 words up to recordBuffer)',
+      pair=('raceResetWord0', 'savedLapTimes[1]'), decls=['extern int savedLapTimes[];'], container_decl='extern int savedLapTimes[];'),
+    A('raceResetWord1', 'savedLapTimes', 'savedLapTimes[2]', 'see raceResetWord0',
+      pair=('raceResetWord1', 'savedLapTimes[2]'), decls=['extern int savedLapTimes[];'], container_decl='extern int savedLapTimes[];'),
+    A('raceResetWord2', 'savedLapTimes', 'savedLapTimes[3]', 'see raceResetWord0',
+      pair=('raceResetWord2', 'savedLapTimes[3]'), decls=['extern int savedLapTimes[];'], container_decl='extern int savedLapTimes[];'),
+    A('raceResetWord3', 'savedLapTimes', 'savedLapTimes[4]', 'see raceResetWord0',
+      pair=('raceResetWord3', 'savedLapTimes[4]'), decls=['extern int savedLapTimes[];'], container_decl='extern int savedLapTimes[];'),
+    # The menus and the HUD name the first texture slots after the screens that use them; the loader fills them
+    # as one table (800 slots up to the end of menuTexturePtrsB) and the code indexes each sub-table from its name.
+    A('menuTexturePtrsD', 'textureTable', '(&textureTable[2])',
+      'AudioConfig loads textureTable + 8; the pointer tables are 4 bytes apart and the last one runs to the 800th slot',
+      expr='menuTexturePtrsD[0]', pair=('menuTexturePtrsD[3]', 'textureTable[5]'),
+      decls=['extern Texture *textureTable[];'], container_decl='extern Texture *textureTable[];'),
+    A('deleteTextures', 'textureTable', '(&textureTable[3])', 'see menuTexturePtrsD',
+      expr='deleteTextures[0]', pair=('deleteTextures[3]', 'textureTable[6]'),
+      decls=['extern Texture *textureTable[];'], container_decl='extern Texture *textureTable[];'),
+    A('endTextures', 'textureTable', '(&textureTable[4])', 'see menuTexturePtrsD',
+      expr='endTextures[0]', pair=('endTextures[3]', 'textureTable[7]'),
+      decls=['extern Texture *textureTable[];'], container_decl='extern Texture *textureTable[];'),
+    A('menuTexturePtrsC', 'textureTable', '((void **)&textureTable[5])', 'see menuTexturePtrsD',
+      expr='menuTexturePtrsC[0]', pair=('menuTexturePtrsC[3]', 'textureTable[8]'),
+      decls=['extern Texture *textureTable[];'], container_decl='extern Texture *textureTable[];'),
+    A('menuTexturePtrs', 'textureTable', '((void **)&textureTable[6])', 'see menuTexturePtrsD',
+      expr='menuTexturePtrs[0]', pair=('menuTexturePtrs[3]', 'textureTable[9]'),
+      decls=['extern Texture *textureTable[];'], container_decl='extern Texture *textureTable[];'),
+    A('menuTexturePtrsB', 'textureTable', '(&textureTable[7])', 'see menuTexturePtrsD',
+      expr='menuTexturePtrsB[0]', pair=('menuTexturePtrsB[3]', 'textureTable[10]'),
+      decls=['extern Texture *textureTable[];'], container_decl='extern Texture *textureTable[];'),
+    # WaterFall saves a row of the screen next to a RECT and passes `waterfallSaved - 4` to LoadImage: the 8 bytes
+    # of waterfallBuf, eleven saved halfwords and the row word are one 16-halfword buffer.
+    A('waterfallSaved', 'waterfallBuf', '((u_short *)(waterfallBuf + 8))',
+      'effects.c passes waterfallSaved - 4 (= waterfallBuf) to LoadImage; the three names are contiguous (+8, +30)',
+      expr='waterfallSaved[0]', pair=('waterfallSaved[2]', 'waterfallBuf[12]'),
+      decls=['extern u8 waterfallBuf[];'], container_decl='extern u8 waterfallBuf[];'),
+    A('waterfallRow', 'waterfallBuf', '((u_short *)(waterfallBuf + 30))', 'see waterfallSaved',
+      expr='waterfallRow[0]', pair=('waterfallRow[0]', 'waterfallBuf[30]'),
+      decls=['extern u8 waterfallBuf[];'], container_decl='extern u8 waterfallBuf[];'),
     A('sharkBodyModel', 'shipShapeTable', 'shipShapeTable[2]',
       'UpdateSharkModel loads shipShapeTable + 8 and CopySharkVerts + 16 without index: slots 2 and 4',
       decls=['extern Object *shipShapeTable[];'], container_decl='extern Object *shipShapeTable[];'),
@@ -226,6 +276,8 @@ PREFER = {
 
 # Entries of incomplete arrays that the extent cannot give because the names inside them cut it short.
 SIZES = {
+    'textureTable': (800, 'the slots run up to the end of menuTexturePtrsB (3172 bytes at slot 7): 800 pointers'),
+    'waterfallBuf': (32, 'with waterfallSaved and waterfallRow after it: sixteen halfwords'),
     'shipShapeTable': (31, '30 ship shapes and the rescue droid model at [30] (RescueDroidModel); menuModels follows'),
 }
 

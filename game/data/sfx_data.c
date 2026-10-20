@@ -2,9 +2,9 @@
 #include "functions.h"
 #include "sfx.h"
 
-char birdTextureFile[] = "c:\\wipeout2\\textures\\bird.cmp";
-char msgSfxTransEffectMalloc[] = "trans effect: can't malloc memory\n";
-char msgSfxTransEffectNoIds[] = "trans effect: no free ids\n";
+char birdTextureFile[32] = "c:\\wipeout2\\textures\\bird.cmp";
+char msgSfxTransEffectMalloc[36] = "trans effect: can't malloc memory\n";
+char msgSfxTransEffectNoIds[28] = "trans effect: no free ids\n";
 char msgSfxTransEffectRateMismatch[] = "trans effect: incompatible samples\n";
 u_char reverbDepth;
 u_char driverMode;

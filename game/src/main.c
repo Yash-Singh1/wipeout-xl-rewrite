@@ -65,11 +65,7 @@ extern int cdMusicCount;
 extern int ghostShip;
 extern struct WipeCdStatus cdStatus[];
 extern signed char continuesLeft;
-extern int savedLapTimes;
-extern int raceResetWord0;
-extern int raceResetWord1;
-extern int raceResetWord2;
-extern int raceResetWord3;
+extern int savedLapTimes[]; /* Port: the lap times and the four words after them */
 extern CdlLOC cdTrackLocs[];
 extern unsigned char cdMusicTable[];
 extern HeapBlock *heap;
@@ -337,7 +333,7 @@ block_56:
         gTextureY = 0;
         attractDelayFrames = 0;
         linkSendFlag = 0;
-        savedLapTimes = 0;
+        savedLapTimes[0] = 0;
         raceResetWord0 = 0;
         raceResetWord1 = 0;
         raceResetWord2 = 0;

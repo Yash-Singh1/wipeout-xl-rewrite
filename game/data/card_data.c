@@ -4,8 +4,8 @@
 
 short hiTileCount = 0;
 Label6 labelEmpty[1] = { { { 69, 77, 80, 84, 89, 0 } } };
-char cardPattern0[] = "bu00:*";
-char cardPattern1[] = "bu10:*";
+char cardPattern0[8] = "bu00:*";
+char cardPattern1[8] = "bu10:*";
 CardDevice cardPrefix0 = { "bu00:" };
 CardDevice cardPrefix1 = { "bu10:" };
 Label6 labelGame[1] = { { { 87, 79, 88, 76, 32, 0 } } };

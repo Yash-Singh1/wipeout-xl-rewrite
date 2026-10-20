@@ -5,9 +5,9 @@ extern TILE fadeTile[2];
 
 int alias_fadeTileBlue(void)
 {
-    char *alias = (char *)&(fadeTileBlue);
+    char *alias = (char *)&(fadeTileBlue[0]);
     char *container = (char *)&(fadeTile);
-    if (alias < container || alias + sizeof(fadeTileBlue) > container + sizeof(fadeTile))
+    if (alias < container || alias + sizeof(fadeTileBlue[0]) > container + sizeof(fadeTile))
         return 1;
     return 0;
 }

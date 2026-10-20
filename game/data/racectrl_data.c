@@ -1,7 +1,6 @@
 /* Global data of racectrl.c, generated from the executable by tools/gendata.py. */
 #include "functions.h"
 #include "hud.h"
-#include "pad.h"
 
 /* Types that racectrl.c declares privately. */
 typedef unsigned char u_char_eq1;
@@ -34,7 +33,6 @@ int raceStartVcount;
 int quadIndex;
 int raceEndTimer;
 Object *zeppelinObj[1];
-PadPacket padBuf1;
 u_short_eq1 tempTextureCount;
 int savedHeap;
 Object *radar[6];

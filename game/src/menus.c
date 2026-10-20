@@ -23,7 +23,6 @@ typedef struct TimImageBlock { u8 pad0[0xC]; u16 x; u16 y; u16 width; u16 height
 short buttonCount;
 int buttonTextures;
 extern ControlInput playerControl[];
-extern Texture *endTextures[];
 extern Texture *textureTable[];
 extern short CurrentScreen;
 extern int *OT[];
@@ -44,10 +43,6 @@ extern u8 cardDirLoaded1;
 s32 cardUnformatted0;
 s32 cardUnformatted1;
 extern Label6 defaultCardName[];
-extern u8 cardUsed[];
-extern u8 cardFileNames[];
-extern u8 cardNames[];
-extern CardFlags cardFlags[][15];
 s32 prevCardStatus0;
 s32 prevCardStatus1;
 s32 cardSettleCount0;
@@ -122,8 +117,10 @@ extern char msgButtonsToChangeTheSymbol[];
 extern char msgCurrentPassword[];
 extern char msgNewPasswordEntry[];
 s32 passwordErrorTimer;
-extern GlyphWidth menuGlyphWidth[];
-extern GlyphWidth glyphWidth[];
+#include "hud.h"
+extern FontGlyph fontGlyphs8[]; /* Port: menuGlyphWidth is a part of it, see data_alias.h */
+#include "hud.h"
+extern FontGlyph fontGlyphs16[]; /* Port: glyphWidth is a part of it, see data_alias.h */
 extern s32 ownShip;
 extern u16 keyDefineThrustPad[2];
 extern u16 keyDefineFire[2];
@@ -157,11 +154,7 @@ void AddText();
 void AddTime();
 extern DB doubleBuffer[];
 extern DISPENV DispEnv0;
-extern u16 dispOffX0;
-extern u16 dispOffY0;
 extern DISPENV DispEnv1;
-extern u16 dispOffX1;
-extern u16 dispOffY1;
 extern u8 msgInactive[];
 extern u8 msgDefaultView[];
 extern u8 msgMoveScreen[];
@@ -184,7 +177,6 @@ extern Positions knobPosX;
 extern Positions knobPosY;
 extern TwistAngles twistAngles;
 extern short negconEditing[];
-extern Texture *menuTexturePtrsB[];
 short menuTextures;
 int negconBlink;
 extern char fmtNewAngle[];
@@ -227,7 +219,6 @@ extern u_char cdMusicIndex;
 extern s32 cdMusicTrack;
 extern s32 cdMusicCount;
 extern struct WipeCdStatus cdStatus[];
-extern Texture *menuTexturePtrsD[];
 extern u8 cdMusicTable[];
 extern TeamOrder teamShipGroup[];
 extern char msgTeamCheatActive[];
@@ -331,7 +322,6 @@ extern char msgSelect2[];
 extern char msgAccept[];
 extern char msgBack[];
 MenuLayout *menuLayout;
-extern void *menuTexturePtrs[];
 void CentreText2();
 extern char pathMenuDat[];
 extern char errLoadMenuLineDataFileHasZero[];
@@ -489,10 +479,6 @@ s16 linkTimedOut;
 s16 linkState;
 extern s8 continuesLeft;
 extern s32 residentSkeletons[];
-extern void *menuTexturePtrsC[];
-extern u16 linkPadHead;
-extern u8 linkPadAux0;
-extern u8 linkPadAux1;
 extern u8 savedKeyConfig[];
 
 int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMemorySize)
@@ -1312,7 +1298,7 @@ void DrawDrBox(int unused, DrBox *box)
 
 int cdFlagWord __asm__("cdFlag");
 int defaultCardNameWord __asm__("defaultCardName");
-extern short replayDisabled;
+#include "ghost.h" /* Port: replayDisabled is a part of it, see data_alias.h */
 
 
 void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSelection, KeyConfig *keyConfig, char *cardState)

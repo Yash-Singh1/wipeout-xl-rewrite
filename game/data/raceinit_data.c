@@ -3,19 +3,19 @@
 
 int trackNameScroll = -9999;
 int raceInfoFrame = 0;
-char classNameVector[7] = "VECTOR";
-char classNameVenom[6] = "VENOM";
-char classNameRapier[7] = "RAPIER";
-char classNamePhantom[8] = "PHANTOM";
-char sufGold[] = " GOLD";
+char classNameVector[7] __attribute__((aligned(4))) = "VECTOR";
+char classNameVenom[6] __attribute__((aligned(4))) = "VENOM";
+char classNameRapier[7] __attribute__((aligned(4))) = "RAPIER";
+char classNamePhantom[8] __attribute__((aligned(4))) = "PHANTOM";
+char sufGold[8] = " GOLD";
 char sufSilver[] = " SILVER";
 char sufBronze[] = " BRONZE";
 int bonusFlashFrame = 0;
 int bonusFrames = 0;
-char fmtTwoDigits[] = "%02d";
+char fmtTwoDigits[8] = "%02d";
 char sufCheckPoints[] = "\\cpoint";
-char fmtCheckPointClass[] = "%01d";
-char extChk[] = ".chk";
+char fmtCheckPointClass[8] = "%01d";
+char extChk[8] = ".chk";
 int attractStep = 1;
 int roadSectionCount;
 u_int randSeed;

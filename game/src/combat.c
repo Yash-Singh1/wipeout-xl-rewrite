@@ -265,18 +265,8 @@ extern u8 playerPosition;
 extern u8 linkSyncB;
 extern s32 myBestRace;
 extern s32 shipTargetIndex[];
-extern u16 playerControl;
-extern u16 linkPadHead;
-extern u16 linkPadButtons;
-extern u16 linkPadPressed;
-extern u8 linkPadAux0;
-extern u8 linkPadAux1;
-extern u16 remoteControl;
-extern u16 remotePadHead;
-extern u16 remotePadButtons;
-extern u16 remotePadPressed;
-extern u8 remotePadAux0;
-extern u8 remotePadAux1;
+extern ControlInput playerControl[]; /* Port: the packet's control word is its head field */
+extern ControlInput remoteControl[]; /* Port: the packet's control word is its head field */
 
 void doSerialGame(int unused, ShipData *ships)
 {
@@ -320,7 +310,7 @@ void doSerialGame(int unused, ShipData *ships)
     send.padButtons = buttons;
     send.padPressed = pressed;
     send.padAux0 = aux0;
-    send.control = playerControl;
+    send.control = playerControl[0].head;
     send.padHead = linkPadHead;
     send.padAux1 = aux1;
     send.posX = px;
@@ -384,7 +374,7 @@ void doSerialGame(int unused, ShipData *ships)
         ship->hdg = hdgIn;
         ship->pitch = pitchIn;
         ship->roll = rollIn;
-        remoteControl = controlIn;
+        remoteControl[0].head = controlIn;
         remotePadHead = padHeadIn;
         remotePadButtons = buttonsIn;
         remotePadPressed = pressedIn;

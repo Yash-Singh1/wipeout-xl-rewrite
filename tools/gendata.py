@@ -766,6 +766,13 @@ class Decl:
         self.in_header = '/include/' in (self.where[0] or '')
         self.invalid = node.get('isInvalid', False)
         self.via_label = node.get('mangledName') not in (None, node.get('name'))
+        self.has_init = 'init' in node
+        self.aligned = 0
+        for c in node.get('inner', []):
+            if c.get('kind') == 'AlignedAttr':
+                for e in c.get('inner', []):
+                    if e.get('value', '').isdigit():
+                        self.aligned = max(self.aligned, int(e['value']))
 
     def spell(self):
         return self.qual
@@ -884,7 +891,9 @@ def choose_types(syms, order, report, widths=None):
         # decompiler used to get word copies) says how foo is accessed, not what it is
         direct = [d for d in good if not d.via_label]
         if direct:
-            good = direct
+            # ... but a record or array view that fits the extent says how big the object is
+            good = direct + [d for d in good if d.via_label and d.ty.kind in ('arr', 'rec')
+                             and not (d.ty.kind == 'arr' and d.ty.n is None) and d.ty.size <= sy.extent]
         if sy.name in D.PREFER:
             good = [d for d in good if d.qual == D.PREFER[sy.name]] or good
         if not good:
@@ -1376,6 +1385,14 @@ def finalize(env, syms, order):
                     sy.qual = 'unsigned char[%d]' % sy.extent
                 continue
         t = sy.ty
+        if sy.name in D.SIZES and t.kind == 'arr' and t.n is not None:
+            # a complete array the decisions table makes longer (names that are parts of it follow)
+            n = D.SIZES[sy.name][0]
+            sy.ty = Arr(t.elem, n)
+            sy.qual = re.sub(r'\[\d+\]', '[%d]' % n, sy.qual, count=1)
+            sy.size, sy.count = n * t.elem.size, None
+            sy.notes.append('%d entries: %s' % (n, D.SIZES[sy.name][1]))
+            continue
         # array whose length comes from the extent
         if t.kind == 'arr' and t.n is None:
             e = t.elem
@@ -1388,6 +1405,8 @@ def finalize(env, syms, order):
                         sy.notes.append('buffer holding a string')      # written by the game: keep the extent
                     else:
                         n = len(s) + 1
+                        while n % 4 and n < sy.extent and pe.read(sy.addr + n, 1) == b'\0':
+                            n += 1                 # the zero padding up to the next word belongs to it
                         sy.notes.append('string')
             if e.kind == 'arr' and e.n:
                 n = sy.extent // e.size
@@ -1661,12 +1680,15 @@ def symbol_text(sy, em, tys):
     if sy.synthetic:
         count = sy.count
     if 'string' in sy.notes:
-        count = None
+        lit = printable_string(em.pe.read(sy.addr, 4096))
+        if lit is not None and count == len(lit) + 1:
+            count = None            # the compiler counts the NUL
     text = decl_text(sy.qual, sy.cname, count, decl_tys)
     if sy.name in D.ARENAS:
         text = text.replace('[%d]' % count, '[%d * (sizeof(void *) / 4)]' % count)
-    if sy.name in D.ALIGN:
-        text += ' __attribute__((aligned(%d)))' % D.ALIGN[sy.name][0]
+    align = max([d.aligned for d in sy.decls] + [D.ALIGN[sy.name][0] if sy.name in D.ALIGN else 0])
+    if align:
+        text += ' __attribute__((aligned(%d)))' % align
     if sy.kind == 'bss':
         return symbol_comment(sy, em) + text + ';'
     em.limit = sy.addr + sy.extent if sy.name in D.TRUNCATE else None
@@ -1711,6 +1733,9 @@ def generate(env, scan, quiet=False):
             continue
         if sy.decl is None and not sy.name.startswith(('IID_', 'GUID_')):
             skipped['undeclared'].append(sy)
+            continue
+        if any(d.has_init and not d.static for d in sy.decls):
+            skipped.setdefault('initialised', []).append(sy)     # game/src defines it with its data
             continue
         if sy.defined_in_game:
             skipped['defined'].append(sy)       # still defined here: tools/gendata.py --externalize drops the game's
@@ -1935,9 +1960,12 @@ def compare_symbol(env, g, res, bad, co, name, sec, start, size, tag, lim=None):
         for off in range(size - 3):
             if (addr + off) in env.relocs:
                 skip.update(range(off, off + 4))
+                res['%s: pointer words holding console RAM addresses (ABSOLUTE)' % tag] += 1
     for lo, hi in g['em'].partial.get(name, []):
         skip.update(range(lo - addr, hi - addr))
-    res['%s: bytes not representable in C89 (union members)' % tag] += len(skip & set(range(size)))
+    res['%s: bytes not representable in C89 (union members)' % tag] += len(set(range(lo_, hi_)) & set(range(size))) if False else 0
+    for lo_, hi_ in g['em'].partial.get(name, []):
+        res['%s: bytes not representable in C89 (union members)' % tag] += hi_ - lo_
     for off in range(size):
         if off in masked or off in skip:
             continue
@@ -2081,7 +2109,45 @@ def apply_aliases(dry=False):
                 report.append('%s: removed %s' % (os.path.basename(f), line.strip()))
         if not dry:
             open(f, 'w', encoding='latin-1').write('\n'.join(out))
+    for fname, old, new in D.REWRITES:
+        path = os.path.join(ROOT, 'game', 'src', fname)
+        text = open(path, encoding='latin-1').read()
+        if old in text:
+            report.append('%s: %s -> %s' % (fname, old.strip(), new.strip()))
+            if not dry:
+                open(path, 'w', encoding='latin-1').write(text.replace(old, new, 1))
     return report
+
+
+def externalize(g, dry=False):
+    """Turn the tentative definitions of game/src that the data files define into extern declarations
+    (without this the program has two definitions of each, and the game's would be zero-filled).
+    Returns (changed lines, lines it could not handle)."""
+    changed, problems = [], []
+    byfile = collections.defaultdict(list)
+    for sy in g['order']:
+        if sy.name not in g['results']:
+            continue
+        for d in sy.decls:
+            if not d.extern and not d.static and not d.invalid:
+                byfile[d.tu].append((d.where[1], sy, d))
+    for tu, items in sorted(byfile.items()):
+        path = os.path.join(ROOT, 'game', 'src', tu)
+        lines = open(path, encoding='latin-1').read().split('\n')
+        for ln, sy, d in sorted(items):
+            line = lines[ln - 1]
+            body = line.split('/*')[0].rstrip()
+            if re.match(r'^\s*extern\b', line):
+                continue
+            if not body.endswith(';') or ',' in re.sub(r'\(.*?\)', '', body) or line.startswith((' ', '\t')) \
+                    or '{' in body or '=' in body or ln != d.node['loc'].get('line', ln) and False:
+                problems.append('%s:%d: %s' % (tu, ln, line.strip()))
+                continue
+            lines[ln - 1] = 'extern ' + line
+            changed.append('%s:%d: %s' % (tu, ln, line.strip()))
+        if not dry:
+            open(path, 'w', encoding='latin-1').write('\n'.join(lines))
+    return changed, problems
 
 
 def link_stubs(objs, tmp):
@@ -2218,6 +2284,26 @@ def check(env, g, outdir):
         if sy_.decl.ty.n is None and sy_.ty.n != sy_.extent // sy_.ty.elem.size and not sy_.notes:
             bad.append('%s: %d elements but the extent holds %d of %d bytes' % (
                 sy_.name, sy_.ty.n, sy_.extent // sy_.ty.elem.size, sy_.ty.elem.size))
+    # data the game's own sources define with initialisers (ships.c: startStateTable): compare their bytes
+    for sy_ in g['skipped'].get('initialised', []):
+        for d_ in sy_.decls:
+            if d_.has_init and not d_.static:
+                src_ = os.path.join(ROOT, 'game', 'src', d_.tu)
+                obj_ = os.path.join(tmp, 'game-' + d_.tu + '.o')
+                r_ = subprocess.run(compile_cmd(src_, obj_, False), capture_output=True, text=True)
+                if r_.returncode:
+                    bad.append('%s: %s defines %s with data but does not compile for the 32-bit layout:\n%s' % (
+                        d_.tu, d_.tu, sy_.name, r_.stderr[:800]))
+                    break
+                co_ = Elf(obj_)
+                found_ = False
+                for sym_ in co_.symbols:
+                    if sym_[0] == sy_.cname and sym_[2] not in (0, 0xfff1, 0xfff2) and sym_[3] == 1:
+                        compare_symbol(env, g, res, bad, co_, sy_.cname, co_.sections[sym_[2]], sym_[1], sym_[5], 'game')
+                        found_ = True
+                if not found_:
+                    bad.append('%s: %s not found in the object of %s' % (sy_.name, sy_.cname, d_.tu))
+                break
     for sy_, inner in overlaps(g):
         if sy_.name in D.TRUNCATE:
             res['declared bigger than the object (TRUNCATE)'] += 1
@@ -2407,8 +2493,11 @@ def main():
     ap.add_argument('--check', action='store_true')
     ap.add_argument('--report', action='store_true')
     ap.add_argument('--apply-aliases', action='store_true', help='drop the declarations of alias names from game/src')
+    ap.add_argument('--externalize', action='store_true', help='make the tentative definitions of game/src that the data files define extern')
+    ap.add_argument('--dry-run', action='store_true')
     ap.add_argument('--conform', action='store_true', help='lay the code\'s accesses over the chosen types')
     ap.add_argument('--only', nargs='*', default=None)
+    ap.add_argument('--hazards', action='store_true', help='declarations whose native size differs from the definition')
     ap.add_argument('--evidence', nargs='+', default=None, help='names or 0xADDRESSes: declarations, labels, accesses, uses')
     ap.add_argument('--span', type=int, default=None)
     a = ap.parse_args()
@@ -2424,6 +2513,19 @@ def main():
     print('wrote %d files' % len(files))
     if a.report:
         print(report(env, g))
+        return 0
+    if a.externalize:
+        done, bad = externalize(g, a.dry_run)
+        print('%d declarations made extern, %d not handled' % (len(done), len(bad)))
+        for b in bad:
+            print('NOT HANDLED', b)
+        return 0
+    if a.hazards:
+        import gendata_code
+        for ptr in (4, 8):
+            print('== pointers of %d bytes' % ptr)
+            for h in gendata_code.native_hazards(g, scan, pack_table(), ptr):
+                print('%s: %s:%d declares %s (defined %s): %s' % h)
         return 0
     if a.evidence:
         import gendata_code

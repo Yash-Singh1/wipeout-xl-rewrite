@@ -8,7 +8,6 @@ extern int        *OT[];
 extern Surface      tileSurfaces[24][2];
 extern PolyFT3      medLoCrackPolys[][2];
 extern PolyFT3      hiMedCrackPolysA[][4];
-extern PolyFT3      hiMedCrackPolysB[][4];
 void FillMedLoCrack(TrackSection *section, Skeleton *view)
 {
     CrackLocals     locals;

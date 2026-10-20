@@ -58,6 +58,18 @@ int alias_remotePadButtons(void);
 int alias_remotePadPressed(void);
 int alias_remotePadAux0(void);
 int alias_remotePadAux1(void);
+int alias_raceResetWord0(void);
+int alias_raceResetWord1(void);
+int alias_raceResetWord2(void);
+int alias_raceResetWord3(void);
+int alias_menuTexturePtrsD(void);
+int alias_deleteTextures(void);
+int alias_endTextures(void);
+int alias_menuTexturePtrsC(void);
+int alias_menuTexturePtrs(void);
+int alias_menuTexturePtrsB(void);
+int alias_waterfallSaved(void);
+int alias_waterfallRow(void);
 int alias_sharkBodyModel(void);
 int alias_sharkLegModel(void);
 
@@ -178,10 +190,34 @@ int main(void)
     if (r) { printf("alias remotePadAux0 failed (%d)\n", r); failures++; }
     r = alias_remotePadAux1();
     if (r) { printf("alias remotePadAux1 failed (%d)\n", r); failures++; }
+    r = alias_raceResetWord0();
+    if (r) { printf("alias raceResetWord0 failed (%d)\n", r); failures++; }
+    r = alias_raceResetWord1();
+    if (r) { printf("alias raceResetWord1 failed (%d)\n", r); failures++; }
+    r = alias_raceResetWord2();
+    if (r) { printf("alias raceResetWord2 failed (%d)\n", r); failures++; }
+    r = alias_raceResetWord3();
+    if (r) { printf("alias raceResetWord3 failed (%d)\n", r); failures++; }
+    r = alias_menuTexturePtrsD();
+    if (r) { printf("alias menuTexturePtrsD failed (%d)\n", r); failures++; }
+    r = alias_deleteTextures();
+    if (r) { printf("alias deleteTextures failed (%d)\n", r); failures++; }
+    r = alias_endTextures();
+    if (r) { printf("alias endTextures failed (%d)\n", r); failures++; }
+    r = alias_menuTexturePtrsC();
+    if (r) { printf("alias menuTexturePtrsC failed (%d)\n", r); failures++; }
+    r = alias_menuTexturePtrs();
+    if (r) { printf("alias menuTexturePtrs failed (%d)\n", r); failures++; }
+    r = alias_menuTexturePtrsB();
+    if (r) { printf("alias menuTexturePtrsB failed (%d)\n", r); failures++; }
+    r = alias_waterfallSaved();
+    if (r) { printf("alias waterfallSaved failed (%d)\n", r); failures++; }
+    r = alias_waterfallRow();
+    if (r) { printf("alias waterfallRow failed (%d)\n", r); failures++; }
     r = alias_sharkBodyModel();
     if (r) { printf("alias sharkBodyModel failed (%d)\n", r); failures++; }
     r = alias_sharkLegModel();
     if (r) { printf("alias sharkLegModel failed (%d)\n", r); failures++; }
-    printf("%d alias checks, %d failed\n", 59, failures);
+    printf("%d alias checks, %d failed\n", 71, failures);
     return failures != 0;
 }

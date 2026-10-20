@@ -12,7 +12,7 @@ void VectorNormal(VECTOR *v0, VECTOR *v1);
 
 
 extern int droidFlyin;
-extern short recordDisabled;
+#include "ghost.h" /* Port: recordDisabled is a part of it, see data_alias.h */
 
 void ShipTrkReaction(ShipData *playerShip, Object **shipShapes)
 {

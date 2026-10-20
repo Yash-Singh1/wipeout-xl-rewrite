@@ -2,9 +2,8 @@
 #include "include_asm_g8.h"
 
 extern TrackData *track;
-extern VECTOR     racingLine[];
 extern short      activeShipCount;
-extern short      shipOrder[][2];
+extern ShipRank shipRank[]; /* Port: shipOrder is a part of it, see data_alias.h */
 
 /* The second argument is the register residue the original call leaves behind. */
 int SectionSearchResidue(ShipData *ship, TrackData *residue) __asm__("SectionSearch");

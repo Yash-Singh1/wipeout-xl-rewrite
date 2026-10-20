@@ -165,3 +165,51 @@ def evidence(env, g, names, span=None, show_lib=False):
 
 
 from bisect import bisect_left  # noqa: E402
+
+
+def native_hazards(g, scan, packs, ptr=8):
+    """Declarations (in any source file) of a defined global whose size or element size natively (8-byte
+    pointers) differs from the definition's although the 32-bit sizes agree or the declaration is bigger:
+    code reading through such a declaration touches other bytes than it did on the console."""
+    import gendata
+    saved = (gendata.Ptr.size, gendata.Ptr.align)
+    gendata.Ptr.size = gendata.Ptr.align = ptr
+    try:
+        tys = {tu: gendata.Types(nodes, packs) for tu, nodes in scan.items()}
+
+        def elem(t):
+            while t.kind == 'arr':
+                t = t.elem
+            return t
+
+        out = []
+        for sy in g['order']:
+            if sy.name not in g['results'] or sy.decl is None:
+                continue
+            try:
+                ndef = tys[sy.decl.tu].parse(sy.decl.qual)
+            except Exception:       # noqa
+                continue
+            if sy.ty.kind == 'arr' and ndef.kind == 'arr':
+                dsize = ndef.elem.size * (sy.ty.n or 1)
+            else:
+                dsize = ndef.size
+            for d in sy.decls:
+                try:
+                    nd = tys[d.tu].parse(d.qual)
+                except Exception:   # noqa
+                    continue
+                if nd.kind == 'opaque' or elem(nd).kind == 'opaque':
+                    continue
+                e32, e64 = elem(d.ty), elem(nd)
+                reason = None
+                if elem(ndef).size != e64.size and elem(sy.decl.ty).size == e32.size:
+                    reason = 'element %d bytes natively, the definition\'s %d (same on the console)' % (e64.size, elem(ndef).size)
+                elif nd.kind != 'arr' or nd.n is not None:
+                    if nd.size > dsize:
+                        reason = 'declares %d bytes natively, the definition has %d' % (nd.size, dsize)
+                if reason:
+                    out.append((sy.name, d.tu, d.where[1], d.qual, str(sy.decl.qual), reason))
+        return out
+    finally:
+        gendata.Ptr.size, gendata.Ptr.align = saved

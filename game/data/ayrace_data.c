@@ -4,7 +4,7 @@
 /* Types that ayrace.c declares privately. */
 typedef unsigned char u_char_eq1;
 
-char selectLabel[] = "SELECT";
+char selectLabel[8] = "SELECT";
 int attractModeFlag = 0;
 int firstTimeIn = 0;
 int playCredits = 0;
@@ -39,8 +39,8 @@ short redBullNumber = 0;
 int bobCount = 0;
 short prmCount = 0;
 u_short startTextureBase = 0;
-char startDroidNames[] = "sroid";
-char lightGroupNames[] = "light";
+char startDroidNames[8] = "sroid";
+char lightGroupNames[8] = "light";
 u_char_eq1 cameraDroidNames[8] = { 99, 97, 109, 101, 114, 97, 0, 0 };
 u_char_eq1 fanNames[4] = { 102, 97, 110, 0 };
 u_char raceEndState;

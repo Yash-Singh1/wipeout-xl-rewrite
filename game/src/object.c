@@ -321,8 +321,6 @@ extern DVECTOR StaticScreen[];
 extern unsigned short StaticDepth[];
 extern unsigned short StaticFlags[];
 extern VECTOR StaticRVert[];
-extern int StaticRVertY[][4];
-extern int StaticRVertZ[][4];
 extern unsigned char envMapU[];
 extern unsigned char envMapV[];
 extern int *OT2[];

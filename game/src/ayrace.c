@@ -40,7 +40,7 @@ extern u_short          idleTimer;
 extern u_short          keysPressed;
 extern u_short          keysDown;
 extern u_short          padType;
-extern short            recordDisabled;
+#include "ghost.h" /* Port: recordDisabled is a part of it, see data_alias.h */
 extern short            finishPosition;
 extern short            sixTracks;
 extern short            sixXPlayed;
@@ -55,8 +55,7 @@ extern void            *continuesTexture;
 extern u_char           cdMusicIndex;
 extern int              cdMusicTrack;
 extern u_char           cdMusicTable[];
-extern u_char           linkPadAux0;
-extern u_char           linkPadAux1;
+extern ControlInput playerControl[]; /* Port: linkPadAux0 is a part of it, see data_alias.h */
 extern CameraUpdateFunc CameraUpdate;
 extern ConfigData      *gameData;
 extern TrackCamera     *cameraPtr;

@@ -1,7 +1,7 @@
 /* Global data of iso9660.c, generated from the executable by tools/gendata.py. */
 #include "functions.h"
 
-char nameStartBoom[] = "start";
+char nameStartBoom[8] = "start";
 char nameRedLight[] = "red";
 int trainLightSeed = 0;
 int neonSignTick = 0;
@@ -12,10 +12,10 @@ int spriteFrame = 0;
 short lightPhase[2] = { 0 };
 /* Port: declared short[4]; effects.c uses [0] and [1] only and trainCmpExt follows at +4 */
 short advertAngle[4] = { 0 };
-char trainCmpExt[] = ".cmp";
-char trainPrmExt[] = ".prm";
+char trainCmpExt[8] = ".cmp";
+char trainPrmExt[8] = ".prm";
 int droidBlinkTick = 0;
-char nameLight[] = "light";
+char nameLight[8] = "light";
 int lightChaseStep = 0;
 int lightUpdateTick = 0;
 short monoRailSettle = 0;
@@ -27,7 +27,7 @@ u_int shakeCount = 0;
 int writeFlag = 0;
 int combError = 1;
 int combErrorSeen = 1;
-char sioDevice[] = "sio:";
+char sioDevice[8] = "sio:";
 int cached_dir_loc = 0;
 int cached_dir_start_loc = 0;
 int cached_dir_file_len = 0;

@@ -12,8 +12,6 @@ extern void *textureWad;
 extern TrackSection *lightSections[];
 extern Texture *textureTable[];
 extern short CurrentScreen;
-extern u_short waterfallRow[];
-extern u_short waterfallSaved[];
 extern u_char waterfallBuf[];
 extern u_long commonPath[];
 
@@ -44,10 +42,8 @@ extern Object *lightGroups[];
 extern int startCountdown;
 extern Skeleton **cameraPtr;
 extern int *OT[];
-extern u_short dispOffX0;
-extern u_short dispOffY0;
-extern u_short dispOffX1;
-extern u_short dispOffY1;
+extern DISPENV DispEnv0; /* Port: dispOffX0 is a part of it, see data_alias.h */
+extern DISPENV DispEnv1; /* Port: dispOffX1 is a part of it, see data_alias.h */
 extern int remoteShip;
 extern int lightUpdate;
 
