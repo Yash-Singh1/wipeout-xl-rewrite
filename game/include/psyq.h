@@ -347,6 +347,20 @@ int  NormalClip(int sxy0, int sxy1, int sxy2);
 void OuterProduct12(VECTOR *v0, VECTOR *v1, VECTOR *v2);
 int  VectorNormal(VECTOR *v0, VECTOR *v1);
 
+/* The geometry coprocessor's instructions, which PsyQ's gte_* macros and the game's assembly routines use
+   directly: register numbers as the hardware numbers them (data 0-31, control 0-31) and the command word of
+   a COP2 instruction.  Implemented by the platform (platform/psx/gte.c). */
+void GteExecute(unsigned int command);
+void GteWriteData(int reg, int value);
+int  GteReadData(int reg);
+void GteWriteControl(int reg, int value);
+int  GteReadControl(int reg);
+#define GTE_RTPS   0x4A180001u
+#define GTE_RTPT   0x4A280030u
+#define GTE_NCLIP  0x4A140006u
+#define GTE_AVSZ3  0x4B58002Du
+#define GTE_AVSZ4  0x4B68002Eu
+
 /* libgpu, continued */
 void AddPrim(u_long *ot, void *p);
 void SetLineF2(LINE_F2 *p);
