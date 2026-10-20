@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "../trace.h"
 #include "gpu.h"
 #include "gte.h"
 #include "psyq.h"
@@ -280,27 +281,59 @@ static void Environment(uint32_t word)
     }
 }
 
+static void Packet(const uint32_t *w, int words);
+
+/* A packet as the GPU receives it: recorded for tests, then drawn. */
+static void Submit(const uint32_t *w, int words)
+{
+    PortTraceGp0(w, words);
+    Packet(w, words);
+}
+
+/* The library's clamps of a drawing-area corner and a size to video memory. */
+static int ClampX(int x)
+{
+    return x < 0 ? 0 : x > 0x3FF ? 0x3FF : x;
+}
+
+static int ClampY(int y)
+{
+    return y < 0 ? 0 : y > 0x1FF ? 0x1FF : y;
+}
+
+/* The drawing environment's packet as SetDrawEnv builds it: area, offset,
+   mode, texture window, mask, then the background (a fill when the area is
+   aligned to 64 pixels, else a rectangle). */
 DRAWENV *PutDrawEnv(DRAWENV *env)
 {
-    int right = env->clip.x + env->clip.w - 1, bottom = env->clip.y + env->clip.h - 1;
+    uint32_t words[6], background[3];
+    int x = env->clip.x, y = env->clip.y, w = ClampX(env->clip.w), h = ClampY(env->clip.h);
 
-    Environment(DrawModeWord(env->dfe, env->dtd, env->tpage));
-    Environment(TextureWindowWord(&env->tw));
-    state.areaLeft = env->clip.x < 0 ? 0 : env->clip.x;
-    state.areaTop = env->clip.y < 0 ? 0 : env->clip.y;
-    state.areaRight = right > 1023 ? 1023 : right;
-    state.areaBottom = bottom > 511 ? 511 : bottom;
-    state.offsetX = env->ofs[0];
-    state.offsetY = env->ofs[1];
-    ApplyArea();
+    words[0] = 0xE3000000u | (uint32_t)(ClampY(env->clip.y) & 0x3FF) << 10 | (uint32_t)ClampX(env->clip.x);
+    words[1] = 0xE4000000u | (uint32_t)ClampY(env->clip.y + env->clip.h - 1) << 10
+               | (uint32_t)ClampX(env->clip.x + env->clip.w - 1);
+    words[2] = 0xE5000000u | (uint32_t)(env->ofs[1] & 0x7FF) << 11 | (uint32_t)(env->ofs[0] & 0x7FF);
+    words[3] = DrawModeWord(env->dfe, env->dtd, env->tpage);
+    words[4] = TextureWindowWord(&env->tw);
+    words[5] = 0xE6000000u;
+    Submit(words, 6);
     if (env->isbg) {
-        GpuFill(env->clip.x, env->clip.y, env->clip.w, env->clip.h, env->r0, env->g0, env->b0);
+        if ((x & 0x3F) || (w & 0x3F)) {
+            background[0] = 0x60000000u | (uint32_t)env->b0 << 16 | (uint32_t)env->g0 << 8 | env->r0;
+            background[1] = (uint32_t)(uint16_t)(y - env->ofs[1]) << 16 | (uint16_t)(x - env->ofs[0]);
+        } else {
+            background[0] = 0x02000000u | (uint32_t)env->b0 << 16 | (uint32_t)env->g0 << 8 | env->r0;
+            background[1] = (uint32_t)(uint16_t)y << 16 | (uint16_t)x;
+        }
+        background[2] = (uint32_t)h << 16 | (uint32_t)w;
+        Submit(background, 3);
     }
     return env;
 }
 
 DISPENV *PutDispEnv(DISPENV *env)
 {
+    PortTraceGp1(0x05000000u | (uint32_t)(env->disp.y & 0x1FF) << 10 | (uint32_t)(env->disp.x & 0x3FF));
     state.displayX = env->disp.x;
     state.displayY = env->disp.y;
     state.displayW = env->disp.w;
@@ -350,10 +383,41 @@ void PsxShowDisplay(void)
 
 /* ---- video memory transfers ---- */
 
+/* The transfer commands, recorded for tests. */
+static void TraceTransfer(uint32_t command, RECT *rect, const void *data)
+{
+    static const uint32_t clearCache = 0x01000000u;
+    uint32_t header[3];
+
+    if (!PortTracing()) {
+        return;
+    }
+    header[0] = command;
+    header[1] = (uint32_t)(uint16_t)rect->y << 16 | (uint16_t)rect->x;
+    header[2] = (uint32_t)(uint16_t)rect->h << 16 | (uint16_t)rect->w;
+    PortTraceGp0(&clearCache, 1);
+    if (data) {
+        int count = 3 + (rect->w * rect->h + 1) / 2;
+        uint32_t *words = malloc((size_t)count * 4);
+
+        memcpy(words, header, sizeof(header));
+        memcpy(words + 3, data, (size_t)rect->w * rect->h * 2);
+        if ((rect->w * rect->h) & 1) {
+            ((uint16_t *)(words + 3))[rect->w * rect->h] = 0;
+        }
+        PortTraceGp0(words, count);
+        free(words);
+    } else {
+        PortTraceGp0(header, 3);
+    }
+}
+
 int LoadImage(RECT *rect, u_long *p)
 {
     const uint16_t *pixels = (const uint16_t *)p;
     int x, y;
+
+    TraceTransfer(0xA0000000u, rect, p);
 
     for (y = 0; y < rect->h; y++) {
         for (x = 0; x < rect->w; x++) {
@@ -369,6 +433,7 @@ int StoreImage(RECT *rect, u_long *p)
     uint16_t *pixels = (uint16_t *)p;
     int x, y;
 
+    TraceTransfer(0xC0000000u, rect, NULL);
     GpuReadBack(rect->x, rect->y, rect->w, rect->h);
     for (y = 0; y < rect->h; y++) {
         for (x = 0; x < rect->w; x++) {
@@ -381,7 +446,14 @@ int StoreImage(RECT *rect, u_long *p)
 int MoveImage(RECT *rect, int x, int y)
 {
     static uint16_t buffer[VRAM_HEIGHT][VRAM_WIDTH];
+    uint32_t words[4];
     int i, j;
+
+    words[0] = 0x80000000u;
+    words[1] = (uint32_t)(uint16_t)rect->y << 16 | (uint16_t)rect->x;
+    words[2] = (uint32_t)(uint16_t)y << 16 | (uint16_t)x;
+    words[3] = (uint32_t)(uint16_t)rect->h << 16 | (uint16_t)rect->w;
+    PortTraceGp0(words, 4);
 
     GpuReadBack(rect->x, rect->y, rect->w, rect->h);
     for (j = 0; j < rect->h; j++) {
@@ -400,7 +472,12 @@ int MoveImage(RECT *rect, int x, int y)
 
 int ClearImage(RECT *rect, u_char r, u_char g, u_char b)
 {
-    GpuFill(rect->x, rect->y, rect->w, rect->h, r, g, b);
+    uint32_t words[3];
+
+    words[0] = 0x02000000u | (uint32_t)b << 16 | (uint32_t)g << 8 | r;
+    words[1] = (uint32_t)(uint16_t)rect->y << 16 | (uint16_t)rect->x;
+    words[2] = (uint32_t)(uint16_t)rect->h << 16 | (uint16_t)rect->w;
+    Submit(words, 3);
     return 0;
 }
 
@@ -664,7 +741,7 @@ void DrawOTag(u_long *p)
         int words = (int)(tag >> 24);
 
         if (words) {
-            Packet((const uint32_t *)(node + 1), words);
+            Submit((const uint32_t *)(node + 1), words);
         }
         if ((tag & 0xFFFFFF) == LINK_END) {
             break;
@@ -682,5 +759,5 @@ void DrawPrim(void *p)
 {
     uint32_t tag = *(uint32_t *)p;
 
-    Packet((const uint32_t *)p + 1, (int)(tag >> 24));
+    Submit((const uint32_t *)p + 1, (int)(tag >> 24));
 }

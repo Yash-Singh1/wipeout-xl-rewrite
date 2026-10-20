@@ -31,6 +31,7 @@ int PortPumpEvents(void);
    display is shown and events are pumped. */
 void PsxVBlank(void);
 uint64_t PsxFieldCount(void);
+uint64_t PsxScanlines(void);  /* since power-on */
 
 /* libgpu.c */
 void PsxShowDisplay(void);
