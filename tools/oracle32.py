@@ -57,12 +57,15 @@ def compile_tree(src_root, out_dir, only=None):
 
 
 def split_functions(dis):
+    """{function: [normalised instruction lines]}.  Addresses are made function-relative."""
     funcs = {}
     cur = None
+    start = 0
     for line in dis.split('\n'):
-        m = re.match(r'^[0-9a-f]+ <(\S+)>:$', line)
+        m = re.match(r'^([0-9a-f]+) <(\S+)>:$', line)
         if m:
-            cur = m.group(1)
+            cur = m.group(2)
+            start = int(m.group(1), 16)
             funcs[cur] = []
             continue
         if cur is None or not line.strip():
@@ -71,7 +74,9 @@ def split_functions(dis):
             cur = None
             continue
         line = re.sub(r'^\s*[0-9a-f]+:\s*', '', line)       # drop the address
-        line = re.sub(r'^\s*[0-9a-f]+:\s+(R_MIPS)', r'\1', line)
+        line = re.sub(r'<[^>]*>', '', line)                  # symbol annotations of immediates
+        if re.match(r'\s*(j|jal|b\w*)\s', line):            # branch targets: relative to the function
+            line = re.sub(r'0x([0-9a-f]+)\s*$', lambda mm: '@%x' % (int(mm.group(1), 16) - start), line)
         funcs[cur].append(re.sub(r'\s+', ' ', line.strip()))
     return funcs
 
