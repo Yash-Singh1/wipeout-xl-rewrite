@@ -10,6 +10,7 @@
    that keeps up (the retail game's 30 frames a second); in real time the
    fields are also paced to the wall clock. */
 #include <SDL3/SDL.h>
+#include <stdlib.h>
 
 #include "../platform.h"
 #include "psyq.h"
@@ -26,6 +27,11 @@ static uint64_t startTicks;
 uint64_t PsxFieldCount(void)
 {
     return fields;
+}
+
+uint64_t PsxScanlines(void)
+{
+    return lines;
 }
 
 static void Pace(void)

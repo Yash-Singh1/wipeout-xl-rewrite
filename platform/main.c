@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "platform.h"
+#include "trace.h"
 
 PortConfig portConfig;
 
@@ -19,7 +20,8 @@ static void Usage(void)
             "  --disc     your Wipeout XL (USA) PlayStation disc image (.cue with its .bin tracks)\n"
             "  --pc-data  optional: the Wipeout XL PC CD, for its intro movies and keyboard art\n"
             "environment: WIPEOUT_XL_DISC, WIPEOUT_XL_PC_DATA; tests: WIPEOUT_MUTE, WIPEOUT_HIDDEN,\n"
-            "  WIPEOUT_FIXED_STEP, WIPEOUT_FRAMES, WIPEOUT_CAPTURE_DIR, WIPEOUT_CAPTURE_EVERY\n");
+            "  WIPEOUT_FIXED_STEP, WIPEOUT_FRAMES, WIPEOUT_CAPTURE_DIR, WIPEOUT_CAPTURE_EVERY,\n"
+            "  WIPEOUT_TRACE (trace file), WIPEOUT_PADS (pad script)\n");
 }
 
 int main(int argc, char **argv)
@@ -70,6 +72,7 @@ int main(int argc, char **argv)
     if (!PortVideoInit()) {
         return 1;
     }
+    PortTraceInit();
     PsxMain();
     PortVideoShutdown();
     SDL_Quit();
