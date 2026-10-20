@@ -75,7 +75,9 @@ def split_functions(dis):
             continue
         line = re.sub(r'^\s*[0-9a-f]+:\s*', '', line)       # drop the address
         line = re.sub(r'<[^>]*>', '', line)                  # symbol annotations of immediates
-        if re.match(r'\s*(j|jal|b\w*)\s', line):            # branch targets: relative to the function
+        if re.match(r'\s*jal\s', line):                    # calls: the relocation line names the callee
+            line = re.sub(r'0x[0-9a-f]+\s*$', '@call', line)
+        elif re.match(r'\s*(j|b\w*)\s', line):            # branch targets: relative to the function
             line = re.sub(r'0x([0-9a-f]+)\s*$', lambda mm: '@%x' % (int(mm.group(1), 16) - start), line)
         funcs[cur].append(re.sub(r'\s+', ' ', line.strip()))
     return funcs
