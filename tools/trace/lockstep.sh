@@ -28,7 +28,7 @@ python3 "$here/writes.py" "$recording" "$out/writes.txt" >/dev/null
 rm -rf "$out/save"
 mkdir -p "$out/save"
 
-autopilot=$(python3 -c 'import json,sys; print(1 if json.load(open(sys.argv[1])).get("autopilot", True) else "")' "$recording/scenario.json")
+autopilot=$(python3 -c 'import json,sys; s=json.load(open(sys.argv[1])); print(s.get("autopilot_until", "all") if s.get("autopilot", True) else "")' "$recording/scenario.json")
 
 WIPEOUT_HIDDEN=1 WIPEOUT_MUTE=1 WIPEOUT_FIXED_STEP=1 \
 WIPEOUT_AUTOPILOT=$autopilot \

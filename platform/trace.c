@@ -188,10 +188,15 @@ void PortScriptGamePad(unsigned char *packet)
 
 /* ---- scripted writes ---- */
 
+/* game/src/porttest.c */
+void PortTestWall(void *ship, int value);
+int PortTestPit(void *ship);
+
 typedef struct ScriptWrite {
     uint32_t count;      /* applied at the first UpdateShips from this pad read on */
-    char target[64];     /* ship, config or a global's name */
-    uint32_t offset, width, value;
+    char target[64];     /* ship, config, owner:GLOBAL (indexed by the player), GLOBAL, wall, pit */
+    uint32_t offset, width;
+    char value[64];      /* a number, or @NAME: the address of a function or global */
     int done;
 } ScriptWrite;
 
@@ -209,7 +214,7 @@ static void LoadWrites(const char *path)
         exit(1);
     }
     memset(&w, 0, sizeof(w));
-    while (fscanf(f, "%u %63s %u %u %u", &w.count, w.target, &w.offset, &w.width, &w.value) == 5) {
+    while (fscanf(f, "%u %63s %u %u %63s", &w.count, w.target, &w.offset, &w.width, w.value) == 5) {
         if (scriptWriteCount == capacity) {
             capacity = capacity ? capacity * 2 : 64;
             scriptWrites = SDL_realloc(scriptWrites, (size_t)capacity * sizeof(*scriptWrites));
@@ -219,7 +224,18 @@ static void LoadWrites(const char *path)
     fclose(f);
 }
 
-void PortScriptWrites(void *ship, void *config)
+static void *Symbol(const char *name)
+{
+    void *address = dlsym(RTLD_DEFAULT, name);
+
+    if (!address) {
+        fprintf(stderr, "trace: write target %s not found\n", name);
+        exit(1);
+    }
+    return address;
+}
+
+void PortScriptWrites(void *ship, void *config, int owner)
 {
     int i;
 
@@ -231,39 +247,73 @@ void PortScriptWrites(void *ship, void *config)
             continue;
         }
         w->done = 1;
+        if (!strcmp(w->target, "wall")) {
+            PortTestWall(ship, atoi(w->value));
+            continue;
+        }
+        if (!strcmp(w->target, "pit")) {
+            if (!PortTestPit(ship)) {
+                fprintf(stderr, "trace: no red pit section on this track\n");
+                exit(1);
+            }
+            continue;
+        }
         if (!strcmp(w->target, "ship")) {
             base = ship;
         } else if (!strcmp(w->target, "config")) {
             base = config;
+        } else if (!strncmp(w->target, "owner:", 6)) {
+            base = (unsigned char *)Symbol(w->target + 6) + (size_t)owner * w->width;
         } else {
-            base = dlsym(RTLD_DEFAULT, w->target);
+            base = Symbol(w->target);
         }
-        if (!base) {
-            fprintf(stderr, "trace: write target %s not found\n", w->target);
-            exit(1);
-        }
-        if (w->width == 1) {
-            base[w->offset] = (unsigned char)w->value;
-        } else if (w->width == 2) {
-            uint16_t v = (uint16_t)w->value;
-            memcpy(base + w->offset, &v, 2);
+        if (w->value[0] == '@') {
+            void *pointer = Symbol(w->value + 1);
+            memcpy(base + w->offset, &pointer, sizeof(pointer));
         } else {
-            memcpy(base + w->offset, &w->value, 4);
+            uint32_t value = (uint32_t)strtoul(w->value, NULL, 0);
+
+            if (w->width == 1) {
+                base[w->offset] = (unsigned char)value;
+            } else if (w->width == 2) {
+                uint16_t v = (uint16_t)value;
+                memcpy(base + w->offset, &v, 2);
+            } else {
+                memcpy(base + w->offset, &value, 4);
+            }
         }
     }
 }
 
 /* ---- autopilot ---- */
 
+/* WIPEOUT_AUTOPILOT=all or a pad-read count: autopilot is taken up again
+   until that read. */
+static int autopilotMode = -1;
+static uint32_t autopilotUntil;
+
+static void ReadAutopilot(void)
+{
+    const char *value = SDL_getenv("WIPEOUT_AUTOPILOT");
+
+    autopilotMode = value && *value && strcmp(value, "0");
+    autopilotUntil = autopilotMode && strcmp(value, "all") ? (uint32_t)strtoul(value, NULL, 0) : 0;
+}
+
 int PortAutopilot(void)
 {
-    static int autopilot = -1;
-
-    if (autopilot < 0) {
-        const char *value = SDL_getenv("WIPEOUT_AUTOPILOT");
-        autopilot = value && *value && strcmp(value, "0");
+    if (autopilotMode < 0) {
+        ReadAutopilot();
     }
-    return autopilot;
+    return autopilotMode && (!autopilotUntil || padReads < autopilotUntil);
+}
+
+int PortAutopilotPatched(void)
+{
+    if (autopilotMode < 0) {
+        ReadAutopilot();
+    }
+    return autopilotMode;
 }
 
 /* ---- loading screens ---- */

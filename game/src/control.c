@@ -38,7 +38,7 @@ void UpdateShips(ShipData *shipIndex, WeaponShape *unused, Object **shipShapes, 
     SVECTOR position;
     ShipData *playerShip;
 
-    PortScriptWrites(&shipIndex[ownShip], gameData); /* Port: scripted writes for the lockstep tests (WIPEOUT_WRITES) */
+    PortScriptWrites(&shipIndex[ownShip], gameData, ownShip); /* Port: scripted writes for the lockstep tests (WIPEOUT_WRITES) */
     activeCount = 0;
     for (i = 0; i < 15; i++) {
         if (!(shipIndex[i].combatAttr & 0x8000)) {

@@ -28,9 +28,12 @@ void PortTraceReturn(uint32_t function, uint32_t value);
 /* The end of a game-loop iteration. */
 void PortTraceBoundary(uint32_t marker);
 
-/* WIPEOUT_AUTOPILOT: the console recorder's infinite autopilot (the player's
-   ship hands itself to the drone code and never takes control back). */
+/* WIPEOUT_AUTOPILOT (all, or until a pad-read count): the console recorder's
+   autopilot. While it lasts the player's ship hands itself to the drone code
+   (PortAutopilot); for the whole run the drone code never counts the
+   autopilot down (PortAutopilotPatched). */
 int PortAutopilot(void);
+int PortAutopilotPatched(void);
 
 /* Loading screens (WIPEOUT_LOADS: the loading-screen frames of each load in
    a console recording, one number per line). The game draws its loading
@@ -47,7 +50,7 @@ int PortPadScripted(void);
 /* Scripted writes (WIPEOUT_WRITES, made from the recording's writes.txt by
    tools/trace/writes.py): UpdateShips calls this first with the player's
    ship and the game's configuration. */
-void PortScriptWrites(void *ship, void *config);
+void PortScriptWrites(void *ship, void *config, int owner);
 void PortScriptFixedPad(unsigned char *packet);
 /* ... and so does buildGameKeyPad, without advancing the count. */
 void PortScriptGamePad(unsigned char *packet);

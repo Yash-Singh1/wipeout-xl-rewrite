@@ -40,17 +40,27 @@ def layout(record, extra):
                 break
             m = re.match(r'\s+(\d+) \|   (\S.*?) (\w+)$', line)   # top level only (3 spaces)
             if m:
-                fields[int(m.group(1))] = m.group(3)
+                fields[int(m.group(1))] = (m.group(3), m.group(2))
     return fields
 
 
-def symbols():
+def symbols(functions=False):
     out = []
     for line in open(DECOMP / 'symbol_addrs.txt'):
         m = re.match(r'(\w+) = 0x([0-9A-Fa-f]+);', line)
-        if m and 'type:func' not in line:
+        if m and ('type:func' in line) == functions:
             out.append((int(m.group(2), 16), m.group(1)))
     return sorted(out)
+
+
+def value_of(w, pointer, names):
+    """The value as the port writes it: a pointer field gets @NAME."""
+    value = int(str(w['value']), 0)
+    if pointer:
+        if value not in names:
+            raise SystemExit(f'{w}: {value:#x} is not a known function or global')
+        return '@' + names[value]
+    return str(value)
 
 
 def main():
@@ -60,8 +70,9 @@ def main():
     args = p.parse_args()
     writes = json.load(open(args.recording / 'scenario.json')).get('writes', [])
     console = {k: layout(r, TARGET32) for k, r in RECORDS.items()}
-    native = {k: {v: o for o, v in layout(r, []).items()} for k, r in RECORDS.items()}
+    native = {k: {v[0]: o for o, v in layout(r, []).items()} for k, r in RECORDS.items()}
     table = symbols()
+    names = {a: n for a, n in symbols(True) + table}
     lines = []
     for w in writes:
         offset = int(str(w['offset']), 0)
@@ -69,12 +80,17 @@ def main():
             field = console[w['target']].get(offset)
             if field is None:
                 raise SystemExit(f'{w}: no field of {RECORDS[w["target"]]} starts at {offset:#x}')
-            lines.append(f'{w["input"]} {w["target"]} {native[w["target"]][field]} {w["width"]} {w["value"]}')
-        elif w['target'] == 'absolute':
+            value = value_of(w, '*' in field[1], names)
+            lines.append(f'{w["input"]} {w["target"]} {native[w["target"]][field[0]]} {w["width"]} {value}')
+        elif w['target'] in ('absolute', 'owner_array'):
             address, name = max((a, n) for a, n in table if a <= offset)
             if address != offset:
                 raise SystemExit(f'{w}: {offset:#x} is inside {name}; only whole globals are supported')
-            lines.append(f'{w["input"]} {name} 0 {w["width"]} {w["value"]}')
+            target = name if w['target'] == 'absolute' else 'owner:' + name
+            # owner arrays are indexed by the player's ship with the element width
+            lines.append(f'{w["input"]} {target} 0 {w["width"]} {value_of(w, False, names)}')
+        elif w['target'] in ('wall', 'pit'):
+            lines.append(f'{w["input"]} {w["target"]} 0 {w["width"]} {value_of(w, False, names)}')
         else:
             raise SystemExit(f'{w}: target {w["target"]} is not supported')
     args.output.write_text(''.join(l + '\n' for l in lines))

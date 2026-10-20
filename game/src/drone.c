@@ -519,7 +519,7 @@ weaponByteReady:
                 PlayNote(0x2E, 0xFF, 15, 15, 0x100);
             }
         } else {
-            if (!PortAutopilot()) { /* Port: the lockstep tests' infinite autopilot keeps its count */
+            if (!PortAutopilotPatched()) { /* Port: the lockstep tests' autopilot keeps its count */
                 ship->autopilotCount--;
             }
             if (ship->autopilotCount == 0) {
