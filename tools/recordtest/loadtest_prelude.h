@@ -14,8 +14,8 @@ void HarnessInitHeap(HeapBlock *head, int size, const char *file, int line);
 #define InitDynamicMem(head, size) HarnessInitHeap((head), (size), __FILE__, __LINE__)
 
 /* The patched PsxMain (stage 0, start-up done), MenuControl (stage 1, before its menu loop) and race
-   (stage 2, before its main loop) call this where their loading is done; a nonzero result makes them
-   return. */
+   (stage 3, the track's files are loaded; stage 2, before its main loop) call this where their loading is
+   done; a nonzero result makes them return. */
 extern int LoadtestHook(int stage);
 extern char *LoadtestMainHeap(void);
 extern char *LoadtestReserveHeap(void);

@@ -16,7 +16,7 @@ target_include_directories(game PRIVATE ${CMAKE_SOURCE_DIR}/game/include)
 target_compile_options(game PRIVATE
     -std=gnu11
     -include ${CMAKE_SOURCE_DIR}/platform/include/port.h
-    -fsigned-char -fno-strict-aliasing -fwrapv
+    -fsigned-char -fno-strict-aliasing -fwrapv -fno-common
     -Wno-pointer-sign -Wno-deprecated-declarations
     -Wpointer-to-int-cast -Wint-to-pointer-cast -Wshorten-64-to-32
     -Werror=implicit-function-declaration -Werror=int-conversion)
@@ -27,7 +27,7 @@ if(GAME_DATA_SOURCES)
     add_library(gamedata STATIC ${GAME_DATA_SOURCES})
     target_include_directories(gamedata PRIVATE ${CMAKE_SOURCE_DIR}/game/include)
     target_compile_options(gamedata PRIVATE -std=gnu11 -include ${CMAKE_SOURCE_DIR}/platform/include/port.h
-        -fsigned-char -fno-strict-aliasing -fwrapv -Wno-pointer-sign)
+        -fsigned-char -fno-strict-aliasing -fwrapv -fno-common -Wno-pointer-sign)
 endif()
 
 # ---- Platform: the PsyQ libraries and the program entry ----

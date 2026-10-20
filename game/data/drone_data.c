@@ -1,5 +1,6 @@
 /* Global data of drone.c, generated from the executable by tools/gendata.py. */
 #include "functions.h"
+#include "../../../wipeout-xl-ps1-data/game/include/psyq.h"
 
 /* Types that drone.c declares privately. */
 typedef struct ClassBonus {

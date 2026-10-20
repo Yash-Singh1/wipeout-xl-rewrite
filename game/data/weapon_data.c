@@ -1,5 +1,9 @@
 /* Global data of weapon.c, generated from the executable by tools/gendata.py. */
 #include "functions.h"
+#include "../../../wipeout-xl-ps1-data/game/include/control.h"
+#include "../../../wipeout-xl-ps1-data/game/include/functions.h"
+#include "../../../wipeout-xl-ps1-data/game/include/psyq.h"
+#include "../../../wipeout-xl-ps1-data/game/include/wipeout.h"
 
 /* Types that weapon.c declares privately. */
 typedef struct PathSeed {

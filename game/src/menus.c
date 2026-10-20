@@ -422,7 +422,6 @@ extern u8 menuRecvFlags;
 extern s32 remoteShip;
 extern s16 linkTimedOut;
 extern s16 linkState;
-extern void *menuTexturePtrsC[];
 
 int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMemorySize)
 {

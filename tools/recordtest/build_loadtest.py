@@ -47,6 +47,7 @@ PATCHES = {
         ("    while (!negconCentre) {\n", "    if (LoadtestHook(1)) return 0; while (!negconCentre) {\n"),
     ],
     "racectrl": [
+        ("sceneTextureCount=TextureTableCount;closewadfile(wad);", "sceneTextureCount=TextureTableCount;closewadfile(wad);LoadtestHook(3);"),
         ("restart:\n    Restart(&locals.resetData);", "restart:\n    if (LoadtestHook(2)) return; Restart(&locals.resetData);"),
     ],
 }

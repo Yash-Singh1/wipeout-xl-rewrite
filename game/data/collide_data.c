@@ -1,5 +1,6 @@
 /* Global data of collide.c, generated from the executable by tools/gendata.py. */
 #include "functions.h"
+#include "../../../wipeout-xl-ps1-data/game/include/psyq.h"
 
 /* Types that collide.c declares privately. */
 typedef struct { short y[4]; } __attribute__((packed)) HudTextRows;

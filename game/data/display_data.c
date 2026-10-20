@@ -1,5 +1,6 @@
 /* Global data of display.c, generated from the executable by tools/gendata.py. */
 #include "functions.h"
+#include "../../../wipeout-xl-ps1-data/game/include/psyq.h"
 
 char *primBuffers[2];
 char PrimitiveBuffer0[44032];

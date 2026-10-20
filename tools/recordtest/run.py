@@ -501,6 +501,33 @@ def sanitizer_reports(text):
     return reports
 
 
+# Fields of the loaded track that the game's later initialisation changes (snow flags, section numbers, bump
+# heights, the textures, flags and colours of faces, the position of the track-2 train): the dump at the end
+# of race()'s loading may differ from the one right after the files were read in these and no others.
+CHANGED_AFTER_LOADING = {("S", "snow"), ("S", "secNo"), ("S", "bump"), ("F", "tex"), ("F", "flags"), ("F", "rgb"), ("O", "t")}
+
+
+def changed_fields(loaded, final):
+    """The (line kind, field) pairs in which two dumps of the same track differ."""
+    changed = set()
+    if len(loaded) != len(final):
+        return {("shape", "lines")}
+    for x, y in zip(loaded, final):
+        if x == y:
+            continue
+        tx, ty = x.split(), y.split()
+        if tx[0] != ty[0] or len(tx) != len(ty):
+            changed.add(("shape", tx[0]))
+            continue
+        key = None
+        for p, q in zip(tx, ty):
+            if not re.match(r"^-?\d+$", p):
+                key = p
+            if p != q:
+                changed.add((tx[0], key))
+    return changed
+
+
 def ps1_sizes(types, workdir):
     """Writes the sizes file of loadtest: name, PlayStation size, native size."""
     path = os.path.join(workdir, "loadtest_sizes.c")
@@ -564,7 +591,7 @@ def check_loaders(runner, args, workdir):
     # the sanitizers must catch what the heap poisoning is for
     selftest = subprocess.run([exe, args.iso, "--sizes", sizes, "--selftest"], capture_output=True, text=True, env=env)
     expected_after = ["write one byte after the block", "write to a freed block", "write before the block (into its header)"]
-    got = [m.group(1) for m in re.finditer(r"selftest: (write [^\n]*)\n==\d+==ERROR: AddressSanitizer: use-after-poison", selftest.stderr)]
+    got = [m.group(1) for m in re.finditer(r"selftest: (write [^\n]*)\n=+\n==\d+==ERROR: AddressSanitizer: use-after-poison", selftest.stderr)]
     inside = re.search(r"selftest: write inside the block\nselftest: write one byte", selftest.stderr)
     if got == expected_after and inside:
         runner.ok()
@@ -620,6 +647,12 @@ def check_loaders(runner, args, workdir):
                 runner.ok()
                 if label == "plain":
                     runner.stat("loaded sections, vertices, faces and objects compared with the files", len(actual) - 2)
+                    final = open(path.replace(".txt", ".final.txt"), encoding="latin-1").read().split("\n")[:-1]
+                    extra = changed_fields(actual, final) - CHANGED_AFTER_LOADING
+                    if extra:
+                        runner.fail("%s: the game's initialisation changed fields of the loaded track that it should not touch: %s" % (track, sorted(extra)))
+                    else:
+                        runner.ok()
 
 
 def write(workdir, name, data):

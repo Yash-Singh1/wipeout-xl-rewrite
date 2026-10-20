@@ -1165,11 +1165,23 @@ int LoadtestHook(int stage)
         SendResult(&r);
         _exit(0);
     }
-    if (stage == 2 && mode == MODE_RACE) {
+    if (stage == 3 && mode == MODE_RACE) {
+        /* the track's files are loaded and nothing else has touched them: this is what the files say */
         if (dumpDirectory) {
             char name[700];
 
             snprintf(name, sizeof(name), "%s/track%02d.txt", dumpDirectory, scenarioTrack);
+            dumpFile = fopen(name, "w");
+            DumpTrack(scenarioTrack);
+            fclose(dumpFile);
+        }
+        return 0;
+    }
+    if (stage == 2 && mode == MODE_RACE) {
+        if (dumpDirectory) {
+            char name[700];
+
+            snprintf(name, sizeof(name), "%s/track%02d.final.txt", dumpDirectory, scenarioTrack);
             dumpFile = fopen(name, "w");
             DumpTrack(scenarioTrack);
             fclose(dumpFile);

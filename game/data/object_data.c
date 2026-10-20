@@ -1,5 +1,6 @@
 /* Global data of object.c, generated from the executable by tools/gendata.py. */
 #include "functions.h"
+#include "../../../wipeout-xl-ps1-data/game/include/object2.h"
 
 PrimPtr nextPrim;
 int primsDrawn;
