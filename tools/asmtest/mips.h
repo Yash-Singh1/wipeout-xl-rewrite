@@ -29,6 +29,10 @@ uint8_t *MipsPointer(uint32_t address);
    Stops with a message and abort() after maxInstructions or on an unimplemented instruction. */
 uint32_t MipsCall(uint32_t address, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, const uint32_t *stackArgs, int stackCount);
 
+/* Set when the last call stopped at a BREAK (the compiler's divide-by-zero trap; the console would
+   have taken an exception there). */
+extern int mipsTrapped;
+
 /* Instructions executed by the last call. */
 extern uint64_t mipsInstructionCount;
 extern uint64_t mipsMaxInstructions;

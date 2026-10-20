@@ -191,6 +191,8 @@ void PortScriptGamePad(unsigned char *packet)
 /* game/src/porttest.c */
 void PortTestWall(void *ship, int value);
 int PortTestPit(void *ship);
+int PortTestPlayerState(int *x, int *y, int *z);
+const void *PortTestPlayerShip(int *size);
 
 typedef struct ScriptWrite {
     uint32_t count;      /* applied at the first UpdateShips from this pad read on */
@@ -449,6 +451,24 @@ static void TraceState(void)
     memset(words, 0, sizeof(words));
     words[0] = padReads;
     words[19] = seed ? (uint32_t)*seed : 0;
+    {
+        int x, y, z;
+
+        if (PortTestPlayerState(&x, &y, &z)) {
+            words[29] = (uint32_t)x;
+            words[30] = (uint32_t)y;
+            words[31] = (uint32_t)z;
+        }
+    }
+    if (SDL_getenv("WIPEOUT_TRACE_SHIP")) {
+        /* diagnostics: the player's ship record, native layout (kind 45) */
+        int size;
+        const void *ship = PortTestPlayerShip(&size);
+
+        if (ship) {
+            Event(45, ship, size / 4);
+        }
+    }
     Event(KIND_STATE, words, 32);
 }
 

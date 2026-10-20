@@ -1,3 +1,4 @@
+#include <setjmp.h>
 #include "mips.h"
 
 #include <stdio.h>
@@ -81,6 +82,10 @@ enum { R_RA = 31, R_SP = 29, R_V0 = 2, R_A0 = 4 };
 static uint32_t reg[32];
 static uint32_t hi, lo;
 
+/* A BREAK (the compiler's divide-by-zero trap) ends the call: the console would take an exception. */
+int mipsTrapped;
+static jmp_buf trapExit;
+
 static void Unimplemented(uint32_t pc, uint32_t instr)
 {
     fprintf(stderr, "mips: unimplemented instruction %08x at %08x\n", instr, pc);
@@ -106,6 +111,10 @@ uint32_t MipsCall(uint32_t address, uint32_t a0, uint32_t a1, uint32_t a2, uint3
     reg[R_RA] = RETURN_ADDRESS;
     mipsInstructionCount = 0;
     nextpc = pc + 4;
+    mipsTrapped = 0;
+    if (setjmp(trapExit)) {
+        return 0;
+    }
 
     for (;;) {
         uint32_t instr, op, rs, rt, rd, sh, fn, imm, target;
@@ -169,6 +178,7 @@ uint32_t MipsCall(uint32_t address, uint32_t a0, uint32_t a1, uint32_t a2, uint3
                 case 0x11: hi = a; break;
                 case 0x12: reg[rd] = lo; break;
                 case 0x13: lo = a; break;
+                case 0x0D: mipsTrapped = 1; longjmp(trapExit, 1);
                 case 0x18: { int64_t p = (int64_t)(int32_t)a * (int32_t)b; lo = (uint32_t)p; hi = (uint32_t)((uint64_t)p >> 32); break; }
                 case 0x19: { uint64_t p = (uint64_t)a * b; lo = (uint32_t)p; hi = (uint32_t)(p >> 32); break; }
                 case 0x1A:

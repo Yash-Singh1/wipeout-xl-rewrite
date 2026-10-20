@@ -5,6 +5,31 @@
 #include "../../platform/trace.h"
 
 extern TrackData *track;
+extern ShipData *shipIndex;
+extern int ownShip;
+
+/* The player's ship record (native layout), for diagnostics. */
+const void *PortTestPlayerShip(int *size)
+{
+    *size = sizeof(ShipData);
+    return shipIndex && ownShip >= 0 && ownShip < 15 ? &shipIndex[ownShip] : NULL;
+}
+
+/* The player's ship for the trace's state event: position (x, y, z),
+   section number and lap, as the console recorder reads them. */
+int PortTestPlayerState(int *x, int *y, int *z)
+{
+    ShipData *ship;
+
+    if (!shipIndex || ownShip < 0 || ownShip >= 15) {
+        return 0;
+    }
+    ship = &shipIndex[ownShip];
+    *x = ship->ppivot.vx;
+    *y = ship->ppivot.vy;
+    *z = ship->ppivot.vz;
+    return 1;
+}
 
 /* "wall": move the player's ship value/4096 of its wing vector sideways and
    give it back to the player for one update, so it meets the wall. */

@@ -146,8 +146,10 @@ void ShipTrkReaction(ShipData *playerShip, Object **shipShapes)
         playerShip->apivot.vz = (targetVelocity.vz - playerShip->vpivot.vz) / ((brake << 2) + 20);
         altitudeDifference = playerShip->nearTrkSect->centre.vy - playerShip->ppivot.vy;
         if (altitudeDifference > 704) {
-            /* mass is only assigned in the branch above: the original reads it uninitialised here */
-            if (mass == 110) playerShip->ppivot.vy += 80;
+            /* Port: mass is only assigned in the branch above, so the C reads it uninitialised
+               here; the console's compiled code keeps mass in the register it has just loaded
+               playerShip->mass into (for the divisions below), so the test is on the ship's mass. */
+            if (playerShip->mass == 110) playerShip->ppivot.vy += 80;
             if (playerShip->vpivot.vy < 0) playerShip->vpivot.vy >>= 1;
             playerShip->ppivot.vy += 16;
         }
