@@ -456,6 +456,7 @@ int LoadImage(RECT *rect, u_long *p)
         }
     }
     GpuVramChanged(rect->x, rect->y, rect->w, rect->h);
+    GpuWriteFramebuffer(rect->x, rect->y, rect->w, rect->h);
     return 0;
 }
 
@@ -498,6 +499,7 @@ int MoveImage(RECT *rect, int x, int y)
         }
     }
     GpuVramChanged(x, y, rect->w, rect->h);
+    GpuMoveFramebuffer(rect->x, rect->y, rect->w, rect->h, x, y);
     return 0;
 }
 

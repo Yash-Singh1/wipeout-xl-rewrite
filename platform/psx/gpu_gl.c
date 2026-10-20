@@ -501,10 +501,54 @@ static void Add(const GpuVertex *v)
     out->v = v->v;
 }
 
+/* Video memory is kept twice: psxVram (what the CPU uploads and reads, and
+   what textures sample) and the framebuffer (what the GPU draws, at the
+   display's scale). The blocks the GPU has drawn into since they were last
+   written by the CPU hold their true pixels in the framebuffer only. */
+#define BLOCK 8
+static uint8_t drawnBlocks[VRAM_HEIGHT / BLOCK][VRAM_WIDTH / BLOCK];
+
+static void MarkDrawn(float minX, float minY, float maxX, float maxY)
+{
+    int left = SDL_max((int)minX, areaX), top = SDL_max((int)minY, areaY);
+    int right = SDL_min((int)maxX + 1, areaX + areaW), bottom = SDL_min((int)maxY + 1, areaY + areaH);
+    int bx, by;
+
+    if (right <= left || bottom <= top) {
+        return;
+    }
+    for (by = top / BLOCK; by <= (bottom - 1) / BLOCK && by < VRAM_HEIGHT / BLOCK; by++) {
+        for (bx = left / BLOCK; bx <= (right - 1) / BLOCK && bx < VRAM_WIDTH / BLOCK; bx++) {
+            drawnBlocks[by][bx] = 1;
+        }
+    }
+}
+
+static void ClearDrawn(int x, int y, int w, int h)
+{
+    int bx, by;
+
+    /* only blocks the rectangle covers completely */
+    for (by = (y + BLOCK - 1) / BLOCK; (by + 1) * BLOCK <= y + h && by < VRAM_HEIGHT / BLOCK; by++) {
+        for (bx = (x + BLOCK - 1) / BLOCK; (bx + 1) * BLOCK <= x + w && bx < VRAM_WIDTH / BLOCK; bx++) {
+            drawnBlocks[by][bx] = 0;
+        }
+    }
+}
+
 void GpuTriangles(const GpuDrawState *state, const GpuVertex *vertices, int count)
 {
     int i;
     int perspective = 1;
+    float minX = vertices[0].x, minY = vertices[0].y, maxX = minX, maxY = minY;
+
+    for (i = 1; i < count; i++) {
+        minX = SDL_min(minX, vertices[i].x);
+        minY = SDL_min(minY, vertices[i].y);
+        maxX = SDL_max(maxX, vertices[i].x);
+        maxY = SDL_max(maxY, vertices[i].y);
+    }
+    MarkDrawn(minX, minY, maxX, maxY);
 
     for (i = 0; i < count; i++) {
         if (vertices[i].w <= 0.0f) {
@@ -566,6 +610,7 @@ void GpuFill(int x, int y, int w, int h, uint8_t r, uint8_t g, uint8_t b)
         }
     }
     GpuVramChanged(x, y, w, h);
+    ClearDrawn(x, y, w, h);
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
     glEnable(GL_SCISSOR_TEST);
     glScissor(x * scale, y * scale, w * scale, h * scale);
@@ -595,11 +640,85 @@ void GpuReadBack(int x, int y, int w, int h)
         for (i = 0; i < w; i++) {
             const uint8_t *p = pixels + (((size_t)j * scale + scale / 2) * w * scale + (size_t)i * scale + scale / 2) * 4;
             uint16_t pixel = (uint16_t)((p[0] >> 3) | ((p[1] >> 3) << 5) | ((p[2] >> 3) << 10));
+            if (!drawnBlocks[(y + j) / BLOCK][(x + i) / BLOCK]) {
+                continue; /* uploaded, never drawn over: psxVram holds it */
+            }
             psxVram[y + j][x + i] = (psxVram[y + j][x + i] & 0x8000) | pixel;
         }
     }
     free(pixels);
     GpuVramChanged(x, y, w, h);
+}
+
+/* Pixels the CPU wrote (LoadImage, MoveImage) go to the framebuffer too, so
+   they are shown and drawn over as on the console. */
+void GpuWriteFramebuffer(int x, int y, int w, int h)
+{
+    static GLuint texture, readFramebuffer;
+    uint8_t *rgba;
+    int i, j;
+
+    if (w <= 0 || h <= 0 || x < 0 || y < 0 || x + w > VRAM_WIDTH || y + h > VRAM_HEIGHT) {
+        return;
+    }
+    Flush();
+    if (!texture) {
+        glGenTextures(1, &texture);
+        glGenFramebuffers(1, &readFramebuffer);
+    }
+    rgba = malloc((size_t)w * h * 4);
+    for (j = 0; j < h; j++) {
+        for (i = 0; i < w; i++) {
+            uint16_t pixel = psxVram[y + j][x + i];
+            uint8_t *out = rgba + ((size_t)j * w + i) * 4;
+            out[0] = (uint8_t)((pixel & 31) << 3);
+            out[1] = (uint8_t)(((pixel >> 5) & 31) << 3);
+            out[2] = (uint8_t)(((pixel >> 10) & 31) << 3);
+            out[3] = 255;
+        }
+    }
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
+    free(rgba);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, readFramebuffer);
+    glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, framebuffer);
+    glDisable(GL_SCISSOR_TEST);
+    glBlitFramebuffer(0, 0, w, h, x * scale, y * scale, (x + w) * scale, (y + h) * scale, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    ClearDrawn(x, y, w, h);
+}
+
+/* MoveImage in the drawn picture: the rectangle copied at the display's
+   scale (through a texture, as the two may overlap). */
+void GpuMoveFramebuffer(int x, int y, int w, int h, int toX, int toY)
+{
+    static GLuint texture, readFramebuffer;
+
+    if (w <= 0 || h <= 0 || x < 0 || y < 0 || toX < 0 || toY < 0 || x + w > VRAM_WIDTH || y + h > VRAM_HEIGHT ||
+        toX + w > VRAM_WIDTH || toY + h > VRAM_HEIGHT) {
+        return;
+    }
+    Flush();
+    if (!texture) {
+        glGenTextures(1, &texture);
+        glGenFramebuffers(1, &readFramebuffer);
+    }
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w * scale, h * scale, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, x * scale, y * scale, w * scale, h * scale);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, readFramebuffer);
+    glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, framebuffer);
+    glDisable(GL_SCISSOR_TEST);
+    glBlitFramebuffer(0, 0, w * scale, h * scale, toX * scale, toY * scale, (toX + w) * scale, (toY + h) * scale,
+                      GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    /* both copies now agree in the destination */
+    ClearDrawn(toX, toY, w, h);
 }
 
 /* Video memory row 0 is drawn at the bottom of the framebuffer (OpenGL

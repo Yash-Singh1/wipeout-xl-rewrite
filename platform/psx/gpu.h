@@ -55,6 +55,11 @@ void GpuPresent(int x, int y, int w, int h);
 /* Brings psxVram up to date with what was drawn into the rectangle (before
    the CPU reads or copies it). */
 void GpuReadBack(int x, int y, int w, int h);
+/* Puts pixels the CPU wrote to video memory (LoadImage, MoveImage) into the
+   drawn picture as well. */
+void GpuWriteFramebuffer(int x, int y, int w, int h);
+/* MoveImage's copy in the drawn picture. */
+void GpuMoveFramebuffer(int x, int y, int w, int h, int toX, int toY);
 /* Finishes the frame's drawing (before presenting). */
 void GpuFlush(void);
 /* Shows an RGB image (a movie frame) across the 4:3 picture, letterboxed
