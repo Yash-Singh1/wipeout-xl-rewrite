@@ -16,65 +16,35 @@ linked with the data files and run).
 """
 from collections import namedtuple
 
-Alias = namedtuple('Alias', 'name container macro expr pair includes decls container_decl evidence in_header')
+Alias = namedtuple('Alias', 'name container macro expr pair includes decls container_decl evidence use')
 
 
-def A(name, container, macro, evidence, expr=None, pair=None, includes=(), decls=(), container_decl=None, in_header=True):
-    """`macro` is the C expression the name stands for; `expr` an lvalue (written with the alias name)
-    whose address is the first byte of the aliased storage (default: the name itself); `pair` two
-    lvalues that must be the same object (an element further into a strided alias and the container
-    element it stands for); `includes`/`decls` what a test file needs to use the container;
-    `container_decl` the extern declaration inserted in a source file that uses the alias but does not
-    declare the container; `in_header` False when the uses were rewritten instead (the macro is then
-    only what the tests use to name the storage)."""
-    return Alias(name, container, macro, expr or name, pair, tuple(includes), tuple(decls), container_decl, evidence, in_header)
+def A(name, container, macro, evidence, expr=None, pair=None, includes=(), decls=(), container_decl=None, use=None):
+    """`macro` is the C expression the name stands for (the tests use it to name the storage); `expr` an lvalue
+    (written with the alias name) whose address is the first byte of the aliased storage (default: the name
+    itself); `pair` two lvalues that must be the same object (an element further into a strided alias and the
+    container element it stands for); `includes`/`decls` what a test file needs to use the container;
+    `container_decl` the line that replaces the removed declaration of the alias in a source file that does not
+    declare the container. `use` says how the uses in game/src are rewritten (`--apply-aliases`): a string, the
+    text that replaces the name (default: `macro`); ('index', container, n) for a name used as an array,
+    `name[i]` becomes `container[n + i]`; ('rewrite', [(file, old, new)...]) for anything else."""
+    return Alias(name, container, macro, expr or name, pair, tuple(includes), tuple(decls), container_decl, evidence, use if use is not None else macro)
 
 
 # Uses the aliases need rewritten, (file, old text, new text): a file that saw the container as one word.
 REWRITES = [
-    ('combat.c', 'extern u16 playerControl;', 'extern ControlInput playerControl[]; /* Port: the packet\'s control word is its head field */'),
-    ('combat.c', 'extern u16 remoteControl;', 'extern ControlInput remoteControl[]; /* Port: the packet\'s control word is its head field */'),
-    ('combat.c', '    send.control = playerControl;', '    send.control = playerControl[0].head;'),
-    ('combat.c', '    remoteControl = controlIn;', '    remoteControl[0].head = controlIn;'),
-    ('menus.c', 's32 screenFills;', 'extern BLK_FILL *screenFills[]; /* Port: pointers, and the second one is screenFill1 */'),
-    ('menus.c', '    screenFills = (s32)BlockFill(', '    screenFills[0] = BlockFill('),
-    ('menus.c', '    screenFill1 = (s32)BlockFill(', '    screenFill1 = BlockFill('),
-    ('menus.c', '#define CardFlags() (cardFlags[myFinished][fadescreen].flags)', '#define CardFlags() (cardSlots[myFinished].entry[fadescreen].type)'),
-    ('menus.c', '        ((u8 *)cardFlags)[slotOffset] = 1;', '        ((u8 *)&cardSlots[0].entry[0].type)[slotOffset] = 1;'),
-    ('menus.c', '        if (cardFlags[team][slot].flags & 1) {', '        if (cardSlots[team].entry[slot].type & 1) {'),
-    ('menus.c', '        if (!(cardFlags[card][i].flags & 1)) {', '        if (!(cardSlots[card].entry[i].type & 1)) {'),
-    ('main.c', 'extern int savedLapTimes;', 'extern int savedLapTimes[]; /* Port: the lap times and the four words after them */'),
-    ('main.c', '        savedLapTimes = 0;', '        savedLapTimes[0] = 0;'),
 ]
 
 ALIASES = [
-    # smokeColour is passed to AnimateTexture by value (TrackSpecificFunctions loads the whole word) and
-    # race() stores three bytes into it, one after the other: the r, g, b of one CVECTOR.
-    # checkCells[track][class][i] is a table of 6-byte cells (section, bonusSeconds, done). race() resets
-    # a whole row with three loops over the same cells that name the three fields as arrays of their own,
-    # each stepping 6 bytes: bonusSeconds starts at +2, done at +4.
-    # DrawEnvMap steps StaticRVert, StaticRVertY and StaticRVertZ together by 16 bytes: the vx, vy, vz of one
-    # VECTOR array (140 of them up to StaticDepth).
-    # The header words of a ghost take are separate globals in ghost.c; the take is copied as one block
-    # (replayBuffer[0] = recordBuffer[0]), so they are the first words of the buffer.
     # SetCharTextures fills fontGlyphs8/12/16 (vramX, vramY, width: 6 bytes) and menuGlyphWidth/glyphWidth
-    # with the same stride 6, the width at +4.
+    # with the same stride 6, the width at +4: the width field of the 6-byte glyphs.
     A('menuGlyphWidth', 'fontGlyphs8', '((GlyphWidth *)&fontGlyphs8[0].width)',
       'SetCharTextures stores fontGlyphs8 + 0, +2, +4 and menuGlyphWidth + 0 with stride 6: the width field of the 6-byte glyphs',
-      expr='menuGlyphWidth[0].width', pair=('menuGlyphWidth[7].width', 'fontGlyphs8[7].width'),
+      expr='menuGlyphWidth[0].width', pair=('menuGlyphWidth[7].width', 'fontGlyphs8[7].width'), use=('index', 'fontGlyphs8', 0),
       includes=['hiscores.h', 'hud.h'], decls=['extern FontGlyph fontGlyphs8[];'], container_decl='#include "hud.h"\nextern FontGlyph fontGlyphs8[];'),
     A('glyphWidth', 'fontGlyphs16', '((GlyphWidth *)&fontGlyphs16[0].width)', 'see menuGlyphWidth',
-      expr='glyphWidth[0].width', pair=('glyphWidth[7].width', 'fontGlyphs16[7].width'),
+      expr='glyphWidth[0].width', pair=('glyphWidth[7].width', 'fontGlyphs16[7].width'), use=('index', 'fontGlyphs16', 0),
       includes=['hiscores.h', 'hud.h'], decls=['extern FontGlyph fontGlyphs16[];'], container_decl='#include "hud.h"\nextern FontGlyph fontGlyphs16[];'),
-    # The display offsets are the screen rectangle of the DISPENVs (the halfword stores at +8 and +10).
-    # Two memory cards of 15 files of 90 bytes (CardEntry); the menu code addresses used/filename/label/type
-    # of the entries with byte arrays of their own (strides 90 and 1350, InitCard, LoadSave, DisplayCardBack).
-    # The text sprites are POLY_FT4s (40 bytes); the code fills their clut and tpage through arrays of their own.
-    # followRaceLine/InitRaceLine read and write the point at +4, +8, +12 of each 16-byte RaceLine.
-    # SortAllShips/initShipData write shipRank (position, shipNo) and read the ship numbers back through
-    # shipOrder with stride 4 from +2.
-    # LoadProg copied the 136-byte header of the program it loaded into progHeader and read the load address
-    # and size at +24 and +28 (the PS-X EXE header).
     # buildGhostReplayData/InitGhostShip fill one ControlInput (head, buttons, pressed, pad6, thrust, steering)
     # by the halfwords and bytes at +2, +4, +6, +8, +9; cameraOffset starts at +12.
     A('ghostButtons', 'ghostControl', 'ghostControl[0].buttons',
@@ -85,22 +55,30 @@ ALIASES = [
     A('ghostButtonsPrev', 'ghostControl', '(*(u16 *)ghostControl[0].pad6)', 'see ghostButtons (the two pad bytes at +6)',
       decls=['extern ControlInput ghostControl[];'], includes=['control.h'], container_decl='extern ControlInput ghostControl[];'),
     A('ghostStickX', 'ghostControl', '(*(s8 *)&ghostControl[0].thrust)', 'see ghostButtons',
-      decls=['extern ControlInput ghostControl[];'], includes=['control.h'], container_decl='extern ControlInput ghostControl[];'),
+      use='ghostControl[0].thrust', decls=['extern ControlInput ghostControl[];'], includes=['control.h'], container_decl='extern ControlInput ghostControl[];'),
     A('ghostStickY', 'ghostControl', '(*(s8 *)&ghostControl[0].steering)', 'see ghostButtons',
-      decls=['extern ControlInput ghostControl[];'], includes=['control.h'], container_decl='extern ControlInput ghostControl[];'),
+      use='ghostControl[0].steering', decls=['extern ControlInput ghostControl[];'], includes=['control.h'], container_decl='extern ControlInput ghostControl[];'),
     # Per row the crack code uses two A and two B polygons: B is A + 64 bytes within a row of 128.
     A('hiMedCrackPolysB', 'hiMedCrackPolysA', '((PolyFT3 (*)[4])&hiMedCrackPolysA[0][2])',
       'hiMedCrackPolysA[i][screen] and hiMedCrackPolysB[i][screen] (crack.c) are 64 bytes apart and the rows 128 bytes: B shares the table',
       expr='hiMedCrackPolysB[0][0].tag', pair=('hiMedCrackPolysB[3][1].tag', 'hiMedCrackPolysA[3][3].tag'),
+      use=('rewrite', [('crack.c', 'hiMedCrackPolysB[i][CurrentScreen]', 'hiMedCrackPolysA[i][CurrentScreen + 2]')]),
       includes=['crack.h'], decls=['extern PolyFT3 hiMedCrackPolysA[][4];'], container_decl='extern PolyFT3 hiMedCrackPolysA[][4];'),
-    # The ship models are loaded into shipShapeTable; the two sharks are slots 2 and 4.
+    # The ship models are loaded into shipShapeTable; the two sharks are slots 2 and 4, the rescue droid 30.
     A('lightDroid', 'shipShapeTable', 'shipShapeTable[30]',
       'race() loads shipShapeTable + 120 (slot 30, the rescue droid model, RescueDroidModel) without index and nothing stores it by name',
       pair=('lightDroid', 'shipShapeTable[30]'), decls=['extern Object *shipShapeTable[];'], container_decl='extern Object *shipShapeTable[];'),
+    A('sharkBodyModel', 'shipShapeTable', 'shipShapeTable[2]',
+      'UpdateSharkModel loads shipShapeTable + 8 and CopySharkVerts + 16 without index: slots 2 and 4',
+      decls=['extern Object *shipShapeTable[];'], container_decl='extern Object *shipShapeTable[];'),
+    A('sharkLegModel', 'shipShapeTable', 'shipShapeTable[4]', 'see sharkBodyModel',
+      decls=['extern Object *shipShapeTable[];'], container_decl='extern Object *shipShapeTable[];'),
     # The pad driver's packet: header, buttons, sticks. RadiusControl reads the buttons halfword on its own.
     A('debugPadInput', 'padBuf1', 'padBuf1[0].buttons',
       'RadiusControl loads padBuf1 + 2 and NegConConfig the byte at +4 (the packet\'s buttons and steering fields)',
       includes=['pad.h'], decls=['extern PadPacket padBuf1[];'], container_decl='#include "pad.h"'),
+    # doSerialGame sends the player's ControlInput as a link packet whose fields it names control, padHead,
+    # padButtons, padPressed, aux0, aux1 (menus.c, combat.c): the halfwords at +2, +4, +6 and the bytes at +8, +9.
     A('linkPadHead', 'playerControl', 'playerControl[0].buttons',
       'halfword loads at playerControl + 2, +4, +6 and byte loads at +8, +9 (doSerialGame, CheckForButtonPress): the ControlInput fields after head',
       includes=['control.h'], decls=['extern ControlInput playerControl[];'], container_decl='extern ControlInput playerControl[];'),
@@ -108,39 +86,32 @@ ALIASES = [
       includes=['control.h'], decls=['extern ControlInput playerControl[];'], container_decl='extern ControlInput playerControl[];'),
     A('linkPadAux1', 'playerControl', 'playerControl[0].steering', 'see linkPadHead',
       includes=['control.h'], decls=['extern ControlInput playerControl[];'], container_decl='extern ControlInput playerControl[];'),
-    # main() clears savedLapTimes and the four words after it one by one; the lap times are indexed by lap.
     # The menus and the HUD name the first texture slots after the screens that use them; the loader fills them
     # as one table (800 slots up to the end of menuTexturePtrsB) and the code indexes each sub-table from its name.
     A('menuTexturePtrsD', 'textureTable', '(&textureTable[2])',
       'AudioConfig loads textureTable + 8; the pointer tables are 4 bytes apart and the last one runs to the 800th slot',
-      expr='menuTexturePtrsD[0]', pair=('menuTexturePtrsD[3]', 'textureTable[5]'),
+      expr='menuTexturePtrsD[0]', pair=('menuTexturePtrsD[3]', 'textureTable[5]'), use=('index', 'textureTable', 2),
       decls=['extern Texture *textureTable[];'], container_decl='extern Texture *textureTable[];'),
     A('deleteTextures', 'textureTable', '(&textureTable[3])', 'see menuTexturePtrsD',
-      expr='deleteTextures[0]', pair=('deleteTextures[3]', 'textureTable[6]'),
+      expr='deleteTextures[0]', pair=('deleteTextures[3]', 'textureTable[6]'), use=('index', 'textureTable', 3),
       decls=['extern Texture *textureTable[];'], container_decl='extern Texture *textureTable[];'),
     A('endTextures', 'textureTable', '(&textureTable[4])', 'see menuTexturePtrsD',
-      expr='endTextures[0]', pair=('endTextures[3]', 'textureTable[7]'),
+      expr='endTextures[0]', pair=('endTextures[3]', 'textureTable[7]'), use=('index', 'textureTable', 4),
       decls=['extern Texture *textureTable[];'], container_decl='extern Texture *textureTable[];'),
     A('menuTexturePtrsC', 'textureTable', '((void **)&textureTable[5])', 'see menuTexturePtrsD',
-      expr='menuTexturePtrsC[0]', pair=('menuTexturePtrsC[3]', 'textureTable[8]'),
+      expr='menuTexturePtrsC[0]', pair=('menuTexturePtrsC[3]', 'textureTable[8]'), use=('index', 'textureTable', 5),
       decls=['extern Texture *textureTable[];'], container_decl='extern Texture *textureTable[];'),
     A('menuTexturePtrs', 'textureTable', '((void **)&textureTable[6])', 'see menuTexturePtrsD',
-      expr='menuTexturePtrs[0]', pair=('menuTexturePtrs[3]', 'textureTable[9]'),
+      expr='menuTexturePtrs[0]', pair=('menuTexturePtrs[3]', 'textureTable[9]'), use=('index', 'textureTable', 6),
       decls=['extern Texture *textureTable[];'], container_decl='extern Texture *textureTable[];'),
     A('menuTexturePtrsB', 'textureTable', '(&textureTable[7])', 'see menuTexturePtrsD',
-      expr='menuTexturePtrsB[0]', pair=('menuTexturePtrsB[3]', 'textureTable[10]'),
+      expr='menuTexturePtrsB[0]', pair=('menuTexturePtrsB[3]', 'textureTable[10]'), use=('index', 'textureTable', 7),
       decls=['extern Texture *textureTable[];'], container_decl='extern Texture *textureTable[];'),
-    # WaterFall saves a row of the screen next to a RECT and passes `waterfallSaved - 4` to LoadImage: the 8 bytes
-    # of waterfallBuf, eleven saved halfwords and the row word are one 16-halfword buffer.
-    # The fill polygons of the two screens: VsyncFunc indexes screenFills by the screen number; the menus
-    # and the loader store the second one by its own name.
-    # The track polygon pools are double buffered: the assembly AsmTrackHi/Med/Lo load Pool + 4 * screen,
-    # trackasm.c names the second pointer of each.
     # initShipData gives each of the 15 ships its grid position (the loop runs i < 15); the last three
     # entries, for the Phantom class, are set by name.
     A('phantomGridPos', 'gridPosition', '(&gridPosition[12])',
       'ships.c: for (i = 0; i < 15; i++) position = gridPosition[i]; phantomGridPos stores +0, +2, +4 of the entries 12..14',
-      expr='phantomGridPos[0]', pair=('phantomGridPos[2]', 'gridPosition[14]'),
+      expr='phantomGridPos[0]', pair=('phantomGridPos[2]', 'gridPosition[14]'), use=('index', 'gridPosition', 12),
       decls=['extern short gridPosition[];'], container_decl='extern short gridPosition[];'),
     # The pause menu is one record: its two-player stage, the answer to the confirmation prompt and the choice
     # are the bytes after its five words (PauseMenu.stage, .confirmed, .confirmChoice at +23, +24, +25).
@@ -148,9 +119,9 @@ ALIASES = [
       'race() loads pauseState + 23 and stores +24, +25 as bytes; the PauseMenu fields stage, confirmed, confirmChoice sit there',
       includes=['ayrace.h'], decls=['extern struct PauseMenu pauseState;']),
     A('twoPlayerMode', 'pauseState', '(*(signed char *)&pauseState.confirmed)', 'see twoPlayerPauseStatus',
-      includes=['ayrace.h'], decls=['extern struct PauseMenu pauseState;']),
+      use='pauseState.confirmed', includes=['ayrace.h'], decls=['extern struct PauseMenu pauseState;']),
     A('twoPlayerFlag', 'pauseState', '(*(signed char *)&pauseState.confirmChoice)', 'see twoPlayerPauseStatus',
-      includes=['ayrace.h'], decls=['extern struct PauseMenu pauseState;']),
+      use='pauseState.confirmChoice', includes=['ayrace.h'], decls=['extern struct PauseMenu pauseState;']),
     # The score tab record (HiScoreData, 72 bytes) is followed on the console by one byte of its own, hudDisabled
     # at +36, which is HiScoreData.highScore.
     A('hudDisabled', 'scoreTabData', 'scoreTabData.highScore',
@@ -163,11 +134,6 @@ ALIASES = [
       includes=['effects.h'], decls=['extern MonoRailData monoRail;']),
     A('trainMuzzleY', 'monoRail', 'monoRail.pad10[2]', 'see trainMuzzleX', includes=['effects.h'], decls=['extern MonoRailData monoRail;']),
     A('trainMuzzleZ', 'monoRail', 'monoRail.pad10[3]', 'see trainMuzzleX', includes=['effects.h'], decls=['extern MonoRailData monoRail;']),
-    A('sharkBodyModel', 'shipShapeTable', 'shipShapeTable[2]',
-      'UpdateSharkModel loads shipShapeTable + 8 and CopySharkVerts + 16 without index: slots 2 and 4',
-      decls=['extern Object *shipShapeTable[];'], container_decl='extern Object *shipShapeTable[];'),
-    A('sharkLegModel', 'shipShapeTable', 'shipShapeTable[4]', 'see sharkBodyModel',
-      decls=['extern Object *shipShapeTable[];'], container_decl='extern Object *shipShapeTable[];'),
 ]
 
 # Names the sources used to declare that the build branch has since rewritten (the field, the element or

@@ -3,6 +3,7 @@
 #include "functions.h"
 #include "control.h"
 extern ControlInput playerControl[1];
+#define linkPadAux1 playerControl[0].steering
 
 int alias_linkPadAux1(void)
 {

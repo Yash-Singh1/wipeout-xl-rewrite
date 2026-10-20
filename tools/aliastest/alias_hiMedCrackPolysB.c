@@ -3,6 +3,7 @@
 #include "functions.h"
 #include "crack.h"
 extern PolyFT3 hiMedCrackPolysA[8][4];
+#define hiMedCrackPolysB ((PolyFT3 (*)[4])&hiMedCrackPolysA[0][2])
 
 int alias_hiMedCrackPolysB(void)
 {

@@ -3,6 +3,7 @@
 #include "functions.h"
 #include "pad.h"
 extern PadPacket padBuf1[1];
+#define debugPadInput padBuf1[0].buttons
 
 int alias_debugPadInput(void)
 {

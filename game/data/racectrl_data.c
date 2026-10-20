@@ -3,7 +3,6 @@
 #include "ayrace.h"
 #include "effects.h"
 #include "hud.h"
-#include "pad.h"
 #include "track.h"
 #include "weapon.h"
 
@@ -28,7 +27,6 @@ int raceStartVcount;
 int quadIndex;
 int raceEndTimer;
 Object *zeppelinObj;
-PadPacket padBuf1[1];
 u_short tempTextureCount;
 HeapBlock *savedHeap;
 Object *radar[6];

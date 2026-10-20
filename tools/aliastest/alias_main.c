@@ -10,6 +10,8 @@ int alias_ghostStickX(void);
 int alias_ghostStickY(void);
 int alias_hiMedCrackPolysB(void);
 int alias_lightDroid(void);
+int alias_sharkBodyModel(void);
+int alias_sharkLegModel(void);
 int alias_debugPadInput(void);
 int alias_linkPadHead(void);
 int alias_linkPadAux0(void);
@@ -28,8 +30,6 @@ int alias_hudDisabled(void);
 int alias_trainMuzzleX(void);
 int alias_trainMuzzleY(void);
 int alias_trainMuzzleZ(void);
-int alias_sharkBodyModel(void);
-int alias_sharkLegModel(void);
 
 int main(void)
 {
@@ -52,6 +52,10 @@ int main(void)
     if (r) { printf("alias hiMedCrackPolysB failed (%d)\n", r); failures++; }
     r = alias_lightDroid();
     if (r) { printf("alias lightDroid failed (%d)\n", r); failures++; }
+    r = alias_sharkBodyModel();
+    if (r) { printf("alias sharkBodyModel failed (%d)\n", r); failures++; }
+    r = alias_sharkLegModel();
+    if (r) { printf("alias sharkLegModel failed (%d)\n", r); failures++; }
     r = alias_debugPadInput();
     if (r) { printf("alias debugPadInput failed (%d)\n", r); failures++; }
     r = alias_linkPadHead();
@@ -88,10 +92,6 @@ int main(void)
     if (r) { printf("alias trainMuzzleY failed (%d)\n", r); failures++; }
     r = alias_trainMuzzleZ();
     if (r) { printf("alias trainMuzzleZ failed (%d)\n", r); failures++; }
-    r = alias_sharkBodyModel();
-    if (r) { printf("alias sharkBodyModel failed (%d)\n", r); failures++; }
-    r = alias_sharkLegModel();
-    if (r) { printf("alias sharkLegModel failed (%d)\n", r); failures++; }
     printf("%d alias checks, %d failed\n", 29, failures);
     return failures != 0;
 }

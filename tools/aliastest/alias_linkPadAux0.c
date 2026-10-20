@@ -3,6 +3,7 @@
 #include "functions.h"
 #include "control.h"
 extern ControlInput playerControl[1];
+#define linkPadAux0 playerControl[0].thrust
 
 int alias_linkPadAux0(void)
 {

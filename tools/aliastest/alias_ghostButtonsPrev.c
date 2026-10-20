@@ -3,6 +3,7 @@
 #include "functions.h"
 #include "control.h"
 extern ControlInput ghostControl[1];
+#define ghostButtonsPrev (*(u16 *)ghostControl[0].pad6)
 
 int alias_ghostButtonsPrev(void)
 {

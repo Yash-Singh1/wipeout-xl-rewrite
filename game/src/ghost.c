@@ -8,6 +8,7 @@ extern int          ghostShip;
 extern int          ownShip;
 extern ControlInput ghostControl[];
 extern u16          ghostDrone;
+/* Port: ghostButtons, ghostButtonsPressed, ghostButtonsPrev, ghostStickX, ghostStickY are parts of ghostControl; the uses read them directly. */
 
 void InitGhostShip(ConfigData *config, ShipData *ships)
 {
@@ -43,7 +44,7 @@ void InitGhostShip(ConfigData *config, ShipData *ships)
             memcpy(&ships[index], &replay->ship, sizeof(ShipData));
             ghostDrone = 0;
             ships[ghostShip].combatAttr = ships[ghostShip].combatAttr | 1;
-            ghostButtonsPressed = 0;
+            ghostControl[0].pressed = 0;
             return;
         }
     }
@@ -83,20 +84,20 @@ void buildGhostReplayData(ShipData *ships)
     u16          buttons;
     u16          analogue;
 
-    ghostButtonsPrev = ghostButtons;
+    (*(u16 *)ghostControl[0].pad6) = ghostControl[0].buttons;
     if (ghostDrone == 0) {
         take = replayBuffer;
         if (take->keyCount < take->keyTotal) {
             if (take->control == 1) {
                 buttons = take->keys[take->keyCount];
                 take->keyCount += 1;
-                ghostButtons = buttons;
+                ghostControl[0].buttons = buttons;
             } else {
-                ghostButtons = take->keys[take->keyCount];
+                ghostControl[0].buttons = take->keys[take->keyCount];
                 analogue = take->keys[take->keyCount + 1];
                 take->keyCount += 2;
-                ghostStickX = analogue >> 8;
-                ghostStickY = analogue;
+                ghostControl[0].thrust = analogue >> 8;
+                ghostControl[0].steering = analogue;
             }
         } else {
             ghostDrone = 1;
@@ -105,7 +106,7 @@ void buildGhostReplayData(ShipData *ships)
             humanToDroneSpeed(ships, ghostShip);
         }
     }
-    ghostButtonsPressed = ghostButtons & (ghostButtons ^ ghostButtonsPrev);
+    ghostControl[0].pressed = ghostControl[0].buttons & (ghostControl[0].buttons ^ (*(u16 *)ghostControl[0].pad6));
 }
 
 void storeGhostTrail(ConfigData *config, HiScoreData *score)

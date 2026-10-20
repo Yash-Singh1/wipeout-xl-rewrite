@@ -21,7 +21,8 @@ extern u_char           perfectLapCount;
 extern u_char           plasmaShotBusy;
 extern u_char           raceEndState;
 extern u_char           linkRaceDone;
-extern HiScoreData scoreTabData; /* Port: hudDisabled is a part of it, see data_alias.h */
+/* Port: hudDisabled is part of scoreTabData; the uses read it directly. */
+extern HiScoreData scoreTabData;
 extern u_char           sfxMode;
 extern int              trackNameScroll;
 extern int              playCredits;
@@ -47,7 +48,7 @@ extern u_char           linkSyncB;
 extern u_char           linkRaceEnd;
 extern u_char           cdMusicIndex;
 extern int              cdMusicTrack;
-extern ControlInput playerControl[]; /* Port: linkPadAux0 is a part of it, see data_alias.h */
+/* Port: linkPadAux0, linkPadAux1 are parts of playerControl; the uses read them directly. */
 extern ConfigData      *gameData;
 extern TrackData       *track;
 extern ShipData        *shipIndex;
@@ -173,7 +174,7 @@ void CheckForButtonPress(void)
                 idleTimer++;
             }
         } else if (gameType == padType) {
-            if (keysDown != 0 || (u_int)(linkPadAux1 - 0x7A) >= 14 || linkPadAux0 >= 31) {
+            if (keysDown != 0 || (u_int)(playerControl[0].steering - 0x7A) >= 14 || playerControl[0].thrust >= 31) {
                 idleTimer = 0;
                 return;
             }
@@ -246,7 +247,7 @@ void Restart(ResetData *reset)
     raceEndTimer = 0;
     raceEndState = 0;
     medalDisplay = 0;
-    hudDisabled = 0;
+    scoreTabData.highScore = 0;
     plasmaShotBusy = 0;
     perfectLapCount = 0;
     perfectLap = 0;

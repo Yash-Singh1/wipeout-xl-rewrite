@@ -3,6 +3,7 @@
 #include "functions.h"
 #include "ayrace.h"
 extern struct PauseMenu pauseState;
+#define twoPlayerPauseStatus pauseState.stage
 
 int alias_twoPlayerPauseStatus(void)
 {

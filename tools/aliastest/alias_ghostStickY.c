@@ -3,6 +3,7 @@
 #include "functions.h"
 #include "control.h"
 extern ControlInput ghostControl[1];
+#define ghostStickY (*(s8 *)&ghostControl[0].steering)
 
 int alias_ghostStickY(void)
 {

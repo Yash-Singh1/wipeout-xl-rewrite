@@ -3,6 +3,7 @@
 #include "functions.h"
 #include "control.h"
 extern ControlInput playerControl[1];
+#define linkPadHead playerControl[0].buttons
 
 int alias_linkPadHead(void)
 {

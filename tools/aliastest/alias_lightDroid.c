@@ -2,6 +2,7 @@
 #include <string.h>
 #include "functions.h"
 extern Object *shipShapeTable[31];
+#define lightDroid shipShapeTable[30]
 
 int alias_lightDroid(void)
 {

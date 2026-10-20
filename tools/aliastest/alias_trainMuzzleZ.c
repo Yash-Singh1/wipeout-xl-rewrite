@@ -3,6 +3,7 @@
 #include "functions.h"
 #include "effects.h"
 extern MonoRailData monoRail;
+#define trainMuzzleZ monoRail.pad10[3]
 
 int alias_trainMuzzleZ(void)
 {

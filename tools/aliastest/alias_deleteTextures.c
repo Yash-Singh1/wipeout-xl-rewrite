@@ -2,6 +2,7 @@
 #include <string.h>
 #include "functions.h"
 extern Texture *textureTable[800];
+#define deleteTextures (&textureTable[3])
 
 int alias_deleteTextures(void)
 {

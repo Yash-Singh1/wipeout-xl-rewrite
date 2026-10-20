@@ -2,6 +2,7 @@
 #include <string.h>
 #include "functions.h"
 extern short gridPosition[15];
+#define phantomGridPos (&gridPosition[12])
 
 int alias_phantomGridPos(void)
 {

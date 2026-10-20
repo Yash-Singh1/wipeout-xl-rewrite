@@ -3,6 +3,7 @@
 #include "functions.h"
 #include "control.h"
 extern ControlInput ghostControl[1];
+#define ghostButtonsPressed ghostControl[0].pressed
 
 int alias_ghostButtonsPressed(void)
 {

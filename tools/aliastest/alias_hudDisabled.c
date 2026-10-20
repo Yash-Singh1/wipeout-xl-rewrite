@@ -3,6 +3,7 @@
 #include "functions.h"
 #include "hiscores.h"
 extern HiScoreData scoreTabData;
+#define hudDisabled scoreTabData.highScore
 
 int alias_hudDisabled(void)
 {

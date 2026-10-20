@@ -4,6 +4,7 @@
 #include "hiscores.h"
 #include "hud.h"
 extern FontGlyph fontGlyphs8[40];
+#define menuGlyphWidth ((GlyphWidth *)&fontGlyphs8[0].width)
 
 int alias_menuGlyphWidth(void)
 {

@@ -2,6 +2,7 @@
 #include <string.h>
 #include "functions.h"
 extern Texture *textureTable[800];
+#define menuTexturePtrsD (&textureTable[2])
 
 int alias_menuTexturePtrsD(void)
 {

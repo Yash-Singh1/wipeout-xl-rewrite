@@ -3,6 +3,7 @@
 #include "functions.h"
 #include "ayrace.h"
 extern struct PauseMenu pauseState;
+#define twoPlayerMode (*(signed char *)&pauseState.confirmed)
 
 int alias_twoPlayerMode(void)
 {

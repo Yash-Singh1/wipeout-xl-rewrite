@@ -2,6 +2,7 @@
 #include <string.h>
 #include "functions.h"
 extern Object *shipShapeTable[31];
+#define sharkBodyModel shipShapeTable[2]
 
 int alias_sharkBodyModel(void)
 {

@@ -2,6 +2,7 @@
 #include <string.h>
 #include "functions.h"
 extern Texture *textureTable[800];
+#define endTextures (&textureTable[4])
 
 int alias_endTextures(void)
 {

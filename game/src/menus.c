@@ -23,6 +23,7 @@ typedef struct Str20 { s32 w[5]; } Str20;
 typedef struct TimImageBlock { u8 pad0[0xC]; u16 x; u16 y; u16 width; u16 height; } TimImageBlock;
 short buttonCount;
 int buttonTextures;
+/* Port: endTextures, menuTexturePtrs, menuTexturePtrsB, menuTexturePtrsC, menuTexturePtrsD are parts of textureTable; the uses read them directly. */
 extern Texture *textureTable[];
 extern short CurrentScreen;
 extern POLY_FT4 menuButtons[][2];
@@ -101,10 +102,12 @@ extern char msgButtonsToChangeTheSymbol[];
 extern char msgCurrentPassword[];
 extern char msgNewPasswordEntry[];
 s32 passwordErrorTimer;
+/* Port: menuGlyphWidth is part of fontGlyphs8; the uses read it directly. */
 #include "hud.h"
-extern FontGlyph fontGlyphs8[]; /* Port: menuGlyphWidth is a part of it, see data_alias.h */
+extern FontGlyph fontGlyphs8[];
+/* Port: glyphWidth is part of fontGlyphs16; the uses read it directly. */
 #include "hud.h"
-extern FontGlyph fontGlyphs16[]; /* Port: glyphWidth is a part of it, see data_alias.h */
+extern FontGlyph fontGlyphs16[];
 extern s32 ownShip;
 extern u_short keyDefineThrustPad[2];
 extern u_short keyDefineFire[2];
@@ -419,6 +422,7 @@ extern u8 menuRecvFlags;
 extern s32 remoteShip;
 s16 linkTimedOut;
 s16 linkState;
+/* Port: linkPadAux0, linkPadAux1, linkPadHead are parts of playerControl; the uses read them directly. */
 
 int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMemorySize)
 {
@@ -598,7 +602,7 @@ int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMem
         ShakeScreen();
         Update2DParticle();
         DrawDrBox(work.musicTexture, (DrBox *)&work.musicScreen);
-        DisplayScreen(menuTexturePtrsC[menuTextures], (DrBox *)work.displayScreen);
+        DisplayScreen(textureTable[5 + menuTextures], (DrBox *)work.displayScreen);
         if (!screenCount) MenuFunction(gameData, &work.menuPolys, &savedKeyConfig, &work.selection, &work.cardState, &work.musicScreen);
         if (work.inputDelay > 0) {
             steps = 2;
@@ -698,13 +702,13 @@ serial:
         }
         if (currMenu == 0) {
             if (negcon) {
-                if (linkPadHead != 0) goto idleReset;
-                if (linkPadAux0 >= 31) goto idleReset;
-                if ((unsigned)(linkPadAux1-120) >= 47) goto idleReset;
+                if (playerControl[0].buttons != 0) goto idleReset;
+                if (playerControl[0].thrust >= 31) goto idleReset;
+                if ((unsigned)(playerControl[0].steering-120) >= 47) goto idleReset;
                 idleCount = (s32)((u32)idleCount + 1);
                 goto idleCheck;
             } else {
-                if (linkPadHead == 0) {
+                if (playerControl[0].buttons == 0) {
                     idleCount = (s32)((u32)idleCount + 1);
                     goto idleCheck;
                 }
@@ -734,7 +738,7 @@ idleCheck:
             quadIndex = CurrentScreen * 300;
             ClearOTagR(OT[CurrentScreen], 8192);
             ClearOTagR(OT2[CurrentScreen], 1600);
-            DisplayScreen(menuTexturePtrsC[menuTextures], (DrBox *)work.displayScreen);
+            DisplayScreen(textureTable[5 + menuTextures], (DrBox *)work.displayScreen);
             CentreText(msgWaitingForOtherPlayer, 1, 120, 8, 0);
             doSerialMenu(gameData, &work.selection);
             Swap();
@@ -795,7 +799,7 @@ void DoButton(short x, short y, int requestedIcon, char *text)
     int frameSpace[2];
     if(buttonCount<30) {
         if(playerControl[0].head==2 && (unsigned short)requestedIcon<4) iconNo+=6;
-        if((unsigned short)(iconNo-10)<2) texture=endTextures[buttonTextures];
+        if((unsigned short)(iconNo-10)<2) texture=textureTable[4 + buttonTextures];
         else texture=textureTable[buttonTextures+iconNo];
         {int glyphNo=buttonCount;int frame=CurrentScreen;
         polys=menuButtons;
@@ -3014,13 +3018,13 @@ void InitDefaultName(ConfigData *gameData, HiScoreData *data, char mode)
             i = 0;
             data->charX = 40;
             for (; data->nameEntered[i] != 0; i++) {
-                data->charX += glyphWidth[data->nameEntered[i] - 'A'].width;
+                data->charX += fontGlyphs16[data->nameEntered[i] - 'A'].width;
             }
         } else if (mode == 1) {
             i = 0;
             data->charX = 180;
             for (; data->nameEntered[i] != 0; i++) {
-                data->charX += menuGlyphWidth[data->nameEntered[i] - 'A'].width;
+                data->charX += fontGlyphs8[data->nameEntered[i] - 'A'].width;
             }
         }
     } else {
@@ -3272,7 +3276,7 @@ void InitMenuPolys(MenuPrims *prims)
     for (i = 0; i < 6; i++) {
         for (j = 0; j < 2; j++) {
             if (i < 3) {
-                texture = (Texture *)menuTexturePtrsB[menuTextures];
+                texture = (Texture *)textureTable[7 + menuTextures];
                 SetPolyFT4(&polys->arrowTexture[i][j]);
                 tex = &((MenuPolys *)((char *)polys + (j * 40 + i * 80)))->arrowTexture[0][0];
                 setRGB0(tex, 128, 128, 128);
@@ -3732,7 +3736,7 @@ drawSelection:
     PrintCX(msgDeadSpot, x.value[2], 86);
     cosine = rcos((padBuf1[0].steering << 4) - 3072);
     sine = rsin((padBuf1[0].steering << 4) - 3072);
-    texture = menuTexturePtrsB[menuTextures];
+    texture = textureTable[7 + menuTextures];
     for (i = 0; i < 3; i++) {
         switch (i) {
         case 0:
@@ -3980,7 +3984,7 @@ void AudioConfig(ConfigData *gameData, MenuPolys *polys, MenuSelection *selectio
     gameData->cdTrack = selection->music;
     SetInGameCDTrack(cdPlaySeconds, cdStatus, gameData, cdFlag);
     gameData->cdTrack = savedTrack;
-    texture = menuTexturePtrsD[menuTextures];
+    texture = textureTable[2 + menuTextures];
     if (GetMenuKey(0)) {
         selection->current--;
         if (selection->current < 0) {
@@ -5004,7 +5008,7 @@ void ShowMenu(ConfigData *gameData, MenuBars *polys, MenuSelection *selection)
             DrawTeamShips(440,-100,1000,cardNum,0,menuModels[raceOrder.order[menus[1].selection]]);
         }
     }
-    if(currMenu==0) DisplayTexture(menuTexturePtrs[menuTextures],25,38,polys->title);
+    if(currMenu==0) DisplayTexture(textureTable[6 + menuTextures],25,38,polys->title);
     else AddText(menu[currMenu].title.text,menu[currMenu].title.size,menu[currMenu].title.colour,12,1);
     AddTextBits(gameData);
     if(menuEditor) return;
@@ -5738,7 +5742,7 @@ void EnterName(ConfigData *gameData, HiScoreData *data)
                 Sound(9);
                 data->numChars--;
                 character = data->nameEntered[data->numChars] - 65;
-                data->charX -= menuGlyphWidth[character].width;
+                data->charX -= fontGlyphs8[character].width;
                 data->nameEntered[data->numChars] = 0;
                 data->charVal = 0;
             }
@@ -5750,7 +5754,7 @@ void EnterName(ConfigData *gameData, HiScoreData *data)
                     data->nameEntered[data->numChars] = data->currChar;
                     data->nameEntered[data->numChars + 1] = 0;
                     data->numChars++;
-                    data->charX += menuGlyphWidth[data->charVal].width;
+                    data->charX += fontGlyphs8[data->charVal].width;
                     if (data->numChars == 3) {
                         data->charVal = 26;
                         data->currChar = 91;
@@ -6393,8 +6397,8 @@ void InitRaceLoad(void)
         ClearOTagR(OT[CurrentScreen], 0x2000);
         ClearOTagR(OT2[CurrentScreen], 0x640);
         quadIndex = CurrentScreen * 0x12C;
-        DisplayTexture(menuTexturePtrs[menuTextures], 0x19, 0x26, loadPolys0);
-        DisplayTexture(menuTexturePtrs[menuTextures + 2], 0x28, 0xBE, loadPolys1);
+        DisplayTexture(textureTable[6 + menuTextures], 0x19, 0x26, loadPolys0);
+        DisplayTexture(textureTable[6 + (menuTextures + 2)], 0x28, 0xBE, loadPolys1);
         AddPrim(OT[CurrentScreen], fills[CurrentScreen]);
         Swap();
         i++;

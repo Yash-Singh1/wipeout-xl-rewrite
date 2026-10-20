@@ -10,6 +10,7 @@ extern Surface      tileSurfaces[24][2];
    two tables of 8 rows, which behaves the same. */
 extern PolyFT3      medLoCrackPolys[8][2];
 extern PolyFT3      hiMedCrackPolysA[8][4];
+/* Port: hiMedCrackPolysB is part of hiMedCrackPolysA; the uses read it directly. */
 void FillMedLoCrack(TrackSection *section, Skeleton *view)
 {
     CrackLocals     locals;
@@ -175,7 +176,7 @@ void FillHiMedCrack(TrackSection *hiSection, Skeleton *camera)
         }
 
         if (!((flagC | flagD | flagE) & 0x80460000)) {
-            ft3 = &hiMedCrackPolysB[i][CurrentScreen];
+            ft3 = &hiMedCrackPolysA[i][CurrentScreen + 2];
             SetPolyFT3((POLY_FT3 *)ft3);
             if (hiFace->flags & 4) {
                 surface = &tileSurfaces[hiFace->texture][1];

@@ -4,6 +4,7 @@
 #include "hiscores.h"
 #include "hud.h"
 extern FontGlyph fontGlyphs16[40];
+#define glyphWidth ((GlyphWidth *)&fontGlyphs16[0].width)
 
 int alias_glyphWidth(void)
 {
