@@ -57,7 +57,7 @@ checkout (`--decomp`, default `../wipeout-xl/decomp`): `asm/data/*.s`, `symbol_a
    Types a `.c` file declares privately are repeated verbatim in its data file, and the objects an
    initialiser points to are declared at the top.
 6. **Tentative definitions in `game/src`.** 501 symbols that the data files define are defined as well by a
-   tentative definition in a `.c` file (533 declaration lines; zero-filled there). `--externalize` makes
+   tentative definition in a `.c` file (532 declaration lines; zero-filled there). `--externalize` makes
    those lines `extern`, mechanically and idempotently, and is the one change to `game/src` that the data
    files need beyond the aliases; run it once the build branch is merged (it is not applied on this
    branch, so that the build branch's edits of the same lines do not conflict). Four initialised
@@ -90,9 +90,10 @@ each a line or two marked "Port:").
 `tools/mipsscan.py` follows the registers of every function of the executable as `constant + sum(k * opaque)`
 (`lui`/`addiu`/`ori`/`addu`/`sll`, gp-relative small data, `lwl`/`lwr` pairs) and records each load and store
 through such an address with its width and the strides of the index. `--evidence` prints them next to the
-labels and the declarations; `--conform` lays them over the chosen types: of 8,500 accesses of the game's
-code to defined data, none lies outside the object it falls in except those of the libraries'
-own tables. Code the game's authors wrote in assembly (`asm/800.s`) uses `$gp` as a scratch register and is
+labels and the declarations; `--conform` lays them over the chosen types: of the 7,920 accesses at
+constant addresses that the game's code makes to defined data, 7,253 hit a field or element of the
+chosen type exactly, 57 a part of a wider field and 610 span several fields inside the object (block
+copies and clears); one reaches past its object (a rodata literal). Code the game's authors wrote in assembly (`asm/800.s`) uses `$gp` as a scratch register and is
 read without it.
 
 ## 64-bit notes
