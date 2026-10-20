@@ -79,6 +79,9 @@ Triangle, air brakes L2 and R2), so the keys keep their meaning when the buttons
 key held when the game switches contexts and that means something else in the new one (Enter to
 pause) is ignored until released, so it does not also accept the first menu entry.
 
+Alt+Enter and F11 switch between window and full screen (the window handles them, the game never
+sees them).
+
 Text entry (names, passwords) uses the directional pad and Cross as on the console; typed letters
 are not read.
 
