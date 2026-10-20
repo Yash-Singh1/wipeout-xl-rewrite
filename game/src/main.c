@@ -61,9 +61,16 @@ int PsxMain(void) { /* Port: was void main(void), noreturn; the platform owns th
     char callWorkspace[64];
     char introFilename[16] = "C:\\ntscanim.exe";
     char initMemory[8];
-    POLY_FT4 menuPrimitives[2];
-    POLY_FT4 menuBackground[4]; /* the original reserved 0x90 bytes; two are drawn */
-    ConfigData config;
+    /* Port: the console's stack was still zero here (RAM is clear at boot): the recording shows the title
+       background packets with clut 0, and ShowMenuBackground never sets the clut or the colour of the two
+       primitives it draws. Native stack is not zero, so clear them. */
+    POLY_FT4 menuPrimitives[2] = {0};
+    POLY_FT4 menuBackground[4] = {0}; /* the original reserved 0x90 bytes; two are drawn */
+    /* Port: InitGameData, the saved-game loader and the menus read fields nothing has assigned yet
+       (initMagic, internalView, savedClass, ...). On the console they came from main's own stack frame,
+       which was still zero (the recording shows the menus drawing INT/EXT as for internalView 0), so the
+       struct starts cleared. */
+    ConfigData config = {0};
     RECT rect;
     char workspace[0x1AF0];
     char pressStart[24]; /* Port: the title's prompt names the key or button of the device in use */

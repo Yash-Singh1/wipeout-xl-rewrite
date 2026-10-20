@@ -57,3 +57,14 @@ whatever the heap held, on the console as in the port.
   length).
 - `MenuControl`'s `VSync` argument after `UpdateNotes` is whatever the
   console's sound update left in a register; no recording reaches it yet.
+
+## Uninitialised locals
+
+The console's stack was zero where `PsxMain` keeps its locals, so `ConfigData config` and the two title
+background primitive arrays start cleared (main.c): `InitGameData` never sets `internalView`, and
+`ShowMenuBackground` never sets the clut. To find reads of stack that nothing assigned, build with
+`-DCMAKE_C_FLAGS=-ftrivial-auto-var-init=pattern` (every local starts as 0xAA bytes) and run the recordings
+through `WIPEOUT_BIN=build-pattern/wipeoutxl tools/trace/lockstep.sh`: the results must equal the table above.
+The other candidates clang reports (`docs/uninit-candidates.txt`) are guarded by invariants the game keeps
+(a switch over sizes the callers pass, a loop that always runs, a flag set with the pointer) or sit in code
+no caller reaches.
