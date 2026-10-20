@@ -24,7 +24,12 @@ fields=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["frames
 python3 "$here/writes.py" "$recording" "$out/writes.txt" >/dev/null
 [ -s "$out/loads.txt" ] || python3 "$here/loads.py" "$recording" "$out/loads.txt" >/dev/null
 
+# fresh memory cards, as in the recording
+rm -rf "$out/save"
+mkdir -p "$out/save"
+
 WIPEOUT_HIDDEN=1 WIPEOUT_MUTE=1 WIPEOUT_FIXED_STEP=1 \
+WIPEOUT_SAVE_DIR="$out/save/" \
 WIPEOUT_FRAMES="$fields" \
 WIPEOUT_PADS="$recording/pads.txt" \
 WIPEOUT_VCOUNTS="$out/vcounts.txt" \
