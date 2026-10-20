@@ -86,6 +86,9 @@ uint16_t PsxPadActionButton(int action)
     if (action < 0 || action >= PAD_ACTIONS) {
         return 0;
     }
+    if (ports[0].type == PAD_NEGCON) {
+        return defaultBindings[action]; /* the keyboard's NeGcon mapping (pad_sdl.c) has its own layout */
+    }
     /* the game binds a digital pad's actions to buttons; 0x8FF0 and up are analogue axes */
     button = raceBindings[action];
     return button && button < 0x8FF0 ? button : defaultBindings[action];

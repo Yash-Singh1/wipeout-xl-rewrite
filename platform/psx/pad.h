@@ -54,7 +54,7 @@ enum {
 void PsxPadRaceFrame(bool steering, const uint16_t bindings[PAD_ACTIONS]);
 PadContext PsxPadContext(void);
 /* The button each race action presses now (the game's binding, or the default layout's when the
-   game has none yet or binds an analogue axis). */
+   game has none yet or binds an analogue axis, and on the NeGcon the keyboard's own layout). */
 uint16_t PsxPadActionButton(int action);
 
 /* The device the player used last, which decides the button glyphs and names the game shows. */
