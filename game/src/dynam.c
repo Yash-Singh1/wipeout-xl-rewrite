@@ -1,11 +1,11 @@
 #include "functions.h"
+#include "ghost.h"
 #include "dynam.h"
 
 extern TrackData   *track;
 extern int          raceType;
 
 extern int droidFlyin;
-extern short recordDisabled;
 
 void ShipTrkReaction(ShipData *playerShip, Object **shipShapes)
 {
@@ -138,7 +138,7 @@ void ShipTrkReaction(ShipData *playerShip, Object **shipShapes)
         if (GetMagnitude(toTarget) > 32000) {
             playerShip->update = UpdateRescueDroid; playerShip->updateCount = 500; droidFlyin = 1000;
             playerShip->thrust = 0; playerShip->attr |= 0x401;
-            if (raceType == 1) recordDisabled = 1;
+            if (raceType == 1) recordBuffer->disabled = 1;
         }
         brake = playerShip->r_brake_rot + playerShip->l_brake_rot;
         playerShip->apivot.vx = (targetVelocity.vx - playerShip->vpivot.vx) / ((brake << 2) + 20);

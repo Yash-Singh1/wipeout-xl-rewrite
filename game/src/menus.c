@@ -4,6 +4,7 @@
 #include "card.h"
 #include "pad.h"
 #include "ayrace.h"
+#include "ghost.h"
 #include "include_asm_g8.h"
 
 /* String data that is copied a word at a time lives on a word boundary. */
@@ -131,11 +132,7 @@ extern char hiScoreRank2[] ALIGN2;
 extern char hiScoreRank3[];
 extern DB doubleBuffer[];
 extern DISPENV DispEnv0;
-extern u16 dispOffX0;
-extern u16 dispOffY0;
 extern DISPENV DispEnv1;
-extern u16 dispOffX1;
-extern u16 dispOffY1;
 extern u8 msgInactive[];
 extern u8 msgDefaultView[];
 extern u8 msgMoveScreen[];
@@ -1250,7 +1247,6 @@ void DrawDrBox(int unused, DrBox *box)
 /* Port: only CopyGameData (left unchanged) still uses these __asm__ names for cdFlag and defaultCardName. */
 int cdFlagWord __asm__("cdFlag");
 int defaultCardNameWord __asm__("defaultCardName");
-extern short replayDisabled;
 
 
 void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSelection, KeyConfig *keyConfig, char *cardState)
@@ -1403,7 +1399,7 @@ void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSele
             selection->calibration[1] = keyConfig->calibration[1];
             keyConfig->active = 0;
             selection->current = 0;
-            replayDisabled = 1;
+            replayBuffer->disabled = 1;
         }
         break;
     case 21:
@@ -1421,7 +1417,7 @@ void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSele
             if (nc < 128) turnDivisor = ~nc;
             menu[currMenu].selection = 0;
             for (i = 0; i < 3; i++) negconEditing[i] = 0;
-            replayDisabled = 1;
+            replayBuffer->disabled = 1;
         } else {
             gameData->negconMin = selection->negconMin;
             gameData->negconCentre = selection->negconCenter;
@@ -1443,11 +1439,11 @@ void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSele
             selection->screenX = gameData->screenX;
             ((volatile MenuSelection *)selection)->screenY = gameData->screenY;
             tsx = (unsigned short)selection->screenX;
-            *(volatile short *)&dispOffX1 = tsx;
-            *(volatile short *)&dispOffX0 = tsx;
+            DispEnv1.screen.x = tsx;
+            DispEnv0.screen.x = tsx;
             tsy = *(volatile unsigned short *)&selection->screenY;
-            dispOffY1 = tsy;
-            dispOffY0 = tsy;
+            DispEnv1.screen.y = tsy;
+            DispEnv0.screen.y = tsy;
             selection->screenOffsetState = gameData->screenOffsetState;
             selection->weapons = gameData->weaponsOn;
             selection->moveScreen = 0;
@@ -1476,11 +1472,11 @@ void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSele
             selection->screenX = gameData->screenX;
             ((volatile MenuSelection *)selection)->screenY = gameData->screenY;
             tsx = (unsigned short)selection->screenX;
-            *(volatile short *)&dispOffX1 = tsx;
-            *(volatile short *)&dispOffX0 = tsx;
+            DispEnv1.screen.x = tsx;
+            DispEnv0.screen.x = tsx;
             tsy = *(volatile unsigned short *)&selection->screenY;
-            dispOffY1 = tsy;
-            dispOffY0 = tsy;
+            DispEnv1.screen.y = tsy;
+            DispEnv0.screen.y = tsy;
         } else {
             gameData->screenX = selection->screenX;
             gameData->screenY = selection->screenY;
@@ -3468,10 +3464,10 @@ void InitNewDisplay(ConfigData *gameData)
 {
     SetDefDispEnv(&DispEnv0, 0, 0, 0x140, 0xF0);
     SetDefDispEnv(&DispEnv1, 0, 0x100, 0x140, 0xF0);
-    dispOffX0 = *(u16 *)&gameData->screenX;
-    dispOffY0 = *(u16 *)&gameData->screenY;
-    dispOffX1 = *(u16 *)&gameData->screenX;
-    dispOffY1 = *(u16 *)&gameData->screenY;
+    DispEnv0.screen.x = *(u16 *)&gameData->screenX;
+    DispEnv0.screen.y = *(u16 *)&gameData->screenY;
+    DispEnv1.screen.x = *(u16 *)&gameData->screenX;
+    DispEnv1.screen.y = *(u16 *)&gameData->screenY;
     SetGeomOffset(0xA0, 0x78);
     SetGeomScreen(0xA0);
     PutDispEnv(doubleBuffer[CurrentScreen].disp);
@@ -3543,10 +3539,10 @@ void ScreenConfig(ConfigData *gameData, MenuPolys *polys, short *screenPosition)
             screenPosition[1] = 24;
         }
     }
-    dispOffX0 = *(u_short *)&screenPosition[0];
-    dispOffY0 = *(u_short *)&screenPosition[1];
-    dispOffX1 = *(u_short *)&screenPosition[0];
-    dispOffY1 = *(u_short *)&screenPosition[1];
+    DispEnv0.screen.x = *(u_short *)&screenPosition[0];
+    DispEnv0.screen.y = *(u_short *)&screenPosition[1];
+    DispEnv1.screen.x = *(u_short *)&screenPosition[0];
+    DispEnv1.screen.y = *(u_short *)&screenPosition[1];
     for (corner = 0; corner < 4; corner++) {
         AddPrim(OT[CurrentScreen], &polys->border[corner][CurrentScreen]);
     }

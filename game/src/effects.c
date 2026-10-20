@@ -30,10 +30,6 @@ extern int zeppelinBaseY;
 extern int zeppelinBaseZ;
 extern Object *lightGroups[];
 extern int startCountdown;
-extern u_short dispOffX0;
-extern u_short dispOffY0;
-extern u_short dispOffX1;
-extern u_short dispOffY1;
 extern int remoteShip;
 extern int lightUpdate;
 
@@ -1878,23 +1874,23 @@ void ShakeScreen(void)
         rnd = newRand();
         offsetX = rnd % (int) shakeAmount;
         posX = *(u_short *)&gameData->screenX + (((int) shakeAmount >> 1) - offsetX);
-        dispOffX1 = posX;
-        dispOffX0 = posX;
+        DispEnv1.screen.x = posX;
+        DispEnv0.screen.x = posX;
         rnd2 = newRand();
         offsetY = rnd2 % (int) shakeAmount;
         halfShake = (int) shakeAmount >> 1;
         posY = *(u_short *)&gameData->screenY + (halfShake - offsetY);
         shakeAmount -= 1;
-        dispOffY1 = posY;
-        dispOffY0 = posY;
+        DispEnv1.screen.y = posY;
+        DispEnv0.screen.y = posY;
     } else if (shakeAmount == 1) {
         posX2 = *(u_short *)&gameData->screenX;
-        dispOffX1 = posX2;
-        dispOffX0 = posX2;
+        DispEnv1.screen.x = posX2;
+        DispEnv0.screen.x = posX2;
         posY2 = *(u_short *)&gameData->screenY;
         shakeAmount = 0;
-        dispOffY1 = posY2;
-        dispOffY0 = posY2;
+        DispEnv1.screen.y = posY2;
+        DispEnv0.screen.y = posY2;
     }
 }
 void InitPitCycle(void)

@@ -43,7 +43,7 @@ def compile_tree(src_root, out_dir, only=None):
     def one(f):
         obj = out_dir / (f.stem + '.o')
         cmd = [str(LLVM / 'clang')] + FLAGS + ['-include', str(ROOT / 'tools/oracle32/o32.h'),
-                                               '-I' + str(src_root / 'game/include'), '-c', str(f), '-o', str(obj)]
+                                               '-isystem', str(ROOT / 'tools/oracle32/include'), '-I' + str(src_root / 'game/include'), '-c', str(f), '-o', str(obj)]
         r = subprocess.run(cmd, capture_output=True, text=True)
         if r.returncode:
             print('COMPILE FAIL', f.name, r.stderr[:2000])

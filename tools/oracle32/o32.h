@@ -1,5 +1,6 @@
 typedef unsigned int size_t;
 typedef unsigned int uintptr_t;
+typedef int intptr_t;
 typedef int ptrdiff_t;
 int printf(const char *, ...);
 int sprintf(char *, const char *, ...);

@@ -13,16 +13,11 @@ extern int attractActTrack;
 extern int attractNormTrack;
 extern int attractTrackNo;
 extern int attractLoopFlag;
-extern signed char sillyShips;
-extern short TextureTableCount;
 extern unsigned short ghostClutX;
 extern unsigned short ghostClutY;
 extern unsigned char raceTracks[];
-extern u_short menuTextures[];
 extern int cdFlag[];
 extern short keyDefineThrust;
-extern unsigned short gClutX;
-extern unsigned short gClutY;
 extern int remoteShip;
 extern signed char cdPlaySeconds[];
 extern u_long *OT[];
@@ -38,7 +33,6 @@ ConfigData *gameData;
 extern int cdMusicTrack;
 extern unsigned short keysDown;
 extern int linkSendFlag;
-extern signed char gameType;
 extern int raceType;
 extern short CurrentScreen;
 extern HeapBlock *reserveHeap;
@@ -51,7 +45,6 @@ int raceContext;
 extern int cdMusicCount;
 extern int ghostShip;
 extern struct WipeCdStatus cdStatus[];
-extern signed char continuesLeft;
 extern int savedLapTimes[];
 extern CdlLOC cdTrackLocs[];
 extern unsigned char cdMusicTable[];
@@ -347,7 +340,7 @@ block_56:
         savedTextureTableCount = TextureTableCount;
         if (keyDefineThrust == 0) {
             ShowLoadMessage();
-            InitMenuTextures(menuTextures);
+            InitMenuTextures(&menuTextures); /* Port: menuTextures is one index (globals.h), not an array */
         }
         InitRaceLoad();
         keyDefineThrust = 0;
