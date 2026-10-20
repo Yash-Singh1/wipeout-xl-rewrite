@@ -51,7 +51,7 @@ extern char    drFontsFile[];
 /* Leading part of every challenge texture path. */
 typedef struct PathSeed {
     char text[22];
-} PathSeed __attribute__((aligned(4)));
+} PathSeed; /* Port: the PlayStation compiler aligned this typedef to 4 (size stays 22); clang needs the size to be a multiple. */
 
 extern PathSeed texturePathSeed[];
 extern char    extCmp[];

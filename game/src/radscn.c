@@ -15,7 +15,7 @@ void CalcNewRadius(TrackSection *section, Object *objects)
     MATRIX       *matrix;
     Vector       *sectionCentre;
     VECTOR        vector;
-    int int     distance;
+    long long     distance;
     short         j;
     short         objectCount;
     short         withinLocal;
@@ -125,7 +125,7 @@ void SceneRadiusCheck(Object *objects)
     Vector       *sectionCentre;
     short         objectCount;
     VECTOR        vector;
-    int int     distance;
+    long long     distance;
     short         objectList[128];
     short         withinLocal;
     short         withinGlobal;

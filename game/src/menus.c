@@ -3,6 +3,7 @@
 #include "hiscores.h"
 #include "card.h"
 #include "pad.h"
+#include "ayrace.h"
 #include "include_asm_g8.h"
 
 /* String data that is copied a word at a time lives on a word boundary. */
@@ -60,7 +61,6 @@ s32 myFinished;
 s32 fadescreen;
 extern u8 msgErrorOpenRead[];
 extern u8 msgErrorReadHeader[];
-void PlayNote();
 extern u8 msgOverwriteFile[];
 extern u8 msgDeleteFile[];
 extern u8 msgMemoryCardIs[];
@@ -84,8 +84,6 @@ extern char msgCard[];
 extern unsigned short keysDown;
 MenuEntry *menu;
 void CentreText();
-int sprintf();
-short GetMenuKey();
 int format();
 int delete();
 extern u8 msgCheckingMemory[];
@@ -154,7 +152,6 @@ extern char hiScoreRank1[];
 extern char hiScoreRank2[];
 extern char hiScoreRank3[];
 void AddText();
-void AddTime();
 extern DB doubleBuffer[];
 extern DISPENV DispEnv0;
 extern u16 dispOffX0;
@@ -358,7 +355,6 @@ void AsmDrawObject();
 void PreCalcNormals();
 void DrawEnvMap();
 void SetSkeletonPosition();
-void SetSkeletonDirection();
 s32 shipSpin;
 void *preCalcObject;
 extern ConfigData *gameData;
@@ -1735,7 +1731,7 @@ int DisplayCardBack(MenuPolys *polys, int cursorArg, int cardArg, SaveSelection 
                             cardOffset = (cardUnits16 - cardUnits) * 2;
                             entryOffset = entryIndex * 0x5A;
                             *(volatile s32 *)&gridExtra = (s32)slots;
-                            nameDiff = strncmp(cardOffset + (((cursorTimes2 + cursorSlot) * 0x1E) + slots) + 0xB, cardOffset + (entryOffset + slots) + 0xB, 0x14, slots);
+                            nameDiff = strncmp(cardOffset + (((cursorTimes2 + cursorSlot) * 0x1E) + slots) + 0xB, cardOffset + (entryOffset + slots) + 0xB, 0x14); /* Port: the original passed `slots` as an extra, unread fourth argument */
                             nextEntry = entryIndex + 1;
                             if ((nameDiff == 0) && ((((CardEntry *)((char *)cardSlots + entryOffset + cardOffset))->multi == 1) || (nextEntry = entryIndex + 1, (cursorSlot == entryIndex)))) {
                                 fadeSprite = 0;

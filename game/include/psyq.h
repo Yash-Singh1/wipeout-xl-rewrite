@@ -384,15 +384,21 @@ void _card_load(int port);
 void _card_write(int port, int sector, void *buffer);
 void _new_card(void);
 
-/* C library / file I/O */
-char *strcat();
-char *strcpy();
-int   strncmp();
-int   strlen();
-int   open(char *name, int mode);
-int   close(int fd);
-int   read(int fd, void *buffer, int size);
-int   write(int fd, void *buffer, int size);
-int   rename(char *oldName, char *newName);
+/* C library: the standard headers (forced in by platform/include/port.h) declare
+   strcat, strcpy, strncmp, strlen, sprintf, printf and the rest.
+
+   Port: the PsyQ BIOS file calls (the memory card and the serial port: libapi) are
+   named like the host's POSIX file calls, which a native program also links.  They
+   keep their prototypes and get distinct link names. */
+int PsyqOpen(char *name, int mode);
+int PsyqClose(int fd);
+int PsyqRead(int fd, void *buffer, int size);
+int PsyqWrite(int fd, void *buffer, int size);
+int PsyqRename(char *oldName, char *newName);
+#define open(name, mode)         PsyqOpen(name, mode)
+#define close(fd)                PsyqClose(fd)
+#define read(fd, buffer, size)   PsyqRead(fd, buffer, size)
+#define write(fd, buffer, size)  PsyqWrite(fd, buffer, size)
+#define rename(oldName, newName) PsyqRename(oldName, newName)
 
 #endif

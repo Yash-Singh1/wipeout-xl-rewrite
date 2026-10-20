@@ -378,7 +378,7 @@ extern u_char_eq1 UpdateRescueDroid__v1[] __asm__("UpdateRescueDroid");
 extern u_char_eq1 UpdateDroneShip__v1[] __asm__("UpdateDroneShip");
 extern int heap;
 extern TrackData_eq1 *track__v1 __asm__("track");
-static inline int divideSix(int value, int magic) { union { int int product; struct { int hi; u_int_eq1 lo; } words; } result; result.product=(int int)value * magic; return result.words.hi - (value >> 31); }
+static inline int divideSix(int value, int magic) { union { long long product; struct { int hi; u_int_eq1 lo; } words; } result; result.product=(long long)value * magic; return result.words.hi - (value >> 31); }
 #define CHECKPOINTS (checkCells__v1[gameData->team][gameData->shipClass])
 void race__eq1(GameData *gameData, int context, int scene) __asm__("race");
 void race__eq1(GameData *gameData, int context, int scene) {

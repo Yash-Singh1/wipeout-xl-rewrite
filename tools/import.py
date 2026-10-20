@@ -50,13 +50,18 @@ def portable_types(text):
     """
     out = []
     position = 0
+    after_long = False
     for match in TOKEN_RE.finditer(text):
         out.append(text[position:match.start()])
         token = match.group()
         kind = match.lastgroup
-        if kind == 'word' and token == 'long':
+        if kind == 'word' and token == 'long' and after_long:
+            after_long = False  # second half of `long long`: stays 64 bits
+        elif kind == 'word' and token == 'long':
             following = text[match.end():match.end() + 16].lstrip()
-            if re.match(r'(int|double)\b', following):
+            if re.match(r'long\b', following):
+                after_long = True  # `long long` stays 64 bits
+            elif re.match(r'(int|double)\b', following):
                 token = '' if following.startswith('int') else token
             else:
                 token = 'int'

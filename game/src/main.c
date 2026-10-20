@@ -1,4 +1,6 @@
 #include "functions.h"
+#include "pad.h"
+#include "ayrace.h"
 int InitCARD();
 int StartCARD();
 int _bu_init();
@@ -7,7 +9,6 @@ int GsInitVcount();
 int ChangeClearSIO();
 int ChangeClearPAD();
 int memset_80089554();
-int srand();
 int ResetCallback();
 extern int _stacksize;
 extern int _ramsize;
