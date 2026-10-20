@@ -33,6 +33,7 @@ u_long *OT[2];
 POLY_FT4 *TrackLoPolys[2], *TrackMedPolys[2], *TrackHiPolys[2];
 Surface tileSurfaces[32][2];
 short loTileCount, medTileCount, hiTileCount;
+PrimPtr nextPrim;
 
 /* The port links its packets with AddPrim; the test records them instead. */
 typedef struct Linked { int index; POLY_FT4 *poly; } Linked;
@@ -319,6 +320,14 @@ static void CompareDrawn(const char *label, uint32_t emuOt, uint32_t emuPool, PO
             }
             /* the packet bytes except the tag */
             if (memcmp(MipsPointer(address) + 4, (unsigned char *)l->poly + 4, 36) != 0) {
+                int k;
+
+                for (k = 4; k < 40; k++) {
+                    if (MipsPointer(address)[k] != ((unsigned char *)l->poly)[k]) break;
+                }
+                if (failures < 20) {
+                    printf("  %s slot %d byte %d: retail %02x port %02x\n", label, (int)slot, k, MipsPointer(address)[k], ((unsigned char *)l->poly)[k]);
+                }
                 Fail("packet contents", (int)slot, 0);
             }
             n++;
@@ -359,22 +368,24 @@ static void InitPool(POLY_FT4 *native, uint32_t emu, int count)
 }
 
 #define POOL 0x1000
-static void RunTrack(World *w, int trials, int medium)
+/* level: 0 low, 1 medium, 2 high.  The high routine also takes packets from the general buffer (nextPrim), which
+   the test puts in the second half of the pool. */
+static void RunTrack(World *w, int trials, int level)
 {
-    static POLY_FT4 nativePool[POOL];
-    uint32_t emuPool = EmuAlloc(POOL * 40), emuOt = EmuAlloc(0x2000 * 4);
-    const char *routine = medium ? "AsmTrackMed" : "AsmTrackLo";
-    const char *poolSymbol = medium ? "TrackMedPolys" : "TrackLoPolys";
-    const char *counterSymbol = medium ? "medTileCount" : "loTileCount";
-    short *counter = medium ? &medTileCount : &loTileCount;
+    static POLY_FT4 nativePool[2 * POOL];
+    uint32_t emuPool = EmuAlloc(2 * POOL * 40), emuOt = EmuAlloc(0x2000 * 4);
+    const char *routine = level == 2 ? "AsmTrackHi" : level ? "AsmTrackMed" : "AsmTrackLo";
+    const char *poolSymbol = level == 2 ? "TrackHiPolys" : level ? "TrackMedPolys" : "TrackLoPolys";
+    const char *counterSymbol = level == 2 ? "hiTileCount" : level ? "medTileCount" : "loTileCount";
+    short *counter = level == 2 ? &hiTileCount : level ? &medTileCount : &loTileCount;
     uint32_t cameraSym = 0;
-    int t;
+    int t, i;
     static u_long nativeOt[0x2000];
 
     (void)cameraSym;
     OT[0] = nativeOt;
     OT[1] = nativeOt;
-    TrackLoPolys[0] = TrackLoPolys[1] = TrackMedPolys[0] = TrackMedPolys[1] = nativePool;
+    TrackLoPolys[0] = TrackLoPolys[1] = TrackMedPolys[0] = TrackMedPolys[1] = TrackHiPolys[0] = TrackHiPolys[1] = nativePool;
     MipsStore32(Sym("OT"), emuOt);
     MipsStore32(Sym("OT") + 4, emuOt);
     MipsStore32(Sym(poolSymbol), emuPool);
@@ -382,18 +393,27 @@ static void RunTrack(World *w, int trials, int medium)
     MipsStore16(Sym("CurrentScreen"), 0);
     CurrentScreen = 0;
 
+    /* random texture tiles, the same in both worlds (the face's texture and flip select one of 32x2 surfaces) */
+    for (t = 0; t < (int)sizeof(tileSurfaces); t++) {
+        unsigned char b = (unsigned char)Rand();
+
+        ((unsigned char *)tileSurfaces)[t] = b;
+        MipsStore8(Sym("tileSurfaces") + (uint32_t)t, b);
+    }
     for (t = 0; t < trials; t++) {
         int sectionIndex = RandRange(0, w->sectionCount - 3);
         int count = RandRange(1, 3);
+        int spread;
         int translate[3], superTranslate[3] = { 0, 0, 0 };
         Camera cam;
         TrackSection *s = &w->sections[sectionIndex];
         uint32_t emuSuper, emuCamera;
         uint32_t result;
 
-        translate[0] = -s->centre.vx + RandRange(-2500, 2500);
-        translate[1] = -s->centre.vy + RandRange(-2500, 2500);
-        translate[2] = -s->centre.vz + RandRange(-2500, 2500);
+        spread = (t % 3 == 0) ? 2500 : (t % 3 == 1) ? 600 : 150;   /* the near cameras cut faces by the screen edge or the near plane */
+        translate[0] = -s->centre.vx + RandRange(-spread, spread);
+        translate[1] = -s->centre.vy + RandRange(-spread, spread);
+        translate[2] = -s->centre.vz + RandRange(-spread, spread);
         memset(&cam, 0, sizeof(cam));
         SkeletonRandom(&cam.native[1], superTranslate);    /* the parent: rotation only */
         SkeletonRandom(&cam.native[0], translate);
@@ -404,21 +424,29 @@ static void RunTrack(World *w, int trials, int medium)
         ClearOts(emuOt);
         memset(nativeOt, 0, sizeof(nativeOt));
         InitPool(nativePool, emuPool, POOL);
+        for (i = POOL; i < 2 * POOL; i++) { MipsStore32(emuPool + 40u * (uint32_t)i + 4, 0); }
         *counter = (short)RandRange(0, 20);
         MipsStore16(Sym(counterSymbol), (uint16_t)*counter);
         linkedCount = 0;
+        nextPrim.ptr = (char *)(nativePool + POOL);
+        MipsStore32(Sym("nextPrim"), emuPool + 40u * POOL);
+        memset(nativePool + POOL, 0, POOL * sizeof(POLY_FT4));
 
         GteSetup();
-        result = MipsCall(Sym(routine), w->emuSections + 156u * (uint32_t)sectionIndex, emuCamera, (uint32_t)count, 0, 0, 0);
+        result = MipsCall(Sym(routine), w->emuSections + 156u * (uint32_t)sectionIndex, emuCamera, level == 2 ? 0 : (uint32_t)count, level == 2 ? (uint32_t)count : 0, 0, 0);
         (void)result;
         GteSetup();
-        if (medium) AsmTrackMed(&w->sections[sectionIndex], &cam.native[0], (short)count);
+        if (level == 2) AsmTrackHi(&w->sections[sectionIndex], &cam.native[0], 0, (short)count);
+        else if (level) AsmTrackMed(&w->sections[sectionIndex], &cam.native[0], (short)count);
         else AsmTrackLo(&w->sections[sectionIndex], &cam.native[0], (short)count);
 
         if ((short)MipsLoad16(Sym(counterSymbol)) != *counter) {
             Fail(counterSymbol, (short)MipsLoad16(Sym(counterSymbol)), *counter);
         }
-        CompareDrawn("lo", emuOt, emuPool, nativePool, 0, 0);
+        if (level == 2 && MipsLoad32(Sym("nextPrim")) - emuPool != (uint32_t)((POLY_FT4 *)nextPrim.ptr - nativePool) * 40u) {
+            Fail("nextPrim", (int)(MipsLoad32(Sym("nextPrim")) - emuPool) / 40, (int)((POLY_FT4 *)nextPrim.ptr - nativePool));
+        }
+        CompareDrawn(routine, emuOt, emuPool, nativePool, 0, 0);
     }
 }
 
@@ -441,8 +469,15 @@ int main(int argc, char **argv)
             if (!MipsLoadExe(argv[1])) { }
             emuNext = 0x80110000u;
             BuildWorld(&world, argv[3], trackNumbers[k]);
-            RunTrack(&world, trials, 0);
-            RunTrack(&world, trials, 1);
+            {
+                uint32_t afterWorld = emuNext;
+                int level;
+
+                for (level = 0; level < 3; level++) {
+                    emuNext = afterWorld;
+                    RunTrack(&world, trials, level);
+                }
+            }
             printf("track %d: %d trials each, %d failures so far\n", trackNumbers[k], trials, failures);
         }
     }

@@ -122,6 +122,10 @@ void AsmTrackLo(TrackSection *firstSection, Skeleton *camera, short loCount)
                 goto next_face;
             }
             SetQuadTile(poly, &FaceSurface(face)->low[0]);
+            /* Port: the console read the texture page and palette (one word) in the delay slot of the test for
+               a mirrored face, before moving on to the mirrored surface, so they always come from the plain one. */
+            poly->tpage = tileSurfaces[(u_char)face->texture][0].low[0].tsb;
+            poly->clut = tileSurfaces[(u_char)face->texture][0].low[0].cba;
             poly->r0 = face->red;
             poly->g0 = face->green;
             poly->b0 = face->blue;
@@ -147,6 +151,19 @@ typedef struct GridPoint {
     u_short depth;
     u_short flag;
 } GridPoint;
+
+/* Projects a grid point through the GTE: fills in its screen position, depth and the flag bits that matter
+   (the upper half of the GTE flag word, masked with 0x466).  Returns whether the point is rejected. */
+static int ProjectGridPoint(GridPoint *point)
+{
+    GteWriteData(0, (point->x & 0xFFFF) | (int)((u_int)(int)point->y << 16));
+    GteWriteData(1, point->z);
+    GteExecute(GTE_RTPS);
+    StoreScreenXY(&point->sx, &point->sy, GteReadData(14));
+    point->depth = (u_short)GteReadData(19);
+    point->flag = (u_short)(((u_int)GteReadControl(31) >> 12) & 0x466);
+    return point->flag != 0;
+}
 
 /* Draws the quad of four grid points as one textured quad of the pool and links it by the average of their depths. */
 static POLY_FT4 *DrawGridQuad(POLY_FT4 *poly, u_long *ordering, Face *face, Tile *tile,
@@ -223,17 +240,8 @@ void AsmTrackMed(TrackSection *firstSection, Skeleton *camera, short medCount)
             grid[4].z = (short)((((cz[1] + cz[2]) >> 1) + ((cz[0] + cz[3]) >> 1)) >> 1);
 
             for (i = 0; i < 9; i++) {
-                int flag, rejected;
+                int rejected = ProjectGridPoint(&grid[i]);
 
-                GteWriteData(0, (grid[i].x & 0xFFFF) | (int)((u_int)(int)grid[i].y << 16));
-                GteWriteData(1, grid[i].z);
-                GteExecute(GTE_RTPS);
-                flag = GteReadControl(31);
-                grid[i].sx = (short)GteReadData(14);
-                grid[i].sy = (short)(GteReadData(14) >> 16);
-                grid[i].depth = (u_short)GteReadData(19);
-                grid[i].flag = (u_short)(((u_int)flag >> 12) & 0x466);
-                rejected = grid[i].flag != 0;
                 allRejected &= rejected;
                 anyRejected |= rejected;
             }
@@ -262,4 +270,203 @@ void AsmTrackMed(TrackSection *firstSection, Skeleton *camera, short medCount)
         } while (--faceCount > 0);
         section++;
     } while (--medCount > 0);
+}
+
+
+/* ---- high detail ---- */
+
+/* The 25 points of the 5x5 grid a face is cut into are numbered row by row from the corner
+   made by vertex 1; vertex 0 is point 4, vertex 2 is point 20 and vertex 3 is point 24. */
+#define HI_POINTS 25
+
+/* Splits the four corner values of one coordinate into the 25 grid values (the halving of the console's
+   code: integer averages of the unrounded 32-bit values, not of the stored halfwords). */
+static void SubdivideHigh(const int corner[4], int out[HI_POINTS])
+{
+    int top = (corner[0] + corner[1]) >> 1;
+    int bottom = (corner[2] + corner[3]) >> 1;
+    int left = (corner[1] + corner[2]) >> 1;
+    int right = (corner[0] + corner[3]) >> 1;
+    int centre = (left + right) >> 1;
+
+    out[4] = corner[0];
+    out[0] = corner[1];
+    out[20] = corner[2];
+    out[24] = corner[3];
+    out[2] = top;
+    out[22] = bottom;
+    out[10] = left;
+    out[14] = right;
+    out[12] = centre;
+    out[1] = (corner[1] + top) >> 1;
+    out[5] = (corner[1] + left) >> 1;
+    out[7] = (centre + top) >> 1;
+    out[6] = (out[5] + out[7]) >> 1;
+    out[9] = (corner[0] + right) >> 1;
+    out[3] = (corner[0] + top) >> 1;
+    out[13] = (centre + right) >> 1;
+    out[8] = (out[3] + out[13]) >> 1;
+    out[15] = (corner[2] + left) >> 1;
+    out[21] = (corner[2] + bottom) >> 1;
+    out[11] = (centre + left) >> 1;
+    out[16] = (out[21] + out[11]) >> 1;
+    out[23] = (corner[3] + bottom) >> 1;
+    out[19] = (corner[3] + right) >> 1;
+    out[17] = (centre + bottom) >> 1;
+    out[18] = (out[19] + out[17]) >> 1;
+}
+
+/* Points of the 2x2 quads of a 3x3 grid, as indices into it. */
+static const int gridQuad[4][4] = { { 0, 1, 3, 4 }, { 1, 2, 4, 5 }, { 3, 4, 6, 7 }, { 4, 5, 7, 8 } };
+
+/* A cell of the high detail grid that is partly off screen: it is cut once more into four quads, each drawn
+   only if all its points are on screen.  The quads come from the general primitive buffer (nextPrim), not
+   from the track's pool, and are not counted in hiTileCount.  The texture coordinates are averaged along. */
+static void DrawPartialCell(GridPoint *cell[4], Tile *tile, Face *face, u_long *ordering)
+{
+    GridPoint sub[9];
+    u_short   uv[9];
+    int       i;
+    int       u[4], v[4];
+
+    u[0] = tile->u0; u[1] = tile->u1; u[2] = tile->u2; u[3] = tile->u3;
+    v[0] = tile->v0; v[1] = tile->v1; v[2] = tile->v2; v[3] = tile->v3;
+
+    sub[0] = *cell[0];
+    sub[2] = *cell[1];
+    sub[6] = *cell[2];
+    sub[8] = *cell[3];
+    sub[1].x = (cell[0]->x + cell[1]->x) >> 1;  sub[1].y = (cell[0]->y + cell[1]->y) >> 1;  sub[1].z = (cell[0]->z + cell[1]->z) >> 1;
+    sub[7].x = (cell[2]->x + cell[3]->x) >> 1;  sub[7].y = (cell[2]->y + cell[3]->y) >> 1;  sub[7].z = (cell[2]->z + cell[3]->z) >> 1;
+    sub[3].x = (cell[0]->x + cell[2]->x) >> 1;  sub[3].y = (cell[0]->y + cell[2]->y) >> 1;  sub[3].z = (cell[0]->z + cell[2]->z) >> 1;
+    sub[5].x = (cell[1]->x + cell[3]->x) >> 1;  sub[5].y = (cell[1]->y + cell[3]->y) >> 1;  sub[5].z = (cell[1]->z + cell[3]->z) >> 1;
+    sub[4].x = (sub[3].x + sub[5].x) >> 1;      sub[4].y = (sub[3].y + sub[5].y) >> 1;      sub[4].z = (sub[3].z + sub[5].z) >> 1;
+    ProjectGridPoint(&sub[1]);
+    ProjectGridPoint(&sub[3]);
+    ProjectGridPoint(&sub[4]);
+    ProjectGridPoint(&sub[5]);
+    ProjectGridPoint(&sub[7]);
+
+    uv[0] = (u_short)(u[0] | v[0] << 8);
+    uv[2] = (u_short)(u[1] | v[1] << 8);
+    uv[6] = (u_short)(u[2] | v[2] << 8);
+    uv[8] = (u_short)(u[3] | v[3] << 8);
+    uv[1] = (u_short)(((u[0] + u[1]) >> 1) | ((v[0] + v[1]) >> 1) << 8);
+    uv[7] = (u_short)(((u[2] + u[3]) >> 1) | ((v[2] + v[3]) >> 1) << 8);
+    uv[3] = (u_short)(((u[0] + u[2]) >> 1) | ((v[0] + v[2]) >> 1) << 8);
+    uv[5] = (u_short)(((u[1] + u[3]) >> 1) | ((v[1] + v[3]) >> 1) << 8);
+    uv[4] = (u_short)((((u[0] + u[2]) >> 1) + ((u[1] + u[3]) >> 1)) >> 1 | ((((v[0] + v[2]) >> 1) + ((v[1] + v[3]) >> 1)) >> 1) << 8);
+
+    for (i = 0; i < 4; i++) {
+        GridPoint *a = &sub[gridQuad[i][0]], *b = &sub[gridQuad[i][1]], *c = &sub[gridQuad[i][2]], *d = &sub[gridQuad[i][3]];
+        POLY_FT4  *poly;
+
+        if (a->flag | b->flag | c->flag | d->flag) {
+            continue;
+        }
+        poly = (POLY_FT4 *)nextPrim.ptr;
+        SetPolyFT4(poly);
+        poly->x0 = a->sx; poly->y0 = a->sy;
+        poly->x1 = b->sx; poly->y1 = b->sy;
+        poly->x2 = c->sx; poly->y2 = c->sy;
+        poly->x3 = d->sx; poly->y3 = d->sy;
+        poly->u0 = (u_char)uv[gridQuad[i][0]]; poly->v0 = (u_char)(uv[gridQuad[i][0]] >> 8);
+        poly->u1 = (u_char)uv[gridQuad[i][1]]; poly->v1 = (u_char)(uv[gridQuad[i][1]] >> 8);
+        poly->u2 = (u_char)uv[gridQuad[i][2]]; poly->v2 = (u_char)(uv[gridQuad[i][2]] >> 8);
+        poly->u3 = (u_char)uv[gridQuad[i][3]]; poly->v3 = (u_char)(uv[gridQuad[i][3]] >> 8);
+        poly->tpage = tile->tsb;
+        poly->clut = tile->cba;
+        poly->r0 = face->red;
+        poly->g0 = face->green;
+        poly->b0 = face->blue;
+        GteWriteData(16, a->depth);
+        GteWriteData(17, b->depth);
+        GteWriteData(18, c->depth);
+        GteWriteData(19, d->depth);
+        GteExecute(GTE_AVSZ4);
+        AddPrim(ordering + GteReadData(7), poly);
+        nextPrim.ptr = (char *)(poly + 1);
+    }
+}
+
+/* High detail: every face is cut into 4x4 quads (a 5x5 grid of points).  A quad is drawn when its four points
+   are on screen; where only some are, the quad is cut in four again (DrawPartialCell) unless all four are
+   rejected.  A face with every point rejected is skipped.  `hiCount` sections are drawn.  `autoMesh` is
+   passed by the callers but not used. */
+void AsmTrackHi(TrackSection *firstSection, Skeleton *camera, AutoMeshData *autoMesh, short hiCount)
+{
+    TrackSection *section;
+    Face         *face;
+    POLY_FT4     *poly;
+    u_long       *ordering;
+    VECTOR       *vertices;
+    int           cameraX, cameraY, cameraZ;
+    int           faceCount;
+    int           count;
+
+    section = firstSection;
+    SetSkeletonTransform(camera->super);
+    cameraX = camera->relative.t[0];
+    cameraY = camera->relative.t[1];
+    cameraZ = camera->relative.t[2];
+    ordering = OT[CurrentScreen];
+    count = hiTileCount;
+    poly = TrackHiPolys[CurrentScreen] + count;
+    vertices = track->vertices;
+    do {
+        faceCount = (u_short)section->faceCount;
+        face = track->faces + (u_short)section->faceStart;
+        do {
+            GridPoint grid[HI_POINTS];
+            int       x[4], y[4], z[4];
+            int       gx[HI_POINTS], gy[HI_POINTS], gz[HI_POINTS];
+            int       i, row, col;
+            int       allRejected = 1, anyRejected = 0;
+            Tile     *tile;
+
+            for (i = 0; i < 4; i++) {
+                VECTOR *corner = &vertices[face->vertex[i]];
+
+                x[i] = corner->vx + cameraX;
+                y[i] = corner->vy + cameraY;
+                z[i] = corner->vz + cameraZ;
+            }
+            SubdivideHigh(x, gx);
+            SubdivideHigh(y, gy);
+            SubdivideHigh(z, gz);
+            for (i = 0; i < HI_POINTS; i++) {
+                int rejected;
+
+                grid[i].x = (short)gx[i];
+                grid[i].y = (short)gy[i];
+                grid[i].z = (short)gz[i];
+                rejected = ProjectGridPoint(&grid[i]);
+                allRejected &= rejected;
+                anyRejected |= rejected;
+            }
+            if (!allRejected) {
+                tile = &FaceSurface(face)->high[0];
+                for (row = 0; row < 4; row++) {
+                    for (col = 0; col < 4; col++) {
+                        GridPoint *cell[4];
+
+                        cell[0] = &grid[5 * row + col];
+                        cell[1] = &grid[5 * row + col + 1];
+                        cell[2] = &grid[5 * row + col + 5];
+                        cell[3] = &grid[5 * row + col + 6];
+                        if (!anyRejected || !(cell[0]->flag | cell[1]->flag | cell[2]->flag | cell[3]->flag)) {
+                            poly = DrawGridQuad(poly, ordering, face, tile, cell[0], cell[1], cell[2], cell[3]);
+                            count++;
+                        } else if (!(cell[0]->flag && cell[1]->flag && cell[2]->flag && cell[3]->flag)) {
+                            DrawPartialCell(cell, tile, face, ordering);
+                        }
+                        tile++;
+                    }
+                }
+            }
+            face++;
+        } while (--faceCount > 0);
+        section++;
+    } while (--hiCount > 0);
+    hiTileCount = (short)count;
 }
