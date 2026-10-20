@@ -552,15 +552,15 @@ def ps1_sizes(types, workdir):
     return out
 
 
-def check_site_table(runner, sites_text):
+def check_site_table(runner, sites_text, source):
     """Every DAlloc in game/src is in loadtest's table (which says how the original's size is derived)."""
     sites = [tuple(l.split("\t")) for l in sites_text.strip().split("\n")]
     uncovered = []
     count = 0
-    for fn in sorted(os.listdir(os.path.join(ROOT, "game/src"))):
+    for fn in sorted(os.listdir(source)):
         if not fn.endswith(".c") or fn == "malloc.c":
             continue
-        for n, line in enumerate(open(os.path.join(ROOT, "game/src", fn), errors="replace"), 1):
+        for n, line in enumerate(open(os.path.join(source, fn), errors="replace"), 1):
             code = line.split("/*")[0]
             if "DAlloc(" not in code or code.strip().startswith(("//", "*")):
                 continue
@@ -581,10 +581,10 @@ def check_loaders(runner, args, workdir):
     if build.returncode:
         runner.fail("loadtest could not be built:\n" + build.stderr[-3000:] + build.stdout[-1000:])
         return
-    env = dict(os.environ, LOADTEST_GAME_SRC=os.path.join(ROOT, "game/src"), ASAN_OPTIONS="detect_leaks=0:halt_on_error=0",
+    env = dict(os.environ, LOADTEST_GAME_SRC=exe + ".src", ASAN_OPTIONS="detect_leaks=0:halt_on_error=0",
                UBSAN_OPTIONS="print_stacktrace=0")
     sites = subprocess.run([exe, "--list-sites"], capture_output=True, text=True, env=env).stdout
-    check_site_table(runner, sites)
+    check_site_table(runner, sites, exe + ".src")
     types = subprocess.run([exe, "--list-types"], capture_output=True, text=True, env=env).stdout.split()
     sizes = ps1_sizes(types, workdir)
 

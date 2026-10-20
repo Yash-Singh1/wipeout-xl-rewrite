@@ -572,8 +572,11 @@ void SfxStop(u_int sound)
         printf("warning from qsfx: playid out of range\n");
         return;
     }
+    /* Port: a sound that never played has voice -1 and `mask` was not set: the console indexed voiceList[-1] (the memory in
+       front of the table) and passed whatever the register held to SpuSetKey.  Here no voice is stopped in that case. */
+    mask = 0;
     voice = playList[sound].voice;
-    if (voiceList[voice].play == sound) {
+    if (voice >= 0 && voiceList[voice].play == sound) {
         mask = 1 << voice;
         voiceList[voice].flags = 0;
     }
@@ -640,7 +643,9 @@ void SfxEffectPitch(u_int sound, int pitch)
             right = playList[sound].voiceRight;
             if (right != 0) {
                 voice = right;
-                if (voiceList[voice].play == sound) {
+                /* Port: a sound with one voice has voiceRight == -1 (not 0), so this test passes and the console read
+                   voiceList[-1], the memory in front of the table.  There is no such voice; the table is not extended. */
+                if (voice >= 0 && voiceList[voice].play == sound) {
                     attr.voice = 1 << voice;
                     attr.mask = 0x10;
                     attr.pitch = pitch * rate / 256;

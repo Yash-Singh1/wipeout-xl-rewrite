@@ -9,9 +9,11 @@ extern u_char        sharkToggle;
 extern short         shipTex;
 extern short         bigGrid;
 
+/* Port: the path plus ".cmp" is 29 bytes with its terminator; the console's 28-byte union overran by one byte into
+   the unused `pad` array that follows it in loadShipData's frame, so the buffer is 32 bytes. */
 typedef union ShipPath {
-    char name[25];
-    int  words[6];
+    char name[32];
+    int  words[8];
 } ShipPath;
 
 typedef struct {

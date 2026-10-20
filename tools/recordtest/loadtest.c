@@ -660,7 +660,12 @@ static void ModelFree(Model *m, int tag)
 /* The console's size for an allocation event. */
 static int ConsoleSize(const Event *e, int lastImage)
 {
-    const Site *s = &sites[e->site];
+    const Site *s;
+
+    if (e->site < 0) {
+        return e->size;     /* a call that is not in the table: counted as a problem elsewhere */
+    }
+    s = &sites[e->site];
 
     switch (s->kind) {
     case SAME:
@@ -726,7 +731,7 @@ static void ReplayHeap(int heap, int native, int capacity, Model *out)
                 continue;
             }
             if (!native) {
-                if (sites[e->site].kind == WIDEN) {
+                if (e->site >= 0 && sites[e->site].kind == WIDEN) {
                     /* the native copy of a file image: in the console the image is the file's block, which this copy
                        replaces (the DFree of the file image follows at once). The copy takes over the file's tag. */
                     Event *f = &events[i + 1];
@@ -748,7 +753,7 @@ static void ReplayHeap(int heap, int native, int capacity, Model *out)
                     tags[source] = -1;      /* the free of the file image is skipped */
                     continue;
                 }
-                if (!strcmp(sites[e->site].file, "scene.c") && sites[e->site].kind == SAME && strstr(sites[e->site].text, "length + 32")) {
+                if (e->site >= 0 && !strcmp(sites[e->site].file, "scene.c") && sites[e->site].kind == SAME && strstr(sites[e->site].text, "length + 32")) {
                     lastImage = e->size;
                 }
                 size = ConsoleSize(e, lastImage);

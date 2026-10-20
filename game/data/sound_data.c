@@ -1,6 +1,5 @@
 /* Global data of sound.c, generated from the executable by tools/gendata.py. */
 #include "functions.h"
-#include "../../../wipeout-xl-ps1-data/game/include/psyq.h"
 
 short scrapeVol = 0;
 unsigned char controlledSoundOn = 0;

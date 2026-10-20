@@ -970,7 +970,9 @@ void UpdateStartDroid(Object **shapes, ShipData *ships, DroidData *droids, short
     ownSection = raceLines[ships[ownShip].nearSecNo].distance;
     for (i=0;i<6;i++) {
         if (droids[i].active>0) {
-            distance = ownSection - raceLines[droids[i].section].distance;
+            /* Port: a checkpoint cell with a time but section -1 (the file marks the unused cells so) indexed raceLines[-1];
+               the console read the 16 bytes before the table, the (never written) end of quadPool: zeros. */
+            distance = ownSection - (droids[i].section < 0 ? 0 : raceLines[droids[i].section].distance);
             if (distance<0) distance += numTrackSections;
             if (distance>numTrackSections>>1) distance -= numTrackSections;
             if ((distance<0 ? -distance : distance)<161) break;

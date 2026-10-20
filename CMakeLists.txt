@@ -38,7 +38,7 @@ add_subdirectory(platform/psx psxio)
 file(GLOB PLATFORM_TOP_SOURCES ${CMAKE_SOURCE_DIR}/platform/*.c)
 set(PLATFORM_PSX_SOURCES
     platform/psx/gte.c platform/psx/gte_tables.c platform/psx/gpu_gl.c
-    platform/psx/libetc.c platform/psx/libgpu.c platform/psx/libgte.c)
+    platform/psx/libetc.c platform/psx/libgpu.c platform/psx/libgte.c platform/psx/libgte_more.c)
 list(TRANSFORM PLATFORM_PSX_SOURCES PREPEND ${CMAKE_SOURCE_DIR}/)
 set(PLATFORM_SOURCES ${PLATFORM_TOP_SOURCES} ${PLATFORM_PSX_SOURCES})
 list(SORT PLATFORM_SOURCES)
@@ -72,6 +72,10 @@ function(port_platform_target name)
     endif()
 endfunction()
 
+option(PORT_ASM_STUBS "Temporary: stand-ins for the renderer's assembly routines that are not ported yet" OFF)
+if(PORT_ASM_STUBS)
+    list(APPEND PLATFORM_SOURCES ${CMAKE_SOURCE_DIR}/tools/asm_stubs.c)
+endif()
 add_executable(wipeoutxl ${PLATFORM_SOURCES})
 port_platform_target(wipeoutxl)
 

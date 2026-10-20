@@ -33,7 +33,7 @@ NOOP(SpuSetTransferMode) NOOP(SpuSetTransferStartAddr) NOOP(SpuWrite) RETURNS(Sp
 NOOP(GpuInit) NOOP(GpuFill) NOOP(GpuFlush) NOOP(GpuLine) NOOP(GpuPresent) NOOP(GpuReadBack) NOOP(GpuSetDrawArea)
 NOOP(GpuTriangles) NOOP(GpuVramChanged) NOOP(PortTraceGp0) NOOP(PortTraceGp1) NOOP(PortTraceBoundary) NOOP(PortScriptFixedPad)
 NOOP(PortTracing)
-NOOP(SetVideoMode) NOOP(SetBlockFill)
+
 /* the movie player and the hand-written assembly drawing routines */
 NOOP(PsxPlayMovie) NOOP(AsmDrawObject) NOOP(AsmDrawObjectFixed) NOOP(AsmDrawObjectLit) NOOP(AsmDrawParticles)
 NOOP(AsmTrackHi) NOOP(AsmTrackLo) NOOP(AsmTrackMed)

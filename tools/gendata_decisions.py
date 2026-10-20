@@ -220,6 +220,9 @@ SIZES = {
     'TrackLoPolys': (2, 'one polygon pool per screen (see TrackHiPolys)'),
     'tileSurfaces': (32, 'indexed by the face texture number (crack.c, trackasm.c, AsmLowResTile...): the executable has 64 of the 252-byte surfaces (32 textures, 2 each) up to muzzleright; the sources declared 24'),
     'textureTable': (800, 'the slots run up to the end of menuTexturePtrsB (3172 bytes at slot 7): 800 pointers'),
+    'glyphWidths16': (40, 'SetCharTextures reads 40 entries of each width table; the executable lays them out 80 bytes apart (38 entries and 4 bytes of padding)'),
+    'glyphWidths12': (40, 'see glyphWidths16'),
+    'glyphWidths8': (40, 'see glyphWidths16; on the console the two entries past the 38 were the first halfwords of the pointer table that follows (crapArray), which belong to glyphs that are never drawn'),
     'shipShapeTable': (31, '30 ship shapes and the rescue droid model at [30] (RescueDroidModel); menuModels follows'),
 }
 

@@ -116,6 +116,7 @@ void SetPolyG4(POLY_G4 *p) { SetHeader(p, 8, 0x38); }
 void SetPolyGT3(POLY_GT3 *p) { SetHeader(p, 9, 0x34); }
 void SetPolyGT4(POLY_GT4 *p) { SetHeader(p, 12, 0x3C); }
 void SetLineF2(LINE_F2 *p) { SetHeader(p, 3, 0x40); }
+void SetBlockFill(BLK_FILL *p) { SetHeader(p, 3, 0x02); }
 void SetLineG2(LINE_G2 *p) { SetHeader(p, 4, 0x50); }
 void SetTile(TILE *p) { SetHeader(p, 3, 0x60); }
 
@@ -333,14 +334,24 @@ DRAWENV *PutDrawEnv(DRAWENV *env)
     return env;
 }
 
+/* The game's first PutDispEnv (InitSystem -> InitGameDisplay) is given doubleBuffer[0].disp before the
+   game has stored the environment there, i.e. a null pointer.  On the console that read the words at
+   address 0 (kernel RAM); here it reads zeros. */
+static DISPENV nullDispEnv;
+
 DISPENV *PutDispEnv(DISPENV *env)
 {
+    DISPENV *given = env;
+
+    if (!env) {
+        env = &nullDispEnv;
+    }
     PortTraceGp1(0x05000000u | (uint32_t)(env->disp.y & 0x1FF) << 10 | (uint32_t)(env->disp.x & 0x3FF));
     state.displayX = env->disp.x;
     state.displayY = env->disp.y;
     state.displayW = env->disp.w;
     state.displayH = env->disp.h;
-    return env;
+    return given;
 }
 
 void SetDispMask(int mask)
@@ -762,4 +773,15 @@ void DrawPrim(void *p)
     uint32_t tag = *(uint32_t *)p;
 
     Submit((const uint32_t *)p + 1, (int)(tag >> 24));
+}
+
+/* The library keeps the video mode (0 NTSC, 1 PAL) in a word and returns the previous one. */
+static int videoMode;
+
+int SetVideoMode(int mode)
+{
+    int previous = videoMode;
+
+    videoMode = mode;
+    return previous;
 }

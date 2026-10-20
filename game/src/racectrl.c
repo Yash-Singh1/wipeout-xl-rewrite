@@ -165,10 +165,7 @@ typedef struct RaceLocals {
     TrackData  trackData;       /* the track being raced; `track` points here */
     BLK_FILL  *clearPolys[2];   /* the black fills drawn behind the scene, one per screen */
     Object    *crowdObjects[20]; /* the crowd objects of the scene (InitCrowdSound; no track has more than 7) */
-    union {
-        struct WipeCdStatus status;
-        u_char              result[8];  /* the 8 bytes CdControlB(CdlGetlocP) returns */
-    } cdPosition;
+    struct WipeCdStatus cdPosition;   /* CdControlB(CdlGetlocP) result */
     ResetData  resetData;       /* what a restart of the race needs (InitRaceResetData) */
     InGameMenu inGameMenu;      /* polygons of the pause menu */
     short      tileCount;       /* texture tiles of the track (WADLoadTtfFile, AsmGenerateTiles) */
@@ -334,7 +331,7 @@ frame:
     if(raceType==one) RecordKeypresses(shipIndex);
     UpdateCheatSequence(0);ClearOTagR(OT[CurrentScreen],8192);ClearOTagR(OT2[CurrentScreen],1600);
     buttonCount=0;quadIndex=CurrentScreen*300;shipClassIndex=gameData->shipClass;clipLevel=gameData->trackNum;
-    SetInGameCDTrack(&locals.cdTrack,&locals.cdPosition.status,gameData,&locals.cdMode);
+    SetInGameCDTrack(&locals.cdTrack,&locals.cdPosition,gameData,&locals.cdMode);
     if(gameType!=2) doSerialGame(gameData,shipIndex);
     ShowLinkBroken();writeFlag=0;
     CheckShipDestroyed(shipIndex,gameData,&context,scene);PlayCredits(context);
@@ -534,7 +531,9 @@ void InitResident(void)
     raceCamera.camPos->super = upperSkeleton;
     shadowData = InitShadow();
     shipData = DAlloc(heap, 17 * sizeof(ShipData)); /* Port: was 0xFF0 = 17 * 240, the console's ShipData size */
-    sections = track->sections;
+    /* Port: no track is loaded yet, so `track` is still null; the console read the word at address 0x14 here.
+       loadShipData never uses the value. */
+    sections = track ? track->sections : 0;
     shipIndex = shipData;
     loadShipData(sections, shipData, shipShapeTable, raceCamera.camPos);
     textureWad = openwadfilenvc(startWadPath);

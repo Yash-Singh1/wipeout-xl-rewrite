@@ -345,7 +345,7 @@ int  AverageZ3(int sz0, int sz1, int sz2);
 int  AverageZ4(int sz0, int sz1, int sz2, int sz3);
 int  NormalClip(int sxy0, int sxy1, int sxy2);
 void OuterProduct12(VECTOR *v0, VECTOR *v1, VECTOR *v2);
-void VectorNormal(VECTOR *v0, VECTOR *v1);
+int  VectorNormal(VECTOR *v0, VECTOR *v1);
 
 /* libgpu, continued */
 void AddPrim(u_long *ot, void *p);
@@ -354,7 +354,7 @@ void SetLineG2(LINE_G2 *p);
 void SetBlockFill(BLK_FILL *p);
 void DrawPrim(void *p);
 int  SetGraphDebug(int level);
-void SetVideoMode(int mode);
+int  SetVideoMode(int mode);
 int  ClearImage(RECT *rect, u_char r, u_char g, u_char b);
 int  MoveImage(RECT *rect, int x, int y);
 void SetDispMask(int mask);

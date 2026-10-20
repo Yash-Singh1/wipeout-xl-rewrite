@@ -1,7 +1,5 @@
 /* Global data of progress.c, generated from the executable by tools/gendata.py. */
 #include "functions.h"
-#include "../../../wipeout-xl-ps1-data/game/include/psyq.h"
-#include "../../../wipeout-xl-ps1-data/game/include/wipeout.h"
 
 u_char loadInstructionLine0[32] = "  LOAD          33    33    33";
 u_char loadInstructionLine1[12] = "LOCATION";

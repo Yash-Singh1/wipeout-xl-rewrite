@@ -88,7 +88,7 @@ def function_names():
 
 
 def patched(name, work):
-    text = open(os.path.join(SRC, name + ".c")).read()
+    text = open(os.path.join(work, "snapshot", name + ".c")).read()
     text = texture_table_parts(text)
     for anchor, replacement in PATCHES.get(name, []):
         if text.count(anchor) != 1:
@@ -96,7 +96,7 @@ def patched(name, work):
         if anchor.count("\n") != replacement.count("\n"):
             sys.exit("build_loadtest.py: the patch of %s.c must not change the line count (the test finds the heap calls by line)" % name)
         text = text.replace(anchor, replacement)
-    path = os.path.join(work, name + ".c")
+    path = os.path.join(work, "snapshot", name + ".c")
     open(path, "w").write(text)
     return path
 
@@ -132,7 +132,13 @@ def main():
     out = sys.argv[1]
     work = tempfile.mkdtemp(prefix="loadtest_")
     objects = []
+    # Everything is compiled from a snapshot of game/src (other people edit it while this runs), and the test
+    # finds the lines of the heap calls in the snapshot that is next to the executable.
+    snapshot = os.path.join(work, "snapshot")
+    os.mkdir(snapshot)
     sources = sorted(f[:-2] for f in os.listdir(SRC) if f.endswith(".c"))
+    for name in sources:
+        shutil.copyfile(os.path.join(SRC, name + ".c"), os.path.join(snapshot, name + ".c"))
     for name in sources:
         if name in EXCLUDED or name == "malloc":
             continue
@@ -141,7 +147,7 @@ def main():
         run(["clang"] + FLAGS + SAN + PORT + PRELUDE + ["-c", path, "-o", obj])
         objects.append(obj)
     obj = os.path.join(work, "malloc.o")
-    run(["clang"] + FLAGS + PORT + ["-DDAlloc=RealDAlloc", "-DDFree=RealDFree", "-DInitDynamicMem=RealInitDynamicMem", "-c", os.path.join(SRC, "malloc.c"), "-o", obj])
+    run(["clang"] + FLAGS + PORT + ["-DDAlloc=RealDAlloc", "-DDFree=RealDFree", "-DInitDynamicMem=RealInitDynamicMem", "-c", os.path.join(snapshot, "malloc.c"), "-o", obj])
     objects.append(obj)
     for name in PLATFORM:
         obj = os.path.join(work, "platform_" + name + ".o")
@@ -180,6 +186,8 @@ def main():
         sys.stderr.write(result.stderr)
         sys.exit(1)
     open(os.path.join(os.path.dirname(os.path.abspath(out)), "loadtest.stubs"), "w").write("\n".join(undefined) + "\n")
+    shutil.rmtree(out + ".src", ignore_errors=True)
+    shutil.copytree(snapshot, out + ".src")
     print("undefined symbols given stand-ins: %d" % len(undefined), file=sys.stderr)
     if not os.environ.get("LOADTEST_KEEP"):
         shutil.rmtree(work, ignore_errors=True)

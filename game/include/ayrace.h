@@ -18,11 +18,12 @@ typedef struct PauseMenu {
     u_char confirmChoice;
 } PauseMenu;
 
-/* A CD position as the drive reports it: track and time in BCD. */
+/* A CD position as the drive reports it (CdlGetlocP: eight bytes): track and time in BCD. */
 struct WipeCdStatus {
     u_char track;
     u_char pad1[3];
     u_char time;
+    u_char pad5[3];  /* Port: the drive's result is 8 bytes; the console's objects of this type sat in 8-byte slots */
 };
 
 #endif

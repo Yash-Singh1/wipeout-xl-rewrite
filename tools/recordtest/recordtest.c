@@ -20,7 +20,7 @@ char msgInsufficientMemory[] = "Insufficient memory\n";
 char msgDFreeNotFound[] = "DFree: block not found\n";
 char msgAllocRequest[] = "Alloc request %d, free %d\n";
 HeapBlock *mainheapcopy;
-int lowTideMark;      /* malloc.c keeps it; the data files define it */
+int lowTideMark = 0x800000; /* malloc.c keeps it; the game's data files define it */
 
 void Error(char *text, short level)
 {
