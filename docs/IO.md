@@ -111,10 +111,16 @@ sector every 1/150 s (double speed) or 1/75 s; CD-DA plays at 75 sectors a secon
 The game reads two 8-byte buffers filled once per field: digital pad (0x4100) and NeGcon
 (0x2300), buttons active low, bit layout as in `pad.h` (same values as the game's own pad.c).
 Port 0 is always plugged in (the game pauses a race when no pad answers); port 1 only with a
-second gamepad. Keyboard: S Cross, Space Circle, Left Alt Square, A/D L2/R2 (left/right air
-brake), Q/E L1/R1, arrows the d-pad, Enter Start+Cross, P Start, Escape and V Triangle,
-Backspace Select. Gamepads: the standard layout (south/east/west/north = Cross/Circle/Square/
-Triangle), triggers L2/R2, left stick = d-pad; hot-plug takes the first free port.
+second gamepad. Keyboard (by key position): in the menus Enter accepts (Cross and Start), Escape
+goes back (Triangle), the arrows are the d-pad, Space is Circle, Left Alt Square, Q/E L1/R1,
+Backspace Select, P Start; in a steered race S is thrust, Space fire, Left Alt drop weapon, A/D the
+air brakes, F1 or V the view, the arrows steer, Escape, Enter or P pause. The race keys press the
+buttons the player bound in the game's controller screen (`PsxPadRaceFrame` is told them every
+race frame, and a few fields after the last call the keyboard is back in the menus; see
+docs/CONTROLS.md). Gamepads: the standard layout (south/east/west/north =
+Cross/Circle/Square/Triangle), triggers L2/R2, left stick = d-pad; hot-plug takes the first free
+port. `PsxPadLastDevice` says whether the player last used the keyboard or which family of
+gamepad (PlayStation, Xbox, Nintendo, other), for the glyphs.
 `WIPEOUT_PAD_TYPE=negcon` selects the NeGcon (stick or arrows twist, triggers analogue).
 Scripts (`padScript`): lines `field port BUTTONS` (names joined by `+`, `none`, or a hex mask;
 `twist=`, `i=`, `ii=`, `l=`), applied from that video field on.

@@ -224,10 +224,10 @@ void PsxPadSdlInit(void)
     SDL_JoystickID *ids;
     int count = 0, i;
 
-    if (SDL_getenv("WIPEOUT_NO_GAMEPAD")) {
-        return; /* tests: input comes from scripts only */
-    }
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+    if (SDL_getenv("WIPEOUT_NO_GAMEPAD")) {
+        return; /* tests: no gamepad is opened unless a script attaches one (WIPEOUT_KEYS) */
+    }
     if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) {
         PortLog("pad: gamepads unavailable (%s)\n", SDL_GetError());
         return;
