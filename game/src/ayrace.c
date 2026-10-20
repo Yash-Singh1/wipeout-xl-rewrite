@@ -76,7 +76,7 @@ void SetInGameCDTrack(signed char *bcd, struct WipeCdStatus *position, ConfigDat
     signed char   mode;
 
     *bcd = ((position->time >> 4) * 10) + (position->time & 0xF);
-    CdControlB(0x11, 0, position);
+    CdControlB(0x11, 0, (u_char *)position);
     mode = trackInfo->cdTrack;
     if (mode == 1) {
         trackNumber = ((position->track >> 4) * 10) + (position->track & 0xF);
@@ -111,7 +111,7 @@ void SetInGameCDTrack(signed char *bcd, struct WipeCdStatus *position, ConfigDat
 }
 
 
-void CheckShipDestroyed(ShipData *ships, RaceState *game, int *attract, int idleLimit)
+void CheckShipDestroyed(ShipData *ships, ConfigData *game, int *attract, int idleLimit)
 {
     void    (*update)();
     ShipData *own;
@@ -151,7 +151,7 @@ destroyed:
         }
     }
     if (droneSwitchStep == 1) {
-        own = (ShipData *)(ownShip * sizeof(ShipData) + (int)ships);
+        own = &ships[ownShip];
         game->complete = 1;
         update = own->update;
         linkSendFlag = droneSwitchStep;
@@ -305,16 +305,16 @@ int CheckAttractOver(ConfigData *config)
 }
 
 
-void RaceComplete(void *screen, void *unused, RaceState *gameData, short *choice, ScoreData *scoreData, int flags)
+void RaceComplete(void *screen, void *unused, ConfigData *gameData, short *choice, HiScoreData *scoreData, ShipData *flags)
 {
     char text[32];
     int  race;
 
     if (gameData->complete) {
-        if (raceType == 4 && (gameData->championship.flags&0xFFFF00)) {
+        if (raceType == 4 && (gameData->venomComplete || gameData->rapierComplete)) {
             if (finishPosition == 1 || finishPosition >= 4) {
                 if (finishPosition == 1) {
-                    if (gameData->championship.bytes[1] == 1 && gameData->class1Race == 5) {
+                    if (gameData->venomComplete == 1 && gameData->class1Race == 5) {
                         gameData->class1Unlocked = 1;
                         phantomDone = 1;
                         linkMyState = 3;
@@ -322,7 +322,7 @@ void RaceComplete(void *screen, void *unused, RaceState *gameData, short *choice
                         raceType = 99;
                         goto done;
                     }
-                    if (gameData->championship.bytes[2] == 1 && gameData->class2Race == 7) {
+                    if (gameData->rapierComplete == 1 && gameData->class2Race == 7) {
                         gameData->class2Unlocked = 1;
                         piranhaDone = 1;
                         linkMyState = 3;
@@ -330,10 +330,10 @@ void RaceComplete(void *screen, void *unused, RaceState *gameData, short *choice
                         raceType = 99;
                         goto done;
                     }
-                    if (gameData->championship.bytes[1] == 1) {
+                    if (gameData->venomComplete == 1) {
                         CentreText("PHANTOM CHALLENGE", 60, 36, 8, 1);
                         race = gameData->class1Race;
-                    } else if (gameData->championship.bytes[2] == 1) {
+                    } else if (gameData->rapierComplete == 1) {
                         CentreText("PIRANHA CHALLENGE", 60, 36, 8, 1);
                         race = gameData->class2Race;
                     }
@@ -365,7 +365,7 @@ void RaceComplete(void *screen, void *unused, RaceState *gameData, short *choice
                         gameData->complete = 0;
                         linkSendFlag = 0;
                         if (*choice == 0) {
-                            if (gameData->championship.bytes[1] == 1) gameData->class1Race++;
+                            if (gameData->venomComplete == 1) gameData->class1Race++;
                             else gameData->class2Race++;
                             linkMyState = 3;
                             raceEndTimer = 2;
@@ -494,13 +494,13 @@ void RaceComplete(void *screen, void *unused, RaceState *gameData, short *choice
             if (raceType == 1) storeGhostTrail(gameData, scoreData);
             gameData->highScore = 0;
             InitDefaultName(gameData, scoreData, 0);
-            if (!scoreData->gotHiScore) {
+            if (!scoreData->flag) {
                 raceCompleteFlag = 1;
                 gameData->complete = 1;
             }
         }
-        if (scoreData->gotHiScore) scoreData->displayScore = 1;
-        if (scoreData->displayScore) {
+        if (scoreData->flag) scoreData->highScore = 1;
+        if (scoreData->highScore) {
             DisplayScoreTab(gameData, scoreData);
             DeSelectScreen(screen);
             gameData->highScore = 0;

@@ -32,8 +32,6 @@ typedef struct DroidData DroidData;
 typedef struct Shadow Shadow;
 #include "menus.h"
 struct Texture;
-struct RaceState;
-struct ScoreData;
 struct Speedo;
 #include "iso9660.h"
 #include "malloc.h"
@@ -288,11 +286,11 @@ void InitiateTwoPlayerPause(struct PauseMenu *pause);
 void Perform2PlayerPauseCommand(struct PauseMenu *pause);
 int PerformPauseOperations(struct PauseMenu *pause, struct SelectBox *box, ConfigData *config);
 void QuitGame(void);
-void RaceComplete(void *screen, void *unused, struct RaceState *gameData, short *choice, struct ScoreData *scoreData, int flags);
+void RaceComplete(void *screen, void *unused, ConfigData *gameData, short *choice, HiScoreData *scoreData, ShipData *ships);
 void Restart(ResetData *state);
 void SelectPauseOption(int *selection, int canMove, ConfigData *config, struct PauseMenu *pause);
 void CheckForButtonPress(void);
-void CheckShipDestroyed(ShipData *ships, struct RaceState *game, int *attract, int idleLimit);
+void CheckShipDestroyed(ShipData *ships, ConfigData *game, int *attract, int idleLimit);
 void PlayCredits(int state);
 void SetInGameCDTrack(signed char *bcd, struct WipeCdStatus *position, ConfigData *trackInfo, int *state);
 
@@ -721,5 +719,7 @@ void AsmTrackHi(TrackSection *firstSection, Skeleton *camera, AutoMeshData *auto
 void AsmTrackLo(TrackSection *firstSection, Skeleton *camera, short loCount);
 void AsmTrackMed(TrackSection *firstSection, Skeleton *camera, short medCount);
 void RotTrans(SVECTOR *v, VECTOR *result, int *flag);
+
+#include "globals.h"
 
 #endif
