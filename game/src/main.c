@@ -1,5 +1,6 @@
 #include "functions.h"
 #include "pad.h"
+#include "../../platform/controls.h" /* Port: button names for the device in use */
 #include "ayrace.h"
 extern signed char activateOT2;
 extern int attractCycles;
@@ -65,6 +66,7 @@ int PsxMain(void) { /* Port: was void main(void), noreturn; the platform owns th
     ConfigData config;
     RECT rect;
     char workspace[0x1AF0];
+    char pressStart[24]; /* Port: the title's prompt names the key or button of the device in use */
     char *heapStart;
     int heapBytes;
     int frame;
@@ -280,7 +282,8 @@ music_done:
                         SetInGameCDTrack(cdPlaySeconds, cdStatus, gameData, cdFlag);
                     }
                     if ((promptTimer % 30) < 0x15) {
-                        AddText("PRESS START", 0xA0, 0xDC, 8, enabled);
+                        sprintf(pressStart, "PRESS %s", PortButtonLabel(PORT_BUTTON_START, "START")); /* Port: the name of the key or button of the device in use */
+                        AddText(pressStart, 0xA0, 0xDC, 8, enabled);
                     }
                     promptTimer += 1;
                     Swap();

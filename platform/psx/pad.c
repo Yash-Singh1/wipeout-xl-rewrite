@@ -49,10 +49,57 @@ static ScriptEntry *script;
 static int scriptCount, scriptNext;
 static bool scriptActive;
 
+/* The race frame the game reported last (its field), whether the ship was steerable, and the
+   action bindings. */
+#define RACE_FRAME_LIMIT 4 /* fields: a race frame takes two, a hitch a few more */
+static uint64_t currentField, raceField;
+static bool raceSteering;
+static uint16_t raceBindings[PAD_ACTIONS];
+static PadDevice lastDevice;
+
+/* The default layout (InitPadSettings): the actions on a digital pad. */
+static const uint16_t defaultBindings[PAD_ACTIONS] = {
+    PAD_TRIANGLE, PAD_CIRCLE, PAD_SQUARE, PAD_R2, PAD_L2, PAD_CROSS};
+
 #ifndef PSX_NO_SDL
 void PsxPadSdlInit(void);
 void PsxPadSdlShutdown(void);
+void PsxPadSdlField(void);
 #endif
+
+void PsxPadRaceFrame(bool steering, const uint16_t bindings[PAD_ACTIONS])
+{
+    raceField = currentField;
+    raceSteering = steering;
+    memcpy(raceBindings, bindings, sizeof(raceBindings));
+}
+
+PadContext PsxPadContext(void)
+{
+    return raceSteering && currentField - raceField <= RACE_FRAME_LIMIT ? PAD_CONTEXT_RACE : PAD_CONTEXT_MENU;
+}
+
+uint16_t PsxPadActionButton(int action)
+{
+    uint16_t button;
+
+    if (action < 0 || action >= PAD_ACTIONS) {
+        return 0;
+    }
+    /* the game binds a digital pad's actions to buttons; 0x8FF0 and up are analogue axes */
+    button = raceBindings[action];
+    return button && button < 0x8FF0 ? button : defaultBindings[action];
+}
+
+void PsxPadNoteDevice(PadDevice device)
+{
+    lastDevice = device;
+}
+
+PadDevice PsxPadLastDevice(void)
+{
+    return lastDevice;
+}
 
 void PsxPadSetSource(int port, PadSource source, const PadState *state, bool connected)
 {
@@ -184,6 +231,10 @@ void PsxPadField(uint64_t field)
 {
     int port;
 
+    currentField = field;
+#ifndef PSX_NO_SDL
+    PsxPadSdlField();
+#endif
     while (scriptNext < scriptCount && script[scriptNext].field <= field) {
         const ScriptEntry *e = &script[scriptNext++];
 
@@ -344,6 +395,10 @@ void PsxPadInit(const char *scriptPath)
     int port;
 
     memset(ports, 0, sizeof(ports));
+    currentField = raceField = 0;
+    raceSteering = false;
+    lastDevice = PAD_DEVICE_NONE;
+    memcpy(raceBindings, defaultBindings, sizeof(raceBindings));
     memset(&idle, 0, sizeof(idle));
     idle.twist = 0x80;
     for (port = 0; port < PORTS; port++) {

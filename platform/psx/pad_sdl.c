@@ -1,15 +1,25 @@
 /* The pad as the player holds it: keyboard and SDL gamepads, with hot-plug.
 
-   Keyboard (port 0, by key position, whatever the layout):
-     S accelerate (Cross)      Space fire (Circle)       Left Alt drop weapon (Square)
-     A / D left / right air brake (L2 / R2)    Q / E (L1 / R1)
-     arrow keys steer and pitch (directional pad)
-     Enter start and confirm (Start + Cross)   P pause (Start)
-     Escape back (Triangle)    V camera view (Triangle)   Backspace Select
+   The keyboard (port 0, by key position, whatever the layout) means different buttons in the menus
+   and in a race, because the game is steered with the same keys that drive the menus' cursor:
+
+     menus (also the pause menu, the results and the name entry)
+       Enter accept (Cross, and Start for the title)   Escape back (Triangle)
+       arrow keys the directional pad                   Space Circle      Left Alt Square
+       Q / E L1 / R1 and Backspace Select (the cheat chords)            P Start
+     a race that is being steered
+       S thrust   Space fire   Left Alt drop weapon   F1 or V view   A / D left / right air brake
+       arrow keys steer and pitch   Escape, Enter or P Start (pause)   Q / E L1 / R1   F9 Select
+     The race keys press the button the player bound to that action in the controller
+     configuration (the game's keyDef[]), so S is the thrust whatever the thrust button is.
+
    Gamepads use the PlayStation layout on the standard gamepad buttons: south/east/west/north
-   are Cross/Circle/Square/Triangle, the shoulders L1/R1, the triggers L2/R2, the left stick
-   and the d-pad the directional pad. The first pad plugged in takes port 0 (joining the
-   keyboard), the second port 1; unplugging frees the port.
+   are Cross/Circle/Square/Triangle, the shoulders L1/R1, the triggers L2/R2, Start and Back
+   Start and Select, the left stick and the d-pad the directional pad. The first pad plugged in
+   takes port 0 (joining the keyboard), the second port 1; unplugging frees the port.
+
+   The last device used (a key, or a button or stick of a gamepad) is told to the pad (see
+   PsxPadNoteDevice) for the button glyphs the game shows.
 
    With the NeGcon type selected (WIPEOUT_PAD_TYPE=negcon) the left stick, or the left and
    right arrow keys, twist the controller and the triggers are the analogue buttons. */
@@ -21,27 +31,54 @@
 #include "pad.h"
 
 #define PORTS 2
+#define NO_ACTION (-1)
 
 typedef struct KeyBinding {
     SDL_Scancode key;
-    uint16_t buttons;
+    uint16_t menu;   /* the buttons it presses in the menus */
+    uint16_t race;   /* ... in a race (unless it performs an action) */
+    int action;      /* the race action it performs: the button is the game's binding of it */
 } KeyBinding;
 
 static const KeyBinding keyBindings[] = {
-    {SDL_SCANCODE_S, PAD_CROSS},       {SDL_SCANCODE_SPACE, PAD_CIRCLE},
-    {SDL_SCANCODE_LALT, PAD_SQUARE},   {SDL_SCANCODE_A, PAD_L2},
-    {SDL_SCANCODE_D, PAD_R2},          {SDL_SCANCODE_Q, PAD_L1},
-    {SDL_SCANCODE_E, PAD_R1},          {SDL_SCANCODE_UP, PAD_UP},
-    {SDL_SCANCODE_DOWN, PAD_DOWN},     {SDL_SCANCODE_LEFT, PAD_LEFT},
-    {SDL_SCANCODE_RIGHT, PAD_RIGHT},   {SDL_SCANCODE_RETURN, PAD_START | PAD_CROSS},
-    {SDL_SCANCODE_KP_ENTER, PAD_START | PAD_CROSS},
-    {SDL_SCANCODE_P, PAD_START},       {SDL_SCANCODE_ESCAPE, PAD_TRIANGLE},
-    {SDL_SCANCODE_V, PAD_TRIANGLE},    {SDL_SCANCODE_BACKSPACE, PAD_SELECT}};
+    {SDL_SCANCODE_RETURN, PAD_CROSS | PAD_START, PAD_START, NO_ACTION},
+    {SDL_SCANCODE_KP_ENTER, PAD_CROSS | PAD_START, PAD_START, NO_ACTION},
+    {SDL_SCANCODE_ESCAPE, PAD_TRIANGLE, PAD_START, NO_ACTION},
+    {SDL_SCANCODE_P, PAD_START, PAD_START, NO_ACTION},
+    {SDL_SCANCODE_BACKSPACE, PAD_SELECT, 0, NO_ACTION},
+    {SDL_SCANCODE_F9, PAD_SELECT, PAD_SELECT, NO_ACTION},
+    {SDL_SCANCODE_UP, PAD_UP, PAD_UP, NO_ACTION},
+    {SDL_SCANCODE_DOWN, PAD_DOWN, PAD_DOWN, NO_ACTION},
+    {SDL_SCANCODE_LEFT, PAD_LEFT, PAD_LEFT, NO_ACTION},
+    {SDL_SCANCODE_RIGHT, PAD_RIGHT, PAD_RIGHT, NO_ACTION},
+    {SDL_SCANCODE_SPACE, PAD_CIRCLE, 0, PAD_ACTION_FIRE},
+    {SDL_SCANCODE_LALT, PAD_SQUARE, 0, PAD_ACTION_DITCH},
+    {SDL_SCANCODE_S, 0, 0, PAD_ACTION_THRUST},
+    {SDL_SCANCODE_A, 0, 0, PAD_ACTION_BRAKE_LEFT},
+    {SDL_SCANCODE_D, 0, 0, PAD_ACTION_BRAKE_RIGHT},
+    {SDL_SCANCODE_F1, 0, 0, PAD_ACTION_VIEW},
+    {SDL_SCANCODE_V, 0, 0, PAD_ACTION_VIEW},
+    {SDL_SCANCODE_Q, PAD_L1, PAD_L1, NO_ACTION},
+    {SDL_SCANCODE_E, PAD_R1, PAD_R1, NO_ACTION}};
 
 #define KEY_COUNT (sizeof(keyBindings) / sizeof(keyBindings[0]))
 
 static bool keyDown[KEY_COUNT];
+/* Keys that were held when the context changed and mean something else now stay quiet until they
+   are released (Enter pauses the race: it must not also accept the first menu entry). */
+static bool keyHeldOver[KEY_COUNT];
+static PadContext keyContext = PAD_CONTEXT_MENU;
 static SDL_Gamepad *gamepads[PORTS];
+
+static uint16_t key_buttons(size_t i, PadContext context)
+{
+    const KeyBinding *k = &keyBindings[i];
+
+    if (context == PAD_CONTEXT_MENU) {
+        return k->menu;
+    }
+    return k->action == NO_ACTION ? k->race : PsxPadActionButton(k->action);
+}
 
 static void update_keyboard(void)
 {
@@ -51,8 +88,8 @@ static void update_keyboard(void)
     memset(&st, 0, sizeof(st));
     st.twist = 0x80;
     for (i = 0; i < KEY_COUNT; i++) {
-        if (keyDown[i]) {
-            st.buttons |= keyBindings[i].buttons;
+        if (keyDown[i] && !keyHeldOver[i]) {
+            st.buttons |= key_buttons(i, keyContext);
         }
     }
     if (PsxPadGetType(0) == PAD_NEGCON) {
@@ -69,6 +106,23 @@ static void update_keyboard(void)
         st.twist = (held & PAD_LEFT) ? ((held & PAD_RIGHT) ? 0x80 : 0x00) : (held & PAD_RIGHT) ? 0xFF : 0x80;
     }
     PsxPadSetSource(0, PAD_SRC_KEYBOARD, &st, true);
+}
+
+/* Once a field, before the buffers are filled: the game may have switched between the menus and
+   the race, or the player's bindings changed. */
+void PsxPadSdlField(void)
+{
+    PadContext context = PsxPadContext();
+
+    if (context != keyContext) {
+        size_t i;
+
+        for (i = 0; i < KEY_COUNT; i++) {
+            keyHeldOver[i] = keyDown[i] && key_buttons(i, keyContext) != key_buttons(i, context);
+        }
+        keyContext = context;
+    }
+    update_keyboard();
 }
 
 static void update_gamepad(int port)
@@ -200,6 +254,41 @@ void PsxPadSdlShutdown(void)
     }
 }
 
+/* The family a gamepad belongs to, for its button glyphs. */
+static PadDevice gamepad_device(SDL_Gamepad *g)
+{
+    switch (SDL_GetGamepadType(g)) {
+    case SDL_GAMEPAD_TYPE_PS3:
+    case SDL_GAMEPAD_TYPE_PS4:
+    case SDL_GAMEPAD_TYPE_PS5:
+        return PAD_DEVICE_PLAYSTATION;
+    case SDL_GAMEPAD_TYPE_XBOX360:
+    case SDL_GAMEPAD_TYPE_XBOXONE:
+        return PAD_DEVICE_XBOX;
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO:
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_LEFT:
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT:
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_PAIR:
+    case SDL_GAMEPAD_TYPE_GAMECUBE:
+        return PAD_DEVICE_NINTENDO;
+    default:
+        return PAD_DEVICE_GENERIC;
+    }
+}
+
+/* A gamepad was used: its buttons and its sticks past a dead zone count, not the noise of a worn stick. */
+static void note_gamepad(SDL_JoystickID id)
+{
+    int port;
+
+    for (port = 0; port < PORTS; port++) {
+        if (gamepads[port] && SDL_GetGamepadID(gamepads[port]) == id) {
+            PsxPadNoteDevice(gamepad_device(gamepads[port]));
+            return;
+        }
+    }
+}
+
 /* The platform's event pump calls this for every SDL event. */
 void PsxInputEvent(const SDL_Event *event)
 {
@@ -212,12 +301,18 @@ void PsxInputEvent(const SDL_Event *event)
         for (i = 0; i < KEY_COUNT; i++) {
             if (keyBindings[i].key == event->key.scancode) {
                 keyDown[i] = event->key.down;
+                if (!event->key.down) {
+                    keyHeldOver[i] = false;
+                } else if (!event->key.repeat) {
+                    PsxPadNoteDevice(PAD_DEVICE_KEYBOARD);
+                }
             }
         }
         update_keyboard();
         break;
     case SDL_EVENT_WINDOW_FOCUS_LOST:
         memset(keyDown, 0, sizeof(keyDown));
+        memset(keyHeldOver, 0, sizeof(keyHeldOver));
         update_keyboard();
         break;
     case SDL_EVENT_GAMEPAD_ADDED:
@@ -227,6 +322,8 @@ void PsxInputEvent(const SDL_Event *event)
         close_gamepad(event->gdevice.which);
         break;
     case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+        note_gamepad(event->gbutton.which);
+        /* fall through */
     case SDL_EVENT_GAMEPAD_BUTTON_UP:
         for (port = 0; port < PORTS; port++) {
             if (gamepads[port] && SDL_GetGamepadID(gamepads[port]) == event->gbutton.which) {
@@ -235,6 +332,9 @@ void PsxInputEvent(const SDL_Event *event)
         }
         break;
     case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+        if (event->gaxis.value > 16384 || event->gaxis.value < -16384) {
+            note_gamepad(event->gaxis.which);
+        }
         for (port = 0; port < PORTS; port++) {
             if (gamepads[port] && SDL_GetGamepadID(gamepads[port]) == event->gaxis.which) {
                 update_gamepad(port);
