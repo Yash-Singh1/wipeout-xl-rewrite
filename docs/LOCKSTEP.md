@@ -45,6 +45,15 @@ two drew.
 | track01-pit-red-electricity (pit lane) | 2176 | 2086 | 90 | 0 |
 | time-trial-manual | 3801 | 3618 | 183 | 0 |
 | spilskinanke-rescue (track exit, rescue droid) | 3945 | 3053 | 90 | 802, colours only |
+| race-08-sagarmatha (autopilot arcade race) | 6428 | | | 2482, colours only |
+| race-13-valparaiso | 6322 | | | 2177, colours only |
+| race-20-phenitia-park | 6380 | | | 2029, colours only |
+| race-02-gare-deuropa | 6366 | | | 1977, colours only |
+| race-17-odessa-keys | 6383 | | | 1880, colours only |
+| race-06-vostok-island | 6400 | | | 1839, colours only |
+
+The race-* recordings come from `tools/trace/scenarios/make_races.py`, recorded with
+`wipeout-xl-port/tools/trace/record.py`.
 
 The colour-only differences are the weapon pickup pads' colour cycle: its
 angle (`WeaponGridZone.angle`) is never initialised, so it starts from
