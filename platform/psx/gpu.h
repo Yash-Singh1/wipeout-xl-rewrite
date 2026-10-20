@@ -14,6 +14,13 @@
 extern uint16_t psxVram[VRAM_HEIGHT][VRAM_WIDTH];
 void GpuVramChanged(int x, int y, int w, int h);
 
+/* The port's own page of texture memory, beyond the console's video memory: 256x256 15-bit
+   pixels that a textured primitive reads when its texture page says colour depth 3 (the
+   depth the console's GPU leaves reserved; the game never uses it). The button glyphs of the
+   keyboard and of other gamepads live here. The page's coordinates are the primitive's UVs. */
+#define GLYPH_PAGE_SIZE 256
+void GpuSetGlyphMemory(const uint16_t *pixels);
+
 /* A vertex: position in the drawing area's pixels (fractional when the GTE
    supplied a precise one), w for perspective-correct texturing (1 when not
    known), colour 0-255 per channel (128 = unmodulated texture), texture
@@ -29,7 +36,7 @@ typedef struct GpuDrawState {
     int textured;
     int raw;           /* texture without colour modulation */
     int semi;          /* -1 opaque, else blend mode 0-3 */
-    int depth;         /* texture colours: 0 = 4-bit, 1 = 8-bit, 2 = 15-bit */
+    int depth;         /* texture colours: 0 = 4-bit, 1 = 8-bit, 2 = 15-bit, 3 = the glyph page */
     int pageX, pageY;  /* texture page origin in video memory */
     int clutX, clutY;  /* palette origin */
     int windowMaskX, windowMaskY, windowOffsetX, windowOffsetY; /* texture window, in 8-texel units */

@@ -37,6 +37,34 @@ bool PsxPadGet(int port, PadState *state);
 void PsxPadSetType(int port, PadType type);
 PadType PsxPadGetType(int port);
 
+/* What the keyboard's keys mean. In the menus (and the pause menu, the results and the name entry)
+   the keys press the menu buttons; in a race that is being steered they press the race controls.
+   The game tells the pad each race frame; a few fields after the last call the menus are back. */
+typedef enum { PAD_CONTEXT_MENU, PAD_CONTEXT_RACE } PadContext;
+
+/* The six race actions, in the order of the game's key bindings (keyDef[]): the button of each is
+   what the player assigned in the controller configuration. */
+enum {
+    PAD_ACTION_VIEW, PAD_ACTION_FIRE, PAD_ACTION_DITCH, PAD_ACTION_BRAKE_RIGHT,
+    PAD_ACTION_BRAKE_LEFT, PAD_ACTION_THRUST, PAD_ACTIONS
+};
+
+/* Called by the game every frame of a race: whether the player is steering the ship (racing and
+   not paused) and the buttons the digital pad's actions are bound to. */
+void PsxPadRaceFrame(bool steering, const uint16_t bindings[PAD_ACTIONS]);
+PadContext PsxPadContext(void);
+/* The button each race action presses now (the game's binding, or the default layout's when the
+   game has none yet or binds an analogue axis, and on the NeGcon the keyboard's own layout). */
+uint16_t PsxPadActionButton(int action);
+
+/* The device the player used last, which decides the button glyphs and names the game shows. */
+typedef enum {
+    PAD_DEVICE_NONE, PAD_DEVICE_KEYBOARD, PAD_DEVICE_PLAYSTATION, PAD_DEVICE_XBOX, PAD_DEVICE_NINTENDO,
+    PAD_DEVICE_GENERIC
+} PadDevice;
+void PsxPadNoteDevice(PadDevice device);
+PadDevice PsxPadLastDevice(void);
+
 /* Parses a script (see pad.c) from memory; returns false on a syntax error (message in error). */
 bool PsxPadLoadScript(const char *text, char *error, int errorSize);
 

@@ -3,6 +3,7 @@
 #include "hiscores.h"
 #include "card.h"
 #include "pad.h"
+#include "../../platform/controls.h" /* Port: keyboard and gamepad glyphs and button names */
 #include "ayrace.h"
 #include "ghost.h"
 #include "include_asm_g8.h"
@@ -796,10 +797,11 @@ void DoButton(short x, short y, int requestedIcon, char *text)
     short iconNo=requestedIcon;
     POLY_FT4 (*polys)[2];
     int frameSpace[2];
+    int labelShift;
     if(buttonCount<30) {
         if(playerControl[0].head==2 && (unsigned short)requestedIcon<4) iconNo+=6;
         if((unsigned short)(iconNo-10)<2) texture=textureTable[4 + buttonTextures];
-        else texture=textureTable[buttonTextures+iconNo];
+        else texture=textureTable[buttonTextures+(iconNo<PORT_ICON_ACTION?iconNo:0)]; /* Port: the controller screen's key icons have no console texture */
         {int glyphNo=buttonCount;int frame=CurrentScreen;
         polys=menuButtons;
         SetPolyFT4(&polys[glyphNo][frame]);}
@@ -865,13 +867,14 @@ void DoButton(short x, short y, int requestedIcon, char *text)
         short glyphNo=buttonCount;short frame=CurrentScreen;
         menuButtons[glyphNo][frame].tpage=page;
         menuButtons[glyphNo][frame].clut=texture->cba;}
+        labelShift=PortButtonGlyph(&BUTTON_POLY,iconNo,x,y); /* Port: the glyph of the keyboard or gamepad in use; a wider glyph pushes the label right */
         AddPrim(OT[CurrentScreen],& menuButtons[buttonCount][CurrentScreen] );
         if(playerControl[0].head==2) {
             if(iconNo==9) Print(text,x-25,y+6,8);
-            else Print(text,x+18,y+6,8);
+            else Print(text,x+18+labelShift,y+6,8);
         } else {
             if(iconNo==3) Print(text,x-25,y+6,8);
-            else Print(text,x+18,y+6,8);
+            else Print(text,x+18+labelShift,y+6,8);
         }
         buttonCount++;
     }
@@ -2881,6 +2884,7 @@ void DisplayPassword(ConfigData *gameData)
     short digit;
 
     MakePassword(gameData);
+    PortConsoleGlyphs(1); /* Port: the password's symbols are shapes, whatever the device */
     for (digit = 0; digit < 14; digit++) {
         switch ((u_char)gameData->generated.digits[digit]) {
         case 0: DoButton((short)(digit * 18 + 37), 100, 3, numTex); break;
@@ -2889,6 +2893,7 @@ void DisplayPassword(ConfigData *gameData)
         case 3: DoButton((short)(digit * 18 + 37), 100, 0, numTex); break;
         }
     }
+    PortConsoleGlyphs(0);
 }
 
 
@@ -2928,6 +2933,7 @@ void EnterPassword(ConfigData *gameData, MenuSelection *selection, MenuPolys *po
             Sound(8);
         }
     }
+    PortConsoleGlyphs(1); /* Port: the password's symbols are shapes, whatever the device */
     for (digit = 0; digit < 14; digit++) {
         switch (selection->password.digits[digit]) {
         case 0:
@@ -2944,6 +2950,7 @@ void EnterPassword(ConfigData *gameData, MenuSelection *selection, MenuPolys *po
             break;
         }
     }
+    PortConsoleGlyphs(0);
     (polys->purple + CurrentScreen)->x0 = menu[currMenu].mode * 18 + 35;
     (polys->purple + CurrentScreen)->y0 = 138;
     (polys->purple + CurrentScreen)->x1 = menu[currMenu].mode * 18 + 54;
@@ -3845,6 +3852,11 @@ void JoyPadConfig(ConfigData *gameData, KeyConfig *keyConfig, MenuPolys *polys, 
         }
     }
     for (i = 0; (selection->keys + layout)->key[i] != 0; i++) {
+        if (PortShowsKeys()) {
+            /* Port: the keyboard's keys are fixed, so each row shows the key of its action, not the button bound to it */
+            DoButton(150, (short)(i * 16 + 83), PORT_ICON_ACTION + i, numTex);
+            continue;
+        }
         switch ((unsigned short)(selection->keys + layout)->key[i]) {
         case 0x1000:
             DoButton(150, (short)(i * 16 + 83), 3, numTex);
@@ -3856,20 +3868,20 @@ void JoyPadConfig(ConfigData *gameData, KeyConfig *keyConfig, MenuPolys *polys, 
             DoButton(150, (short)(i * 16 + 83), 0, numTex);
             break;
         case 0x400:
-            Print(msgL1Button, 150, i * 16 + 88, 8);
+            Print(PortButtonLabel(PORT_BUTTON_L1, msgL1Button), 150, i * 16 + 88, 8); /* Port: the name of the pad's button */
             break;
         case 0x100:
-            Print(msgL2Button, 150, i * 16 + 88, 8);
+            Print(PortButtonLabel(PORT_BUTTON_L2, msgL2Button), 150, i * 16 + 88, 8); /* Port: the name of the pad's button */
             break;
         case 0x800:
             if (playerControl[0].head == 2) {
                 Print(msgRButton, 150, i * 16 + 88, 8);
             } else {
-                Print(msgR1Button, 150, i * 16 + 88, 8);
+                Print(PortButtonLabel(PORT_BUTTON_R1, msgR1Button), 150, i * 16 + 88, 8); /* Port: the name of the pad's button */
             }
             break;
         case 0x200:
-            Print(msgR2Button, 150, i * 16 + 88, 8);
+            Print(PortButtonLabel(PORT_BUTTON_R2, msgR2Button), 150, i * 16 + 88, 8); /* Port: the name of the pad's button */
             break;
         case 0x8FF0:
             DoButton(150, (short)(i * 16 + 83), 1, numTex);

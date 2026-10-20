@@ -71,6 +71,7 @@ void PsxVBlank(void)
     }
     Pace();
     if (portConfig.frameLimit && fields >= (uint64_t)portConfig.frameLimit) {
+        PortDumpVram();
         exit(0);
     }
 }

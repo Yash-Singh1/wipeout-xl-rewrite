@@ -22,6 +22,7 @@ extern PortConfig portConfig;
 int PortVideoInit(void);
 void PortVideoShutdown(void);
 void PortVideoPresent(void);
+void PortDumpVram(void);
 void PortDrawableSize(int *width, int *height);
 /* Pumps window and input events; returns 0 when the user closed the window. */
 int PortPumpEvents(void);
@@ -35,6 +36,9 @@ uint64_t PsxScanlines(void);  /* since power-on */
 
 /* libgpu.c */
 void PsxShowDisplay(void);
+
+/* controls.c: scripted key and gamepad events (WIPEOUT_KEYS), fed to SDL's queue each field */
+void PortInputScript(uint64_t field);
 
 /* Diagnostics */
 void PortLog(const char *format, ...);

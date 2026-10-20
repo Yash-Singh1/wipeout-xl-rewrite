@@ -399,12 +399,14 @@ int DrawSync(int mode)
     return 0;
 }
 
-/* The display: libetc's VSync calls this when a frame is shown. */
+/* The display: libetc's VSync calls this when a frame is shown. The GPU scans out 240 lines (NTSC)
+   from the display start whatever height the environment gives (the menus say 180 and draw down to
+   line 230); only a height above 256 is an interlaced picture of twice that. */
 void PsxShowDisplay(void)
 {
     GpuFlush();
     if (state.displayEnabled && state.displayW > 0 && state.displayH > 0) {
-        GpuPresent(state.displayX, state.displayY, state.displayW, state.displayH);
+        GpuPresent(state.displayX, state.displayY, state.displayW, state.displayH > 256 ? 480 : 240);
     } else {
         GpuPresent(-1, -1, 0, 0);
     }

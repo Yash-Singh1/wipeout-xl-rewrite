@@ -105,6 +105,30 @@ static void Capture(void)
     SDL_free(pixels);
 }
 
+/* Tests (WIPEOUT_VRAM_DUMP=file.ppm): all of video memory as a picture. */
+void PortDumpVram(void)
+{
+    const char *path = SDL_getenv("WIPEOUT_VRAM_DUMP");
+    FILE *file;
+    int x, y;
+
+    if (!path || !(file = fopen(path, "wb"))) {
+        return;
+    }
+    GpuReadBack(0, 0, 320, VRAM_HEIGHT); /* the drawn part; the rest is only ever uploaded */
+    fprintf(file, "P6\n%d %d\n255\n", VRAM_WIDTH, VRAM_HEIGHT);
+    for (y = 0; y < VRAM_HEIGHT; y++) {
+        for (x = 0; x < VRAM_WIDTH; x++) {
+            uint16_t v = psxVram[y][x];
+
+            fputc((v & 31) * 255 / 31, file);
+            fputc((v >> 5 & 31) * 255 / 31, file);
+            fputc((v >> 10 & 31) * 255 / 31, file);
+        }
+    }
+    fclose(file);
+}
+
 void PortVideoPresent(void)
 {
     Capture();
@@ -115,6 +139,7 @@ int PortPumpEvents(void)
 {
     SDL_Event event;
 
+    PortInputScript(PsxFieldCount());
     while (SDL_PollEvent(&event)) {
         if (event.type == SDL_EVENT_QUIT) {
             return 0;

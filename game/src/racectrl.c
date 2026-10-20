@@ -12,9 +12,11 @@
 #include "track.h"
 #include "dynam.h"
 #include "pad.h"
+#include "../../platform/controls.h" /* Port: keyboard and gamepad glyphs and contexts */
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
 extern u_short          startTextureBase;
+extern u_short          keyDef[6];
 extern WeaponGrid      *weaponGrids;
 extern TIMlist         *residentTextureSeq;
 extern Shadow          *shadowData;
@@ -328,6 +330,7 @@ restart:
     InitAttractMode(context,shipIndex);gameData->complete=0;SetUpFirstCheckPoint();
 frame:
     buildGameKeyPad(padBuf1,playerControl);buildFixedPad(padBuf1);
+    PortRaceControls((shipIndex[ownShip].attr&RACING) && pauseState.selection==-1,keyDef); /* Port: the keyboard steers the ship only while racing */
     if(raceType==one) RecordKeypresses(shipIndex);
     UpdateCheatSequence(0);ClearOTagR(OT[CurrentScreen],8192);ClearOTagR(OT2[CurrentScreen],1600);
     buttonCount=0;quadIndex=CurrentScreen*300;shipClassIndex=gameData->shipClass;clipLevel=gameData->trackNum;

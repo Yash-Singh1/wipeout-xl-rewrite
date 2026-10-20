@@ -114,8 +114,9 @@ static int LoadFunctions(void)
 static int scale = 1;
 static GLuint framebuffer, colour;   /* all of video memory, scaled */
 static GLuint vramTexture;           /* the CPU copy, R16UI */
+static GLuint glyphTexture;          /* the glyph page (GpuSetGlyphMemory), R16UI */
 static GLuint program, vertexArray, vertexBuffer;
-static GLint uniformVram, uniformTexture, uniformClut, uniformWindow, uniformMode, uniformTarget;
+static GLint uniformVram, uniformGlyphs, uniformTexture, uniformClut, uniformWindow, uniformMode, uniformTarget;
 static int vramDirty = 1;
 static int dirtyLeft, dirtyTop, dirtyRight, dirtyBottom;
 static int areaX, areaY, areaW = VRAM_WIDTH, areaH = VRAM_HEIGHT;
@@ -158,6 +159,7 @@ static const char *fragmentSource =
     "in vec3 vTexel;\n"
     "noperspective in vec2 vTexelAffine;\n"
     "uniform usampler2D vram;\n"
+    "uniform usampler2D glyphs;\n"
     "uniform ivec4 texture;\n"
     "uniform ivec4 clut;\n"
     "uniform ivec4 window;\n"
@@ -184,6 +186,8 @@ static const char *fragmentSource =
     "        uint word = Fetch(texture.xy + ivec2(uv.x >> 1, uv.y));\n"
     "        uint index = (word >> uint((uv.x & 1) * 8)) & 255u;\n"
     "        texel = Fetch(clut.xy + ivec2(int(index), 0));\n"
+    "    } else if (mode.w == 3) {\n"
+    "        texel = texelFetch(glyphs, uv, 0).r;\n"
     "    } else {\n"
     "        texel = Fetch(texture.xy + uv);\n"
     "    }\n"
@@ -256,6 +260,7 @@ int GpuInit(void)
         return 0;
     }
     uniformVram = glGetUniformLocation(program, "vram");
+    uniformGlyphs = glGetUniformLocation(program, "glyphs");
     uniformTexture = glGetUniformLocation(program, "texture");
     uniformClut = glGetUniformLocation(program, "clut");
     uniformWindow = glGetUniformLocation(program, "window");
@@ -278,6 +283,13 @@ int GpuInit(void)
     glGenTextures(1, &vramTexture);
     glBindTexture(GL_TEXTURE_2D, vramTexture);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_R16UI, VRAM_WIDTH, VRAM_HEIGHT, 0, GL_RED_INTEGER, GL_UNSIGNED_SHORT, psxVram);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glGenTextures(1, &glyphTexture);
+    glBindTexture(GL_TEXTURE_2D, glyphTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R16UI, GLYPH_PAGE_SIZE, GLYPH_PAGE_SIZE, 0, GL_RED_INTEGER, GL_UNSIGNED_SHORT,
+                 NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
@@ -327,6 +339,14 @@ void GpuVramChanged(int x, int y, int w, int h)
         dirtyRight = SDL_max(dirtyRight, right);
         dirtyBottom = SDL_max(dirtyBottom, bottom);
     }
+}
+
+void GpuSetGlyphMemory(const uint16_t *pixels)
+{
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, glyphTexture);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, GLYPH_PAGE_SIZE, GLYPH_PAGE_SIZE, GL_RED_INTEGER, GL_UNSIGNED_SHORT, pixels);
+    glActiveTexture(GL_TEXTURE0);
 }
 
 static void UploadVram(void)
@@ -421,6 +441,10 @@ static void Flush(void)
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, vramTexture);
     glUniform1i(uniformVram, 0);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, glyphTexture);
+    glUniform1i(uniformGlyphs, 1);
+    glActiveTexture(GL_TEXTURE0);
     glUniform2f(uniformTarget, (float)VRAM_WIDTH, (float)VRAM_HEIGHT);
     glUniform4i(uniformTexture, s->pageX, s->pageY, 0, 0);
     glUniform4i(uniformClut, s->clutX, s->clutY, 0, 0);

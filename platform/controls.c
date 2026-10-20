@@ -1,0 +1,239 @@
+/* The player's controls as the game sees them: the context the keyboard is in, the names of the
+   buttons of the device in the game's text, and (for tests) scripted key and gamepad events.
+
+   WIPEOUT_KEYS=file replays input through SDL's own event queue, so the keys and gamepad buttons
+   take the path real ones do. Lines, from the video field given on, keys by SDL's names:
+       120 down Return          125 up Return           (a key; "Left Alt", "Escape", "F1", ...)
+       200 pad attach xbox      (a virtual gamepad: xbox, ps5, switch or generic)
+       210 pad down a           215 pad up a            (an SDL gamepad button: a is the south one, then
+                                                          b east, x west, y north, start, back, dpup, ...)
+       220 pad axis leftx 30000                          (an axis; triggers 0..32767)
+       300 pad detach */
+#include <SDL3/SDL.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "controls.h"
+#include "platform.h"
+#include "psx/pad.h"
+
+/* ---- the game's calls ---- */
+
+void PortRaceControls(int steering, const unsigned short *bindings)
+{
+    uint16_t actions[PAD_ACTIONS];
+    int i;
+
+    for (i = 0; i < PAD_ACTIONS; i++) {
+        actions[i] = bindings[i];
+    }
+    PsxPadRaceFrame(steering != 0, actions);
+}
+
+/* ---- names of buttons ---- */
+
+typedef struct ButtonNames {
+    const char *start, *l1, *l2, *r1, *r2;
+} ButtonNames;
+
+/* The font has capitals, digits and a few marks: the Switch's plus is spelled out. */
+static const ButtonNames keyboardNames = {"ENTER", "Q", "A", "E", "D"};
+static const ButtonNames xboxNames = {"MENU", "LB", "LT", "RB", "RT"};
+static const ButtonNames nintendoNames = {"PLUS", "L", "ZL", "R", "ZR"};
+
+char *PortButtonLabel(PortButton button, char *console)
+{
+    const ButtonNames *names;
+    const char *name;
+
+    switch (PsxPadLastDevice()) {
+    case PAD_DEVICE_KEYBOARD: names = &keyboardNames; break;
+    case PAD_DEVICE_XBOX: names = &xboxNames; break;
+    case PAD_DEVICE_NINTENDO: names = &nintendoNames; break;
+    default: return console;
+    }
+    switch (button) {
+    case PORT_BUTTON_START: name = names->start; break;
+    case PORT_BUTTON_L1: name = names->l1; break;
+    case PORT_BUTTON_L2: name = names->l2; break;
+    case PORT_BUTTON_R1: name = names->r1; break;
+    case PORT_BUTTON_R2: name = names->r2; break;
+    default: return console;
+    }
+    return (char *)name;
+}
+
+/* ---- scripted input ---- */
+
+typedef enum { STEP_KEY, STEP_ATTACH, STEP_DETACH, STEP_BUTTON, STEP_AXIS } StepKind;
+
+typedef struct Step {
+    uint64_t field;
+    StepKind kind;
+    bool down;
+    int code;     /* scancode, button, axis or pad family */
+    int value;
+} Step;
+
+static Step *steps;
+static int stepCount, stepNext;
+static bool stepsLoaded;
+static SDL_JoystickID virtualId;
+static SDL_Joystick *virtualJoystick;
+
+static const struct { const char *name; uint16_t vendor, product; } families[] = {
+    {"xbox", 0x045E, 0x02EA}, {"ps5", 0x054C, 0x0CE6}, {"switch", 0x057E, 0x2009}, {"generic", 0x1234, 0x5678}};
+
+static void AddStep(Step step)
+{
+    steps = SDL_realloc(steps, (size_t)(stepCount + 1) * sizeof(*steps));
+    steps[stepCount++] = step;
+}
+
+static void ParseLine(char *line, int number)
+{
+    char verb[16], word[32], rest[64];
+    unsigned long long field;
+    Step step;
+    int n = (int)strlen(line);
+
+    memset(&step, 0, sizeof(step));
+    if (line[0] == '#' || sscanf(line, "%llu %15s %n", &field, verb, &n) < 2) {
+        return;
+    }
+    step.field = field;
+    SDL_strlcpy(rest, line + n, sizeof(rest));
+    rest[strcspn(rest, "\r\n")] = 0;
+    if (!strcmp(verb, "down") || !strcmp(verb, "up")) {
+        step.kind = STEP_KEY;
+        step.down = verb[0] == 'd';
+        step.code = (int)SDL_GetScancodeFromName(rest);
+        if (step.code == SDL_SCANCODE_UNKNOWN) {
+            fprintf(stderr, "keys: line %d: no key called \"%s\"\n", number, rest);
+            return;
+        }
+    } else if (!strcmp(verb, "pad") && (n = (int)strlen(rest), sscanf(rest, "%31s %n", word, &n) >= 1)) {
+        char *tail = rest + n;
+
+        if (!strcmp(word, "attach")) {
+            size_t i;
+
+            step.kind = STEP_ATTACH;
+            for (i = 0; i < sizeof(families) / sizeof(families[0]); i++) {
+                if (!strcmp(tail, families[i].name)) {
+                    step.code = (int)i;
+                }
+            }
+        } else if (!strcmp(word, "detach")) {
+            step.kind = STEP_DETACH;
+        } else if (!strcmp(word, "down") || !strcmp(word, "up")) {
+            step.kind = STEP_BUTTON;
+            step.down = word[0] == 'd';
+            step.code = (int)SDL_GetGamepadButtonFromString(tail);
+            if (step.code == SDL_GAMEPAD_BUTTON_INVALID) {
+                fprintf(stderr, "keys: line %d: no gamepad button \"%s\"\n", number, tail);
+                return;
+            }
+        } else if (!strcmp(word, "axis")) {
+            char axis[24];
+
+            step.kind = STEP_AXIS;
+            if (sscanf(tail, "%23s %d", axis, &step.value) != 2 ||
+                (step.code = (int)SDL_GetGamepadAxisFromString(axis)) == SDL_GAMEPAD_AXIS_INVALID) {
+                fprintf(stderr, "keys: line %d: bad axis\n", number);
+                return;
+            }
+        } else {
+            fprintf(stderr, "keys: line %d: unknown pad command\n", number);
+            return;
+        }
+    } else {
+        fprintf(stderr, "keys: line %d: unknown command %s\n", number, verb);
+        return;
+    }
+    AddStep(step);
+}
+
+static void LoadSteps(void)
+{
+    const char *path = SDL_getenv("WIPEOUT_KEYS");
+    char line[256];
+    int number = 0;
+    FILE *f;
+
+    stepsLoaded = true;
+    if (!path) {
+        return;
+    }
+    f = fopen(path, "r");
+    if (!f) {
+        fprintf(stderr, "keys: cannot read %s\n", path);
+        return;
+    }
+    while (fgets(line, sizeof(line), f)) {
+        ParseLine(line, ++number);
+    }
+    fclose(f);
+}
+
+static void Run(const Step *step)
+{
+    SDL_Event event;
+
+    memset(&event, 0, sizeof(event));
+    switch (step->kind) {
+    case STEP_KEY:
+        event.type = step->down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
+        event.key.scancode = (SDL_Scancode)step->code;
+        event.key.down = step->down;
+        SDL_PushEvent(&event);
+        break;
+    case STEP_ATTACH:
+        if (!virtualId) {
+            SDL_VirtualJoystickDesc desc;
+
+            SDL_INIT_INTERFACE(&desc);
+            desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+            desc.vendor_id = families[step->code].vendor;
+            desc.product_id = families[step->code].product;
+            desc.naxes = SDL_GAMEPAD_AXIS_COUNT;
+            desc.nbuttons = SDL_GAMEPAD_BUTTON_COUNT;
+            desc.name = families[step->code].name;
+            desc.button_mask = ~0u;
+            desc.axis_mask = ~0u;
+            virtualId = SDL_AttachVirtualJoystick(&desc);
+            virtualJoystick = virtualId ? SDL_OpenJoystick(virtualId) : NULL;
+        }
+        break;
+    case STEP_DETACH:
+        if (virtualId) {
+            SDL_CloseJoystick(virtualJoystick);
+            SDL_DetachVirtualJoystick(virtualId);
+            virtualId = 0;
+            virtualJoystick = NULL;
+        }
+        break;
+    case STEP_BUTTON:
+        if (virtualJoystick) {
+            SDL_SetJoystickVirtualButton(virtualJoystick, step->code, step->down);
+        }
+        break;
+    case STEP_AXIS:
+        if (virtualJoystick) {
+            SDL_SetJoystickVirtualAxis(virtualJoystick, step->code, (Sint16)step->value);
+        }
+        break;
+    }
+}
+
+/* Called before the event pump drains SDL's queue, once per video field. */
+void PortInputScript(uint64_t field)
+{
+    if (!stepsLoaded) {
+        LoadSteps();
+    }
+    while (stepNext < stepCount && steps[stepNext].field <= field) {
+        Run(&steps[stepNext++]);
+    }
+}
