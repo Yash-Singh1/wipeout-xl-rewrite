@@ -90,6 +90,8 @@ uint64_t PsxIoNow(void)
     return now;
 }
 
+static uint64_t fieldCalls;
+
 /* With an audio device the clock is the device's. If it stops (the device is stuck or was
    removed) the game would wait forever; after a second without progress the device is given up
    and time follows the video fields. */
@@ -124,7 +126,22 @@ void PsxIoWait(uint64_t deadline)
         }
         return;
     }
-    PsxVBlank();
+    {
+        uint64_t calls = fieldCalls;
+
+        PsxVBlank();
+        if (calls == fieldCalls && !g_io.deviceClock) {
+            /* the platform's PsxVBlank does not call PsxIoField: pass the field's time here so
+               the game cannot wait forever */
+            static bool warned;
+
+            if (!warned) {
+                PortLog("psx_io: PsxVBlank() does not call PsxIoField(); advancing time per wait\n");
+                warned = true;
+            }
+            PsxAudioRender(NULL, SAMPLES_PER_FIELD);
+        }
+    }
 }
 
 void PsxIoField(uint64_t field)
@@ -132,6 +149,7 @@ void PsxIoField(uint64_t field)
     if (!g_io.initialized) {
         return;
     }
+    fieldCalls++;
     if (!g_io.deviceClock) {
         uint64_t target = field * SPU_SAMPLE_RATE * FIELD_RATE_DEN / FIELD_RATE_NUM;
 

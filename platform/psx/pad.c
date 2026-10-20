@@ -23,6 +23,10 @@
 #include "internal.h"
 #include "pad.h"
 
+#ifdef _WIN32
+#define strtok_r strtok_s
+#endif
+
 #define PORTS 2
 
 typedef struct Port {
