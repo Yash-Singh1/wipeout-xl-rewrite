@@ -59,14 +59,10 @@ The game calls the PsyQ libraries:
 
 ## Verification
 
-- **Lockstep against the console:**
-  - recordings of the real game in DuckStation (`reference-runs/`):
-    - pad input;
-    - RAM states;
-    - the GPU command stream;
-    - SPU writes;
-  - the port replays the same input and compares game state every frame.
-- **Scripted playthroughs** under AddressSanitizer:
+- **Lockstep against the console** (`tools/trace/`, `docs/LOCKSTEP.md`): the
+  port replays a DuckStation recording of the real game and its drawing is
+  compared with the console's, frame by frame and packet by packet.
+- **Scripted playthroughs** under AddressSanitizer and UBSan:
   - boot, intros, every menu, races on every track and class, weapons,
     pit stops, results, saves;
   - keys and pad buttons pressed as a player would;

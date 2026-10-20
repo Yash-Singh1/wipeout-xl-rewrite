@@ -28,7 +28,10 @@ python3 "$here/writes.py" "$recording" "$out/writes.txt" >/dev/null
 rm -rf "$out/save"
 mkdir -p "$out/save"
 
+autopilot=$(python3 -c 'import json,sys; print(1 if json.load(open(sys.argv[1])).get("autopilot", True) else "")' "$recording/scenario.json")
+
 WIPEOUT_HIDDEN=1 WIPEOUT_MUTE=1 WIPEOUT_FIXED_STEP=1 \
+WIPEOUT_AUTOPILOT=$autopilot \
 WIPEOUT_SAVE_DIR="$out/save/" \
 WIPEOUT_FRAMES="$fields" \
 WIPEOUT_PADS="$recording/pads.txt" \

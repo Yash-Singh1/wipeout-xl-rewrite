@@ -287,6 +287,14 @@ void UpdatePlayerShip(ShipData *ships, Object **shapes, int shipNo, WeaponData *
     short       lower, upper;
     short       destroyed;
 
+    if (PortAutopilot() && shipNo == ownShip && ships[shipNo].autopilotCount == 0) {
+        /* Port: the lockstep tests' infinite autopilot, as the console recorder patches it in */
+        ships[shipNo].autopilotCount = 120;
+        ships[shipNo].weapon = 0;
+        ships[shipNo].update = UpdateDroneShip;
+        humanToDroneSpeed(ships, shipNo);
+        return;
+    }
     destroyed = 0;
     modes = brakeModes[0];
     ship = &ships[shipNo];

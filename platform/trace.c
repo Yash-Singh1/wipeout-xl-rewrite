@@ -253,6 +253,19 @@ void PortScriptWrites(void *ship, void *config)
     }
 }
 
+/* ---- autopilot ---- */
+
+int PortAutopilot(void)
+{
+    static int autopilot = -1;
+
+    if (autopilot < 0) {
+        const char *value = SDL_getenv("WIPEOUT_AUTOPILOT");
+        autopilot = value && *value && strcmp(value, "0");
+    }
+    return autopilot;
+}
+
 /* ---- loading screens ---- */
 
 static uint32_t *loadFrames;
