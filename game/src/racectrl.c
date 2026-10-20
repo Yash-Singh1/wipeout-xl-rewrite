@@ -92,19 +92,15 @@ extern Object       *videoObjects[];
 extern Object       *prmObjects[];
 extern int           fracdamage[];
 extern int           shipDamage[];
-extern u_char        hudDisabled;
+/* Port: hudDisabled is part of scoreTabData; the uses read it directly. */
 extern HiScoreData   scoreTabData;
 extern RescueData    rescueData;
-extern u_char        twoPlayerPauseStatus;
-extern signed char   twoPlayerMode;
-extern signed char   twoPlayerFlag;
+/* Port: twoPlayerFlag, twoPlayerMode, twoPlayerPauseStatus are parts of pauseState; the uses read them directly. */
 extern int           zeppelinBaseX;
 extern int           zeppelinBaseY;
 extern int           zeppelinBaseZ;
-extern int           trainMuzzleX;
-extern int           trainMuzzleY;
-extern int           trainMuzzleZ;
-extern Object       *lightDroid;
+/* Port: trainMuzzleX, trainMuzzleY, trainMuzzleZ are parts of monoRail; the uses read them directly. */
+/* Port: lightDroid is part of shipShapeTable; the uses read it directly. */
 extern char          trackPathTable[];
 extern char          track1SmokeTextureSequence[];
 extern char          sharedTrackTextureSequence[];
@@ -203,7 +199,7 @@ void race(ConfigData *gameData, int context, int scene)
     locals.crowdSample=0;
     advertCount=0;cameraCount=0;neonCount=0;girderCount=0;videoCount=0;zepCount=0;dishCount=0;pylonCount=0;fanCount=0;smokeSlowCount=0;smokeFastCount=0;smokeNumber=0;
     fastCount=0;fastTexCount=0;slowCount=0;slowTexCount=0;torchCount=0;torchNumber=0;redBullCount=0;redBullNumber=0;bobCount=0;prmCount=0;
-    attractModeFlag=0;firstTimeIn=one;twoPlayerMode=two;twoPlayerFlag=0;checkTimer=0;savedHeap=heap;heap=reserveHeap;savedTextureCount=TextureTableCount;masterWait=0;writeFlag=0x3938700;
+    attractModeFlag=0;firstTimeIn=one;pauseState.confirmed=two;pauseState.confirmChoice=0;checkTimer=0;savedHeap=heap;heap=reserveHeap;savedTextureCount=TextureTableCount;masterWait=0;writeFlag=0x3938700;
     locals.rainTimer=0;locals.thunderAt=0;locals.firstTime=1;
     if(context==0) raceFlag=1;
     trackCache=DAlloc(reserveHeap,sizeof(AutoMeshData));
@@ -295,7 +291,7 @@ void race(ConfigData *gameData, int context, int scene)
         InitObject(prmObjects,prmCount,redBull,redBullNames,4,&redBullCount);
         redBullNumber=TextureTableCount;LoadCmpFiles(LoadCompressedTextureSequence(track2TextureSequence));
         { Object *trainObject=zeppelinObj;
-        monoRail.index=0;trainMuzzleX=0;trainMuzzleY=0;trainMuzzleZ=0;
+        monoRail.index=0;monoRail.pad10[1]=0;monoRail.pad10[2]=0;monoRail.pad10[3]=0;
         { Skeleton *trainSkeleton=trainObject->skeleton; trainSkeleton->relative.t[2]-=8000; } }
         { Object *trainPosition=zeppelinObj; zeppelinBaseX=trainPosition->skeleton->relative.t[0];zeppelinBaseY=trainPosition->skeleton->relative.t[1];zeppelinBaseZ=trainPosition->skeleton->relative.t[2]; }
         InitObject(prmObjects,prmCount,pylons,pylonNames,5,&pylonCount);
@@ -343,7 +339,7 @@ frame:
     ShowLinkBroken();writeFlag=0;
     CheckShipDestroyed(shipIndex,gameData,&context,scene);PlayCredits(context);
     CheckGamePause(shipIndex,&pauseState.selection,gameData,&keysPressed,&pauseState.musicPaused);
-    Check2PlayerPause(twoPlayerPauseStatus,&locals.viewMode,&pauseState.musicPaused);
+    Check2PlayerPause(pauseState.stage,&locals.viewMode,&pauseState.musicPaused);
     PerformPauseOperations(&pauseState,(struct SelectBox *)&locals.inGameMenu,gameData);
     InitiateTwoPlayerPause(&pauseState);
     if(!raceEndTimer) Perform2PlayerPauseCommand(&pauseState);
@@ -364,7 +360,7 @@ frame:
         }
         UpdateWeapons(shipIndex,weaponBars,weaponIndex);CheckPitShips();
         if(pauseState.selection==-1 && !linkDropped) {AdjustEngineSound(&shipIndex[ownShip],&raceCamera);AdjustCrowdSound(locals.crowdObjects,locals.crowdSample);}
-        TrackSpecificFunctions();ColourDroidLights(lightDroid);AddEffects(weaponIndex,shipIndex);raceElapsed=GsGetVcount()-raceStartVcount;
+        TrackSpecificFunctions();ColourDroidLights(shipShapeTable[30]);AddEffects(weaponIndex,shipIndex);raceElapsed=GsGetVcount()-raceStartVcount;
         if(raceType!=one && gameData->weaponsOn) CycleWeaponGrids(shipIndex,(struct WeaponGridZone *)weaponGrids,locals.noWeaponGrids);
         else if(!gameData->weaponsOn && raceType==4) CycleWeaponGrids(shipIndex,(struct WeaponGridZone *)weaponGrids,locals.noWeaponGrids);
     }
@@ -382,7 +378,7 @@ frame:
         } else {raceEndTimer--;playCredits=one;}
         if(!raceEndTimer) goto quit;
     }
-    if(hudDisabled!=one && !raceEndTimer) {
+    if(scoreTabData.highScore!=one && !raceEndTimer) {
         UpdateRaceHud(shipIndex,&speedoHud,pauseState.selection,gameData,&scoreTabData);
         if(shipIndex[ownShip].update==UpdatePlayerShip || shipIndex[ownShip].update==UpdateRescueDroid || (shipIndex[ownShip].update==UpdateDroneShip && shipIndex[ownShip].autopilotCount>0)) {
             if((shipIndex[ownShip].combatAttr&0x8004)!=0x8004) AlterCheckPoint((CheckPoints *)CHECKPOINTS,shipIndex,pauseState.selection,gameData);

@@ -21,7 +21,8 @@ extern u_char           perfectLapCount;
 extern u_char           plasmaShotBusy;
 extern u_char           raceEndState;
 extern u_char           linkRaceDone;
-extern u_char           hudDisabled;
+/* Port: hudDisabled is part of scoreTabData; the uses read it directly. */
+extern HiScoreData scoreTabData;
 extern u_char           sfxMode;
 extern int              trackNameScroll;
 extern int              playCredits;
@@ -245,7 +246,7 @@ void Restart(ResetData *reset)
     raceEndTimer = 0;
     raceEndState = 0;
     medalDisplay = 0;
-    hudDisabled = 0;
+    scoreTabData.highScore = 0;
     plasmaShotBusy = 0;
     perfectLapCount = 0;
     perfectLap = 0;

@@ -24,8 +24,7 @@ extern int     raceType;
 extern int     cardNum;
 extern int     quadIndex;
 extern POLY_FT4 quadPool[];
-extern Texture *deleteTextures[];
-extern Texture *endTextures[];
+/* Port: deleteTextures, endTextures are parts of textureTable; the uses read them directly. */
 extern FontGlyph fontGlyphs16[];
 extern FontGlyph fontGlyphs12[];
 extern FontGlyph fontGlyphs8[];
@@ -669,8 +668,8 @@ void AddJustifyNumber(int number, int xInput, int y, int size, int colour)
 void AddDelEnd(unsigned char isDelete, int x, int y, int height, int colour)
 {
     short      displayBounds[4];
-    Texture   *deleteTexture = deleteTextures[hudTexIndexAlt];
-    Texture   *endTexture = endTextures[hudTexIndexAlt];
+    Texture   *deleteTexture = textureTable[3 + hudTexIndexAlt];
+    Texture   *endTexture = textureTable[4 + hudTexIndexAlt];
     POLY_FT4  *quads = quadPool;
     POLY_FT4  *quad = (POLY_FT4 *)((char *)quads + quadIndex * 40);
     int       right = x + 24;

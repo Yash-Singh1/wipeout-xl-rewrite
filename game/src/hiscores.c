@@ -11,7 +11,9 @@ extern int          ownShip;
 extern int          savedLapTimes[];
 extern s32          myBestLap;
 extern s32          myBestRace;
-extern GlyphWidth   glyphWidth[];
+/* Port: glyphWidth is part of fontGlyphs16; the uses read it directly. */
+#include "hud.h"
+extern FontGlyph fontGlyphs16[];
 extern u8           msgSelect[];
 
 static const HiScoreNames defaultHiScoreNames = {{
@@ -249,7 +251,7 @@ void EnterHighScore(ConfigData *gameData, HiScoreData *hiScoreData)
             if (hiScoreData->numChars >= 1) {
                 PlayNote(9, 255, 15, 15, 256);
                 hiScoreData->numChars--;
-                hiScoreData->charX -= glyphWidth[hiScoreData->nameEntered[hiScoreData->numChars] - 65].width;
+                hiScoreData->charX -= fontGlyphs16[hiScoreData->nameEntered[hiScoreData->numChars] - 65].width;
                 hiScoreData->nameEntered[hiScoreData->numChars] = 0;
                 hiScoreData->charVal = 0;
             }
@@ -260,7 +262,7 @@ void EnterHighScore(ConfigData *gameData, HiScoreData *hiScoreData)
                 hiScoreData->nameEntered[hiScoreData->numChars] = hiScoreData->currChar;
                 hiScoreData->nameEntered[hiScoreData->numChars + 1] = 0;
                 hiScoreData->numChars++;
-                hiScoreData->charX += glyphWidth[hiScoreData->charVal].width;
+                hiScoreData->charX += fontGlyphs16[hiScoreData->charVal].width;
                 if (hiScoreData->numChars == 3) {
                     hiScoreData->charVal = 27;
                     hiScoreData->currChar = 92;

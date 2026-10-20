@@ -2,7 +2,8 @@
 
 /* Debug pad state for the radius controls: the current pad word, and the raw input. */
 u_short debugPadState;
-extern u_short debugPadInput;
+/* Port: debugPadInput is part of padBuf1; the uses read it directly. */
+#include "pad.h"
 
 
 extern TrackData   *track;
@@ -249,7 +250,7 @@ void RadiusControl(TrackCamera *camera, Object **prm)
     int     noJunction = -1;
 
     opad = debugPadState;
-    debugPadState = debugPadInput;
+    debugPadState = padBuf1[0].buttons;
     debugPadState = ~debugPadState;
     xpad = (debugPadState ^ opad) & debugPadState;
 

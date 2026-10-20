@@ -30,14 +30,13 @@ extern char        shipCmpExt[];
 extern char        shipPrmExt[];
 extern const ShipStartStates startStateTable;
 extern short       activeShipCount;
-extern short       phantomGridPos[];
+/* Port: phantomGridPos is part of gridPosition; the uses read it directly. */
 extern short       gridPosition[];
 extern ShipRank    shipRank[];
 extern RaceLine    raceLines[];
 extern Texture *textureTable[];
 extern GhostClut   ghostCluts[];
-extern Object     *sharkBodyModel;
-extern Object     *sharkLegModel;
+/* Port: sharkBodyModel, sharkLegModel are parts of shipShapeTable; the uses read them directly. */
 extern SharkVert   sharkBaseVerts[];
 extern SharkVert   sharkFootVerts[];
 extern int         sharkFootIndex[];
@@ -187,7 +186,7 @@ void CopySharkVerts(Object *ship)
             modelIndex++;
         } while (modelIndex < vertexCount);
     }
-    model = sharkLegModel;
+    model = shipShapeTable[4];
     for (modelIndex = 0; modelIndex < 4; modelIndex++) {
         lowestY = 0;
         for (vertexIndex = 0; vertexIndex < model->vertexCount; vertexIndex++) {
@@ -214,7 +213,7 @@ void UpdateSharkModel(void)
     Object *legs;
     short   pad[4];
 
-    body = sharkBodyModel;
+    body = shipShapeTable[2];
     i = 0;
     if (sharkVertCount > 0) {
         do {
@@ -223,7 +222,7 @@ void UpdateSharkModel(void)
         } while (i < sharkVertCount);
     }
     sharkWiggle = (sharkWiggle + 0x80) & 0xFFF;
-    legs = sharkLegModel;
+    legs = shipShapeTable[4];
     if (sharkToggle == 0) {
         sharkToggle = 1;
         for (j = 0; j < 4; j++) {
@@ -504,9 +503,9 @@ void initShipData(TrackSection *section, ShipData *shipIndex, ConfigData *option
             }
         }
         if (!bigGrid) {
-            phantomGridPos[1] = next + 1;
-            phantomGridPos[0] = next;
-            phantomGridPos[2] = next + 2;
+            gridPosition[12 + 1] = next + 1;
+            gridPosition[12 + 0] = next;
+            gridPosition[12 + 2] = next + 2;
         }
     }
     for (i = 0; i < 15; i++) {
