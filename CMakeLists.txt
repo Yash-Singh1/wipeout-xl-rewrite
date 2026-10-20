@@ -20,6 +20,14 @@ target_compile_options(game PRIVATE
     -Wno-pointer-sign -Wno-deprecated-declarations
     -Wpointer-to-int-cast -Wint-to-pointer-cast -Wshorten-64-to-32
     -Werror=implicit-function-declaration -Werror=int-conversion)
+# Locals the game reads before writing them: every reachable one is resolved to what the console
+# reads (docs/LOCKSTEP.md); any one still unknown reads zero, as the console's untouched stack, and
+# never host garbage.
+include(CheckCCompilerFlag)
+check_c_compiler_flag(-ftrivial-auto-var-init=zero HAVE_AUTO_VAR_INIT_ZERO)
+if(HAVE_AUTO_VAR_INIT_ZERO)
+    target_compile_options(game PRIVATE -ftrivial-auto-var-init=zero)
+endif()
 
 # ---- Data generated from the console executable (game/data, the data worker) ----
 file(GLOB GAME_DATA_SOURCES ${CMAKE_SOURCE_DIR}/game/data/*.c)
