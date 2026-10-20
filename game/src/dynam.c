@@ -18,7 +18,9 @@ void ShipTrkReaction(ShipData *playerShip, Object **shipShapes)
     Face *face;
     TrackSection *current, *neighbour, *next;
 
-    /* boost is not assigned for a negative thrustCount: the original reads it uninitialised */
+    /* Port: the console left boost (held in $v1, never loaded on this path) untouched for a negative
+       thrustCount, so it kept the caller's $v1. thrustCount is 0 at the start, set to 9 or 13, and only
+       counted down while it is positive (control.c), so it is never negative and boost is always set. */
     if (playerShip->thrustCount == 0) boost = 1;
     else if ((unsigned short)(playerShip->thrustCount - 1) < 2) boost = 3;
     else if (playerShip->thrustCount >= 3) boost = 6;
