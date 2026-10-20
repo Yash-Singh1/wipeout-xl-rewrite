@@ -222,7 +222,7 @@ int CdDriveCommand(CdDrive *cd, int command, const uint8_t *param, int paramCoun
         break;
     }
     case CDC_PLAY: {
-        int32_t target = cd->setlocPending ? cd->setloc : cd->pos;
+        int32_t target = CdDriveReadTarget(cd);
 
         if (paramCount >= 1 && param[0]) {
             unsigned number = CdFromBcd(param[0]);
@@ -241,7 +241,7 @@ int CdDriveCommand(CdDrive *cd, int command, const uint8_t *param, int paramCoun
     }
     case CDC_READN:
     case CDC_READS: {
-        int32_t target = cd->setlocPending ? cd->setloc : cd->pos;
+        int32_t target = CdDriveReadTarget(cd);
 
         cd->setlocPending = false;
         if (target < 0 || target >= DiscLeadOut(cd->disc)) {
@@ -253,7 +253,7 @@ int CdDriveCommand(CdDrive *cd, int command, const uint8_t *param, int paramCoun
     }
     case CDC_SEEKL:
     case CDC_SEEKP: {
-        int32_t target = cd->setlocPending ? cd->setloc : cd->pos;
+        int32_t target = CdDriveReadTarget(cd);
 
         cd->setlocPending = false;
         if (target < 0 || target >= DiscLeadOut(cd->disc)) {
@@ -354,9 +354,19 @@ int CdDriveCommand(CdDrive *cd, int command, const uint8_t *param, int paramCoun
     return length;
 }
 
+/* Where a read command given now starts: the Setloc position, else wherever the head is going
+   or is. */
+int32_t CdDriveReadTarget(const CdDrive *cd)
+{
+    if (cd->setlocPending) {
+        return cd->setloc;
+    }
+    return cd->state == CD_SEEKING ? cd->seekTarget : cd->pos;
+}
+
 void CdDriveStartRead(CdDrive *cd, int sectors, int mode)
 {
-    int32_t target = cd->setlocPending ? cd->setloc : cd->pos;
+    int32_t target = CdDriveReadTarget(cd);
 
     cd->completeAt = 0;
     cd->ackAt = cd->now + ACK_SAMPLES;

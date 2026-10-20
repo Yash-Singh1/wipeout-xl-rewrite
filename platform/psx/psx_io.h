@@ -40,6 +40,9 @@ void PsxIoField(uint64_t field);
 /* The pad: input events from the window system (platform/pad_sdl.c) and the buttons
    currently held on port 0 or 1, active high, in the console's bit layout. */
 uint16_t PsxPadButtons(int port);
+/* Every SDL event (keyboard, gamepad added/removed/buttons/axes, focus) goes through here. */
+union SDL_Event;
+void PsxInputEvent(const union SDL_Event *event);
 
 /* A hook for the movie programs: Exec(program) calls it when set. */
 typedef int (*PsxExecHook)(void *block);

@@ -96,6 +96,8 @@ bool CdDriveIdle(const CdDrive *cd);
 /* Executes a command. Writes the response bytes (without a status byte for GetlocL/P)
    and returns their number; -1 if the command was rejected (an error event is queued). */
 int CdDriveCommand(CdDrive *cd, int command, const uint8_t *param, int paramCount, uint8_t *response);
+/* Where a read, seek or play command given now starts. */
+int32_t CdDriveReadTarget(const CdDrive *cd);
 /* Starts reading `sectors` sectors from the Setloc position (or the head), as CdRead does. */
 void CdDriveStartRead(CdDrive *cd, int sectors, int mode);
 /* Pops a queued event; false if none. */

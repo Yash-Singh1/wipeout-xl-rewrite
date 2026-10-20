@@ -242,7 +242,7 @@ int CdRead(int sectors, void *buffer, int mode)
     rd.pending = sectors > 0;
     rd.dest = buffer;
     rd.sectors = sectors;
-    rd.start = g_io.cd.setlocPending ? g_io.cd.setloc : g_io.cd.pos;
+    rd.start = CdDriveReadTarget(&g_io.cd);
     rd.mode = (uint32_t)mode;
     CdDriveStartRead(&g_io.cd, sectors, mode);
     PsxUnlock();
@@ -250,21 +250,33 @@ int CdRead(int sectors, void *buffer, int mode)
 }
 
 /* mode 0 waits for the read to finish and returns 0; mode 1 returns the number of sectors
-   still to come, or 0 when the read is done. */
+   still to come, or 0 when the read is done. A read that a command cut short returns -1. */
 int CdReadSync(int mode, uint8_t *result)
 {
     for (;;) {
         int remaining = 0;
 
         PsxIoService();
+        bool aborted = false;
+
         PsxLock();
-        if (rd.pending) {
+        if (rd.pending && !g_io.cd.job.active && !g_io.cd.job.finished) {
+            /* a command (Pause, Play, Init) cut the read short */
+            rd.pending = false;
+            aborted = true;
+        } else if (rd.pending) {
             remaining = g_io.cd.job.total - g_io.cd.job.arrived;
             if (remaining < 1) {
                 remaining = 1;
             }
         }
         PsxUnlock();
+        if (aborted) {
+            if (result) {
+                result[0] = current_status() | CDS_ERROR;
+            }
+            return -1;
+        }
         if (!remaining) {
             if (result) {
                 result[0] = current_status();

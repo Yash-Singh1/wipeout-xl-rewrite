@@ -229,8 +229,15 @@ int SetMem(int megabytes)
    runs and the call returns at once, as if the program had finished. */
 int Exec(void *block, int argc, char **argv)
 {
+    uint8_t response[16];
+
     (void)argc;
     (void)argv;
+    /* the program that runs takes the machine over: the drive is reset (music stops) */
+    PsxLock();
+    CdDriveCommand(&g_io.cd, CDC_INIT, NULL, 0, response);
+    memset(&g_io.cd.job, 0, sizeof(g_io.cd.job));
+    PsxUnlock();
     if (g_io.exec) {
         return g_io.exec(block);
     }

@@ -160,11 +160,27 @@ int main(void)
         CHECK(spu->voice[i].phase == ADSR_SUSTAIN || spu->voice[i].phase == ADSR_DECAY);
         CHECK(spu->voice[i].reg[6] != 0);
     }
-    SpuSetKey(0, 0xFFFFFF);
+    /* SfxKillAllVoices keys the voices off one call at a time, all within one sample period:
+       every command takes effect */
+    for (i = 0; i < 24; i++) {
+        SpuSetKey(0, 1u << i);
+    }
     run(50);
     for (i = 0; i < 24; i++) {
         CHECK_EQ_INT(SpuGetKeyStatus(1u << i), 0);
+        CHECK(spu->voice[i].phase == ADSR_OFF);
     }
+    /* and key-ons given one at a time the same way */
+    for (i = 0; i < 24; i++) {
+        setup(i, loop, 0x1000, 0x1000);
+        SpuSetKey(1, 1u << i);
+    }
+    run(2);
+    for (i = 0; i < 24; i++) {
+        CHECK_EQ_INT(SpuGetKeyStatus(1u << i), 1);
+    }
+    SpuSetKey(0, 0xFFFFFF);
+    run(50);
 
     /* reuse: play a one-shot on the same voice 300 times, each time waiting for the end the way
        the game does (key status 0 or 3) and playing again: it never sticks */

@@ -272,14 +272,17 @@ void SpuWriteRegister(Spu *spu, uint32_t offset, uint16_t value)
     if (offset == SPU_MAIN_VOL_L || offset == SPU_MAIN_VOL_R) {
         sweep_set(&spu->main[(offset - SPU_MAIN_VOL_L) / 2], value);
     } else if (offset >= SPU_KEY_ON && offset <= SPU_KEY_OFF + 2) {
+        /* Each bit written as 1 sets that voice's key flag; the flags are consumed after the
+           current sample. Commands written within one sample period, such as a loop keying off
+           voices one at a time, all take effect. */
         uint32_t mask = (uint32_t)value << ((offset & 2) * 8);
-        uint32_t lane = 0xFFFFu << ((offset & 2) * 8);
 
+        mask &= 0xFFFFFF;
         if (offset < SPU_KEY_OFF) {
-            spu->key_on = ((spu->key_on & ~lane) | mask) & 0xFFFFFF;
-            spu->key_latch |= mask & 0xFFFFFF;
+            spu->key_on |= mask;
+            spu->key_latch |= mask;
         } else {
-            spu->key_off = ((spu->key_off & ~lane) | mask) & 0xFFFFFF;
+            spu->key_off |= mask;
             spu->key_latch &= ~mask;
         }
     } else if (offset == SPU_REVERB_BASE) {

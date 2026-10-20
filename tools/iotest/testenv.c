@@ -73,6 +73,26 @@ const char *test_save_dir(void)
     return saveDir;
 }
 
+static double lastSpeed = 1.0;
+static const char *lastScript;
+static int started;
+
+int test_io_restart(void)
+{
+    PsxIoConfig config;
+    char error[256] = "";
+
+    PsxIoShutdown();
+    memset(&config, 0, sizeof(config));
+    config.discPath = test_disc_path();
+    config.savePath = saveDir;
+    config.fixedStep = 1;
+    config.cdSpeed = lastSpeed;
+    config.padScript = lastScript;
+    fields = 0;
+    return PsxIoInit(&config, error, sizeof(error));
+}
+
 int test_io_start(double cdSpeed, const char *padScript)
 {
     PsxIoConfig config;
@@ -93,6 +113,9 @@ int test_io_start(double cdSpeed, const char *padScript)
     config.fixedStep = 1;
     config.cdSpeed = cdSpeed;
     config.padScript = padScript;
+    lastSpeed = cdSpeed;
+    lastScript = padScript;
+    started = 1;
     fields = 0;
     if (!PsxIoInit(&config, error, sizeof(error))) {
         fprintf(stderr, "PsxIoInit: %s\n", error);
@@ -105,6 +128,7 @@ void test_io_stop(void)
 {
     char command[300];
 
+    (void)started;
     PsxIoShutdown();
     snprintf(command, sizeof(command), "rm -rf '%s'", saveDir);
     if (saveDir[0]) {

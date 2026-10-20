@@ -13,6 +13,8 @@ const char *test_root_dir(void);
 /* Starts PsxIo on the disc with a fresh temporary save directory. */
 int test_io_start(double cdSpeed, const char *padScript);
 void test_io_stop(void);
+/* Shuts the I/O layer down and starts it again on the same save directory (a new session). */
+int test_io_restart(void);
 const char *test_save_dir(void);
 /* Video fields passed so far. */
 uint64_t test_fields(void);
