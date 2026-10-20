@@ -53,8 +53,12 @@ int PortVideoInit(void)
         return 0;
     }
     SDL_GL_MakeCurrent(window, context);
-    /* The game paces itself to the console's field rate; no vsync wait here. */
-    SDL_GL_SetSwapInterval(0);
+    /* The game paces itself to the console's field rate (libetc.c). On
+       screen each picture also waits for the display's refresh, so it never
+       tears (adaptive where the driver offers it); tests run unthrottled. */
+    if (portConfig.hidden || portConfig.fixedStep || !SDL_GL_SetSwapInterval(-1)) {
+        SDL_GL_SetSwapInterval(portConfig.hidden || portConfig.fixedStep ? 0 : 1);
+    }
     return GpuInit();
 }
 
@@ -114,6 +118,13 @@ int PortPumpEvents(void)
     while (SDL_PollEvent(&event)) {
         if (event.type == SDL_EVENT_QUIT) {
             return 0;
+        }
+        /* Alt+Enter and F11 switch between window and full screen */
+        if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat &&
+            (event.key.scancode == SDL_SCANCODE_F11 ||
+             (event.key.scancode == SDL_SCANCODE_RETURN && (event.key.mod & SDL_KMOD_ALT)))) {
+            SDL_SetWindowFullscreen(window, !(SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN));
+            continue;
         }
         PsxInputEvent(&event);
     }
