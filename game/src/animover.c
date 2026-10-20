@@ -3,13 +3,13 @@
 
 extern ConfigData *gameData;
 extern u_char sfxMode;
-extern u_long OT[];
-extern u_long OT2[];
-extern int mainheapcopy;
-extern void *reserveHeap;
+extern u_long *OT[];
+extern u_long *OT2[];
+extern HeapBlock *mainheapcopy;
+extern HeapBlock *reserveHeap;
 extern int quadIndex;
 extern DB doubleBuffer[];
-extern char cdTrackLocs[];
+extern CdlLOC cdTrackLocs[];
 extern short CurrentScreen;
 #include "droid.h"
 extern Header       progHeader[];
@@ -17,15 +17,12 @@ extern u_long       progLoadAddr;
 extern int         progSize;
 Header             *rambase;
 
-int CdRead(u_long sectors, void *buf, int mode);
-int CdReadSync(int mode, u_char *result);
-void *CdSearchFile(void *fileInfo, int name);
 void AsmDrawObjectLit(Object *object, Skeleton *camera, int roll, CVECTOR *colour);
 
 
 int LoadProg(int progIndex)
 {
-    u_char fileInfo[24];
+    CdlFILE fileInfo;
     int    mode;
     int    i;
     u_long addr;
@@ -33,24 +30,24 @@ int LoadProg(int progIndex)
     mode = 0x80;
     i = 0;
     do {
-        CdSearchFile(&fileInfo, progIndex);
+        CdSearchFile(&fileInfo, (char *)(intptr_t)progIndex); /* Port: dead code (nothing calls LoadProg); the int is used as the name pointer */
         i += 1;
     } while (i < 0xA);
-    if (CdControl(2, fileInfo, 0) != 0) {
-        if (CdRead(1U, rambase, mode) != 0) {
+    if (CdControl(2, (u_char *)&fileInfo.pos, 0) != 0) {
+        if (CdRead(1, (u_long *)rambase, mode) != 0) {
             do {
             } while (CdReadSync(1, 0) > 0);
             __builtin_memcpy(progHeader, (void *)rambase, 136);
-            CdIntToPos(CdPosToInt(fileInfo) + 1, fileInfo);
+            CdIntToPos(CdPosToInt(&fileInfo.pos) + 1, &fileInfo.pos);
             addr = progLoadAddr;
             if (addr <= 0x801F6FFFU) {
                 do {
-                    *(int *)addr = 0;
+                    *(int *)(uintptr_t)addr = 0; /* Port: PlayStation RAM address; LoadProg is dead code */
                     addr += 4;
                 } while (addr <= 0x801F6FFFU);
             }
-            if (CdControl(2, fileInfo, 0) != 0) {
-                return CdRead((u_long)(progSize + 0x7FF) >> 0xB, (void *)progLoadAddr, mode);
+            if (CdControl(2, (u_char *)&fileInfo.pos, 0) != 0) {
+                return CdRead((u_long)(progSize + 0x7FF) >> 0xB, (u_long *)(uintptr_t)progLoadAddr, mode);
             }
             goto loadFailed;
         }
@@ -72,11 +69,8 @@ void anim(char *fileName)
     SfxUnInit();
     MoveImage(&rects[0], 0x1E0, 0);
     DrawSync(0);
-    do {
-
-    } while (LoadFile(fileName, (char *)0x80119000) == 0);
-    __builtin_memcpy(progHeader, (void *)0x80119000, 136);
-    LoadFile(fileName, (char *)0x80118800);
+    /* Port: the original loaded the movie player (a PS-X EXE named by fileName) to
+       0x80119000 and started it with Exec below; the platform plays the movie instead. */
     InitDynamicMem(reserveHeap, 0xE1000);
     SpuQuit();
     close_iso_events();
@@ -85,10 +79,10 @@ void anim(char *fileName)
     ResetGraph(3);
     StopPAD();
     EnterCriticalSection();
-    Exec((ExecBlock *)&progHeader[0].bytes[0x10], 0, 0);
+    PortPlayMovie(fileName); /* Port: replaces Exec of the player executable */
     ExitCriticalSection();
     InitDynamicMem(reserveHeap, 0xE1000);
-    CdInit((int)cdTrackLocs, 0);
+    CdInit(); /* Port: the original also passed (int)cdTrackLocs and 0, which CdInit does not read */
     iso_init(mainheapcopy);
     InitController();
     SpuStart();
@@ -115,10 +109,10 @@ void anim(char *fileName)
     CurrentScreen = 0;
     quadIndex = 0;
     PutDrawEnv(doubleBuffer[0].draw);
-    DrawOTag(OT[0] + 0x7FFC);
+    DrawOTag((u_long *)((char *)OT[0] + 0x7FFC));
     DrawSync(0);
     PutDrawEnv(doubleBuffer[1].draw);
-    DrawOTag(OT[0] + 0x7FFC);
+    DrawOTag((u_long *)((char *)OT[0] + 0x7FFC));
     DrawSync(0);
     if (gameData->soundMode != 0) {
         sfxMode = 1;
