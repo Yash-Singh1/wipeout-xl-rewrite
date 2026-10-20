@@ -6,9 +6,9 @@ struct SParticle {
     char    type;           /* 0 = free */
     char    flags;
     SVector vel;
-    VECTOR  pos;
-    int    life;
-    char    pad1C[0x28];
+    VECTOR  pos;            /* pos.pad holds the particle's last screen position (a packed x, y) */
+    int     life;
+    LINE_G2 line[2];        /* the streak drawn for it, one packet per screen buffer */
 };
 
 #define PARTICLE_COUNT 128

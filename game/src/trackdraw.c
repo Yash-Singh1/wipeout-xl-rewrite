@@ -12,6 +12,7 @@
 #include "functions.h"
 #include "track.h"
 #include "trackasm.h"
+#include "drawasm.h"
 
 extern short       CurrentScreen;
 extern TrackData  *track;
@@ -19,15 +20,6 @@ extern Surface     tileSurfaces[][2];
 extern short       loTileCount;
 extern short       medTileCount;
 extern short       hiTileCount;
-
-/* GTE flag bits that reject a face: divide overflow, a screen coordinate out of range, SZ3/OTZ out of range. */
-#define GTE_REJECT 0x80460000u
-
-/* A camera-relative coordinate is usable when it fits in a signed 16-bit value: (v >> 15) is 0 or -1. */
-static int FitsInHalfword(int value)
-{
-    return (value >> 15) == 0 || (value >> 15) == -1;
-}
 
 /* The tile of a face: the surface of its texture, mirrored when the face is flipped. */
 static Surface *FaceSurface(Face *face)

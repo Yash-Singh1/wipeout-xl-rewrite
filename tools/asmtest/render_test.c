@@ -36,7 +36,7 @@ short loTileCount, medTileCount, hiTileCount;
 PrimPtr nextPrim;
 
 /* The port links its packets with AddPrim; the test records them instead. */
-typedef struct Linked { int index; POLY_FT4 *poly; } Linked;
+typedef struct Linked { int index; void *poly; } Linked;
 #define MAX_LINKED 20000
 static Linked linked[MAX_LINKED];
 static int linkedCount;
@@ -282,7 +282,7 @@ static void Fail(const char *what, int a, int b)
 }
 
 /* Compares the packets linked by the port with the chains in the console's ordering table. */
-static void CompareDrawn(const char *label, uint32_t emuOt, uint32_t emuPool, POLY_FT4 *nativePool, int firstSlot, int count)
+static void CompareDrawn(const char *label, uint32_t emuOt, uint32_t emuPool, void *nativePool, int packetSize, int count)
 {
     static int expectedFirst[4096];
     int i, n = 0;
@@ -294,7 +294,7 @@ static void CompareDrawn(const char *label, uint32_t emuOt, uint32_t emuPool, PO
 
         while (entry) {
             uint32_t address = 0x80000000u | entry;
-            uint32_t slot = (address - emuPool) / 40;
+            uint32_t slot = (address - emuPool);
             int j;
             int found = -1;
             Linked *l;
@@ -315,18 +315,18 @@ static void CompareDrawn(const char *label, uint32_t emuOt, uint32_t emuPool, PO
                 return;
             }
             l = &linked[found];
-            if ((int)(l->poly - nativePool) != (int)slot) {
-                Fail("packet slot", (int)slot, (int)(l->poly - nativePool));
+            if ((int)((char *)l->poly - (char *)nativePool) != (int)slot) {
+                Fail("packet position", (int)slot, (int)((char *)l->poly - (char *)nativePool));
             }
             /* the packet bytes except the tag */
-            if (memcmp(MipsPointer(address) + 4, (unsigned char *)l->poly + 4, 36) != 0) {
+            if (memcmp(MipsPointer(address) + 4, (unsigned char *)l->poly + 4, (size_t)packetSize - 4) != 0) {
                 int k;
 
-                for (k = 4; k < 40; k++) {
+                for (k = 4; k < packetSize; k++) {
                     if (MipsPointer(address)[k] != ((unsigned char *)l->poly)[k]) break;
                 }
                 if (failures < 20) {
-                    printf("  %s slot %d byte %d: retail %02x port %02x\n", label, (int)slot, k, MipsPointer(address)[k], ((unsigned char *)l->poly)[k]);
+                    printf("  %s offset %d byte %d: retail %02x port %02x\n", label, (int)slot, k, MipsPointer(address)[k], ((unsigned char *)l->poly)[k]);
                 }
                 Fail("packet contents", (int)slot, 0);
             }
@@ -335,7 +335,7 @@ static void CompareDrawn(const char *label, uint32_t emuOt, uint32_t emuPool, PO
             entry = MipsLoad32(address) & 0xFFFFFF;
         }
     }
-    (void)expectedFirst; (void)firstSlot;
+    (void)expectedFirst;
     totalPackets += n;
     if (n != linkedCount) {
         Fail("number of linked packets", n, linkedCount);
@@ -446,8 +446,92 @@ static void RunTrack(World *w, int trials, int level)
         if (level == 2 && MipsLoad32(Sym("nextPrim")) - emuPool != (uint32_t)((POLY_FT4 *)nextPrim.ptr - nativePool) * 40u) {
             Fail("nextPrim", (int)(MipsLoad32(Sym("nextPrim")) - emuPool) / 40, (int)((POLY_FT4 *)nextPrim.ptr - nativePool));
         }
-        CompareDrawn(routine, emuOt, emuPool, nativePool, 0, 0);
+        CompareDrawn(routine, emuOt, emuPool, nativePool, 40, 0);
     }
+}
+
+/* ---- particles ---- */
+#include "sparks.h"
+
+void SetLineG2(LINE_G2 *p) { ((unsigned char *)p)[3] = 4; ((unsigned char *)p)[7] = 0x50; }
+void SetSemiTrans(void *p, int abe) { ((unsigned char *)p)[7] = (unsigned char)((((unsigned char *)p)[7] & ~2) | (abe ? 2 : 0)); }
+
+static void RunParticles(World *w, int trials)
+{
+    uint32_t emuTable = EmuAlloc(128 * 0x44), emuOt = EmuAlloc(0x2000 * 4);
+    static SParticle nativeTable[128];
+    static u_long nativeOt[0x2000];
+    int t, i;
+
+    OT[0] = OT[1] = nativeOt;
+    MipsStore32(Sym("OT"), emuOt);
+    MipsStore32(Sym("OT") + 4, emuOt);
+    for (t = 0; t < trials; t++) {
+        int mode = t % 3 == 2 ? 1 : 0;
+        int translate[3], superTranslate[3] = { 0, 0, 0 };
+        Camera cam;
+        uint32_t emuSuper, emuCamera;
+        unsigned char *bytes = (unsigned char *)nativeTable;
+        int spread = (t % 4 == 0) ? 20000 : 3000;
+
+        CurrentScreen = (short)(t & 1);
+        MipsStore16(Sym("CurrentScreen"), (uint16_t)CurrentScreen);
+        translate[0] = RandRange(-spread, spread);
+        translate[1] = RandRange(-spread, spread);
+        translate[2] = RandRange(-spread, spread);
+        memset(&cam, 0, sizeof(cam));
+        SkeletonRandom(&cam.native[1], superTranslate);
+        SkeletonRandom(&cam.native[0], translate);
+        cam.native[0].super = &cam.native[1];
+        emuSuper = MarshalSkeleton(&cam.native[1], 0);
+        emuCamera = MarshalSkeleton(&cam.native[0], emuSuper);
+
+        memset(nativeTable, 0, sizeof(nativeTable));
+        for (i = 0; i < 128; i++) {
+            SParticle *p = &nativeTable[i];
+
+            p->type = (char)(RandRange(0, 8) > 6 ? 0 : RandRange(0, 6));
+            p->flags = (char)RandRange(0, 2);
+            p->vel.vx = (short)RandRange(-300, 300);
+            p->vel.vy = (short)RandRange(-300, 300);
+            p->vel.vz = (short)RandRange(-300, 300);
+            p->pos.vx = RandRange(-spread, spread);
+            p->pos.vy = RandRange(-spread, spread);
+            p->pos.vz = RandRange(-spread, spread) + 1500;
+            p->pos.pad = (int)Rand();
+            p->life = RandRange(-3, 40);
+            /* the packets start as leftovers: random bytes */
+            { int k; for (k = 0; k < 40; k++) bytes[i * 0x44 + 0x1C + k] = (unsigned char)Rand(); }
+        }
+        memcpy(MipsPointer(emuTable), nativeTable, sizeof(nativeTable));
+        /* the console record is the same bytes (no pointers in it) */
+        ClearOts(emuOt);
+        memset(nativeOt, 0, sizeof(nativeOt));
+        linkedCount = 0;
+
+        GteSetup();
+        MipsCall(Sym("AsmDrawParticles"), emuTable, emuCamera, (uint32_t)mode, 0, 0, 0);
+        GteSetup();
+        AsmDrawParticles(nativeTable, &cam.native[0], mode);
+
+        /* the table afterwards, except the tag words of the packets (they hold links) */
+        for (i = 0; i < 128; i++) {
+            unsigned char *a = MipsPointer(emuTable + 0x44u * (uint32_t)i), *b = bytes + 0x44 * i;
+            int k, bad = 0;
+
+            for (k = 0; k < 0x44; k++) {
+                int inTag = (k >= 0x1C && k < 0x1F) || (k >= 0x30 && k < 0x33);
+
+                if (!inTag && a[k] != b[k]) { bad = k + 1; break; }
+            }
+            if (bad) {
+                if (failures < 20) printf("  particle %d byte 0x%x: retail %02x port %02x\n", i, bad - 1, a[bad - 1], b[bad - 1]);
+                Fail("particle record", i, bad - 1);
+            }
+        }
+        CompareDrawn("AsmDrawParticles", emuOt, emuTable, nativeTable, 20, 0);
+    }
+    (void)w;
 }
 
 int main(int argc, char **argv)
@@ -477,6 +561,8 @@ int main(int argc, char **argv)
                     emuNext = afterWorld;
                     RunTrack(&world, trials, level);
                 }
+                emuNext = afterWorld;
+                RunParticles(&world, trials);
             }
             printf("track %d: %d trials each, %d failures so far\n", trackNumbers[k], trials, failures);
         }
