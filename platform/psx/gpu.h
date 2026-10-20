@@ -50,5 +50,7 @@ void GpuPresent(int x, int y, int w, int h);
 void GpuReadBack(int x, int y, int w, int h);
 /* Finishes the frame's drawing (before presenting). */
 void GpuFlush(void);
+/* Shows an RGB image (a movie frame) filling the 4:3 picture. */
+void GpuShowImage(const uint8_t *rgb, int width, int height);
 
 #endif

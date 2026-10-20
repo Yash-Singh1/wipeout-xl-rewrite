@@ -608,3 +608,49 @@ void GpuPresent(int x, int y, int w, int h)
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     PortVideoPresent();
 }
+
+/* A movie frame: drawn straight to the window through a texture of its own. */
+void GpuShowImage(const uint8_t *rgb, int width, int height)
+{
+    static GLuint texture, readFramebuffer;
+    static int textureWidth, textureHeight;
+    int windowWidth, windowHeight, outW, outH, outX, outY;
+
+    Flush();
+    if (!texture) {
+        glGenTextures(1, &texture);
+        glGenFramebuffers(1, &readFramebuffer);
+    }
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    if (width != textureWidth || height != textureHeight) {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, rgb);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        textureWidth = width;
+        textureHeight = height;
+    } else {
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, rgb);
+    }
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
+    PortDrawableSize(&windowWidth, &windowHeight);
+    outH = windowHeight;
+    outW = windowHeight * 4 / 3;
+    if (outW > windowWidth) {
+        outW = windowWidth;
+        outH = windowWidth * 3 / 4;
+    }
+    outX = (windowWidth - outW) / 2;
+    outY = (windowHeight - outH) / 2;
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    glDisable(GL_SCISSOR_TEST);
+    glViewport(0, 0, windowWidth, windowHeight);
+    glClearColor(0, 0, 0, 1);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, readFramebuffer);
+    glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
+    /* image row 0 is the top: flip into OpenGL's upward rows */
+    glBlitFramebuffer(0, 0, width, height, outX, outY + outH, outX + outW, outY, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    PortVideoPresent();
+}
