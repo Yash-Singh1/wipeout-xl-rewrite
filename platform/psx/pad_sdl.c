@@ -121,6 +121,8 @@ void PsxPadSdlField(void)
             keyHeldOver[i] = keyDown[i] && key_buttons(i, keyContext) != key_buttons(i, context);
         }
         keyContext = context;
+        PortLog("pad: keyboard in %s (thrust is button %04X)\n", context == PAD_CONTEXT_RACE ? "the race" : "the menus",
+                PsxPadActionButton(PAD_ACTION_THRUST));
     }
     update_keyboard();
 }
