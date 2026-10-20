@@ -2028,9 +2028,10 @@ void TransformTransparentObject(Object *object, void *camera, int shieldID)
     vertexCount = object->vertexCount;
     primsDrawn += count;
     if (vertexCount <= 128) {
-        screen = (DVECTOR *) 0x1f800000;
-        depth = (u_short *) 0x1f800200;
-        flags = (u_short *) 0x1f800300;
+        /* Port: the console's scratchpad RAM at 0x1F800000 */
+        screen = (DVECTOR *) PsxScratchpad;
+        depth = (u_short *) (PsxScratchpad + 0x200);
+        flags = (u_short *) (PsxScratchpad + 0x300);
     } else {
         screen = StaticScreen;
         depth = StaticDepth;

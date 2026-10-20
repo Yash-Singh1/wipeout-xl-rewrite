@@ -11,67 +11,29 @@ extern int quadIndex;
 extern DB doubleBuffer[];
 extern CdlLOC cdTrackLocs[];
 extern short CurrentScreen;
-#include "droid.h"
-extern Header       progHeader[];
-extern u_long       progLoadAddr;
-extern int         progSize;
-Header             *rambase;
 
 void AsmDrawObjectLit(Object *object, Skeleton *camera, int roll, CVECTOR *colour);
 
 
-int LoadProg(int progIndex)
-{
-    CdlFILE fileInfo;
-    int    mode;
-    int    i;
-    u_long addr;
-
-    mode = 0x80;
-    i = 0;
-    do {
-        CdSearchFile(&fileInfo, (char *)(intptr_t)progIndex); /* Port: dead code (nothing calls LoadProg); the int is used as the name pointer */
-        i += 1;
-    } while (i < 0xA);
-    if (CdControl(2, (u_char *)&fileInfo.pos, 0) != 0) {
-        if (CdRead(1, (u_long *)rambase, mode) != 0) {
-            do {
-            } while (CdReadSync(1, 0) > 0);
-            __builtin_memcpy(progHeader, (void *)rambase, 136);
-            CdIntToPos(CdPosToInt(&fileInfo.pos) + 1, &fileInfo.pos);
-            addr = progLoadAddr;
-            if (addr <= 0x801F6FFFU) {
-                do {
-                    *(int *)(uintptr_t)addr = 0; /* Port: PlayStation RAM address; LoadProg is dead code */
-                    addr += 4;
-                } while (addr <= 0x801F6FFFU);
-            }
-            if (CdControl(2, (u_char *)&fileInfo.pos, 0) != 0) {
-                return CdRead((u_long)(progSize + 0x7FF) >> 0xB, (u_long *)(uintptr_t)progLoadAddr, mode);
-            }
-            goto loadFailed;
-        }
-        return 0;
-    }
-loadFailed:
-    return 0;
-}
+/* Port: LoadProg is gone.  It loaded a PS-X EXE from the disc into console RAM (zeroing RAM below
+   0x801F7000 first); nothing called it, and anim() below now hands the movie to the platform. */
 void anim(char *fileName)
 {
-    short rects[28];
+    RECT move;
+    RECT clear;
 
-    InitDynamicMem(reserveHeap, 0xE1000);
-    rects[0] = 0x140;
-    rects[1] = 0x100;
-    rects[2] = 0xA0;
-    rects[3] = 0x100;
+    InitDynamicMem(reserveHeap, RESERVE_HEAP_SIZE);
+    move.x = 0x140;
+    move.y = 0x100;
+    move.w = 0xA0;
+    move.h = 0x100;
     SfxUnInitReverb();
     SfxUnInit();
-    MoveImage(&rects[0], 0x1E0, 0);
+    MoveImage(&move, 0x1E0, 0);
     DrawSync(0);
-    /* Port: the original loaded the movie player (a PS-X EXE named by fileName) to
-       0x80119000 and started it with Exec below; the platform plays the movie instead. */
-    InitDynamicMem(reserveHeap, 0xE1000);
+    /* Port: the original loaded the movie player (a PS-X EXE named by fileName) into
+       console RAM here and started it with Exec below; the platform plays the movie instead. */
+    InitDynamicMem(reserveHeap, RESERVE_HEAP_SIZE);
     SpuQuit();
     close_iso_events();
     SetDispMask(0);
@@ -79,26 +41,26 @@ void anim(char *fileName)
     ResetGraph(3);
     StopPAD();
     EnterCriticalSection();
-    PortPlayMovie(fileName); /* Port: replaces Exec of the player executable */
+    PsxPlayMovie(fileName); /* Port: replaces Exec of the player executable */
     ExitCriticalSection();
-    InitDynamicMem(reserveHeap, 0xE1000);
+    InitDynamicMem(reserveHeap, RESERVE_HEAP_SIZE);
     CdInit(); /* Port: the original also passed (int)cdTrackLocs and 0, which CdInit does not read */
     iso_init(mainheapcopy);
     InitController();
     SpuStart();
     SetDispMask(0);
-    rects[6] = 0x140;
-    rects[4] = 0;
-    rects[5] = 0;
-    rects[7] = 0x200;
-    ClearImage(&rects[4], 0, 0, 0);
+    clear.w = 0x140;
+    clear.x = 0;
+    clear.y = 0;
+    clear.h = 0x200;
+    ClearImage(&clear, 0, 0, 0);
     DrawSync(0);
     InitSystem();
-    rects[0] = 0x1E0;
-    rects[2] = 0xA0;
-    rects[1] = 0;
-    rects[3] = 0x100;
-    MoveImage(&rects[0], 0x140, 0x100);
+    move.x = 0x1E0;
+    move.w = 0xA0;
+    move.y = 0;
+    move.h = 0x100;
+    MoveImage(&move, 0x140, 0x100);
     DrawSync(0);
     SetDispMask(1);
     ShowLoadMessage();

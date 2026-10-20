@@ -510,7 +510,7 @@ int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMem
     errorCount = 0;
     work.attractMode = 0;
     work.cdTrack = 1;
-    InitDynamicMem((HeapBlock *)reserveHeap, 0xE1000);
+    InitDynamicMem((HeapBlock *)reserveHeap, RESERVE_HEAP_SIZE);
     keyDefineThrust = 1;
     fastFrame = 1;
     negconCentre = 0;

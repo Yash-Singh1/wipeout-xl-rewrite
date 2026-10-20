@@ -40,10 +40,11 @@ struct Speedo;
 #include "object2.h"
 struct SelectBox;
 #include "tim.h"
+#include "port_platform.h"
 struct InGameMenu;
 
 /* main.c */
-void main(void) __attribute__((noreturn));
+int PsxMain(void); /* Port: the game's main(); the platform owns the program entry point */
 
 /* object.c */
 void InitMatrix(MATRIX *m);
@@ -560,7 +561,6 @@ void UpdateRescueDroid(ShipData *ships, int unused1, int shipNo, int unused3, Co
 
 /* animover.c */
 void anim(char *fileName);
-int LoadProg(int progIndex);
 
 /* credits.c */
 void InitCredits(void);

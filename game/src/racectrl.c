@@ -388,7 +388,7 @@ void race__eq1(GameData *gameData, int context, int scene) {
     int advance;
     int one=1; int two=2;
     locals.frameCount=0;locals.checkpoint=0;locals.cdMode=one;locals.viewMode=two;locals.checkpointLap=0;locals.raceComplete=0;locals.scene=scene;
-    InitDynamicMem__eq1(reserveHeap,0xE1000);
+    InitDynamicMem__eq1(reserveHeap,RESERVE_HEAP_SIZE);
     locals.crowdSample=0;
     advertCount=0;cameraCount=0;neonCount=0;girderCount=0;videoCount=0;zepCount=0;dishCount=0;pylonCount=0;fanCount=0;smokeSlowCount=0;smokeFastCount=0;smokeNumber__v1=0;
     fastCount__v1=0;fastTexCount__v1=0;slowCount__v1=0;slowTexCount__v1=0;torchCount=0;torchNumber__v1=0;redBullCount=0;redBullNumber__v1=0;bobCount__v1=0;prmCount=0;
@@ -753,7 +753,7 @@ void InitResident(void)
 void racetidy(void)
 {
     heap = mainheapcopy;
-    InitDynamicMem(reserveHeap, 0xE1000);
+    InitDynamicMem(reserveHeap, RESERVE_HEAP_SIZE);
     StartControlledSound();
     TextureTableCount = savedTextureCount;
 }

@@ -1,4 +1,7 @@
 #include "functions.h"
+
+/* Port: scratchpad storage (see port_platform.h) */
+unsigned char PsxScratchpad[1024] __attribute__((aligned(8)));
 #include "include_asm_g8.h"
 
 extern MATRIX cameraMatrix;
@@ -383,7 +386,7 @@ void DrawEnvMap(Object *object, void *unused, SVECTOR *normals, int xOffsetIn, i
     count = (unsigned short)object->vertexCount;
     vertices = object->vertices;
     primsDrawn += initialCount; ws.primitiveCount = initialCount;
-    if ((short)count <= 128) { screen = (DVECTOR *)0x1F800000; ws.depth = (unsigned short *)0x1F800200; ws.clip = (unsigned short *)0x1F800300; }
+    if ((short)count <= 128) { screen = (DVECTOR *)PsxScratchpad; ws.depth = (unsigned short *)(PsxScratchpad + 0x200); ws.clip = (unsigned short *)(PsxScratchpad + 0x300); } /* Port: the console's scratchpad RAM at 0x1F800000 */
     else { screen = StaticScreen; ws.depth = StaticDepth; ws.clip = StaticFlags; }
     RotTransPersN(vertices, screen, ws.depth, ws.clip, (short)count);
     ws.translation.vx = 0; ws.translation.vy = 0; ws.translation.vz = 0;

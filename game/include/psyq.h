@@ -253,7 +253,6 @@ void SetTile(TILE *p);
 void SetSemiTrans(void *p, int abe);
 void SetShadeTex(void *p, int tge);
 void SetDrawMode(DR_MODE *p, int dfe, int dtd, int tpage, RECT *tw);
-void AddPrim();
 void DrawOTag(u_long *p);
 u_long *ClearOTagR(u_long *ot, int n);
 int DrawSync(int mode);
@@ -271,7 +270,7 @@ void SetDumpFnt(int id);
 
 /* libetc */
 
-int VSync();
+int VSync(int mode);
 int VSyncCallback(void (*f)(void));
 
 /* libcd */
@@ -337,52 +336,103 @@ typedef struct {
     int      feedback;
 } SpuReverbAttr;
 
-/* libapi / libcd / libgpu / libspu / libetc (declared without parameters where call sites differ) */
-int  CdInit();
-int  CdControl();
+/* libgte, continued (the platform implements these: platform/psx/libgte.c) */
+void InitGeom(void);
+int  RotTransPers3(SVECTOR *v0, SVECTOR *v1, SVECTOR *v2, int *sxy0, int *sxy1, int *sxy2, int *p, int *flag);
+void RotTransPersN(SVECTOR *v0, DVECTOR *sxy, u_short *sz, u_short *flag, int n);
+void RotTrans(SVECTOR *v0, VECTOR *v1, int *flag);
+int  AverageZ3(int sz0, int sz1, int sz2);
+int  AverageZ4(int sz0, int sz1, int sz2, int sz3);
+int  NormalClip(int sxy0, int sxy1, int sxy2);
+void OuterProduct12(VECTOR *v0, VECTOR *v1, VECTOR *v2);
+void VectorNormal(VECTOR *v0, VECTOR *v1);
+
+/* libgpu, continued */
+void AddPrim(u_long *ot, void *p);
+void SetLineF2(LINE_F2 *p);
+void SetLineG2(LINE_G2 *p);
+void SetBlockFill(BLK_FILL *p);
+void DrawPrim(void *p);
+int  SetGraphDebug(int level);
+void SetVideoMode(int mode);
 int  ClearImage(RECT *rect, u_char r, u_char g, u_char b);
 int  MoveImage(RECT *rect, int x, int y);
 void SetDispMask(int mask);
 int  ResetGraph(int mode);
-int  EnterCriticalSection(void);
-int  ExitCriticalSection(void);
-int  Exec();
-int  TestEvent(int event);
-int GsGetVcount(void);
-void GsClearVcount();
-int  CdSetDebug(int level);
-int  CdControlB(u_char com, u_char *param, u_char *result);
-int  CdGetToc(CdlLOC *toc);
-void CdIntToPos(int i, void *loc);
-int  CdPosToInt(void *loc);
-void SpuQuit(void);
-void SpuStart(void);
-void SpuInit();
-int SpuInitMalloc();
-int SpuMalloc();
-void SpuFree();
-u_long SpuSetTransferStartAddr();
-u_long SpuWrite();
-int SpuSetTransferMode();
-int SpuIsTransferCompleted();
-void SpuSetVoiceAttr();
-void SpuGetVoiceAttr();
-void SpuSetKey();
-int SpuGetKeyStatus();
-void SpuSetCommonAttr();
-int SpuSetReverb();
-u_long SpuSetReverbVoice();
-int SpuSetReverbModeParam();
-int SpuReserveReverbWorkArea();
-int SpuClearReverbWorkArea();
-void StopCallback(void);
-int  StopPAD(void);
 
-/* BIOS memory card */
+/* libapi: events, critical sections, callbacks (event handles are 32-bit ints, as on the console) */
+int  ResetCallback(void);
+int  SetMem(int megabytes);
+void StopCallback(void);
+int  EnterCriticalSection(void);
+void ExitCriticalSection(void);
+int  OpenEvent(u_long desc, int spec, int mode, int (*func)(void));
+int  CloseEvent(int event);
+int  EnableEvent(int event);
+int  TestEvent(int event);
+int  WaitEvent(int event);
+
+/* libetc */
+int  GsGetVcount(void);
+void GsClearVcount(void);
+void GsInitVcount(void);
+
+/* libcd */
+int  CdInit(void);
+int  CdControl(u_char com, u_char *param, u_char *result);
+int  CdControlB(u_char com, u_char *param, u_char *result);
+int  CdControlF(u_char com, u_char *param);
+int  CdRead(int sectors, u_long *buf, int mode);
+int  CdReadSync(int mode, u_char *result);
+int  CdGetToc(CdlLOC *toc);
+int  CdGetToc2(int mode, CdlLOC *toc);
+int  CdMix(u_char *vol);
+int  CdSetDebug(int level);
+CdlLOC *CdIntToPos(int i, CdlLOC *p);
+int  CdPosToInt(CdlLOC *p);
+
+/* libspu */
+void SpuInit(void);
+void SpuStart(void);
+void SpuQuit(void);
+int  SpuInitMalloc(int num, char *top);
+u_long SpuMalloc(int size);
+void SpuFree(u_long addr);
+u_long SpuSetTransferStartAddr(u_long addr);
+u_long SpuWrite(u_char *addr, u_long size);
+int  SpuSetTransferMode(int mode);
+int  SpuIsTransferCompleted(int flag);
+void SpuSetVoiceAttr(SpuVoiceAttr *attr);
+void SpuGetVoiceAttr(SpuVoiceAttr *attr);
+void SpuSetKey(int on_off, u_long voice_bit);
+int  SpuGetKeyStatus(u_long voice_bit);
+void SpuSetCommonAttr(SpuCommonAttr *attr);
+int  SpuSetReverb(int on_off);
+u_long SpuSetReverbVoice(int on_off, u_long voice_bit);
+void SpuSetReverbModeParam(SpuReverbAttr *attr);
+int  SpuReserveReverbWorkArea(int on_off);
+int  SpuClearReverbWorkArea(int mode);
+
+/* libpad */
+void InitPAD(void *buf1, int len1, void *buf2, int len2);
+int  StartPAD(void);
+void StopPAD(void);
+void ChangeClearPAD(int mode);
+
+/* libcard, libcomb and the BIOS memory card calls */
+int  InitCARD(int val);
+int  StartCARD(void);
+int  _bu_init(void);
+void ChangeClearSIO(int mode);
+void _card_info(int channel);
 void _card_clear(int port);
 void _card_load(int port);
 void _card_write(int port, int sector, void *buffer);
 void _new_card(void);
+void AddCOMB(void);
+int  _comb_control(int op, int reg, int value);
+int  format(char *fs);
+int  delete(char *name);
 
 /* C library: the standard headers (forced in by platform/include/port.h) declare
    strcat, strcpy, strncmp, strlen, sprintf, printf and the rest.
