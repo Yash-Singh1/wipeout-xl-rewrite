@@ -36,7 +36,7 @@ ports (a swapped corner, a wrong shift, a changed constant, a missing flag test)
   the high detail routine cuts a partly visible cell into four and draws them from the general primitive buffer
   (`nextPrim`), uncounted in `hiTileCount`.
 * Object drawers: the "all vertices rejected" early exit tests the wrong register and never fires; objects end at the
-  first primitive of an unknown type; with no `/6` checks the primitive count 0 still draws one primitive.
+  first primitive of an unknown type; a primitive count (or vertex count) of 0 still processes one primitive (one vertex): the loops test after the body.
 * `AsmDrawObjectLit`: sprites (types 10 and 11) are linked through a register that is zero there, so their length byte
   is cleared and the GPU skips them. Lit objects never show sprites.
 * `AsmDrawObjectFixed` (the sky) has no sprites and always applies the facing test.
