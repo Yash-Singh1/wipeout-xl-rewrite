@@ -24,7 +24,8 @@ static void Usage(void)
             "environment: WIPEOUT_XL_DISC, WIPEOUT_XL_PC_DATA; tests: WIPEOUT_MUTE, WIPEOUT_HIDDEN,\n"
             "  WIPEOUT_FIXED_STEP, WIPEOUT_FRAMES, WIPEOUT_CAPTURE_DIR, WIPEOUT_CAPTURE_EVERY,\n"
             "  WIPEOUT_TRACE (trace file), WIPEOUT_PADS (pad script), WIPEOUT_VCOUNTS (counter reads),\n"
-            "  WIPEOUT_CD_SPEED (disc speed-up), WIPEOUT_SAVE_DIR (memory cards; default: the user's data folder)\n");
+            "  WIPEOUT_CD_SPEED (disc speed-up), WIPEOUT_SAVE_DIR (memory cards; default: the user's data folder),\n"
+            "  WIPEOUT_KEYS (scripted keys and gamepad), WIPEOUT_VRAM_DUMP (video memory picture at the end of a run)\n");
 }
 
 int main(int argc, char **argv)
