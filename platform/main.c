@@ -3,9 +3,11 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "platform.h"
+#include "psx/psx_io.h"
 #include "trace.h"
 
 PortConfig portConfig;
@@ -21,7 +23,8 @@ static void Usage(void)
             "  --pc-data  optional: the Wipeout XL PC CD, for its intro movies and keyboard art\n"
             "environment: WIPEOUT_XL_DISC, WIPEOUT_XL_PC_DATA; tests: WIPEOUT_MUTE, WIPEOUT_HIDDEN,\n"
             "  WIPEOUT_FIXED_STEP, WIPEOUT_FRAMES, WIPEOUT_CAPTURE_DIR, WIPEOUT_CAPTURE_EVERY,\n"
-            "  WIPEOUT_TRACE (trace file), WIPEOUT_PADS (pad script)\n");
+            "  WIPEOUT_TRACE (trace file), WIPEOUT_PADS (pad script), WIPEOUT_VCOUNTS (counter reads),\n"
+            "  WIPEOUT_CD_SPEED (disc speed-up)\n");
 }
 
 int main(int argc, char **argv)
@@ -71,6 +74,24 @@ int main(int argc, char **argv)
     }
     if (!PortVideoInit()) {
         return 1;
+    }
+    {
+        PsxIoConfig io;
+        char error[256];
+
+        memset(&io, 0, sizeof(io));
+        io.discPath = portConfig.discPath;
+        io.savePath = portConfig.savePath;
+        io.fixedStep = portConfig.fixedStep;
+        io.muted = portConfig.muted;
+        value = SDL_getenv("WIPEOUT_CD_SPEED");
+        io.cdSpeed = value ? SDL_atof(value) : 0.0;
+        if (!PsxIoInit(&io, error, sizeof(error))) {
+            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Wipeout XL", error, NULL);
+            fprintf(stderr, "%s\n", error);
+            return 1;
+        }
+        atexit(PsxIoShutdown);
     }
     PortTraceInit();
     PsxMain();

@@ -130,7 +130,6 @@ typedef struct BatchVertex {
 static BatchVertex batch[BATCH_VERTICES];
 static int batchCount;
 static GpuDrawState batchState;
-static int batchPass; /* 0 everything, 1 opaque texels only, 2 semi-transparent texels only */
 
 static const char *vertexSource =
     "#version 330 core\n"

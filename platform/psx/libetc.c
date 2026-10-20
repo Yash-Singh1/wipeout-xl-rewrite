@@ -10,9 +10,11 @@
    that keeps up (the retail game's 30 frames a second); in real time the
    fields are also paced to the wall clock. */
 #include <SDL3/SDL.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 #include "../platform.h"
+#include "psx_io.h"
 #include "psyq.h"
 
 #define LINES_PER_FIELD 262
@@ -58,6 +60,7 @@ void PsxVBlank(void)
 {
     lines = (lines / LINES_PER_FIELD + 1) * LINES_PER_FIELD;
     fields++;
+    PsxIoField(fields);
     if (vblankCallback) {
         vblankCallback();
     }
@@ -99,13 +102,72 @@ int VSyncCallback(void (*f)(void))
     return 0;
 }
 
+/* Lockstep tests (WIPEOUT_VCOUNTS): the counter values a console recording
+   read, one per line in call order. Each read moves the clock to the time
+   the console measured, running the fields that passed meanwhile, so the
+   port takes the console's slow frames and draws the same random seeds. */
+static int *replayVcounts;
+static size_t replayCount, replayNext;
+
+static void LoadVcounts(void)
+{
+    const char *path = SDL_getenv("WIPEOUT_VCOUNTS");
+    size_t capacity = 0;
+    FILE *f;
+    int value;
+
+    replayCount = 0;
+    if (!path) {
+        return;
+    }
+    f = fopen(path, "r");
+    if (!f) {
+        fprintf(stderr, "libetc: cannot read %s\n", path);
+        exit(1);
+    }
+    while (fscanf(f, "%d", &value) == 1) {
+        if (replayCount == capacity) {
+            capacity = capacity ? capacity * 2 : 4096;
+            replayVcounts = SDL_realloc(replayVcounts, capacity * sizeof(*replayVcounts));
+        }
+        replayVcounts[replayCount++] = value;
+    }
+    fclose(f);
+}
+
 /* GsGetVcount / GsClearVcount: root counter 1 counting scanlines (16 bits). */
 int GsGetVcount(void)
 {
+    static int loaded;
+
+    if (!loaded) {
+        loaded = 1;
+        LoadVcounts();
+    }
+    if (replayNext < replayCount) {
+        int value = replayVcounts[replayNext++];
+        uint64_t due = counterBase + (uint64_t)value;
+
+        while (lines / LINES_PER_FIELD < due / LINES_PER_FIELD) {
+            PsxVBlank();
+        }
+        if (due > lines) {
+            lines = due;
+        }
+        if (replayNext == replayCount) {
+            PortLog("libetc: the recording's counter reads are used up\n");
+        }
+        return value;
+    }
     return (int)((lines - counterBase) & 0xFFFF);
 }
 
 void GsClearVcount(void)
+{
+    counterBase = lines;
+}
+
+void GsInitVcount(void)
 {
     counterBase = lines;
 }

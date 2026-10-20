@@ -1,0 +1,64 @@
+/* The audio output device: SDL3 pulls 44.1 kHz stereo samples from the SPU/CD mixer on its
+   own thread, in small blocks so register writes from the game reach the next block. */
+#include <SDL3/SDL.h>
+
+#include "internal.h"
+
+#define BLOCK_FRAMES 256
+
+static SDL_AudioStream *stream;
+
+static void SDLCALL OnAudio(void *user, SDL_AudioStream *s, int additional, int total)
+{
+    int16_t block[BLOCK_FRAMES * 2];
+
+    (void)user;
+    (void)total;
+    while (additional > 0) {
+        int frames = additional / 4;
+
+        if (frames > BLOCK_FRAMES) {
+            frames = BLOCK_FRAMES;
+        }
+        if (frames <= 0) {
+            break;
+        }
+        PsxAudioRender(block, (uint32_t)frames);
+        SDL_PutAudioStreamData(s, block, frames * 4);
+        additional -= frames * 4;
+    }
+}
+
+bool PsxAudioDeviceOpen(void)
+{
+    SDL_AudioSpec spec;
+
+    if (stream) {
+        return true;
+    }
+    if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
+        PortLog("audio: %s\n", SDL_GetError());
+        return false;
+    }
+    SDL_SetHintWithPriority(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, "512", SDL_HINT_DEFAULT);
+    spec.format = SDL_AUDIO_S16;
+    spec.channels = 2;
+    spec.freq = SPU_SAMPLE_RATE;
+    stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, OnAudio, NULL);
+    if (!stream) {
+        PortLog("audio: %s\n", SDL_GetError());
+        SDL_QuitSubSystem(SDL_INIT_AUDIO);
+        return false;
+    }
+    SDL_ResumeAudioStreamDevice(stream);
+    return true;
+}
+
+void PsxAudioDeviceClose(void)
+{
+    if (stream) {
+        SDL_DestroyAudioStream(stream);
+        stream = NULL;
+        SDL_QuitSubSystem(SDL_INIT_AUDIO);
+    }
+}

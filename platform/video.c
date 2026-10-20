@@ -6,12 +6,12 @@
 
 #include "platform.h"
 #include "psx/gpu.h"
+#include "psx/psx_io.h"
 
 static SDL_Window *window;
 static SDL_GLContext context;
 
 /* Input events go to the pad emulation (platform/psx), which defines this. */
-void PsxInputEvent(const SDL_Event *event);
 
 void PortLog(const char *format, ...)
 {
