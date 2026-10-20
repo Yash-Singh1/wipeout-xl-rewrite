@@ -36,8 +36,15 @@ two drew.
 |---|---|---|---|---|
 | boot-intro-title | 375 | 375 | 0 | 0 |
 | menus-slow (every menu page, load/save, passwords, hi-scores) | 6977 | 5920 | 1057 | 0 |
+| menus-rapid-soak (2400 cursor pulses) | 15679 | 15679 | 0 | 0 |
 | arcade-track01-weapons-manual (all eleven weapons) | 3225 | 2323 | 90 | 812, colours only |
 | track01-music-loop (autopilot, CD music loop) | 12419 | 3287 | 90 | 9042, colours only |
+| track01-laps-clean (laps, results) | 4301 | 4118 | 183 | 0 |
+| track01-laps-wall (wall collision) | 4301 | 4118 | 183 | 0 |
+| track01-destruction (damage, explosion, race-end camera) | 3325 | 3235 | 90 | 0 |
+| track01-pit-red-electricity (pit lane) | 2176 | 2086 | 90 | 0 |
+| time-trial-manual | 3801 | 3618 | 183 | 0 |
+| spilskinanke-rescue (track exit, rescue droid) | 3945 | 3053 | 90 | 802, colours only |
 
 The colour-only differences are the weapon pickup pads' colour cycle: its
 angle (`WeaponGridZone.angle`) is never initialised, so it starts from
