@@ -14,6 +14,7 @@
 #include <stdlib.h>
 
 #include "../platform.h"
+#include "psx_io.h"
 #include "psyq.h"
 
 #define LINES_PER_FIELD 262
@@ -59,6 +60,7 @@ void PsxVBlank(void)
 {
     lines = (lines / LINES_PER_FIELD + 1) * LINES_PER_FIELD;
     fields++;
+    PsxIoField(fields);
     if (vblankCallback) {
         vblankCallback();
     }
@@ -161,6 +163,11 @@ int GsGetVcount(void)
 }
 
 void GsClearVcount(void)
+{
+    counterBase = lines;
+}
+
+void GsInitVcount(void)
 {
     counterBase = lines;
 }

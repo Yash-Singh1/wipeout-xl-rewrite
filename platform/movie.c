@@ -11,12 +11,11 @@
 
 #include "platform.h"
 #include "psx/gpu.h"
+#include "psx/psx_io.h"
 
 #define PL_MPEG_IMPLEMENTATION
 #include "third_party/pl_mpeg.h"
 
-/* The pad buttons held now, in the console's bit layout (platform/psx). */
-uint16_t PsxPadButtons(int port);
 #define PAD_START 0x0008
 #define PAD_CROSS 0x4000
 

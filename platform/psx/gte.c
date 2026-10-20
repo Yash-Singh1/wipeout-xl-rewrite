@@ -206,6 +206,7 @@ typedef struct PreciseSlot {
 
 static PreciseSlot precise[PRECISE_SLOTS];
 static uint32_t preciseFrame = 1;
+static int clearPending; /* the frame was drawn: the next frame starts a new cache */
 
 static uint32_t Hash(uint32_t key)
 {
@@ -254,7 +255,6 @@ int GteLookupPrecise(int x, int y, GtePrecise *out)
     return 0;
 }
 
-static int clearPending;
 
 void GteFrameDrawn(void)
 {
