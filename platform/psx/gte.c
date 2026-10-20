@@ -205,8 +205,9 @@ typedef struct PreciseSlot {
 } PreciseSlot;
 
 static PreciseSlot precise[PRECISE_SLOTS];
-static uint32_t preciseFrame = 1;
-static int clearPending; /* the frame was drawn: the next frame starts a new cache */
+static uint32_t preciseFrame = 2;
+static int clearPending; /* the frame was handed to the GPU: the next record starts a new frame */
+
 
 static uint32_t Hash(uint32_t key)
 {
@@ -241,10 +242,11 @@ int GteLookupPrecise(int x, int y, GtePrecise *out)
 {
     uint32_t key = ((uint32_t)(uint16_t)x | ((uint32_t)(uint16_t)y << 16)) + 1;
     uint32_t slot = Hash(key), probe;
+    uint32_t frame = preciseFrame;
 
     for (probe = 0; probe < 64; probe++) {
         PreciseSlot *entry = &precise[(slot + probe) & (PRECISE_SLOTS - 1)];
-        if (entry->frame != preciseFrame) {
+        if (entry->frame != frame) {
             return 0;
         }
         if (entry->key == key) {
@@ -264,9 +266,9 @@ void GteFrameDrawn(void)
 void GteClearPrecise(void)
 {
     preciseFrame++;
-    if (!preciseFrame) {
+    if (preciseFrame == 0xFFFFFFFFu) {
         memset(precise, 0, sizeof(precise));
-        preciseFrame = 1;
+        preciseFrame = 2;
     }
 }
 

@@ -15,6 +15,7 @@
 
 #include "../platform.h"
 #include "psx_io.h"
+#include "../trace.h"
 #include "psyq.h"
 
 #define LINES_PER_FIELD 262
@@ -136,7 +137,17 @@ static void LoadVcounts(void)
 }
 
 /* GsGetVcount / GsClearVcount: root counter 1 counting scanlines (16 bits). */
+static int ReadVcount(void);
+
 int GsGetVcount(void)
+{
+    int value = ReadVcount();
+
+    PortTraceReturn(0x80082090u, (uint32_t)value);
+    return value;
+}
+
+static int ReadVcount(void)
 {
     static int loaded;
 

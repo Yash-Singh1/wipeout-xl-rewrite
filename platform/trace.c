@@ -22,6 +22,7 @@
 
 enum {
     KIND_BOUNDARY = 1,
+    KIND_RETURN = 2,
     KIND_GP0 = 3,
     KIND_GP1 = 4,
     KIND_PAD = 11,
@@ -125,19 +126,34 @@ static void LoadPads(const char *path)
     fclose(f);
 }
 
+/* A pad read as the recorder logs it: the reader (0 fixed, 1 game), the read
+   count, the packet's two words. */
+static void TracePad(uint32_t reader, const unsigned char *packet)
+{
+    uint32_t words[5];
+
+    if (!PortTracing()) {
+        return;
+    }
+    words[0] = reader;
+    words[1] = padReads;
+    words[2] = 0;
+    words[3] = (uint32_t)packet[0] | (uint32_t)packet[1] << 8 | (uint32_t)packet[2] << 16 | (uint32_t)packet[3] << 24;
+    words[4] = (uint32_t)packet[4] | (uint32_t)packet[5] << 8 | (uint32_t)packet[6] << 16 | (uint32_t)packet[7] << 24;
+    Event(KIND_PAD, words, 5);
+}
+
 int PortPadScripted(void)
 {
     return padSteps != NULL;
 }
 
-void PortScriptFixedPad(unsigned char *packet)
+/* The script's buttons for the current read count, written into the packet. */
+static void ApplyScript(unsigned char *packet)
 {
     uint16_t buttons = 0;
     int i;
 
-    if (!padSteps) {
-        return;
-    }
     for (i = 0; i < padStepCount && padSteps[i].count <= padReads; i++) {
         buttons = padSteps[i].buttons;
     }
@@ -146,7 +162,26 @@ void PortScriptFixedPad(unsigned char *packet)
     packet[1] = 0x41;
     packet[2] = (unsigned char)~buttons;
     packet[3] = (unsigned char)(~buttons >> 8);
+}
+
+/* buildFixedPad: the read the script counts. */
+void PortScriptFixedPad(unsigned char *packet)
+{
+    if (padSteps) {
+        ApplyScript(packet);
+    }
+    TracePad(0, packet);
     padReads++;
+}
+
+/* buildGameKeyPad reads the same packet; the console recorder injects the
+   script there too, at the current count, without advancing it. */
+void PortScriptGamePad(unsigned char *packet)
+{
+    if (padSteps) {
+        ApplyScript(packet);
+    }
+    TracePad(1, packet);
 }
 
 /* ---- recording ---- */
@@ -189,10 +224,25 @@ void PortTraceGp0(const uint32_t *words, int count)
     }
 }
 
+void PortTraceEvent(uint32_t kind, const uint32_t *words, int count)
+{
+    if (PortTracing()) {
+        Event(kind, words, count);
+    }
+}
+
 void PortTraceGp1(uint32_t word)
 {
     if (PortTracing()) {
         Event(KIND_GP1, &word, 1);
+    }
+}
+
+void PortTraceReturn(uint32_t function, uint32_t value)
+{
+    if (PortTracing()) {
+        uint32_t words[7] = {function, 0, 0, 0, 0, 0, value};
+        Event(KIND_RETURN, words, 7);
     }
 }
 

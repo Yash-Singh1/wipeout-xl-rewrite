@@ -287,6 +287,7 @@ static void Environment(uint32_t word)
 }
 
 static void Packet(const uint32_t *w, int words);
+static void ReadPendingTables(void);
 
 /* A packet as the GPU receives it: recorded for tests, then drawn. */
 static void Submit(const uint32_t *w, int words)
@@ -369,6 +370,7 @@ int ResetGraph(int mode)
 {
     uint32_t word;
 
+    ReadPendingTables();
     GpuInit();
     if ((mode & 3) == 0) {
         PortTraceGp1(0x00000000u);
@@ -393,6 +395,7 @@ int SetGraphDebug(int level)
 int DrawSync(int mode)
 {
     (void)mode;
+    ReadPendingTables();
     return 0;
 }
 
@@ -781,26 +784,129 @@ static void Packet(const uint32_t *w, int words)
     }
 }
 
-void DrawOTag(u_long *p)
+/* ---- ordering tables ---- */
+
+static u_long *NodeAfter(u_long *node)
 {
-    u_long *node = p;
+    uint32_t link = *node & 0xFFFFFF;
+
+    return link == LINK_END ? NULL : LinkPointer(link);
+}
+
+/* The first node from node on that carries a packet, or NULL. */
+static u_long *PacketFrom(u_long *node)
+{
     int guard = 0;
 
-    for (;;) {
-        uint32_t tag = *node;
-        int words = (int)(tag >> 24);
-
-        if (words) {
-            Submit((const uint32_t *)(node + 1), words);
-        }
-        if ((tag & 0xFFFFFF) == LINK_END) {
-            break;
-        }
-        node = LinkPointer(tag & 0xFFFFFF);
+    while (node && !(*node >> 24)) {
+        node = NodeAfter(node);
         if (++guard > 4000000) {
             fprintf(stderr, "libgpu: ordering table does not end\n");
             abort();
         }
+    }
+    return node;
+}
+
+/* On the console DrawOTag returns at once and the DMA reads each packet only
+   when the GPU is ready for it, while the game goes on building the next
+   frame. A packet the game changes meanwhile is drawn as it was or as
+   changed, and a packet the game links into the next frame's table leads the
+   GPU on along the new links: some menus update both buffers' primitives,
+   and the menu sparks are one set of primitives linked into whichever table
+   is being built. The port draws a table when it is given. For the lockstep
+   tests it records the table's packets in order, and when the game next
+   waits for the GPU (DrawSync, ResetGraph) each packet and link as they are
+   then, the latest the console could have read them; tools/trace/lockstep.py
+   accepts any point at which the console's GPU went over from the one to the
+   other. */
+#define PENDING_TABLES 8
+static struct {
+    u_long *table;
+    uint32_t *nodes;     /* link number and word count of each packet, in the order drawn */
+    int count, capacity;
+} pending[PENDING_TABLES];
+static int pendingCount;
+
+#define SEEN_SLOTS (1 << 16)
+static u_long *seen[SEEN_SLOTS];
+
+static int Seen(u_long *node)
+{
+    uint32_t slot = HashPointer(node) & (SEEN_SLOTS - 1);
+
+    while (seen[slot]) {
+        if (seen[slot] == node) {
+            return 1;
+        }
+        slot = (slot + 1) & (SEEN_SLOTS - 1);
+    }
+    seen[slot] = node;
+    return 0;
+}
+
+/* Records the packets from node on as they are now, until one already
+   recorded: link number, the next packet's link number, the packet. */
+static void RecordLateFrom(u_long *node)
+{
+    uint32_t words[2 + 255];
+
+    for (node = PacketFrom(node); node && !Seen(node); node = PacketFrom(NodeAfter(node))) {
+        u_long *next = PacketFrom(NodeAfter(node));
+        int count = (int)(*node >> 24);
+
+        words[0] = LinkId(node);
+        words[1] = next ? LinkId(next) : LINK_END;
+        memcpy(words + 2, node + 1, (size_t)count * 4);
+        PortTraceEvent(TRACE_LATE_PACKET, words, 2 + count);
+    }
+}
+
+static void ReadPendingTables(void)
+{
+    int i, j;
+
+    if (!pendingCount) {
+        return;
+    }
+    memset(seen, 0, sizeof(seen));
+    for (i = 0; i < pendingCount; i++) {
+        u_long *head = PacketFrom(pending[i].table);
+        uint32_t first = head ? LinkId(head) : LINK_END;
+
+        PortTraceEvent(TRACE_LATE_TABLE, &first, 1);
+        RecordLateFrom(pending[i].table);
+        for (j = 0; j < pending[i].count; j += 2) {
+            RecordLateFrom(linkPointers[pending[i].nodes[j]]);
+        }
+    }
+    pendingCount = 0;
+}
+
+void DrawOTag(u_long *p)
+{
+    u_long *node;
+    int tracing = PortTracing() && pendingCount < PENDING_TABLES;
+
+    if (tracing) {
+        pending[pendingCount].table = p;
+        pending[pendingCount].count = 0;
+    }
+    for (node = PacketFrom(p); node; node = PacketFrom(NodeAfter(node))) {
+        Submit((const uint32_t *)(node + 1), (int)(*node >> 24));
+        if (tracing) {
+            if (pending[pendingCount].count + 2 > pending[pendingCount].capacity) {
+                pending[pendingCount].capacity = pending[pendingCount].capacity ? pending[pendingCount].capacity * 2 : 4096;
+                pending[pendingCount].nodes = realloc(pending[pendingCount].nodes,
+                                                      (size_t)pending[pendingCount].capacity * sizeof(uint32_t));
+            }
+            pending[pendingCount].nodes[pending[pendingCount].count++] = LinkId(node);
+            pending[pendingCount].nodes[pending[pendingCount].count++] = *node >> 24;
+        }
+    }
+    if (tracing) {
+        PortTraceEvent(TRACE_TABLE, pending[pendingCount].nodes, pending[pendingCount].count);
+        pendingCount++;
     }
     GteFrameDrawn();
 }

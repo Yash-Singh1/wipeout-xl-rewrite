@@ -93,6 +93,7 @@ void buildGameKeyPad(struct PadPacket *pad, ControlInput *control)
     u_short prev;
     u_short idx;
 
+    PortScriptGamePad((unsigned char *)pad); /* Port: scripted pad input for the lockstep tests (WIPEOUT_PADS) */
     prev = control->buttons;
     control->buttons = 0;
     *(u_short *)control->pad6 = prev;
@@ -217,7 +218,6 @@ void buildGameKeyPad(struct PadPacket *pad, ControlInput *control)
     control->pressed = control->buttons & (control->buttons ^ *(u_short *)control->pad6);
 }
 #undef STICK_LIMIT
-
 
 void buildFixedPad(struct PadPacket *pad)
 {

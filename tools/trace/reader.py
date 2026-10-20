@@ -10,7 +10,7 @@ HEADER = struct.Struct('<7I')
 KINDS = {1:'boundary', 2:'return', 3:'gp0', 4:'gp1', 5:'spu', 6:'cd_command',
          7:'cd_write', 8:'cd_read', 9:'timer_read', 10:'ram', 11:'pad',
          12:'sample_load', 13:'debug_write', 14:'state', 15:'game_call',
-         16:'dma', 17:'call', 18:'end',19:'serial_pad_read',20:'serial_pad_write',21:'gpu_read',22:'spu_read'}
+         16:'dma', 17:'call', 18:'end',19:'serial_pad_read',20:'serial_pad_write',21:'gpu_read',22:'spu_read',42:'late_packet',43:'table',44:'late_table'}
 STATE_FIELDS = 'input menu race_context game_type owner ship lap section weapon attr damage perfect_lap perfect_count countdown autopilot update race_end race_start_vcount myseed gameplay_seed lateral_offset ship_damage cheat_damage rear_fire target_ship race_type plasma_busy combat_attr ship_target x y z'.split()
 FUNCTIONS = {0x800684c4:'Swap', 0x800686e8:'CallbackSwap', 0x800820d8:'VSync',
              0x80082090:'GsGetVcount',0x80081fbc:'GetRCnt',0x8008a65c:'CdSync',

@@ -13,14 +13,26 @@ void PortTraceInit(void);
 int PortTracing(void);
 /* One drawing packet or video memory transfer, as the GPU receives it. */
 void PortTraceGp0(const uint32_t *words, int count);
+/* Port-only events for the ordering-table timing (libgpu.c, DrawOTag):
+   a table drawn (link number and word count of its packets in order), and when the game
+   next waits for the GPU each table's first packet and every packet with
+   its next link as they are then. */
+#define TRACE_TABLE 43
+#define TRACE_LATE_TABLE 44
+#define TRACE_LATE_PACKET 42
+void PortTraceEvent(uint32_t kind, const uint32_t *words, int count);
 /* A display control command. */
 void PortTraceGp1(uint32_t word);
+/* A value the game read from a library call (the recorder's return event). */
+void PortTraceReturn(uint32_t function, uint32_t value);
 /* The end of a game-loop iteration. */
 void PortTraceBoundary(uint32_t marker);
 
 /* Scripted pad input (WIPEOUT_PADS): the game's fixed-pad read calls this
-   with its packet before using it. */
+   with its packet before using it, counting the reads... */
 int PortPadScripted(void);
 void PortScriptFixedPad(unsigned char *packet);
+/* ... and so does buildGameKeyPad, without advancing the count. */
+void PortScriptGamePad(unsigned char *packet);
 
 #endif
