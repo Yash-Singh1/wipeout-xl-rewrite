@@ -3,28 +3,6 @@
 
 #include "psyq.h"
 
-/* Race result as the race-complete screens read it. */
-typedef struct RaceState {
-    unsigned char pad0[18];
-    short         raceInfo, complete;
-    unsigned char pad16[2];
-    short         highScore;
-    unsigned char pad1a[30];
-    union {
-        unsigned int flags;
-        unsigned char bytes[4];
-    } championship;
-    unsigned char pad3c[2];
-    unsigned char class1Unlocked, class2Unlocked, class1Race, class2Race;
-} RaceState;
-
-typedef struct ScoreData {
-    unsigned char pad0[36];
-    unsigned char displayScore;
-    unsigned char pad25[31];
-    unsigned char gotHiScore;
-} ScoreData;
-
 /* The in-race pause menu, also used for the two-player pause handshake over the link. */
 typedef struct PauseMenu {
     int    selection;       /* highlighted option, -1 while the game is not paused */

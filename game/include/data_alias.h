@@ -5,82 +5,10 @@
 #ifndef DATA_ALIAS_H
 #define DATA_ALIAS_H
 
-/* smokeColourGreen: smokeColour is a CVECTOR (loaded as one word by TrackSpecificFunctions); race() stores bytes at +0, +1, +2 */
-#define smokeColourGreen (*(signed char *)&smokeColour.g)
-/* smokeColourBlue: see smokeColourGreen */
-#define smokeColourBlue (*(signed char *)&smokeColour.b)
-/* raceCheckpointResults: strides (6, 36, 144) from checkCells + 2 in race() and SetUpFirstCheckPoint: the bonusSeconds field of the 6-byte cells */
-#define raceCheckpointResults ((CheckPointShort (*)[4][6])&checkCells[0][0][0].bonusSeconds)
-/* raceCheckpointFlags: strides (6, 36, 144) from checkCells + 4: the done field of the 6-byte cells */
-#define raceCheckpointFlags ((CheckPointByte (*)[4][6])&checkCells[0][0][0].done)
-/* StaticRVertY: DrawEnvMap loads +0, +4, +8 of StaticRVert with stride 16 and the three names are 4 bytes apart */
-#define StaticRVertY ((int (*)[4])&StaticRVert[0].vy)
-/* StaticRVertZ: see StaticRVertY */
-#define StaticRVertZ ((int (*)[4])&StaticRVert[0].vz)
-/* recordKeyCount: RecordKeypresses and InitGhostShip access recordBuffer + 4 as a word; the buffer is 0x104 header bytes then the keys */
-#define recordKeyCount (*(volatile s32 *)(recordBuffer[0].header + 4))
-/* recordKeyTotal: see recordKeyCount */
-#define recordKeyTotal (*(s32 *)(recordBuffer[0].header + 8))
-/* recordControl: see recordKeyCount */
-#define recordControl (*(s16 *)(recordBuffer[0].header + 12))
-/* recordDisabled: see recordKeyCount */
-#define recordDisabled (*(s16 *)(recordBuffer[0].header + 14))
-/* recordMagic: see recordKeyCount */
-#define recordMagic (*(s16 *)(recordBuffer[0].header + 16))
-/* recordTrackNum: see recordKeyCount */
-#define recordTrackNum (*(u8 *)(recordBuffer[0].header + 18))
-/* recordShipClass: see recordKeyCount */
-#define recordShipClass (*(u8 *)(recordBuffer[0].header + 19))
-/* replayKeyCount: same layout as recordBuffer (it is a copy of one) */
-#define replayKeyCount (*(s32 *)(replayBuffer[0].header + 4))
-/* replayKeyTotal: see replayKeyCount */
-#define replayKeyTotal (*(s32 *)(replayBuffer[0].header + 8))
-/* replayControl: see replayKeyCount */
-#define replayControl (*(s16 *)(replayBuffer[0].header + 12))
-/* replayDisabled: see replayKeyCount */
-#define replayDisabled (*(s16 *)(replayBuffer[0].header + 14))
-/* replayMagic: see replayKeyCount */
-#define replayMagic (*(s16 *)(replayBuffer[0].header + 16))
-/* replayTrackNum: see replayKeyCount */
-#define replayTrackNum (*(u8 *)(replayBuffer[0].header + 18))
-/* replayShipClass: see replayKeyCount */
-#define replayShipClass (*(u8 *)(replayBuffer[0].header + 19))
 /* menuGlyphWidth: SetCharTextures stores fontGlyphs8 + 0, +2, +4 and menuGlyphWidth + 0 with stride 6: the width field of the 6-byte glyphs */
 #define menuGlyphWidth ((GlyphWidth *)&fontGlyphs8[0].width)
 /* glyphWidth: see menuGlyphWidth */
 #define glyphWidth ((GlyphWidth *)&fontGlyphs16[0].width)
-/* dispOffX0: halfword stores at DispEnv0 + 8 and + 10 only (ShakeScreen, InitGameDisplay...): DISPENV.screen.x and .y */
-#define dispOffX0 (*(u_short *)&DispEnv0.screen.x)
-/* dispOffY0: see dispOffX0 */
-#define dispOffY0 (*(u_short *)&DispEnv0.screen.y)
-/* dispOffX1: see dispOffX0 */
-#define dispOffX1 (*(u_short *)&DispEnv1.screen.x)
-/* dispOffY1: see dispOffX0 */
-#define dispOffY1 (*(u_short *)&DispEnv1.screen.y)
-/* cardUsed: InitCard stores cardSlots + 10 with strides (1, 90): the used byte of each 90-byte entry */
-#define cardUsed (&cardSlots[0].entry[0].used)
-/* cardFileNames: cardSlots + 11: the 32-byte file name of the entry */
-#define cardFileNames ((u8 *)cardSlots[0].entry[0].filename)
-/* cardNames: cardSlots + 43: the label of the entry */
-#define cardNames ((u8 *)&cardSlots[0].entry[0].label)
-/* quadClutField: AddText/AddTime store quadPool + 14 and + 22 with stride 40: the clut and tpage fields of the 600 POLY_FT4s */
-#define quadClutField ((u_short *)&quadPool[0].clut)
-/* quadTPageField: see quadClutField */
-#define quadTPageField ((u_short *)&quadPool[0].tpage)
-/* racingLine: racingLine[i] is accessed at raceLines + 4 + 16 * i (x, y, z): the same 16-byte stride */
-#define racingLine ((VECTOR *)&raceLines[0].x)
-/* shipOrder: shipOrder[i][0] is shipRank + 2 + 4 * i = shipRank[i].shipNo (SortAllShips, getShipBehindLAP) */
-#define shipOrder ((short (*)[2])&shipRank[0].shipNo)
-/* fadeTileRed: UpdateFadeScreen stores bytes at fadeTile + 4, 5, 6: the colour of the first TILE */
-#define fadeTileRed (&fadeTile[0].r0)
-/* fadeTileGreen: see fadeTileRed */
-#define fadeTileGreen (&fadeTile[0].g0)
-/* fadeTileBlue: see fadeTileRed */
-#define fadeTileBlue (&fadeTile[0].b0)
-/* progLoadAddr: LoadProg loads progHeader + 24 and + 28 (t_addr, t_size of the 136-byte PS-X EXE header it just read) */
-#define progLoadAddr (*(u_long *)(progHeader[0].bytes + 24))
-/* progSize: see progLoadAddr */
-#define progSize (*(int *)(progHeader[0].bytes + 28))
 /* ghostButtons: halfword accesses at ghostControl + 2, +4, +6 and bytes at +8, +9 (buildGhostReplayData): the ControlInput fields */
 #define ghostButtons ghostControl[0].buttons
 /* ghostButtonsPressed: see ghostButtons */
@@ -96,35 +24,13 @@
 /* lightDroid: race() loads shipShapeTable + 120 (slot 30, the rescue droid model, RescueDroidModel) without index and nothing stores it by name */
 #define lightDroid shipShapeTable[30]
 /* debugPadInput: RadiusControl loads padBuf1 + 2 and NegConConfig the byte at +4 (the packet's buttons and steering fields) */
-#define debugPadInput padBuf1.buttons
+#define debugPadInput padBuf1[0].buttons
 /* linkPadHead: halfword loads at playerControl + 2, +4, +6 and byte loads at +8, +9 (doSerialGame, CheckForButtonPress): the ControlInput fields after head */
 #define linkPadHead playerControl[0].buttons
-/* linkPadButtons: see linkPadHead */
-#define linkPadButtons playerControl[0].pressed
-/* linkPadPressed: see linkPadHead (the two pad bytes at +6) */
-#define linkPadPressed (*(u16 *)playerControl[0].pad6)
 /* linkPadAux0: see linkPadHead */
 #define linkPadAux0 playerControl[0].thrust
 /* linkPadAux1: see linkPadHead */
 #define linkPadAux1 playerControl[0].steering
-/* remotePadHead: doSerialGame stores the received packet at remoteControl + 0, +2, +4, +6 (halfwords), +8, +9 (bytes) */
-#define remotePadHead remoteControl[0].buttons
-/* remotePadButtons: see remotePadHead */
-#define remotePadButtons remoteControl[0].pressed
-/* remotePadPressed: see remotePadHead */
-#define remotePadPressed (*(u16 *)remoteControl[0].pad6)
-/* remotePadAux0: see remotePadHead */
-#define remotePadAux0 remoteControl[0].thrust
-/* remotePadAux1: see remotePadHead */
-#define remotePadAux1 remoteControl[0].steering
-/* raceResetWord0: main() stores savedLapTimes + 0, 4, 8, 12, 16 in a row; hud.c indexes savedLapTimes[lap] (5 words up to recordBuffer) */
-#define raceResetWord0 savedLapTimes[1]
-/* raceResetWord1: see raceResetWord0 */
-#define raceResetWord1 savedLapTimes[2]
-/* raceResetWord2: see raceResetWord0 */
-#define raceResetWord2 savedLapTimes[3]
-/* raceResetWord3: see raceResetWord0 */
-#define raceResetWord3 savedLapTimes[4]
 /* menuTexturePtrsD: AudioConfig loads textureTable + 8; the pointer tables are 4 bytes apart and the last one runs to the 800th slot */
 #define menuTexturePtrsD (&textureTable[2])
 /* deleteTextures: see menuTexturePtrsD */
@@ -137,20 +43,22 @@
 #define menuTexturePtrs ((void **)&textureTable[6])
 /* menuTexturePtrsB: see menuTexturePtrsD */
 #define menuTexturePtrsB (&textureTable[7])
-/* waterfallSaved: effects.c passes waterfallSaved - 4 (= waterfallBuf) to LoadImage; the three names are contiguous (+8, +30) */
-#define waterfallSaved ((u_short *)(waterfallBuf + 8))
-/* waterfallRow: see waterfallSaved */
-#define waterfallRow ((u_short *)(waterfallBuf + 30))
-/* screenFill1: VsyncFunc loads screenFills + 4 * screen; InitPop and InitResidentMenu store +0 and +4 one after the other */
-#define screenFill1 screenFills[1]
-/* TrackHiPolysAlt: AsmTrackHi loads TrackHiPolys + 4 * screen (stride 4); trackasm.c allocates TrackHiPolys and the pointer 4 bytes after it */
-#define TrackHiPolysAlt ((POLY_FT4 **)&TrackHiPolys)[1]
-/* TrackMedPolysAlt: see TrackHiPolysAlt (AsmTrackMed) */
-#define TrackMedPolysAlt ((POLY_FT4 **)&TrackMedPolys)[1]
-/* TrackLoPolysAlt: see TrackHiPolysAlt (AsmTrackLo) */
-#define TrackLoPolysAlt ((POLY_FT4 **)&TrackLoPolys)[1]
 /* phantomGridPos: ships.c: for (i = 0; i < 15; i++) position = gridPosition[i]; phantomGridPos stores +0, +2, +4 of the entries 12..14 */
 #define phantomGridPos (&gridPosition[12])
+/* twoPlayerPauseStatus: race() loads pauseState + 23 and stores +24, +25 as bytes; the PauseMenu fields stage, confirmed, confirmChoice sit there */
+#define twoPlayerPauseStatus pauseState.stage
+/* twoPlayerMode: see twoPlayerPauseStatus */
+#define twoPlayerMode (*(signed char *)&pauseState.confirmed)
+/* twoPlayerFlag: see twoPlayerPauseStatus */
+#define twoPlayerFlag (*(signed char *)&pauseState.confirmChoice)
+/* hudDisabled: Restart stores and race() loads the byte at scoreTabData + 36 = HiScoreData.highScore; the record runs up to PrimitiveBuffer0 */
+#define hudDisabled scoreTabData.highScore
+/* trainMuzzleX: the train muzzle position is stored as the words at monoRailFlag + 20, +24, +28, inside MonoRailData.pad10 */
+#define trainMuzzleX monoRail.pad10[1]
+/* trainMuzzleY: see trainMuzzleX */
+#define trainMuzzleY monoRail.pad10[2]
+/* trainMuzzleZ: see trainMuzzleX */
+#define trainMuzzleZ monoRail.pad10[3]
 /* sharkBodyModel: UpdateSharkModel loads shipShapeTable + 8 and CopySharkVerts + 16 without index: slots 2 and 4 */
 #define sharkBodyModel shipShapeTable[2]
 /* sharkLegModel: see sharkBodyModel */

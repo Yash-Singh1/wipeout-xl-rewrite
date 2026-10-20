@@ -1,0 +1,19 @@
+recordtest: the widening of the original's 32-bit file records, tested on the PC game's data.
+
+Run:  python3 tools/recordtest/run.py [--iso DIR]      (needs clang and the game's files; about 40 s)
+
+The default data directory is ../pc-xl/iso next to the repository. The test regenerates nothing: it fails
+if game/src/port_records.c is out of date with tools/genlayouts.py.
+
+What it checks (see the comments in run.py and docs/RECORDS.md):
+  run.py        reads the 32-bit and native layouts from clang's record-layout dumps and, from them alone,
+                computes the native bytes every file record must become; compares them with what the game's
+                port_widen.c writes (recordtest.c), for all PRMs (standalone and in every WAD), every WAD's
+                track sections, vertices and faces, CONFIG.DAT, SAVEGAME.BIN, MENU.DAT, random records of every
+                table type, random PRM images and damaged ones (under ASan and UBSan);
+                narrow(widen(x)) == x (padding bytes aside); every widened PRM is walked with the real native
+                structs the way LoadPrmCommon does.
+  loadtest.c    the game's own loaders (scene.c, track.c, wadfile.c, init.c, radscn.c, ships.c, weapon.c, ...)
+                run on every track and on InitResident, with a recording allocator: what they build is compared
+                with the files, and the heap use is compared with the original's (a model of its allocator
+                with 32-bit sizes). build_loadtest.py builds it.

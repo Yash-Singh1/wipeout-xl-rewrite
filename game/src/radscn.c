@@ -2,11 +2,9 @@
 
 /* Debug pad state for the radius controls: the current pad word, and the raw input. */
 u_short debugPadState;
-#include "pad.h"
-extern PadPacket padBuf1; /* Port: debugPadInput is a part of it, see data_alias.h */
+#include "pad.h" /* Port: debugPadInput is a part of it, see data_alias.h */
 
 
-extern HeapBlock *heap;
 extern TrackData   *track;
 extern Object     **trackObjects;
 void CalcNewRadius(TrackSection *section, Object *objects)
@@ -16,7 +14,7 @@ void CalcNewRadius(TrackSection *section, Object *objects)
     MATRIX       *matrix;
     Vector       *sectionCentre;
     VECTOR        vector;
-    int int     distance;
+    long long     distance;
     short         j;
     short         objectCount;
     short         withinLocal;
@@ -126,7 +124,7 @@ void SceneRadiusCheck(Object *objects)
     Vector       *sectionCentre;
     short         objectCount;
     VECTOR        vector;
-    int int     distance;
+    long long     distance;
     short         objectList[128];
     short         withinLocal;
     short         withinGlobal;
@@ -257,7 +255,7 @@ void RadiusControl(TrackCamera *camera, Object **prm)
 
     junctionIndex = camera->section->junction.index;
     if ((xpad & 0x08) && (junctionIndex != noJunction)) {
-        camera->section = (TrackSection *)junctionIndex;
+        camera->section = camera->section->junction.ptr;
     } else if (xpad & 0x1000) {
         camera->section = camera->section->nextSection.ptr;
     } else if (xpad & 0x4000) {

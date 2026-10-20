@@ -2,7 +2,7 @@
 #include <string.h>
 #include "functions.h"
 #include "pad.h"
-extern PadPacket padBuf1;
+extern PadPacket padBuf1[1];
 
 int alias_debugPadInput(void)
 {

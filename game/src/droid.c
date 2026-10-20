@@ -1,18 +1,13 @@
 #include "functions.h"
 #include "droid.h"
 
-extern TrackCamera  *cameraPtr;
-extern CameraUpdateFunc CameraUpdate;
 extern TrackData    *track;
-extern short         controlledSfxId;
 extern VECTOR        droidTarget;
 
 int droidFlyin;
 
-void AsmDrawObjectLit(Object *object, Skeleton *camera, int roll, CVECTOR *colour);
 
-
-void UpdateRescueDroid(ShipData *ships, int unused1, int shipNo, int unused3, ControlInput *control)
+void UpdateRescueDroid(ShipData *ships, Object **unused1, int shipNo, WeaponData *unused3, ControlInput *control)
 {
     ShipData     *ship;
     TrackSection *section;

@@ -9,6 +9,4 @@ int serialReadFd;
 int serialWriteFd;
 s32 remoteBestLap;
 s32 remoteBestRace;
-ControlInput playerControl[1];
 POLY_FT4 linkSign[2];
-ControlInput remoteControl[4];

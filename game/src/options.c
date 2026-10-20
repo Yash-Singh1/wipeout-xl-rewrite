@@ -1,12 +1,11 @@
 #include "options.h"
 #include "functions.h"
+#include "ayrace.h"
+#include "hud.h"
 #include "include_asm_g8.h"
 
 
-extern u_char gameType;
 extern short CurrentScreen;
-extern u_long *OT[];
-extern int *OT2[];
 extern char msgAreYouSure[];
 extern char msgWantToRestart[];
 extern char msgWantToQuit[];
@@ -48,14 +47,12 @@ short         boxHeight;
 short         boxX;
 short         boxY;
 
-extern unsigned short padType;
 extern unsigned short keysDown;
 extern unsigned char cdMusicIndex;
 extern int cdMusicCount;
 extern int cdMusicTrack;
 extern int ambientVoice1;
 extern int trackNameScroll;
-extern unsigned char cdMusicTable[];
 extern char msgControllerRemoved[];
 extern char msgPaused[];
 extern char labelAccept[];
@@ -64,7 +61,7 @@ extern char nozzleShip[];
 extern char targang[];
 
 
-void InGameReset(PauseState *state, ConfigData *game, OptionsPolys *polys)
+void InGameReset(struct PauseMenu *pause, ConfigData *game, struct InGameMenu *polys)
 {
     MenuText options[4];
     int      i;
@@ -73,18 +70,18 @@ void InGameReset(PauseState *state, ConfigData *game, OptionsPolys *polys)
     SfxSetReverbDepth(0);
     MuteControlledSound();
     if (padType == 0) {
-        if (state->counter % 30 < 21) {
+        if ((u_int)pause->frameCount % 30 < 21) {
             CentreText(msgControllerRemoved, 107, 70, 8, 0);
         }
     } else {
-        if (state->counter % 30 < 21) {
+        if ((u_int)pause->frameCount % 30 < 21) {
             CentreText(msgPaused, 107, 70, 12, 0);
         }
     }
     if (gameType == 1) {
         VSync(0);
     }
-    if (state->choice != 3) {
+    if (pause->selection != 3) {
         boxX = 160;
         boxWidth = 0;
         boxHeight = 0;
@@ -95,7 +92,7 @@ void InGameReset(PauseState *state, ConfigData *game, OptionsPolys *polys)
         boxOpen = 0;
         boxClosed = 0;
     }
-    if (state->machinePaused == 2 || state->machinePaused == 0) {
+    if (pause->stage == 2 || pause->stage == 0) {
         __builtin_memcpy(options[0].text, pauseTextContinue.text, 9);
         __builtin_memcpy(options[1].text, restartText, 8);
         __builtin_memcpy(options[2].text, pauseTextReturnToMenu.text, 15);
@@ -106,8 +103,8 @@ void InGameReset(PauseState *state, ConfigData *game, OptionsPolys *polys)
             DoButton(133, 170, 1, labelSelect);
         }
         for (i = 0; i < 4; i++) {
-            if (i == state->choice) {
-                if (!(state->counter & 1)) {
+            if (i == pause->selection) {
+                if (!(pause->frameCount & 1)) {
                     CentreText(options[i].text, 0, y + pauseMenuGap * i, 8, 0);
                 } else {
                     CentreText(options[i].text, 0, y + pauseMenuGap * i, 8, 1);
@@ -117,7 +114,7 @@ void InGameReset(PauseState *state, ConfigData *game, OptionsPolys *polys)
             }
         }
 
-        if (state->choice == 3) {
+        if (pause->selection == 3) {
             if (!game->paused && boxOpen) {
                 SetVolume(ambientVoice1, 0);
             } else {
@@ -132,7 +129,7 @@ void InGameReset(PauseState *state, ConfigData *game, OptionsPolys *polys)
                         closeSteps = 0;
                         if (!game->paused) {
                             CdMusicPlay(cdMusicTrack, 0);
-                            state->cdPause = 1;
+                            pause->musicPaused = 1;
                         }
                         game->paused = 1;
                     }
@@ -144,7 +141,7 @@ void InGameReset(PauseState *state, ConfigData *game, OptionsPolys *polys)
                     openSteps = 0;
                     closeSteps = 0;
                     if (game->paused) {
-                        state->cdPause = 0;
+                        pause->musicPaused = 0;
                         CdMusicStop();
                         SetSoundVolume((game->effectVolume * 255) / 100);
                     }
@@ -168,13 +165,13 @@ void InGameReset(PauseState *state, ConfigData *game, OptionsPolys *polys)
                                 if (game->cdTrack <= 0) game->cdTrack = cdMusicCount;
                                 if (game->cdTrack != 1) {
                                     CdMusicPlay(game->cdTrack, 0);
-                                    state->cdPause = 1;
+                                    pause->musicPaused = 1;
                                 } else {
                                     cdMusicIndex = (cdMusicIndex + 1) % (cdMusicCount - 1);
                                     trackNameScroll = 480;
                                     cdMusicTrack = cdMusicTable[cdMusicIndex];
                                     CdMusicPlay(cdMusicTrack, 0);
-                                    state->cdPause = 1;
+                                    pause->musicPaused = 1;
                                 }
                             } else if (GetMenuKey(3)) {
                                 PlayNote(8, 255, 15, 15, 256);
@@ -183,17 +180,17 @@ void InGameReset(PauseState *state, ConfigData *game, OptionsPolys *polys)
                                 if (game->cdTrack > cdMusicCount) game->cdTrack = 1;
                                 if (game->cdTrack != 1) {
                                     CdMusicPlay(game->cdTrack, 0);
-                                    state->cdPause = 1;
+                                    pause->musicPaused = 1;
                                 } else {
                                     cdMusicIndex = (cdMusicIndex + 1) % (cdMusicCount - 1);
                                     trackNameScroll = 480;
                                     cdMusicTrack = cdMusicTable[cdMusicIndex];
                                     CdMusicPlay(cdMusicTrack, 0);
-                                    state->cdPause = 1;
+                                    pause->musicPaused = 1;
                                 }
                             }
-                            PrintCX(GetCdTrackName(game->cdTrack - 1), 160, y + pauseMenuGap * 5, 8);
-                            if (state->counter % 30 < 21) CentreText(labelCdTrack, 0, y + pauseMenuGap * 4, 8, 1);
+                            PrintCX(GetCdTrackName(game->cdTrack - 1), 160, y + pauseMenuGap * 5);
+                            if ((u_int)pause->frameCount % 30 < 21) CentreText(labelCdTrack, 0, y + pauseMenuGap * 4, 8, 1);
                             AddText(nozzleShip, 85, 170, 8, 1);
                             AddText(targang, 85, 185, 8, 1);
                         }
@@ -215,9 +212,9 @@ void InGameReset(PauseState *state, ConfigData *game, OptionsPolys *polys)
                             }
                             game->musicVolume = game->otherMusicVolume;
                             SetCdVolume((game->musicVolume * 255) / 100);
-                            PrintCX(GetCdTrackName(game->cdTrack - 1), 160, y + pauseMenuGap * 5, 8);
+                            PrintCX(GetCdTrackName(game->cdTrack - 1), 160, y + pauseMenuGap * 5);
                             CentreText(labelCdTrack, 0, y + pauseMenuGap * 4, 8, 1);
-                            if (state->counter % 30 < 21) AddText(nozzleShip, 85, 170, 8, 1);
+                            if ((u_int)pause->frameCount % 30 < 21) AddText(nozzleShip, 85, 170, 8, 1);
                             AddText(targang, 85, 185, 8, 1);
                         }
                         if (settingRow == 2) {
@@ -242,27 +239,27 @@ void InGameReset(PauseState *state, ConfigData *game, OptionsPolys *polys)
                             SfxEffectLRPan(ambientVoice1, 15);
                             SfxEffectFBPan(ambientVoice1, 15);
                             CentreText(labelCdTrack, 0, y + pauseMenuGap * 4, 8, 1);
-                            PrintCX(GetCdTrackName(game->cdTrack - 1), 160, y + pauseMenuGap * 5, 8);
-                            if (state->counter % 30 < 21) AddText(targang, 85, 185, 8, 1);
+                            PrintCX(GetCdTrackName(game->cdTrack - 1), 160, y + pauseMenuGap * 5);
+                            if ((u_int)pause->frameCount % 30 < 21) AddText(targang, 85, 185, 8, 1);
                             AddText(nozzleShip, 85, 170, 8, 1);
                         } else {
                             SetVolume(ambientVoice1, 0);
                         }
                         UpdateNotes(1);
-                        UpdateMusicBar(polys->musicBars, game);
-                        UpdateSfxBar(polys->sfxBars, game);
+                        UpdateMusicBar(polys->red, game);
+                        UpdateSfxBar(polys->green, game);
                     }
-                polys->box[CurrentScreen].y0 = boxY;
-                polys->box[CurrentScreen].y1 = boxY;
-                polys->box[CurrentScreen].x0 = boxX;
-                polys->box[CurrentScreen].x1 = boxX + boxWidth;
-                polys->box[CurrentScreen].x2 = boxX;
-                polys->box[CurrentScreen].y2 = boxY + boxHeight;
-                polys->box[CurrentScreen].x3 = boxX + boxWidth;
-                polys->box[CurrentScreen].y3 = boxY + boxHeight;
+                polys->footer[CurrentScreen].y0 = boxY;
+                polys->footer[CurrentScreen].y1 = boxY;
+                polys->footer[CurrentScreen].x0 = boxX;
+                polys->footer[CurrentScreen].x1 = boxX + boxWidth;
+                polys->footer[CurrentScreen].x2 = boxX;
+                polys->footer[CurrentScreen].y2 = boxY + boxHeight;
+                polys->footer[CurrentScreen].x3 = boxX + boxWidth;
+                polys->footer[CurrentScreen].y3 = boxY + boxHeight;
                 if (!boxClosing) {
-                    AddPrim(OT2[CurrentScreen] + 1599, &polys->box[CurrentScreen]);
-                    AddPrim(OT2[CurrentScreen] + 1599, &polys->tile[CurrentScreen]);
+                    AddPrim(OT2[CurrentScreen] + 1599, &polys->footer[CurrentScreen]);
+                    AddPrim(OT2[CurrentScreen] + 1599, polys->textureWindow[CurrentScreen]);
                 }
                 if (game->paused) {
                     openSteps = 0;
@@ -290,23 +287,23 @@ void InGameReset(PauseState *state, ConfigData *game, OptionsPolys *polys)
                     boxOpen = 0;
                     boxClosing = 0;
                 }
-                polys->box[CurrentScreen].y0 = boxY;
-                polys->box[CurrentScreen].y1 = boxY;
-                polys->box[CurrentScreen].x0 = boxX;
-                polys->box[CurrentScreen].x1 = boxX + boxWidth;
-                polys->box[CurrentScreen].x2 = boxX;
-                polys->box[CurrentScreen].y2 = boxY + boxHeight;
-                polys->box[CurrentScreen].x3 = boxX + boxWidth;
-                polys->box[CurrentScreen].y3 = boxY + boxHeight;
-                AddPrim(OT[CurrentScreen], &polys->box[CurrentScreen]);
-                AddPrim(OT[CurrentScreen], &polys->tile[CurrentScreen]);
+                polys->footer[CurrentScreen].y0 = boxY;
+                polys->footer[CurrentScreen].y1 = boxY;
+                polys->footer[CurrentScreen].x0 = boxX;
+                polys->footer[CurrentScreen].x1 = boxX + boxWidth;
+                polys->footer[CurrentScreen].x2 = boxX;
+                polys->footer[CurrentScreen].y2 = boxY + boxHeight;
+                polys->footer[CurrentScreen].x3 = boxX + boxWidth;
+                polys->footer[CurrentScreen].y3 = boxY + boxHeight;
+                AddPrim(OT[CurrentScreen], &polys->footer[CurrentScreen]);
+                AddPrim(OT[CurrentScreen], polys->textureWindow[CurrentScreen]);
                 }
         } else {
             SetVolume(ambientVoice1, 0);
         }
     }
-    state->counter++;
-    prevChoice = state->choice;
+    pause->frameCount++;
+    prevChoice = pause->selection;
 }
 
 

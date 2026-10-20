@@ -1,18 +1,6 @@
 #include "functions.h"
-int InitCARD();
-int StartCARD();
-int _bu_init();
-int SetMem();
-int GsInitVcount();
-int ChangeClearSIO();
-int ChangeClearPAD();
-int memset_80089554();
-int srand();
-int ResetCallback();
-extern int _stacksize;
-extern int _ramsize;
-extern int __bss;
-extern int __bsslen;
+#include "pad.h"
+#include "ayrace.h"
 signed char activateOT2;
 int attractCycles;
 short sixTracks;
@@ -25,17 +13,11 @@ extern int attractActTrack;
 extern int attractNormTrack;
 extern int attractTrackNo;
 extern int attractLoopFlag;
-extern signed char sillyShips;
-extern short TextureTableCount;
 extern unsigned short ghostClutX;
 extern unsigned short ghostClutY;
 extern unsigned char raceTracks[];
-extern u_short menuTextures[];
 extern int cdFlag[];
 extern short keyDefineThrust;
-extern int fixedHeapAddress;
-extern unsigned short gClutX;
-extern unsigned short gClutY;
 extern int remoteShip;
 extern signed char cdPlaySeconds[];
 extern u_long *OT[];
@@ -46,15 +28,14 @@ extern int attractDelayFrames;
 extern unsigned char cdMusicIndex;
 extern int ownShip;
 HeapBlock *mainheapcopy;
-int reserveHeapCopy;
+HeapBlock *reserveHeapCopy;
 ConfigData *gameData;
 extern int cdMusicTrack;
 extern unsigned short keysDown;
 extern int linkSendFlag;
-extern signed char gameType;
 extern int raceType;
 extern short CurrentScreen;
-extern int reserveHeap;
+extern HeapBlock *reserveHeap;
 extern int quadIndex;
 extern struct PadPacket padBuf1[];
 extern short gTextureX;
@@ -64,27 +45,29 @@ int raceContext;
 extern int cdMusicCount;
 extern int ghostShip;
 extern struct WipeCdStatus cdStatus[];
-extern signed char continuesLeft;
-extern int savedLapTimes[]; /* Port: the lap times and the four words after them */
+extern int savedLapTimes[];
 extern CdlLOC cdTrackLocs[];
 extern unsigned char cdMusicTable[];
 extern HeapBlock *heap;
 
-void main(void) __attribute__((noreturn));
-void main(void) {
+/* Port: the console's heap area was the RAM between the end of the program (__bss + __bsslen)
+   and the stack, and the reserve heap sat directly behind the main heap.  Two blocks that follow
+   each other in one buffer keep that layout.  The sizes are the console's, scaled for the larger
+   native records (see PORT_HEAP_SCALE in malloc.h). */
+static union { long long alignment; char bytes[MAIN_HEAP_SIZE + RESERVE_HEAP_SIZE]; } portHeapArea;
+
+int PsxMain(void) { /* Port: was void main(void), noreturn; the platform owns the program entry */
     char callWorkspace[64];
     char introFilename[16] = "C:\\ntscanim.exe";
     char initMemory[8];
-    char menuPrimitives[0x50];
-    char menuBackground[0x90];
+    POLY_FT4 menuPrimitives[2];
+    POLY_FT4 menuBackground[4]; /* the original reserved 0x90 bytes; two are drawn */
     ConfigData config;
     RECT rect;
     char workspace[0x1AF0];
-    int heapStart;
+    char *heapStart;
     int heapBytes;
-    int reservedBytes;
     int frame;
-    int ramEnd;
     int titleTimeout;
     int titleFrames;
     int menuRequested;
@@ -95,20 +78,19 @@ void main(void) {
     int timeout;
     int musicSelection;
 
-    memset_80089554(initMemory, 0, 4);
+    memset(initMemory, 0, 4);
     promptTimer = 0;
     ResetCallback();
     SetMem(2);
-    fixedHeapAddress = 0x801F7064;
-    ramEnd = _ramsize - _stacksize;
-    heapStart = __bss + __bsslen;
-    reservedBytes = 0xE1000 + (heapStart & 0x7FFFFFFF);
-    heapBytes = ramEnd - reservedBytes;
+    /* Port: fixedHeapAddress = 0x801F7064 is gone (nothing reads it), and the heap bounds come from
+       portHeapArea instead of __bss, __bsslen, _ramsize and _stacksize. */
+    heapBytes = MAIN_HEAP_SIZE;
+    heapStart = portHeapArea.bytes;
     heap = (HeapBlock *)heapStart;
-    reserveHeap = heapStart + heapBytes;
+    reserveHeap = (HeapBlock *)(heapStart + heapBytes);
     menuRequested = 0;
-    InitDynamicMem((HeapBlock *)heapStart, heapBytes);
-    InitDynamicMem((HeapBlock *)reserveHeap, 0xE1000);
+    InitDynamicMem(heap, heapBytes);
+    InitDynamicMem(reserveHeap, RESERVE_HEAP_SIZE);
     reserveHeapCopy = reserveHeap;
     mainheapcopy = heap;
     InitSystem();
@@ -131,7 +113,7 @@ void main(void) {
     InitialiseLightMatrix();
     ClearVram();
     InitSonyDisplay();
-    Load16BitTexture((int)"c:\\wipeout2\\textures\\sce_logo.tim", 1);
+    Load16BitTexture("c:\\wipeout2\\textures\\sce_logo.tim", 1);
     InitCD(cdTrackLocs, 0);
     gameData = &config;
     TextureTableCount = 0x113;
@@ -145,7 +127,7 @@ void main(void) {
     } while (frame < 0xF0);
     SetDispMask(0);
     InitGameDisplay(1);
-    Load16BitTexture((int)"c:\\wipeout2\\textures\\rcopyxl.tim", 1);
+    Load16BitTexture("c:\\wipeout2\\textures\\rcopyxl.tim", 1);
     SetDispMask(1);
     activateOT2 = 1;
     frame = 0;
@@ -153,13 +135,13 @@ void main(void) {
         VSync(0);
         frame += 1;
     } while (frame < 0x3C);
-    Load16BitTexture((int)"c:\\wipeout2\\textures\\dolbynts.tim", 1);
+    Load16BitTexture("c:\\wipeout2\\textures\\dolbynts.tim", 1);
     frame = 0;
     do {
         VSync(0);
         frame += 1;
     } while (frame < 0x3C);
-    Load16BitTexture((int)"c:\\wipeout2\\textures\\redbntsc.tim", 1);
+    Load16BitTexture("c:\\wipeout2\\textures\\redbntsc.tim", 1);
     frame = 0;
     do {
         VSync(0);
@@ -218,7 +200,7 @@ void main(void) {
     while (1) {
 restart_menu:
         if (menuRequested == 0) {
-            menuTexture = Load16BitTexture((int)"c:\\wipeout2\\textures\\rstartxl.tim", 0);
+            menuTexture = Load16BitTexture("c:\\wipeout2\\textures\\rstartxl.tim", 0);
         }
         titleFrames = 0;
         if ((raceType != championshipType) || (raceContext == enabled)) {
@@ -333,11 +315,11 @@ block_56:
         gTextureY = 0;
         attractDelayFrames = 0;
         linkSendFlag = 0;
-        savedLapTimes[0] = 0;
-        raceResetWord0 = 0;
-        raceResetWord1 = 0;
-        raceResetWord2 = 0;
-        raceResetWord3 = 0;
+        savedLapTimes[0] = 0; /* Port: savedLapTimes is int[5]; the original named elements 1..4 raceResetWord0..3 */
+        savedLapTimes[1] = 0;
+        savedLapTimes[2] = 0;
+        savedLapTimes[3] = 0;
+        savedLapTimes[4] = 0;
         gClutX = ghostClutX;
         gClutY = ghostClutY;
         if (raceType == championshipType) {
@@ -358,7 +340,7 @@ block_56:
         savedTextureTableCount = TextureTableCount;
         if (keyDefineThrust == 0) {
             ShowLoadMessage();
-            InitMenuTextures(menuTextures);
+            InitMenuTextures(&menuTextures); /* Port: menuTextures is one index (globals.h), not an array */
         }
         InitRaceLoad();
         keyDefineThrust = 0;

@@ -3,27 +3,27 @@
 
 #include "wipeout.h"
 
-/* Written into the record's magic word when a take has been recorded. */
+/* Written into a take's magic field when it has been recorded. */
 #define GHOST_MAGIC 0x3039
-
-/* A take is a header (attract seed at 0, then the key counts, control type, flags, track,
- * class and a copy of the player's ship at GHOST_SHIP_AT) and then the keypress halfwords
- * at GHOST_KEYS_AT. The header words are separate globals (see ghost.c). */
-#define GHOST_SHIP_AT 0x14
-#define GHOST_KEYS_AT 0x104
 
 /* Keypress slots: a take holds at most this many halfwords of input. */
 #define GHOST_KEYS 0x3138
 
+/* A take: what the player did in a race, replayed by the ghost ship of the next race on the
+   same track and class. The header is the attract-mode seed, the counters and the identity of
+   the take; the ship is a copy of the player's ship as it was at the start of the race. */
 typedef struct GhostReplay {
-    u8  header[GHOST_KEYS_AT];
-    u16 keys[GHOST_KEYS];
+    s32      attractSeed;   /* seed of the attract-mode random numbers when the race started */
+    s32      keyCount;      /* keypress halfwords recorded (or played back) so far */
+    s32      keyTotal;      /* keypress halfwords in the take */
+    s16      control;       /* pad type the take was recorded with: 1 digital, 2 analogue */
+    s16      disabled;      /* set when the take is not usable (recording was interrupted) */
+    s16      magic;         /* GHOST_MAGIC when a take has been recorded */
+    u8       trackNum;
+    u8       shipClass;
+    ShipData ship;
+    u16      keys[GHOST_KEYS];
 } GhostReplay;
-
-/* The attract seed (first word of a take), the ship copy in its header and keypress n. */
-#define GHOST_SEED(take) (*(s32 *)(take)->header)
-#define GHOST_SHIP(take) ((ShipData *)((take)->header + GHOST_SHIP_AT))
-#define GHOST_KEY(take, n) (*(u16 *)((u8 *)(take) + GHOST_KEYS_AT + (n) * 2))
 
 /* The take being recorded during a race, and the take the next race plays back. */
 extern GhostReplay recordBuffer[];

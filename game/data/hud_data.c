@@ -5,7 +5,7 @@
 s16 rivalFinishPos;
 short finishPosition;
 short hudTexIndex8;
-int *OT[2];
+u_long *OT[2];
 short hudTexIndex12;
 short continueAnimFrame;
 short hudTexIndex16;
@@ -18,7 +18,7 @@ int raceType;
 int ghostShip;
 u_char linkRaceEnd;
 Texture *speedoShieldTex;
-u_char continuesLeft;
+unsigned char continuesLeft;
 Texture *speedoSpeedTex;
 char trackNameText[80];
 FontGlyph fontGlyphs12[40];

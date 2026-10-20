@@ -3,20 +3,19 @@
 
 extern TrackData *track;
 extern short      activeShipCount;
-extern ShipRank shipRank[]; /* Port: shipOrder is a part of it, see data_alias.h */
+extern ShipRank   shipRank[];
 
-/* The second argument is the register residue the original call leaves behind. */
-int SectionSearchResidue(ShipData *ship, TrackData *residue) __asm__("SectionSearch");
-
-/* A new drone is lifted to its flying height over its first 200 frames, then starts steering. */
-void UpdateDroneShipStart(ShipData *ships, Object **unused, int shipNo)
+/* A new drone is lifted to its flying height over its first 200 frames, then starts steering.
+   Port: it is called through ShipData.update, so it takes the five arguments of every update function;
+   the last two are not read. */
+void UpdateDroneShipStart(ShipData *ships, Object **unused, int shipNo, WeaponData *unusedWeapons, ControlInput *unusedControl)
 {
     ShipData *ship;
     int       remaining;
 
     ship = &ships[shipNo];
     ship->prevShipSect = ship->nearTrkSect;
-    SectionSearchResidue(ship, track);
+    SectionSearch(ship); /* Port: the console also left track in the unused second argument register */
     if (ship->updateCount == 200) {
         ship->startY = ship->ppivot.vy;
     }
@@ -30,12 +29,6 @@ void UpdateDroneShipStart(ShipData *ships, Object **unused, int shipNo)
 
 extern int       ownShip;
 extern int       remoteShip;
-extern u_short   shipClassIndex;
-extern u_short   numTrackSections;
-extern u_short   clipLevel;
-extern u_char    gameType;
-extern short     remoteRacePos;
-extern short     playerPosition;
 extern short     pitLaneSection1[];
 extern short     pitLaneSection2[];
 extern int       pitLaneDirection[];
@@ -76,12 +69,6 @@ extern ClassBonus droneInitVector[];
 #define TRACK_MAGNET 64
 #define TARGETHEIGHT 256
 
-/* The third argument is the register residue the original call leaves behind. */
-int sarResidue(int a, int n, int residue) __asm__("sar");
-
-/* Reads a local back from the stack at every use. */
-#define RELOAD(x) (*(volatile __typeof__(x) *)&(x))
-
 /* Steers a computer-controlled ship round the track (or over it when it is flying), lets it
    speed up, fire at the human player and take junctions, then integrates its motion. */
 void UpdateDroneShip(ShipData *ships, Object **shipShapes, int shipNo, WeaponData *weaponIndex, ControlInput *control)
@@ -95,19 +82,13 @@ void UpdateDroneShip(ShipData *ships, Object **shipShapes, int shipNo, WeaponDat
     Vector       path2;
     ClassBonus   speedBonus;
     VECTOR       direction;
-    /* Frame slots that are read back from memory: sp+0xB8 .. sp+0xD8. */
-    struct {
-        short           lateral;
-        short           along;
-        int             pad04;
-        WeaponData     *volatile weapons;
-        int             pad0C;
-        short           humanMoveDist;
-        short           pad12[3];
-        volatile short  boostStep;
-        short           pad1A[3];
-        volatile short  humanNo;
-    } held;
+    /* Locals the original reads back from the stack (volatile) or hands to calcMyXPos by address. */
+    short           lateral;
+    short           along;
+    WeaponData     *volatile weapons;
+    volatile short  humanMoveDist;
+    volatile short  boostStep;
+    volatile short  humanNo;
     ShipData     *humanShip;
     TrackSection *section;
     TrackSection *nearSect;
@@ -127,7 +108,6 @@ void UpdateDroneShip(ShipData *ships, Object **shipShapes, int shipNo, WeaponDat
     int           sfx;
     int           sfxVolume;
     int           weaponType;
-    u_short       oldPitch;
     int           flat;
     int           alpha;
     int           magnitude;
@@ -153,20 +133,21 @@ void UpdateDroneShip(ShipData *ships, Object **shipShapes, int shipNo, WeaponDat
 
     /* The human ship this drone is measured against: the remote player when it is ahead of the local one
        (and gameType is not 2), else the local player. */
-    held.weapons = weaponIndex;
+    weapons = weaponIndex;
     speedBonus = droneInitVector[0];
     blocked = 0;
     offset.vx = 0;
     offset.vy = 0;
     offset.vz = 0;
+    /* Port: the console stored the low halfword of ownShip / remoteShip (read with lhu); the conversion to short is the same. */
     if ((gameType != 2) && (playerPosition >= remoteRacePos)) {
-        *(short *)&held.humanNo = *(u_short *)&remoteShip;
+        humanNo = remoteShip;
     } else {
-        *(short *)&held.humanNo = *(u_short *)&ownShip;
+        humanNo = ownShip;
     }
     ship = ships + shipNo;
     startCount = ship->numToSpeed;
-    humanShip = ships + held.humanNo;
+    humanShip = ships + humanNo;
     /* Launch acceleration while numToSpeed counts down, afterwards the speed creeps up to its limit. */
     if (startCount > 0) {
         startTemper = ship->combatAttr;
@@ -202,7 +183,7 @@ void UpdateDroneShip(ShipData *ships, Object **shipShapes, int shipNo, WeaponDat
         }
         self = ships + shipNo;
         raceDist = (u_short)raceLines[self->nearSecNo].distance;
-        raceDiff = raceDist - (u_short)raceLines[ships[held.humanNo].nearSecNo].distance;
+        raceDiff = raceDist - (u_short)raceLines[ships[humanNo].nearSecNo].distance;
         sectDiff = raceDiff;
         if ((short)raceDiff < 0) {
             sectDiff = numTrackSections + raceDiff;
@@ -254,15 +235,15 @@ void UpdateDroneShip(ShipData *ships, Object **shipShapes, int shipNo, WeaponDat
                     zone = -3;
                 }
                 steerBias = classSteer[shipClassIndex];
-                rivalNo = held.humanNo;
+                rivalNo = humanNo;
                 rival = ships + rivalNo;
                 steer = steerBias;
-                held.humanMoveDist = rival->moveDist;
+                humanMoveDist = rival->moveDist;
                 if (steerBias < 0) {
                     steerBias += 7;
                 }
                 numToSpeed = ship->numToSpeed;
-                held.boostStep = (u_short)((u_int)steerBias >> 3);
+                boostStep = (u_short)((u_int)steerBias >> 3);
                 if ((numToSpeed == 0) && (getShipBehindLAP(ships, shipNo) == rivalNo) && (activeShipCount >= 4)) {
                     packDiff = (u_short)raceLines[ships[getShipInfrontLAP(ships, getShipInfrontLAP(ships, shipNo))].nearSecNo].distance - (u_short)raceLines[rival->nearSecNo].distance;
                     packGap = packDiff;
@@ -273,19 +254,19 @@ void UpdateDroneShip(ShipData *ships, Object **shipShapes, int shipNo, WeaponDat
                         blocked = 1;
                     }
                 }
-                if ((blocked == 0) && (ships[shipNo].moveDist < RELOAD(held.humanMoveDist))) {
+                if ((blocked == 0) && (ships[shipNo].moveDist < humanMoveDist)) {
                     if ((zone == 2) || (zone == -2)) {
-                        if ((((short)classSpeedLimit[shipClassIndex] / 2) < ships[held.humanNo].speed) && (((attr = ship->combatAttr) & DRONE_AMBUSHER) || (attr & DRONE_HUNTER))) {
+                        if ((((short)classSpeedLimit[shipClassIndex] / 2) < ships[humanNo].speed) && (((attr = ship->combatAttr) & DRONE_AMBUSHER) || (attr & DRONE_HUNTER))) {
                             curSpeed = ship->speed;
                             if (curSpeed <= (ship->remoteMax + (steer / 4))) {
-                                ship->speed = curSpeed + (ship->remoteMagnitude + (held.boostStep / 4));
+                                ship->speed = curSpeed + (ship->remoteMagnitude + (boostStep / 4));
                             }
                         }
                     }
-                    if ((ships[shipNo].moveDist < RELOAD(held.humanMoveDist)) && (((u_short)zone < 2U) || (zone == -1)) && (((short)classSpeedLimit[shipClassIndex] / 2) < ships[held.humanNo].speed) && (((attr = ship->combatAttr) & DRONE_AMBUSHER) || (attr & DRONE_HUNTER))) {
+                    if ((ships[shipNo].moveDist < humanMoveDist) && (((u_short)zone < 2U) || (zone == -1)) && (((short)classSpeedLimit[shipClassIndex] / 2) < ships[humanNo].speed) && (((attr = ship->combatAttr) & DRONE_AMBUSHER) || (attr & DRONE_HUNTER))) {
                         curSpeed = ship->speed;
                         if ((ship->remoteMax + (steer / 2)) >= curSpeed) {
-                            ship->speed = curSpeed + (ship->remoteMagnitude + (held.boostStep / 2));
+                            ship->speed = curSpeed + (ship->remoteMagnitude + (boostStep / 2));
                         }
                     }
                 }
@@ -293,7 +274,7 @@ void UpdateDroneShip(ShipData *ships, Object **shipShapes, int shipNo, WeaponDat
             /* Fire the drone's weapon according to its temperament and the zone. */
             weapon = ship->weapon;
             weaponType = weapon & 0xFF;
-            if ((weaponType != 0) && (zone != 100) && !(ships[held.humanNo].combatAttr & DESTROYED)) {
+            if ((weaponType != 0) && (zone != 100) && !(ships[humanNo].combatAttr & DESTROYED)) {
                 attr = ship->combatAttr;
                 if (!(attr & DRONE_AMBUSHER)) goto hunterAttack;
                 if ((zone == -3) && (((u_int)(weapon - 1) < 2U) || (weaponType == ELEC_BOLT))) {
@@ -301,7 +282,7 @@ void UpdateDroneShip(ShipData *ships, Object **shipShapes, int shipNo, WeaponDat
                     if (weaponType == MISSILE) PlayNote(SFX_MISSILE, 0x1FE, 15, 15, 256);
                     if (weaponType == ELEC_BOLT) PlayNote(SFX_SHOCKWAVE, 0x1FE, 15, 15, 256);
                     fireType = ship->weapon;
-                    fireWeapons = held.weapons;
+                    fireWeapons = weapons;
                     ship->targetShip = -1;
                     FireWeapon(ship, fireWeapons, shipNo, fireType);
                     goto weaponDone;
@@ -309,7 +290,7 @@ void UpdateDroneShip(ShipData *ships, Object **shipShapes, int shipNo, WeaponDat
                 weaponCopy = weapon & 255;
                 if (zone != 1) goto weaponByteReady;
                 if (weaponCopy != MINE) goto missileCheck;
-                FireWeapon(ship, held.weapons, shipNo, *(volatile u_char *)&ship->weapon);
+                FireWeapon(ship, weapons, shipNo, *(volatile u_char *)&ship->weapon);
                 sfx = weaponType + (SFX_MINES - MINE);
                 sfxVolume = 470;
                 goto playSound;
@@ -317,8 +298,8 @@ hunterAttack:
                 if (!(attr & DRONE_HUNTER)) goto weaponDone;
                 if (((u_short)(zone + 3) < 2U) && (((u_int)(weapon - 1) < 2U) || (weaponType == ELEC_BOLT))) {
                     fireType = *(volatile u_char *)&ship->weapon;
-                    fireWeapons = held.weapons;
-                    ship->targetShip = *(volatile u_char *)&held.humanNo;
+                    fireWeapons = weapons;
+                    ship->targetShip = (u_char)humanNo;
                     FireWeapon(ship, fireWeapons, shipNo, fireType);
                     if (weaponType == ROCKET) PlayNote(SFX_ROCKET, 0x1FE, 15, 15, 256);
                     if (weaponType == MISSILE) PlayNote(SFX_MISSILE, 0x1FE, 15, 15, 256);
@@ -327,7 +308,7 @@ hunterAttack:
                 weaponCopy = weapon & 255;
                 if (zone != 1) goto weaponByteReady;
                 if (weaponCopy != MINE) goto missileCheck;
-                FireWeapon(ship, held.weapons, shipNo, ship->weapon);
+                FireWeapon(ship, weapons, shipNo, ship->weapon);
                 sfx = SFX_MINES;
                 sfxVolume = 470;
                 goto playSound;
@@ -336,8 +317,8 @@ missileCheck:
                 weaponCopy = weapon & 255;
                 if (gameType != weaponCopy) goto weaponDone;
                 fireType = *(volatile u_char *)&ship->weapon;
-                fireWeapons = held.weapons;
-                ship->targetShip = *(volatile u_char *)&held.humanNo;
+                fireWeapons = weapons;
+                ship->targetShip = (u_char)humanNo;
                 FireWeapon(ship, fireWeapons, shipNo, fireType);
                 sfx = SFX_MISSILE;
                 sfxVolume = 510;
@@ -347,7 +328,7 @@ weaponDone:
                 weaponCopy = weapon & 255;
 weaponByteReady:
                 if ((weaponCopy == SHIELD) && ((u_short)((u_short)zone - 1) < 3U)) {
-                    FireWeapon(ship, held.weapons, shipNo, ship->weapon);
+                    FireWeapon(ship, weapons, shipNo, ship->weapon);
                 }
             }
         }
@@ -418,12 +399,12 @@ weaponByteReady:
         ship->vpivot.vy = ship->vpivot.vy + ship->apivot.vy;
         ship->vpivot.vz = ship->vpivot.vz + ship->apivot.vz;
         /* Speed-up pads boost the drone when it drives over them on the matching side. */
-        calcMyXPos(ships, shipNo, &held.lateral, &held.along);
-        if ((face->flags & SPEED_UP) && (held.lateral < 0)) {
+        calcMyXPos(ships, shipNo, &lateral, &along);
+        if ((face->flags & SPEED_UP) && (lateral < 0)) {
             ship->speed = ship->speed + speedBonus.value[shipClassIndex];
         }
         face++;
-        if ((face->flags & SPEED_UP) && (held.lateral > 0)) {
+        if ((face->flags & SPEED_UP) && (lateral > 0)) {
             ship->speed = ship->speed + speedBonus.value[shipClassIndex];
         }
         facePoint.vx = track->vertices[face->vertex[0]].vx;
@@ -450,9 +431,9 @@ weaponByteReady:
             ship->vhdg = ship->vhdg + 4096;
         }
         ship->hdg += ship->vhdg >> 4;
-        ship->vpitch = -ratan2(targetVector.vy, flat) - (oldPitch = ship->pitch);
+        ship->vpitch = -ratan2(targetVector.vy, flat) - ship->pitch;
         ship->pitch += ship->vpitch >> 4;
-        ship->vroll += sarResidue(ship->vhdg, 2, oldPitch);
+        ship->vroll += sar(ship->vhdg, 2); /* Port: the console call left the old pitch in $a2, which sar never reads */
         ship->vroll -= ship->vroll >> 1;
         ship->roll += ship->vroll;
         ship->roll -= ship->roll >> 3;
@@ -566,9 +547,10 @@ void followRaceLine(VECTOR *relative, ShipData *ships, Face *segment, int ship)
 
     index = ships[ship].nearSecNo;
     t = track;
-    relative->vx = racingLine[index].vx - t->vertices[segment->vertex[0]].vx;
-    relative->vy = racingLine[index].vy - t->vertices[segment->vertex[0]].vy;
-    relative->vz = racingLine[index].vz - t->vertices[segment->vertex[0]].vz;
+    /* Port: racingLine[n].vx, vy and vz were another name for raceLines[n].x, y and z. */
+    relative->vx = raceLines[index].x - t->vertices[segment->vertex[0]].vx;
+    relative->vy = raceLines[index].y - t->vertices[segment->vertex[0]].vy;
+    relative->vz = raceLines[index].z - t->vertices[segment->vertex[0]].vz;
 }
 
 /* Steers past the ship ahead when the two are level sideways and there is room beside it. */
@@ -644,7 +626,7 @@ void calcMyXPos(ShipData *ships, short shipNo, short *lateral, short *along)
     edge.vx = track->vertices[face->vertex[0]].vx - track->vertices[face->vertex[1]].vx;
     edge.vy = track->vertices[face->vertex[0]].vy - track->vertices[face->vertex[1]].vy;
     edge.vz = track->vertices[face->vertex[0]].vz - track->vertices[face->vertex[1]].vz;
-    ship = (ShipData *)(shipNo * sizeof(ShipData) + (int)ships);
+    ship = &ships[shipNo];
     fromCentre.vx = ship->nearTrkSect->centre.vx - ship->ppivot.vx;
     fromCentre.vy = ship->nearTrkSect->centre.vy - ship->ppivot.vy;
     fromCentre.vz = ship->nearTrkSect->centre.vz - ship->ppivot.vz;
@@ -702,8 +684,9 @@ short getShipInfrontLAP(ShipData *ships, short ship)
     short attempts;
     short candidate;
 
+    /* Port: shipOrder[n][0] was another name for shipRank[n].shipNo. */
     for (position = 0; position < activeShipCount; position++) {
-        if (shipOrder[position][0] == ship) {
+        if (shipRank[position].shipNo == ship) {
             break;
         }
     }
@@ -712,7 +695,7 @@ short getShipInfrontLAP(ShipData *ships, short ship)
             position = activeShipCount;
         }
         position--;
-        candidate = shipOrder[position][0];
+        candidate = shipRank[position].shipNo;
         if (!(ships[candidate].combatAttr & DESTROYED)) {
             if (candidate != ship) {
                 return candidate;
@@ -730,7 +713,7 @@ short getShipBehindLAP(ShipData *ships, short ship)
     short candidate;
 
     for (position = 0; position < activeShipCount; position++) {
-        if (shipOrder[position][0] == ship) {
+        if (shipRank[position].shipNo == ship) {
             break;
         }
     }
@@ -739,7 +722,7 @@ short getShipBehindLAP(ShipData *ships, short ship)
         if (position >= activeShipCount) {
             position = 0;
         }
-        candidate = shipOrder[position][0];
+        candidate = shipRank[position].shipNo;
         if (!(ships[candidate].combatAttr & DESTROYED)) {
             if (candidate != ship) {
                 return candidate;
@@ -755,7 +738,7 @@ void humanToDroneSpeed(ShipData *ships, int shipNo)
     ShipData *ship;
     int       speed;
 
-    ship = (ShipData *)(shipNo * sizeof(ShipData) + (int)ships);
+    ship = &ships[shipNo];
     speed = ship->moveDist * 9;
     if (ship->remoteMax < speed) {
         speed = ship->remoteMax;

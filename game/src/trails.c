@@ -19,9 +19,6 @@ extern Trail      Plasma[];
 extern ShipData  *shipIndex;
 extern int        ownShip;
 extern short      CurrentScreen;
-extern int      *OT[];
-extern HeapBlock *reserveHeap;
-extern u_char     sillyShips;
 extern LINE_F2    targetPrims[8][4][2];
 extern DR_MODE    targetDrawModes[2];
 extern POLY_G3    muzzletop[2][2];
@@ -30,8 +27,6 @@ extern POLY_G3    muzzleright[2][2];
 extern POLY_G3    muzzlebot[2][2];
 extern DR_MODE    muzzletrans[2];
 extern POLY_G4    flare[19][12][2];
-int RotTransPers3(SVECTOR *v0, SVECTOR *v1, SVECTOR *v2, int *sxy0, int *sxy1,
-                   int *sxy2, int *p, int *flag);
 
 void DrawFlare(int x, int y, int distance, int ship) {
     int speed, value, half, quarter, size;
@@ -225,7 +220,8 @@ void UpdateTarget(int x, int y, int distance, int target) {
 
 void InitTrails(void) {
     int i, j, k, l, m;
-    shipTrails = DAlloc(reserveHeap, 0x8700);
+    /* Port: was the literal 0x8700 (15 * 2304); sizeof(Trail) is 2304 on both layouts. */
+    shipTrails = DAlloc(reserveHeap, 15 * sizeof(Trail));
     targetvalid = 0;
     for (i = 0; i < 2; i++) {
         for (l = 0; l < 8; l++) {
@@ -952,7 +948,8 @@ void DrawFlashNozzle(int shipNum, TrackCamera *camera) {
     Skeleton *view;
 
     view = camera->camPos;
-    ship = (ShipData *)(shipNum * sizeof(ShipData) + (int)shipIndex);
+    /* Port: was shipNum * sizeof(ShipData) + (int)shipIndex; ShipData is bigger natively. */
+    ship = &shipIndex[shipNum];
     yOffset = (ship->attr & VIEW_IN) ? 0x60 : 0;
     ws.vertex[0].vx = ship->ppivot.vx + (ship->unitVecNose.vx >> 3) - (ship->unitVecNose.vx >> 5) + view->relative.t[0];
     ws.vertex[0].vy = ship->ppivot.vy + (ship->unitVecNose.vy >> 3) - (ship->unitVecNose.vy >> 5) + view->relative.t[1];

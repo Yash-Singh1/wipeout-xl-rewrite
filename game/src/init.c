@@ -10,16 +10,9 @@
 /* $gp-relative globals are tentative definitions; the rest are extern. */
 int shipClutCount;
 
-extern u_short        TextureTableCount;
 extern Texture       *textureTable[];
-extern HeapBlock     *reserveHeap;
-extern HeapBlock     *heap;
 extern unsigned short ghostClutX;
 extern unsigned short ghostClutY;
-extern unsigned short gClutX;
-extern unsigned short gClutY;
-extern unsigned short gTextureX;
-extern unsigned short gTextureY;
 extern GhostClut      ghostCluts[];
 extern TIMlist        timList;
 extern TIMlist        wadTimList;
@@ -27,7 +20,6 @@ extern short          seqTextureCount;
 extern char           errorString[];
 extern char           fmtTrackNumPadded[];
 extern char           fmtTrackNum[];
-extern char           scenePath[];
 extern int            skyPos[];
 extern Object        *sharedPrimTable[][40];
 
@@ -120,7 +112,9 @@ short WADInitScene(Object **objects, u_short *objectCount, Skeleton *camera, Con
 
 void getPath(char *trackPath, unsigned char trackNo, char *name)
 {
-    char trackNumText[2];
+    /* Port: the console's buffer had two bytes, but "%02d" writes three (digits and terminator)
+       and a track number can have three digits; sized for the longest result. */
+    char trackNumText[4];
 
     __builtin_memcpy(trackPath, "c:\\wipeout2\\track", 18);
     if (trackNo <= 9) {
@@ -139,7 +133,7 @@ void LoadCmpFiles(TIMlist *timPtr)
     Texture *texture;
 
     for (i = 0; i < seqTextureCount; i++) {
-        texture = NewLoadTexture((Tim *)timPtr->memOffset[i], 1, 0);
+        texture = NewLoadTexture((Tim *)(timPtr->memBase + timPtr->memOffset[i]), 1, 0);
         if (texture) {
             textureTable[(short)TextureTableCount++] = texture;
         }
@@ -154,7 +148,7 @@ void GhostLoadCmpFiles(TIMlist *timPtr)
     Texture *texture;
 
     for (i = 0; i < seqTextureCount; i++) {
-        texture = NewLoadTexture((Tim *)timPtr->memOffset[i], 1, 1);
+        texture = NewLoadTexture((Tim *)(timPtr->memBase + timPtr->memOffset[i]), 1, 1);
         if (texture) {
             textureTable[(short)TextureTableCount++] = texture;
         }
@@ -166,7 +160,7 @@ void GhostLoadCmpFiles(TIMlist *timPtr)
 /* Uploads one TIM of a sequence and returns its texture record. A 4-bit TIM with no
    position is placed in the next free CLUT and texture cell; scene 1 also uploads a
    ghost copy of its CLUT. */
-Texture *NewLoadTexture(Tim *tim, int context, int scene)
+Texture *NewLoadTexture(struct Tim *tim, int context, int scene)
 {
     TimClut4 *tc4;
     TimClut8 *tc8;
@@ -362,9 +356,8 @@ TIMlist *LoadCompressedTextureSequence(char *fileName)
         totalSize += textureSize;
     }
     timList.memBase = DAlloc(reserveHeap, totalSize);
-    for (i = 0; i < seqTextureCount; i++) {
-        timList.memOffset[i] += (int)timList.memBase;
-    }
+    /* Port: the console added memBase to each offset here (an int held the address); the
+       offsets stay offsets and LoadCmpFiles/GhostLoadCmpFiles add memBase when they use them. */
     GsGetVcount();
     GsClearVcount();
     ExpandData((unsigned char *)(fileBuffer + 4 + seqTextureCount * 4), (unsigned char *)timList.memBase);
@@ -393,9 +386,7 @@ TIMlist *WADLoadCompressedTextureSequence(WADFILE *wad)
         length += buffer[i + 1];
     }
     wadTimList.memBase = DAlloc(reserveHeap, length + 32);
-    for (i = 0; i < seqTextureCount; i++) {
-        wadTimList.memOffset[i] += (int)wadTimList.memBase;
-    }
+    /* Port: the offsets stay offsets (see LoadCompressedTextureSequence). */
     GsGetVcount();
     GsClearVcount();
     ExpandData((u_char *)buffer + ((seqTextureCount * 4) + 4), wadTimList.memBase);

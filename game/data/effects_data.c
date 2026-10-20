@@ -8,5 +8,4 @@ TrackSection *droidStartSections[6];
 TrackSection *droidPickSection;
 TrackSection *lightSections[3];
 Object *startBoomObjs[4];
-/* Port: with waterfallSaved and waterfallRow after it: sixteen halfwords */
-u_char waterfallBuf[32];
+u_short waterfallBuf[16];

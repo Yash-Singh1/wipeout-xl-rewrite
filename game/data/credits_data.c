@@ -2,6 +2,8 @@
 #include "functions.h"
 #include "animover.h"
 
+short cheatfade = 0;
+int droidFlyin = 1000;
 char *Mds = "MANAGING DIRECTORS";
 char *DirDev = "DIRECTOR OF DEVELOPMENT";
 char *StudMan = "STUDIO MANAGER";
@@ -137,7 +139,7 @@ char *Feargus = "FEARGUS CARROLL";
 char *RedB1 = "RED BULL IS A TRADEMARK";
 char *RedB2 = "OF RED BULL GES M B H";
 int max = 0;
-u_char menuSendFlags = 0;
+unsigned char menuSendFlags = 0;
 u_char menuRecvFlags = 0;
 short gpuWarning = 0;
 short cpuWarning = 0;

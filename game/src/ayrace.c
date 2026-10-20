@@ -2,6 +2,9 @@
 #include "ayrace.h"
 #include "weapon.h"
 #include "hud.h"
+#include "ghost.h"
+#include "hiscores.h"
+#include "options.h"
 #include "raceinit.h"
 #include "include_asm_g8.h"
 
@@ -14,20 +17,16 @@ extern short            linkRemoteState;
 extern short            linkTimer;
 extern short            linked;
 extern u_char           medalDisplay;
-extern u_char           perfectLap;
 extern u_char           perfectLapCount;
 extern u_char           plasmaShotBusy;
 extern u_char           raceEndState;
-extern u_char           raceCompleteFlag;
 extern u_char           linkRaceDone;
-extern u_char           hudDisabled;
+extern HiScoreData scoreTabData; /* Port: hudDisabled is a part of it, see data_alias.h */
 extern u_char           sfxMode;
-extern u_char           gameType;
 extern int              trackNameScroll;
 extern int              playCredits;
 extern int              ownShip;
 extern int              raceType;
-extern int              linkSendFlag;
 extern int              raceEndTimer;
 extern int              attractLoopFlag;
 extern int              checkTimer;
@@ -37,11 +36,7 @@ extern int              oneMoreTime;
 extern int              masterWait;
 extern int              raceContext;
 extern u_short          idleTimer;
-extern u_short          keysPressed;
 extern u_short          keysDown;
-extern u_short          padType;
-#include "ghost.h" /* Port: recordDisabled is a part of it, see data_alias.h */
-extern short            finishPosition;
 extern short            sixTracks;
 extern short            sixXPlayed;
 extern short            eightTracks;
@@ -49,21 +44,15 @@ extern short            eightXPlayed;
 extern short            phantomDone;
 extern short            piranhaDone;
 extern u_char           linkSyncB;
-extern u_char           continuesLeft;
 extern u_char           linkRaceEnd;
-extern void            *continuesTexture;
 extern u_char           cdMusicIndex;
 extern int              cdMusicTrack;
-extern u_char           cdMusicTable[];
 extern ControlInput playerControl[]; /* Port: linkPadAux0 is a part of it, see data_alias.h */
-extern CameraUpdateFunc CameraUpdate;
 extern ConfigData      *gameData;
-extern TrackCamera     *cameraPtr;
 extern TrackData       *track;
 extern ShipData        *shipIndex;
 extern int              shipDamage[];
 extern int              fracdamage[];
-extern int              shipTargetIndex[];
 extern char            *crapArray[];
 extern char             selectLabel[];
 
@@ -75,7 +64,7 @@ void SetInGameCDTrack(signed char *bcd, struct WipeCdStatus *position, ConfigDat
     signed char   mode;
 
     *bcd = ((position->time >> 4) * 10) + (position->time & 0xF);
-    CdControlB(0x11, 0, position);
+    CdControlB(0x11, 0, (u_char *)position);
     mode = trackInfo->cdTrack;
     if (mode == 1) {
         trackNumber = ((position->track >> 4) * 10) + (position->track & 0xF);
@@ -110,7 +99,7 @@ void SetInGameCDTrack(signed char *bcd, struct WipeCdStatus *position, ConfigDat
 }
 
 
-void CheckShipDestroyed(ShipData *ships, RaceState *game, int *attract, int idleLimit)
+void CheckShipDestroyed(ShipData *ships, ConfigData *game, int *attract, int idleLimit)
 {
     void    (*update)();
     ShipData *own;
@@ -150,7 +139,7 @@ destroyed:
         }
     }
     if (droneSwitchStep == 1) {
-        own = (ShipData *)(ownShip * sizeof(ShipData) + (int)ships);
+        own = &ships[ownShip];
         game->complete = 1;
         update = own->update;
         linkSendFlag = droneSwitchStep;
@@ -304,16 +293,16 @@ int CheckAttractOver(ConfigData *config)
 }
 
 
-void RaceComplete(void *screen, void *unused, RaceState *gameData, short *choice, ScoreData *scoreData, int flags)
+void RaceComplete(void *screen, void *unused, ConfigData *gameData, short *choice, HiScoreData *scoreData, ShipData *flags)
 {
     char text[32];
     int  race;
 
     if (gameData->complete) {
-        if (raceType == 4 && (gameData->championship.flags&0xFFFF00)) {
+        if (raceType == 4 && (gameData->venomComplete || gameData->rapierComplete)) {
             if (finishPosition == 1 || finishPosition >= 4) {
                 if (finishPosition == 1) {
-                    if (gameData->championship.bytes[1] == 1 && gameData->class1Race == 5) {
+                    if (gameData->venomComplete == 1 && gameData->class1Race == 5) {
                         gameData->class1Unlocked = 1;
                         phantomDone = 1;
                         linkMyState = 3;
@@ -321,7 +310,7 @@ void RaceComplete(void *screen, void *unused, RaceState *gameData, short *choice
                         raceType = 99;
                         goto done;
                     }
-                    if (gameData->championship.bytes[2] == 1 && gameData->class2Race == 7) {
+                    if (gameData->rapierComplete == 1 && gameData->class2Race == 7) {
                         gameData->class2Unlocked = 1;
                         piranhaDone = 1;
                         linkMyState = 3;
@@ -329,10 +318,10 @@ void RaceComplete(void *screen, void *unused, RaceState *gameData, short *choice
                         raceType = 99;
                         goto done;
                     }
-                    if (gameData->championship.bytes[1] == 1) {
+                    if (gameData->venomComplete == 1) {
                         CentreText("PHANTOM CHALLENGE", 60, 36, 8, 1);
                         race = gameData->class1Race;
-                    } else if (gameData->championship.bytes[2] == 1) {
+                    } else if (gameData->rapierComplete == 1) {
                         CentreText("PIRANHA CHALLENGE", 60, 36, 8, 1);
                         race = gameData->class2Race;
                     }
@@ -364,7 +353,7 @@ void RaceComplete(void *screen, void *unused, RaceState *gameData, short *choice
                         gameData->complete = 0;
                         linkSendFlag = 0;
                         if (*choice == 0) {
-                            if (gameData->championship.bytes[1] == 1) gameData->class1Race++;
+                            if (gameData->venomComplete == 1) gameData->class1Race++;
                             else gameData->class2Race++;
                             linkMyState = 3;
                             raceEndTimer = 2;
@@ -493,13 +482,13 @@ void RaceComplete(void *screen, void *unused, RaceState *gameData, short *choice
             if (raceType == 1) storeGhostTrail(gameData, scoreData);
             gameData->highScore = 0;
             InitDefaultName(gameData, scoreData, 0);
-            if (!scoreData->gotHiScore) {
+            if (!scoreData->flag) {
                 raceCompleteFlag = 1;
                 gameData->complete = 1;
             }
         }
-        if (scoreData->gotHiScore) scoreData->displayScore = 1;
-        if (scoreData->displayScore) {
+        if (scoreData->flag) scoreData->highScore = 1;
+        if (scoreData->highScore) {
             DisplayScoreTab(gameData, scoreData);
             DeSelectScreen(screen);
             gameData->highScore = 0;
@@ -509,14 +498,14 @@ void RaceComplete(void *screen, void *unused, RaceState *gameData, short *choice
 }
 
 
-void CheckGamePause(ShipData *ships, int *pauseFlag, int unused, short *pauseChoice, int *pauseCounter)
+void CheckGamePause(ShipData *ships, int *pauseFlag, ConfigData *config, u_short *pauseChoice, int *pauseCounter)
 {
     if ((ships[ownShip].attr & RACING) && (((GetMenuKey(6) << 0x10) != 0) || (padType == 0)) && (*pauseFlag == -1)) {
         *pauseCounter = 0;
         CdMusicStop();
         PlayNote(9, 0xFF, 0xF, 0xF, 0x100);
         if (raceType == 1) {
-            recordDisabled = 1;
+            recordBuffer->disabled = 1;
         }
         *pauseFlag = 0;
         *pauseChoice = 0;
@@ -543,7 +532,7 @@ void Check2PlayerPause(u_char status, u_char *lastStatus, int *musicPaused)
 }
 
 
-void SelectPauseOption(int *selection, int canMove, ConfigData *config, PauseMenu *pause)
+void SelectPauseOption(int *selection, int canMove, ConfigData *config, struct PauseMenu *pause)
 {
     int up;
     int down;
@@ -562,7 +551,7 @@ void SelectPauseOption(int *selection, int canMove, ConfigData *config, PauseMen
             *selection = down;
             if (down >= 4) {
                 *selection = 0;
-played:
+played:;
             }
             PlayNote(8, 255, 15, 15, 256);
         }
@@ -570,7 +559,7 @@ played:
 }
 
 
-int PerformPauseOperations(PauseMenu *pause, struct SelectBox *box, ConfigData *config)
+int PerformPauseOperations(struct PauseMenu *pause, struct SelectBox *box, ConfigData *config)
 {
     int selection;
     int stage;
@@ -580,7 +569,9 @@ int PerformPauseOperations(PauseMenu *pause, struct SelectBox *box, ConfigData *
             UpdateNotes(0);
             SelectPauseOption(&pause->selection, pause->showOptions, config, pause);
             if (pause->showOptions) {
-                InGameReset(pause, config, box);
+                /* Port: box is the in-game menu block, whose first bytes are the SelectBox that
+                   DeSelectScreen takes; InGameReset uses the block's other polygons. */
+                InGameReset(pause, config, (struct InGameMenu *)box);
                 if (pause->musicPaused == 0 && CdControl(9, 0, 0) != 0) {
                     pause->musicPaused = 1;
                 }
@@ -655,7 +646,7 @@ int PerformPauseOperations(PauseMenu *pause, struct SelectBox *box, ConfigData *
 }
 
 
-void InitiateTwoPlayerPause(PauseMenu *pause)
+void InitiateTwoPlayerPause(struct PauseMenu *pause)
 {
     int command;
 
@@ -694,7 +685,7 @@ block_5:
 }
 
 
-void Perform2PlayerPauseCommand(PauseMenu *pause)
+void Perform2PlayerPauseCommand(struct PauseMenu *pause)
 {
     if ((linkRemoteState == 1) && (pause->active == 0)) {
         pause->stage = 1;

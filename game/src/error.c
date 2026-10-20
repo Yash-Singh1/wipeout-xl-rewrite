@@ -1,13 +1,10 @@
 #include "functions.h"
 
-extern u_long *OT[];
-extern u_long *OT2[];
 extern short CurrentScreen;
 
-void exit(int status);
 void Error(char *string, short errorLevel)
 {
-    void *screenPrim[2];
+    void *screenPrim[2]; /* never assigned: the original links these uninitialised stack words into the table */
     short i;
 
     if (errorLevel != NonFatal && errorLevel >= Fatal) {
@@ -16,7 +13,7 @@ void Error(char *string, short errorLevel)
             do {
                 ClearOTagR(OT[CurrentScreen], 0x2000);
                 ClearOTagR(OT2[CurrentScreen], 0x640);
-                AddPrim((char *)OT[CurrentScreen] + 0x7FFC, screenPrim[CurrentScreen]);
+                AddPrim(OT[CurrentScreen] + 0x1FFF, screenPrim[CurrentScreen]); /* Port: the last of the 0x2000 entries (was a byte offset) */
                 Swap();
                 i++;
             } while (i < 2);

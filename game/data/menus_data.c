@@ -2,11 +2,12 @@
 #include "functions.h"
 #include "card.h"
 #include "effects.h"
+#include "ghost.h"
 #include "hud.h"
 #include "options.h"
+#include "weapon.h"
 
 /* Types that menus.c declares privately. */
-typedef struct FontTexture { u8 pad0[4]; u16 clut; u8 pad6[8]; s16 tx,ty; u8 pad18[4]; u8 u0,unused,v0; } FontTexture;
 typedef struct Str20 { s32 w[5]; } Str20;
 typedef struct { s16 h[5]; } Table10;
 typedef struct TrackList { char track[15]; } TrackList;
@@ -16,7 +17,6 @@ typedef struct ShipParameterBars {
 typedef union Chars4A { char bytes[4]; short align; } Chars4A;
 typedef struct Chars5 { char bytes[5]; } Chars5;
 typedef union Chars6A { char bytes[6]; short align; } Chars6A;
-typedef union Chars7A { char bytes[7]; short align; } Chars7A;
 typedef struct Chars8 { char bytes[8]; } Chars8;
 typedef struct Chars9 { char bytes[9]; } Chars9;
 typedef struct Chars10 { char bytes[10]; } Chars10;
@@ -248,7 +248,7 @@ int currMenu = 0;
 short menuEditor = 0;
 short prevMenu = 0;
 unsigned char raceTracks[8] = { 1, 8, 13, 20, 2, 17, 6, 7 };
-u_short menuTextures[1] = { 0 };
+short menuTextures = 0;
 short buttonCount = 0;
 s32 screenCount = 0;
 u32 slideCount = 0;
@@ -301,13 +301,13 @@ char hiScoreLabelName[8] = "BEST";
 char hiScoreLabelTime[8] = "RACE";
 char hiScoreLabelShip[8] = "TIME";
 char hiScoreLabelLap[] = "LAP";
-char teamNameAuricom[8] __attribute__((aligned(4))) = "AURICOM";
+char teamNameAuricom[] __attribute__((aligned(4))) = "AURICOM";
 char teamNameQirex[8] __attribute__((aligned(4))) = "QIREX";
 char teamNameFeisar[8] __attribute__((aligned(4))) = "FEISAR";
-char teamNamePiranha[8] __attribute__((aligned(4))) = "PIRANHA";
-Chars7A hiScoreRank0 = { "VECTOR" };
-Chars6A hiScoreRank1 = { "VENOM" };
-Chars7A hiScoreRank2 = { "RAPIER" };
+char teamNamePiranha[] __attribute__((aligned(4))) = "PIRANHA";
+char hiScoreRank0[8] __attribute__((aligned(2))) = "VECTOR";
+char hiScoreRank1[8] __attribute__((aligned(2))) = "VENOM";
+char hiScoreRank2[8] __attribute__((aligned(2))) = "RAPIER";
 char hiScoreRank3[] = "PHANTOM";
 s32 blinkCounter = 0;
 u8 msgOn[4] = "ON";
@@ -341,8 +341,8 @@ char msgGold[8] = "GOLD";
 char tempheapcopy[] = "AWARDED";
 char msgSilver[8] = "SILVER";
 char msgBronze[8] = "BRONZE";
-Chars7A msgArcade __attribute__((aligned(4))) = { "ARCADE" };
-Chars8 msgLink __attribute__((aligned(4))) = { "LINK UP" };
+char msgArcade[8] __attribute__((aligned(4))) = "ARCADE";
+char msgLink[8] __attribute__((aligned(4))) = "LINK UP";
 short lastTopOption = 0;
 RaceOrder raceOrderTable[1] = { { { 9, 2, 8, 10, 6, 4 } } };
 char msgSelect2[8] = "SELECT";
@@ -367,24 +367,23 @@ unsigned char cardDirChanged0 = 0;
 unsigned char cardDirChanged1 = 0;
 s32 menuTitleBlink;
 s32 linkBlinkCount;
-BLK_FILL *screenFills[2];
-u16 keyDefineThrustPad[2];
+u_short keyDefineThrustPad[2];
 s16 linkRetries;
 Skeleton *upperSkeleton;
 signed char cdPlaySeconds[16];
 s32 prevLinkInB;
 s32 prevLinkInA;
-FontTexture *fontTexture;
+Texture *fontTexture;
 MenuLayout *menuLayout;
 void *preCalcObject;
 s16 linkToggleB;
 s16 linkWaitCount;
 s16 linkToggleA;
-u16 keyDefineFire[2];
-CardImage *cardIconInfo;
+u_short keyDefineFire[2];
+Texture *cardIconInfo;
 u_short keysDown;
-Object *teamShip;
-u16 keyDefineView[2];
+Object *teamShip[1];
+u_short keyDefineView[2];
 s16 linkReady;
 s32 linkInB;
 s32 linkInA;
@@ -393,21 +392,23 @@ s16 linkTimedOut;
 s16 linkState;
 MenuEntry *menu;
 s16 linkTickCount;
-u16 keyDefineLBrake[2];
-u16 keyDefineRBrake[2];
-u8 loadPolys0[80];
-u8 loadPolys1[80];
+u_short keyDefineLBrake[2];
+u_short keyDefineRBrake[2];
+POLY_FT4 loadPolys0[2];
+POLY_FT4 loadPolys1[2];
 Object *menuModels[10];
 DB doubleBuffer[2];
+TrackCamera raceCamera;
 Object *shipModels[8];
 POLY_FT4 menuButtons[30][2];
 /* Port: the slots run up to the end of menuTexturePtrsB (3172 bytes at slot 7): 800 pointers */
 Texture *textureTable[800];
 FontGlyph fontGlyphs8[40];
-DISPENV DispEnv0;
-DISPENV DispEnv1;
-s32 VertexNormal[280];
+SVECTOR VertexNormal[140];
+/* Port: the take header holds words (replayKeyCount...); the executable has it word-aligned */
+GhostReplay replayBuffer[1] __attribute__((aligned(4)));
 FontGlyph fontGlyphs16[40];
 CardSlot cardSlots[2];
+ControlInput playerControl[1];
 HiScore hiScoreTable[16][4];
-CardKeys savedKeyConfig;
+struct CardKeys savedKeyConfig;

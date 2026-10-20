@@ -3,11 +3,12 @@
 #include "scene.h"
 #include "sparks.h"
 #include "include_asm_g8.h"
+#include "port_widen.h"
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
 short fadeAmount;
 u_char fadeActive;
-signed char perfectLap;
+u_char perfectLap;
 int olddam;
 short fadeRed;
 short fadeGreen;
@@ -18,9 +19,7 @@ u_char rearLockCycle;
 u_short minigunAmmo;
 u_char minigunFrame;
 
-void UpdateCameraAttractDestroyed(TrackCamera *camera, ShipData *camShip, RescueData *rescueDroid);
 extern short cheatfade;
-extern u_long *OT[];
 extern short CurrentScreen;
 extern DR_MODE fadedrm[];
 extern char msgWeaponTableFull[];
@@ -31,49 +30,27 @@ extern ShipData *shipIndex;
 extern int shipDamage[];
 extern int fracdamage[];
 extern POLY_G4 plasmacharge[];
-extern u_char cheatDamage;
-extern CameraUpdateFunc CameraUpdate;
 extern int attractDelayFrames;
-extern int linkSendFlag;
 extern int raceContext;
 extern int ghostShip;
 extern int shieldRed[];
-extern int shipTargetIndex[];
 extern int shieldGreen[];
-extern short ambientVoice2;
-extern SParticle *particleSlots;
 extern TILE fadeTile[];
-extern short numTrackSections;
-extern u_short TextureTableCount;
-extern WADFILE *textureWad;
 extern DR_MODE shieldParams[][2];
-extern HeapBlock *heap;
 extern int raceType;
-extern int *cameraPtr;
 extern int proximity;
-extern u_char cheatMinigun;
 extern u_char weaponChance[][11];
 extern u_char weaponDrone[];
-extern WeaponData *weaponIndex;
 extern RaceLine raceLines[];
 extern TrackData *track;
 extern ConfigData *gameData;
-extern ConfigData *tempGameData;
-extern u_char gameType;
 extern int snowCount;
 extern int flashNozzleShip;
 extern int ambientVoice1;
-extern WeaponShape *weaponBars;
-void memcpy_80089544(void *dst, void *src, int len);
-extern ShadedPtr nextPrim;
 extern int primsDrawn;
 extern DVECTOR StaticScreen[];
-extern u_short StaticDepth[];
-extern u_short StaticFlags[];
-void RotTransPersN();
-int NormalClip();
-int AverageZ3();
-int AverageZ4();
+extern unsigned short StaticDepth[];
+extern unsigned short StaticFlags[];
 
 /* Runs every live weapon's update routine, then the fade overlay. */
 void UpdateWeapons(ShipData *ships, WeaponShape *shapes, WeaponData *weapons)
@@ -241,8 +218,8 @@ again:
     }
     weapon++;
 bound:
-    if ((int)weapon < (int)(weapons + 30)) goto again;
-    printf(msgWeaponTableFull);
+    if (weapon < weapons + 30) goto again;
+    printf("%s", msgWeaponTableFull); /* Port: the message is not a format string */
 }
 
 
@@ -335,13 +312,13 @@ void RearMissileLock(int shipNo, ShipData *ships)
 /* Copies the master shape into the following slots; each copy gets its own skeleton, vertices,
    normals and primitives packed after the object header. */
 #define CLONE_SHAPES(master, first, end)                                               \
-    length = textureWad->sizes[textureWad->current];                                   \
     shapes[master].shapePtr = WADLoadPrm(textureWad, (short)textureStart);             \
+    length = portLastPrmImageLength; /* Port: the length of the widened PRM image */   \
     for (i = first; i < end; i++) {                                                    \
         start = DAlloc(heap, length + 32);                                             \
         prm.ptr = start;                                                               \
         shapes[i].shapePtr = prm.object;                                               \
-        memcpy_80089544(start, shapes[master].shapePtr, length);                       \
+        memcpy(start, shapes[master].shapePtr, length);                                \
         object = prm.object++;                                                         \
         object->skeleton = prm.skeleton++;                                             \
         object->vertices = prm.svector;                                                \
@@ -628,7 +605,8 @@ second_scan:
     sectionCount = 0;
     do {
         junction = section->junction.ptr;
-        if (junction != (void *)-1) {
+        /* Port: junction.ptr != (void *)-1 tested the 32-bit slot; compare the slot as the index (-1 = no junction). */
+        if (section->junction.index != -1) {
             bumpSection = junction;
             if (junction->flags & 8) {
                 i = 0;
@@ -685,7 +663,7 @@ second_scan:
         section = weapon->section;
         do {
             junction2 = section->junction.ptr;
-            if (junction2 != (void *)-1) {
+            if (section->junction.index != -1) {
                 bumpSection2 = junction2;
                 if (junction2->flags & 8) {
                     j = 0;
@@ -816,7 +794,7 @@ steer:
     SetSkeletonPosition(shapes[weapon->shapeNo].shapePtr->skeleton, weapon->pos.vx, weapon->pos.vy, weapon->pos.vz);
     SetSkeletonDirectionHPR(shapes[weapon->shapeNo].shapePtr->skeleton, weapon->hdg, weapon->pitch, 0);
     shapes[weapon->shapeNo].shapePtr->skeleton->update = 1;
-    AsmDrawObject(shapes[weapon->shapeNo].shapePtr, *cameraPtr);
+    AsmDrawObject(shapes[weapon->shapeNo].shapePtr, cameraPtr->camPos, 0); /* Port: roll was never passed; 0 stands for the console's stale a2 */
     for (i = 0; i < 15; i++) {
         ship = ships + i;
         if (!(ship->combatAttr & DESTROYED) && (((i != weapon->owner) && raceType != 3) || (raceType == 3 && (i == ownShip || i == remoteShip) && i != weapon->owner))) {
@@ -1021,7 +999,7 @@ void InitMinigun(ShipData *ships, WeaponShape *shapes, WeaponData *weapon, Weapo
         return;
     }
     if (weapon->owner == ownShip) {
-        ship = (ShipData *)(weapon->owner * sizeof(ShipData) + (int)ships);
+        ship = &ships[weapon->owner];
         ship->vpivot.vx -= ship->unitVecNose.vx >> 3;
         ship->vpivot.vy -= ship->unitVecNose.vy >> 3;
         ship->vpivot.vz -= ship->unitVecNose.vz >> 3;
@@ -1108,7 +1086,7 @@ void UpdateMine(ShipData *ships, WeaponShape *shapes, WeaponData *weapon, Weapon
     shapes[weapon->shapeNo].shapePtr->skeleton->update = 1;
     i = 0;
     headToHead = 3;
-    AsmDrawObject(shapes[weapon->shapeNo].shapePtr, *cameraPtr);
+    AsmDrawObject(shapes[weapon->shapeNo].shapePtr, cameraPtr->camPos, 0); /* Port: roll was never passed; 0 stands for the console's stale a2 */
     ship = ships;
 nextShip:
     {
@@ -1478,7 +1456,7 @@ steer:
     SetSkeletonPosition(shapes[weapon->shapeNo].shapePtr->skeleton, weapon->pos.vx, weapon->pos.vy, weapon->pos.vz);
     SetSkeletonDirectionHPR(shapes[weapon->shapeNo].shapePtr->skeleton, weapon->hdg, weapon->pitch, 0);
     shapes[weapon->shapeNo].shapePtr->skeleton->update = 1;
-    AsmDrawObject(shapes[weapon->shapeNo].shapePtr, *cameraPtr);
+    AsmDrawObject(shapes[weapon->shapeNo].shapePtr, cameraPtr->camPos, 0); /* Port: roll was never passed; 0 stands for the console's stale a2 */
     for (i = 0; i < 15; i++) {
         ship = ships + i;
         if (!(ship->combatAttr & DESTROYED) && (((i != weapon->owner) && raceType != 3) || (raceType == 3 && (i == ownShip || i == remoteShip) && i != weapon->owner))) {
@@ -1634,7 +1612,7 @@ void UpdateSmartBomb(ShipData *ships, WeaponShape *shapes, WeaponData *weapon, W
 {
     u8 padding[16];
     int mask;
-    int *camera;
+    TrackCamera *camera;
     int vx;
     int vy;
     int newVy;
@@ -1649,7 +1627,7 @@ void UpdateSmartBomb(ShipData *ships, WeaponShape *shapes, WeaponData *weapon, W
     u16 hdg;
     u16 count;
     int rnd;
-    int cameraValue;
+    Skeleton *cameraValue;
     Object *shapeObj;
 
     weapon->count--;
@@ -1717,9 +1695,9 @@ shiploop:
     SetSkeletonPosition(shapes[weapon->shapeNo].shapePtr->skeleton, weapon->pos.vx, weapon->pos.vy, weapon->pos.vz);
     shapes[weapon->shapeNo].shapePtr->skeleton->update = 1;
     camera = cameraPtr;
-    cameraValue = *(volatile s32 *)camera;
-    shapeObj = (Object *)shapes[weapon->shapeNo].shapePtr;
-    AsmDrawObject(shapeObj, cameraValue);
+    cameraValue = camera->camPos;
+    shapeObj = shapes[weapon->shapeNo].shapePtr;
+    AsmDrawObject(shapeObj, cameraValue, 0); /* Port: roll was never passed; 0 stands for the console's stale a2 */
 }
 
 
@@ -1746,9 +1724,6 @@ void InitShield(ShipData *ships, WeaponShape *slots, WeaponData *w, WeaponData *
     w->count = 0;
 }
 
-
-void SfxEffectLRPan__UpdateShield() __asm__("SfxEffectLRPan");
-void SfxEffectFBPan__UpdateShield() __asm__("SfxEffectFBPan");
 
 void UpdateShield(ShipData *ships, WeaponShape *shapes, WeaponData *weapon, WeaponData *weapons)
 {
@@ -1798,13 +1773,13 @@ void UpdateShield(ShipData *ships, WeaponShape *shapes, WeaponData *weapon, Weap
     fade = 0;
     if (weapon->owner == ownShip) {
         if (ships[weapon->owner].attr & VIEW_IN) {
-            SfxEffectLRPan__UpdateShield(ambientVoice1, ((rsin(weapon->count * 32) * 14) >> 12) + 15);
-            SfxEffectFBPan__UpdateShield(ambientVoice1, ((rcos(weapon->count * 64) * 14) >> 12) + 15);
-            SetVolume(*(short *)&ambientVoice1, 255);
+            SfxEffectLRPan(ambientVoice1, ((rsin(weapon->count * 32) * 14) >> 12) + 15);
+            SfxEffectFBPan(ambientVoice1, ((rcos(weapon->count * 64) * 14) >> 12) + 15);
+            SetVolume(ambientVoice1, 255);
         } else {
-            SetVolume(*(short *)&ambientVoice1, 245);
-            SfxEffectLRPan__UpdateShield(ambientVoice1, 15);
-            SfxEffectFBPan__UpdateShield(ambientVoice1, 30);
+            SetVolume(ambientVoice1, 245);
+            SfxEffectLRPan(ambientVoice1, 15);
+            SfxEffectFBPan(ambientVoice1, 30);
         }
     }
     if (weapon->count < 20) {
@@ -1818,7 +1793,7 @@ void UpdateShield(ShipData *ships, WeaponShape *shapes, WeaponData *weapon, Weap
         shapes[weapon->shapeNo].used = 0;
         ships[weapon->owner].attr &= ~SHIELDED;
         if (weapon->owner == ownShip) {
-            SetVolume(*(short *)&ambientVoice1, 0);
+            SetVolume(ambientVoice1, 0);
         }
     }
     if (!(ships[weapon->owner].attr & VIEW_IN) || weapon->owner != ownShip) {
@@ -1889,7 +1864,7 @@ void UpdateShield(ShipData *ships, WeaponShape *shapes, WeaponData *weapon, Weap
         }
         shapes[weapon->shapeNo].shapePtr->skeleton->update = 1;
         shieldID = weapon->shapeNo - 25;
-        TransformTransparentObject(shapes[weapon->shapeNo].shapePtr, (void *)*cameraPtr, shieldID);
+        TransformTransparentObject(shapes[weapon->shapeNo].shapePtr, cameraPtr->camPos, shieldID);
     } else {
         col0 = (rsin(weapon->count * 128) >> 7) + 64;
         col0 = col0 - fade;
@@ -2002,8 +1977,16 @@ void CycleWeaponGrids(ShipData *ships, struct WeaponGridZone *grids, int noGrids
                 face->blue = grid->b;
             }
             k++;
-        } while (((s32)(grids + k)) < ((noGrids * 16) + ((s32)grids)));
+        } while (grids + k < grids + noGrids);
     }
+}
+
+
+/* Port: NormalClip takes each screen point packed in one word (x in the low half, y in the high half),
+   as the console passed a DVECTOR by value. */
+static int PackScreenPoint(DVECTOR point)
+{
+    return (int)((u_short)point.vx | ((u32)(u_short)point.vy << 16));
 }
 
 
@@ -2016,6 +1999,8 @@ void TransformTransparentObject(Object *object, void *camera, int shieldID)
     int       mode, average;
     DVECTOR  *screen;
     u_short  *depth, *flags;
+    ShadedTri  *tri;
+    ShadedQuad *quad;
 
     SetSkeletonTransform(object->skeleton);
     poly.prim = object->primitives;
@@ -2025,9 +2010,10 @@ void TransformTransparentObject(Object *object, void *camera, int shieldID)
     vertexCount = object->vertexCount;
     primsDrawn += count;
     if (vertexCount <= 128) {
-        screen = (DVECTOR *) 0x1f800000;
-        depth = (u_short *) 0x1f800200;
-        flags = (u_short *) 0x1f800300;
+        /* Port: the console's scratchpad RAM at 0x1F800000 */
+        screen = (DVECTOR *) PsxScratchpad;
+        depth = (u_short *) (PsxScratchpad + 0x200);
+        flags = (u_short *) (PsxScratchpad + 0x300);
     } else {
         screen = StaticScreen;
         depth = StaticDepth;
@@ -2046,23 +2032,24 @@ void TransformTransparentObject(Object *object, void *camera, int shieldID)
             coord1 = ((G3 *) (nextPoly - 1))->coords[1];
             coord2 = ((G3 *) (nextPoly - 1))->coords[2];
             if (!((flags[coord0] | flags[coord1] | flags[coord2]) & 0x460)) {
-                if (NormalClip(screen[coord0], screen[coord1], screen[coord2]) > 0) {
-                    SetPolyG3(nextPrim.ptr);
-                    SetSemiTrans(nextPrim.ptr, 1);
-                    nextPrim.tri->colour0.r = ((G3 *) (nextPoly - 1))->colour[0].r;
-                    nextPrim.tri->colour0.g = ((G3 *) (nextPoly - 1))->colour[0].g;
-                    nextPrim.tri->colour0.b = ((G3 *) (nextPoly - 1))->colour[0].b;
-                    nextPrim.tri->colour1 = ((G3 *) (nextPoly - 1))->colour[1];
-                    nextPrim.tri->colour2 = ((G3 *) (nextPoly - 1))->colour[2];
-                    nextPrim.tri->xy0 = screen[coord0];
-                    nextPrim.tri->xy1 = screen[coord1];
-                    nextPrim.tri->xy2 = screen[coord2];
+                if (NormalClip(PackScreenPoint(screen[coord0]), PackScreenPoint(screen[coord1]), PackScreenPoint(screen[coord2])) > 0) {
+                    tri = (ShadedTri *) nextPrim.ptr;
+                    SetPolyG3((POLY_G3 *) tri);
+                    SetSemiTrans(tri, 1);
+                    tri->colour0.r = ((G3 *) (nextPoly - 1))->colour[0].r;
+                    tri->colour0.g = ((G3 *) (nextPoly - 1))->colour[0].g;
+                    tri->colour0.b = ((G3 *) (nextPoly - 1))->colour[0].b;
+                    tri->colour1 = ((G3 *) (nextPoly - 1))->colour[1];
+                    tri->colour2 = ((G3 *) (nextPoly - 1))->colour[2];
+                    tri->xy0 = screen[coord0];
+                    tri->xy1 = screen[coord1];
+                    tri->xy2 = screen[coord2];
                     average = AverageZ3(depth[coord0], depth[coord1], depth[coord2]);
-                    AddPrim(OT[CurrentScreen] + average, nextPrim.ptr);
-                    nextPrim.ptr = (char *) nextPrim.ptr + sizeof(ShadedTri);
+                    AddPrim(OT[CurrentScreen] + average, tri);
+                    nextPrim.ptr += sizeof(ShadedTri);
                     AddPrim(OT[CurrentScreen] + average, &shieldParams[mode + shieldID * 64][CurrentScreen]);
                     mode++;
-                    nextPrim.ptr = (char *) nextPrim.ptr + sizeof(DR_MODE);
+                    nextPrim.ptr += sizeof(DR_MODE);
                 }
             }
             poly.g3++;
@@ -2074,25 +2061,26 @@ void TransformTransparentObject(Object *object, void *camera, int shieldID)
             coord2 = nextPoly[-1].coords[2];
             coord3 = nextPoly[-1].coords[3];
             if (!((flags[coord0] | flags[coord1] | flags[coord2] | flags[coord3]) & 0x460)) {
-                if (NormalClip(screen[coord0], screen[coord1], screen[coord2]) > 0) {
-                    SetPolyG4(nextPrim.ptr);
-                    SetSemiTrans(nextPrim.ptr, 1);
-                    nextPrim.quad->colour0.r = nextPoly[-1].colour[0].r;
-                    nextPrim.quad->colour0.g = nextPoly[-1].colour[0].g;
-                    nextPrim.quad->colour0.b = nextPoly[-1].colour[0].b;
-                    nextPrim.quad->colour1 = nextPoly[-1].colour[1];
-                    nextPrim.quad->colour2 = nextPoly[-1].colour[2];
-                    nextPrim.quad->colour3 = nextPoly[-1].colour[3];
-                    nextPrim.quad->xy0 = screen[coord0];
-                    nextPrim.quad->xy1 = screen[coord1];
-                    nextPrim.quad->xy2 = screen[coord2];
-                    nextPrim.quad->xy3 = screen[coord3];
+                if (NormalClip(PackScreenPoint(screen[coord0]), PackScreenPoint(screen[coord1]), PackScreenPoint(screen[coord2])) > 0) {
+                    quad = (ShadedQuad *) nextPrim.ptr;
+                    SetPolyG4((POLY_G4 *) quad);
+                    SetSemiTrans(quad, 1);
+                    quad->colour0.r = nextPoly[-1].colour[0].r;
+                    quad->colour0.g = nextPoly[-1].colour[0].g;
+                    quad->colour0.b = nextPoly[-1].colour[0].b;
+                    quad->colour1 = nextPoly[-1].colour[1];
+                    quad->colour2 = nextPoly[-1].colour[2];
+                    quad->colour3 = nextPoly[-1].colour[3];
+                    quad->xy0 = screen[coord0];
+                    quad->xy1 = screen[coord1];
+                    quad->xy2 = screen[coord2];
+                    quad->xy3 = screen[coord3];
                     average = AverageZ4(depth[coord0], depth[coord1], depth[coord2], depth[coord3]);
-                    AddPrim(OT[CurrentScreen] + average, nextPrim.ptr);
-                    nextPrim.ptr = (char *) nextPrim.ptr + sizeof(ShadedQuad);
+                    AddPrim(OT[CurrentScreen] + average, quad);
+                    nextPrim.ptr += sizeof(ShadedQuad);
                     AddPrim(OT[CurrentScreen] + average, &shieldParams[mode + shieldID * 64][CurrentScreen]);
                     mode++;
-                    nextPrim.ptr = (char *) nextPrim.ptr + sizeof(DR_MODE);
+                    nextPrim.ptr += sizeof(DR_MODE);
                 }
             }
             {
@@ -2155,9 +2143,6 @@ void Weapon2Mine(WeaponData *weapon, WeaponData *weaponIndex, WeaponShape *weapo
     }
 }
 
-
-extern u16 remoteRacePos;
-extern u16 playerPosition;
 
 /* Gives a ship a new weapon, chosen from the table row for its race position. */
 void GetNewWeapon(ShipData *ships, int shipNo)
@@ -2298,7 +2283,7 @@ void ClearWeaponTable(void)
     TrackSection *s;
 
     for (i = 0; i < 30; i++) {
-        weapon = (WeaponData *)((i * sizeof(WeaponData)) + (int)weaponIndex);
+        weapon = &weaponIndex[i];
         weapon->type = 0;
         weapon->count = 0;
         weaponBars[i].used = 0;
@@ -2387,7 +2372,7 @@ void UpdateRocket(ShipData *ships, WeaponShape *weaponShapes, WeaponData *weapon
     if (weapon->count == 0) weaponShapes[weapon->shapeNo].used = 0;
     SetSkeletonPosition(weaponShapes[weapon->shapeNo].shapePtr->skeleton, weapon->pos.vx, weapon->pos.vy, weapon->pos.vz);
     weaponShapes[weapon->shapeNo].shapePtr->skeleton->update = 1;
-    AsmDrawObject(weaponShapes[weapon->shapeNo].shapePtr, *cameraPtr);
+    AsmDrawObject(weaponShapes[weapon->shapeNo].shapePtr, cameraPtr->camPos, 0); /* Port: roll was never passed; 0 stands for the console's stale a2 */
     for (i = 0; i < 15; i++) {
         ship = ships + i;
         if (!(ship->combatAttr & DESTROYED) && (((i != weapon->owner) && raceType != 3) || (raceType == 3 && (i == ownShip || i == remoteShip) && i != weapon->owner))) {
@@ -2731,7 +2716,7 @@ void DamageCollide(int damageType, int shipNo)
                     if (raceContext != 1) {
                         shipTargetIndex[shipNo] = 100;
                         if (shipNo == ownShip) {
-                            playerShip = (ShipData *)((shipNo * sizeof(ShipData)) + (int)shipIndex);
+                            playerShip = &shipIndex[shipNo];
                             shipAttributes = playerShip->attr;
                             CameraUpdate = UpdateCameraAttractDestroyed;
                             playerShip->attr = shipAttributes & ~4;
@@ -2792,9 +2777,6 @@ void CheckPitShips(void)
 /* Draws the full-screen colour fade: screen flashes (smart bomb, shield) and the cheat fade. */
 void UpdateFadeScreen(void)
 {
-    int    redOffset;
-    int    greenOffset;
-    int    blueOffset;
     u_char red;
     u_char green;
     u_char blue;
@@ -2802,27 +2784,24 @@ void UpdateFadeScreen(void)
     SetTile(&fadeTile[CurrentScreen]);
     SetSemiTrans(&fadeTile[CurrentScreen], 1);
     SetDrawMode(&fadedrm[CurrentScreen], 1, 1, GetTPage(0, 1, 0, 0) & 0xFFFF, 0);
-    redOffset = CurrentScreen * 16;
     if (fadeRed + fadeAmount < 256) {
         red = fadeRed + fadeAmount;
     } else {
         red = 255;
     }
-    fadeTileRed[redOffset] = red;
-    greenOffset = CurrentScreen * 16;
+    fadeTile[CurrentScreen].r0 = red;
     if (fadeGreen + fadeAmount + cheatfade < 256) {
         green = cheatfade + (fadeGreen + fadeAmount);
     } else {
         green = 255;
     }
-    fadeTileGreen[greenOffset] = green;
-    blueOffset = CurrentScreen * 16;
+    fadeTile[CurrentScreen].g0 = green;
     if (fadeBlue + fadeAmount < 256) {
         blue = fadeBlue + fadeAmount;
     } else {
         blue = 255;
     }
-    fadeTileBlue[blueOffset] = blue;
+    fadeTile[CurrentScreen].b0 = blue;
     fadeTile[CurrentScreen].w = 320;
     fadeTile[CurrentScreen].x0 = 0;
     fadeTile[CurrentScreen].y0 = 0;

@@ -50,68 +50,13 @@ REWRITES = [
 ALIASES = [
     # smokeColour is passed to AnimateTexture by value (TrackSpecificFunctions loads the whole word) and
     # race() stores three bytes into it, one after the other: the r, g, b of one CVECTOR.
-    A('smokeColourGreen', 'smokeColour', '(*(signed char *)&smokeColour.g)',
-      'smokeColour is a CVECTOR (loaded as one word by TrackSpecificFunctions); race() stores bytes at +0, +1, +2',
-      decls=['extern CVECTOR smokeColour;'], container_decl='extern CVECTOR smokeColour;'),
-    A('smokeColourBlue', 'smokeColour', '(*(signed char *)&smokeColour.b)', 'see smokeColourGreen',
-      decls=['extern CVECTOR smokeColour;'], container_decl='extern CVECTOR smokeColour;'),
     # checkCells[track][class][i] is a table of 6-byte cells (section, bonusSeconds, done). race() resets
     # a whole row with three loops over the same cells that name the three fields as arrays of their own,
     # each stepping 6 bytes: bonusSeconds starts at +2, done at +4.
-    A('raceCheckpointResults', 'checkCells', '((CheckPointShort (*)[4][6])&checkCells[0][0][0].bonusSeconds)',
-      'strides (6, 36, 144) from checkCells + 2 in race() and SetUpFirstCheckPoint: the bonusSeconds field of the 6-byte cells',
-      expr='raceCheckpointResults[0][0][0].value',
-      pair=('raceCheckpointResults[5][3][5].value', 'checkCells[5][3][5].bonusSeconds'),
-      includes=['control.h'],
-      decls=['typedef struct { short value; unsigned char pad[4]; } CheckPointShort;', 'extern CheckCell checkCells[][4][6];'],
-      container_decl='extern CheckCell checkCells[][4][6];'),
-    A('raceCheckpointFlags', 'checkCells', '((CheckPointByte (*)[4][6])&checkCells[0][0][0].done)',
-      'strides (6, 36, 144) from checkCells + 4: the done field of the 6-byte cells',
-      expr='raceCheckpointFlags[0][0][0].value',
-      pair=('raceCheckpointFlags[5][3][5].value', 'checkCells[5][3][5].done'),
-      includes=['control.h'],
-      decls=['typedef struct { signed char value; unsigned char pad[5]; } CheckPointByte;', 'extern CheckCell checkCells[][4][6];'],
-      container_decl='extern CheckCell checkCells[][4][6];'),
     # DrawEnvMap steps StaticRVert, StaticRVertY and StaticRVertZ together by 16 bytes: the vx, vy, vz of one
     # VECTOR array (140 of them up to StaticDepth).
-    A('StaticRVertY', 'StaticRVert', '((int (*)[4])&StaticRVert[0].vy)',
-      'DrawEnvMap loads +0, +4, +8 of StaticRVert with stride 16 and the three names are 4 bytes apart',
-      expr='StaticRVertY[0][0]', pair=('StaticRVertY[9][0]', 'StaticRVert[9].vy'),
-      decls=['extern VECTOR StaticRVert[];'], container_decl='extern VECTOR StaticRVert[];'),
-    A('StaticRVertZ', 'StaticRVert', '((int (*)[4])&StaticRVert[0].vz)', 'see StaticRVertY',
-      expr='StaticRVertZ[0][0]', pair=('StaticRVertZ[9][0]', 'StaticRVert[9].vz'),
-      decls=['extern VECTOR StaticRVert[];'], container_decl='extern VECTOR StaticRVert[];'),
     # The header words of a ghost take are separate globals in ghost.c; the take is copied as one block
     # (replayBuffer[0] = recordBuffer[0]), so they are the first words of the buffer.
-    A('recordKeyCount', 'recordBuffer', '(*(volatile s32 *)(recordBuffer[0].header + 4))',
-      'RecordKeypresses and InitGhostShip access recordBuffer + 4 as a word; the buffer is 0x104 header bytes then the keys',
-      includes=['ghost.h'], container_decl='#include "ghost.h"'),
-    A('recordKeyTotal', 'recordBuffer', '(*(s32 *)(recordBuffer[0].header + 8))', 'see recordKeyCount',
-      includes=['ghost.h'], container_decl='#include "ghost.h"'),
-    A('recordControl', 'recordBuffer', '(*(s16 *)(recordBuffer[0].header + 12))', 'see recordKeyCount',
-      includes=['ghost.h'], container_decl='#include "ghost.h"'),
-    A('recordDisabled', 'recordBuffer', '(*(s16 *)(recordBuffer[0].header + 14))', 'see recordKeyCount',
-      includes=['ghost.h'], container_decl='#include "ghost.h"'),
-    A('recordMagic', 'recordBuffer', '(*(s16 *)(recordBuffer[0].header + 16))', 'see recordKeyCount',
-      includes=['ghost.h'], container_decl='#include "ghost.h"'),
-    A('recordTrackNum', 'recordBuffer', '(*(u8 *)(recordBuffer[0].header + 18))', 'see recordKeyCount',
-      includes=['ghost.h'], container_decl='#include "ghost.h"'),
-    A('recordShipClass', 'recordBuffer', '(*(u8 *)(recordBuffer[0].header + 19))', 'see recordKeyCount',
-      includes=['ghost.h'], container_decl='#include "ghost.h"'),
-    A('replayKeyCount', 'replayBuffer', '(*(s32 *)(replayBuffer[0].header + 4))', 'same layout as recordBuffer (it is a copy of one)',
-      includes=['ghost.h'], container_decl='#include "ghost.h"'),
-    A('replayKeyTotal', 'replayBuffer', '(*(s32 *)(replayBuffer[0].header + 8))', 'see replayKeyCount',
-      includes=['ghost.h'], container_decl='#include "ghost.h"'),
-    A('replayControl', 'replayBuffer', '(*(s16 *)(replayBuffer[0].header + 12))', 'see replayKeyCount',
-      includes=['ghost.h'], container_decl='#include "ghost.h"'),
-    A('replayDisabled', 'replayBuffer', '(*(s16 *)(replayBuffer[0].header + 14))', 'see replayKeyCount',
-      includes=['ghost.h'], container_decl='#include "ghost.h"'),
-    A('replayMagic', 'replayBuffer', '(*(s16 *)(replayBuffer[0].header + 16))', 'see replayKeyCount',
-      includes=['ghost.h'], container_decl='#include "ghost.h"'),
-    A('replayTrackNum', 'replayBuffer', '(*(u8 *)(replayBuffer[0].header + 18))', 'see replayKeyCount',
-      includes=['ghost.h'], container_decl='#include "ghost.h"'),
-    A('replayShipClass', 'replayBuffer', '(*(u8 *)(replayBuffer[0].header + 19))', 'see replayKeyCount',
-      includes=['ghost.h'], container_decl='#include "ghost.h"'),
     # SetCharTextures fills fontGlyphs8/12/16 (vramX, vramY, width: 6 bytes) and menuGlyphWidth/glyphWidth
     # with the same stride 6, the width at +4.
     A('menuGlyphWidth', 'fontGlyphs8', '((GlyphWidth *)&fontGlyphs8[0].width)',
@@ -122,62 +67,14 @@ ALIASES = [
       expr='glyphWidth[0].width', pair=('glyphWidth[7].width', 'fontGlyphs16[7].width'),
       includes=['hiscores.h', 'hud.h'], decls=['extern FontGlyph fontGlyphs16[];'], container_decl='#include "hud.h"\nextern FontGlyph fontGlyphs16[];'),
     # The display offsets are the screen rectangle of the DISPENVs (the halfword stores at +8 and +10).
-    A('dispOffX0', 'DispEnv0', '(*(u_short *)&DispEnv0.screen.x)',
-      'halfword stores at DispEnv0 + 8 and + 10 only (ShakeScreen, InitGameDisplay...): DISPENV.screen.x and .y',
-      decls=['extern DISPENV DispEnv0;'], container_decl='extern DISPENV DispEnv0;'),
-    A('dispOffY0', 'DispEnv0', '(*(u_short *)&DispEnv0.screen.y)', 'see dispOffX0',
-      decls=['extern DISPENV DispEnv0;'], container_decl='extern DISPENV DispEnv0;'),
-    A('dispOffX1', 'DispEnv1', '(*(u_short *)&DispEnv1.screen.x)', 'see dispOffX0',
-      decls=['extern DISPENV DispEnv1;'], container_decl='extern DISPENV DispEnv1;'),
-    A('dispOffY1', 'DispEnv1', '(*(u_short *)&DispEnv1.screen.y)', 'see dispOffX0',
-      decls=['extern DISPENV DispEnv1;'], container_decl='extern DISPENV DispEnv1;'),
     # Two memory cards of 15 files of 90 bytes (CardEntry); the menu code addresses used/filename/label/type
     # of the entries with byte arrays of their own (strides 90 and 1350, InitCard, LoadSave, DisplayCardBack).
-    A('cardUsed', 'cardSlots', '(&cardSlots[0].entry[0].used)',
-      'InitCard stores cardSlots + 10 with strides (1, 90): the used byte of each 90-byte entry',
-      expr='cardUsed[0]', pair=('cardUsed[1350 + 90]', 'cardSlots[1].entry[1].used'),
-      includes=['card.h'], decls=['extern CardSlot cardSlots[];'], container_decl='extern CardSlot cardSlots[];'),
-    A('cardFileNames', 'cardSlots', '((u8 *)cardSlots[0].entry[0].filename)', 'cardSlots + 11: the 32-byte file name of the entry',
-      expr='cardFileNames[0]', pair=('cardFileNames[1350 + 90 + 3]', 'cardSlots[1].entry[1].filename[3]'),
-      includes=['card.h'], decls=['extern CardSlot cardSlots[];'], container_decl='extern CardSlot cardSlots[];'),
-    A('cardNames', 'cardSlots', '((u8 *)&cardSlots[0].entry[0].label)', 'cardSlots + 43: the label of the entry',
-      expr='cardNames[0]', pair=('cardNames[1350 + 90 + 3]', 'cardSlots[1].entry[1].label.bytes[3]'),
-      includes=['card.h'], decls=['extern CardSlot cardSlots[];'], container_decl='extern CardSlot cardSlots[];'),
-    A('cardFlags', 'cardSlots', '((CardFlags (*)[15])&cardSlots[0].entry[0].type)',
-      'cardSlots + 75 with strides (90, 1350) in DupFileCheck, LoadSave, DisplayCardBack: the type byte of the entries',
-      expr='cardFlags[0][0].flags', pair=('cardFlags[1][2].flags', 'cardSlots[1].entry[2].type'),
-      includes=['card.h', 'menus.h'], decls=['extern CardSlot cardSlots[];'], container_decl='extern CardSlot cardSlots[];',
-      in_header=False),
     # The text sprites are POLY_FT4s (40 bytes); the code fills their clut and tpage through arrays of their own.
-    A('quadClutField', 'quadPool', '((u_short *)&quadPool[0].clut)',
-      'AddText/AddTime store quadPool + 14 and + 22 with stride 40: the clut and tpage fields of the 600 POLY_FT4s',
-      expr='quadClutField[0]', pair=('*(u_short *)((char *)quadClutField + 40 * 7)', 'quadPool[7].clut'),
-      decls=['extern POLY_FT4 quadPool[];'], container_decl='extern POLY_FT4 quadPool[];'),
-    A('quadTPageField', 'quadPool', '((u_short *)&quadPool[0].tpage)', 'see quadClutField',
-      expr='quadTPageField[0]', pair=('*(u_short *)((char *)quadTPageField + 40 * 7)', 'quadPool[7].tpage'),
-      decls=['extern POLY_FT4 quadPool[];'], container_decl='extern POLY_FT4 quadPool[];'),
     # followRaceLine/InitRaceLine read and write the point at +4, +8, +12 of each 16-byte RaceLine.
-    A('racingLine', 'raceLines', '((VECTOR *)&raceLines[0].x)',
-      'racingLine[i] is accessed at raceLines + 4 + 16 * i (x, y, z): the same 16-byte stride',
-      expr='racingLine[0].vx', pair=('racingLine[9].vz', 'raceLines[9].z'),
-      decls=['extern RaceLine raceLines[];'], container_decl='extern RaceLine raceLines[];'),
     # SortAllShips/initShipData write shipRank (position, shipNo) and read the ship numbers back through
     # shipOrder with stride 4 from +2.
-    A('shipOrder', 'shipRank', '((short (*)[2])&shipRank[0].shipNo)',
-      'shipOrder[i][0] is shipRank + 2 + 4 * i = shipRank[i].shipNo (SortAllShips, getShipBehindLAP)',
-      expr='shipOrder[0][0]', pair=('shipOrder[3][0]', 'shipRank[3].shipNo'),
-      includes=['ships.h'], decls=['extern ShipRank shipRank[];'], container_decl='extern ShipRank shipRank[];'),
-    A('fadeTileRed', 'fadeTile', '(&fadeTile[0].r0)', 'UpdateFadeScreen stores bytes at fadeTile + 4, 5, 6: the colour of the first TILE',
-      expr='fadeTileRed[0]', decls=['extern TILE fadeTile[];'], container_decl='extern TILE fadeTile[];'),
-    A('fadeTileGreen', 'fadeTile', '(&fadeTile[0].g0)', 'see fadeTileRed', expr='fadeTileGreen[0]', decls=['extern TILE fadeTile[];'], container_decl='extern TILE fadeTile[];'),
-    A('fadeTileBlue', 'fadeTile', '(&fadeTile[0].b0)', 'see fadeTileRed', expr='fadeTileBlue[0]', decls=['extern TILE fadeTile[];'], container_decl='extern TILE fadeTile[];'),
     # LoadProg copied the 136-byte header of the program it loaded into progHeader and read the load address
     # and size at +24 and +28 (the PS-X EXE header).
-    A('progLoadAddr', 'progHeader', '(*(u_long *)(progHeader[0].bytes + 24))',
-      'LoadProg loads progHeader + 24 and + 28 (t_addr, t_size of the 136-byte PS-X EXE header it just read)',
-      includes=['droid.h'], decls=['extern Header progHeader[];'], container_decl='extern Header progHeader[];'),
-    A('progSize', 'progHeader', '(*(int *)(progHeader[0].bytes + 28))', 'see progLoadAddr',
-      includes=['droid.h'], decls=['extern Header progHeader[];'], container_decl='extern Header progHeader[];'),
     # buildGhostReplayData/InitGhostShip fill one ControlInput (head, buttons, pressed, pad6, thrust, steering)
     # by the halfwords and bytes at +2, +4, +6, +8, +9; cameraOffset starts at +12.
     A('ghostButtons', 'ghostControl', 'ghostControl[0].buttons',
@@ -201,43 +98,17 @@ ALIASES = [
       'race() loads shipShapeTable + 120 (slot 30, the rescue droid model, RescueDroidModel) without index and nothing stores it by name',
       pair=('lightDroid', 'shipShapeTable[30]'), decls=['extern Object *shipShapeTable[];'], container_decl='extern Object *shipShapeTable[];'),
     # The pad driver's packet: header, buttons, sticks. RadiusControl reads the buttons halfword on its own.
-    A('debugPadInput', 'padBuf1', 'padBuf1.buttons',
+    A('debugPadInput', 'padBuf1', 'padBuf1[0].buttons',
       'RadiusControl loads padBuf1 + 2 and NegConConfig the byte at +4 (the packet\'s buttons and steering fields)',
-      includes=['pad.h'], decls=['extern PadPacket padBuf1;'], container_decl='#include "pad.h"\nextern PadPacket padBuf1;'),
-    # doSerialGame sends the player's ControlInput as a link packet whose fields it names control, padHead,
-    # padButtons, padPressed, aux0, aux1 (menus.c, combat.c): the halfwords at +2, +4, +6 and the bytes at +8, +9.
+      includes=['pad.h'], decls=['extern PadPacket padBuf1[];'], container_decl='#include "pad.h"'),
     A('linkPadHead', 'playerControl', 'playerControl[0].buttons',
       'halfword loads at playerControl + 2, +4, +6 and byte loads at +8, +9 (doSerialGame, CheckForButtonPress): the ControlInput fields after head',
-      includes=['control.h'], decls=['extern ControlInput playerControl[];'], container_decl='extern ControlInput playerControl[];'),
-    A('linkPadButtons', 'playerControl', 'playerControl[0].pressed', 'see linkPadHead',
-      includes=['control.h'], decls=['extern ControlInput playerControl[];'], container_decl='extern ControlInput playerControl[];'),
-    A('linkPadPressed', 'playerControl', '(*(u16 *)playerControl[0].pad6)', 'see linkPadHead (the two pad bytes at +6)',
       includes=['control.h'], decls=['extern ControlInput playerControl[];'], container_decl='extern ControlInput playerControl[];'),
     A('linkPadAux0', 'playerControl', 'playerControl[0].thrust', 'see linkPadHead',
       includes=['control.h'], decls=['extern ControlInput playerControl[];'], container_decl='extern ControlInput playerControl[];'),
     A('linkPadAux1', 'playerControl', 'playerControl[0].steering', 'see linkPadHead',
       includes=['control.h'], decls=['extern ControlInput playerControl[];'], container_decl='extern ControlInput playerControl[];'),
-    A('remotePadHead', 'remoteControl', 'remoteControl[0].buttons',
-      'doSerialGame stores the received packet at remoteControl + 0, +2, +4, +6 (halfwords), +8, +9 (bytes)',
-      includes=['control.h'], decls=['extern ControlInput remoteControl[];'], container_decl='extern ControlInput remoteControl[];'),
-    A('remotePadButtons', 'remoteControl', 'remoteControl[0].pressed', 'see remotePadHead',
-      includes=['control.h'], decls=['extern ControlInput remoteControl[];'], container_decl='extern ControlInput remoteControl[];'),
-    A('remotePadPressed', 'remoteControl', '(*(u16 *)remoteControl[0].pad6)', 'see remotePadHead',
-      includes=['control.h'], decls=['extern ControlInput remoteControl[];'], container_decl='extern ControlInput remoteControl[];'),
-    A('remotePadAux0', 'remoteControl', 'remoteControl[0].thrust', 'see remotePadHead',
-      includes=['control.h'], decls=['extern ControlInput remoteControl[];'], container_decl='extern ControlInput remoteControl[];'),
-    A('remotePadAux1', 'remoteControl', 'remoteControl[0].steering', 'see remotePadHead',
-      includes=['control.h'], decls=['extern ControlInput remoteControl[];'], container_decl='extern ControlInput remoteControl[];'),
     # main() clears savedLapTimes and the four words after it one by one; the lap times are indexed by lap.
-    A('raceResetWord0', 'savedLapTimes', 'savedLapTimes[1]',
-      'main() stores savedLapTimes + 0, 4, 8, 12, 16 in a row; hud.c indexes savedLapTimes[lap] (5 words up to recordBuffer)',
-      pair=('raceResetWord0', 'savedLapTimes[1]'), decls=['extern int savedLapTimes[];'], container_decl='extern int savedLapTimes[];'),
-    A('raceResetWord1', 'savedLapTimes', 'savedLapTimes[2]', 'see raceResetWord0',
-      pair=('raceResetWord1', 'savedLapTimes[2]'), decls=['extern int savedLapTimes[];'], container_decl='extern int savedLapTimes[];'),
-    A('raceResetWord2', 'savedLapTimes', 'savedLapTimes[3]', 'see raceResetWord0',
-      pair=('raceResetWord2', 'savedLapTimes[3]'), decls=['extern int savedLapTimes[];'], container_decl='extern int savedLapTimes[];'),
-    A('raceResetWord3', 'savedLapTimes', 'savedLapTimes[4]', 'see raceResetWord0',
-      pair=('raceResetWord3', 'savedLapTimes[4]'), decls=['extern int savedLapTimes[];'], container_decl='extern int savedLapTimes[];'),
     # The menus and the HUD name the first texture slots after the screens that use them; the loader fills them
     # as one table (800 slots up to the end of menuTexturePtrsB) and the code indexes each sub-table from its name.
     A('menuTexturePtrsD', 'textureTable', '(&textureTable[2])',
@@ -261,43 +132,111 @@ ALIASES = [
       decls=['extern Texture *textureTable[];'], container_decl='extern Texture *textureTable[];'),
     # WaterFall saves a row of the screen next to a RECT and passes `waterfallSaved - 4` to LoadImage: the 8 bytes
     # of waterfallBuf, eleven saved halfwords and the row word are one 16-halfword buffer.
-    A('waterfallSaved', 'waterfallBuf', '((u_short *)(waterfallBuf + 8))',
-      'effects.c passes waterfallSaved - 4 (= waterfallBuf) to LoadImage; the three names are contiguous (+8, +30)',
-      expr='waterfallSaved[0]', pair=('waterfallSaved[2]', 'waterfallBuf[12]'),
-      decls=['extern u8 waterfallBuf[];'], container_decl='extern u8 waterfallBuf[];'),
-    A('waterfallRow', 'waterfallBuf', '((u_short *)(waterfallBuf + 30))', 'see waterfallSaved',
-      expr='waterfallRow[0]', pair=('waterfallRow[0]', 'waterfallBuf[30]'),
-      decls=['extern u8 waterfallBuf[];'], container_decl='extern u8 waterfallBuf[];'),
     # The fill polygons of the two screens: VsyncFunc indexes screenFills by the screen number; the menus
     # and the loader store the second one by its own name.
-    A('screenFill1', 'screenFills', 'screenFills[1]',
-      'VsyncFunc loads screenFills + 4 * screen; InitPop and InitResidentMenu store +0 and +4 one after the other',
-      pair=('screenFill1', 'screenFills[1]'), decls=['extern BLK_FILL *screenFills[];'],
-      container_decl='extern BLK_FILL *screenFills[];'),
     # The track polygon pools are double buffered: the assembly AsmTrackHi/Med/Lo load Pool + 4 * screen,
     # trackasm.c names the second pointer of each.
-    A('TrackHiPolysAlt', 'TrackHiPolys', '((POLY_FT4 **)&TrackHiPolys)[1]',
-      'AsmTrackHi loads TrackHiPolys + 4 * screen (stride 4); trackasm.c allocates TrackHiPolys and the pointer 4 bytes after it',
-      pair=('TrackHiPolysAlt', '((POLY_FT4 **)&TrackHiPolys)[1]'), decls=['extern POLY_FT4 *TrackHiPolys;'],
-      container_decl='extern POLY_FT4 *TrackHiPolys;'),
-    A('TrackMedPolysAlt', 'TrackMedPolys', '((POLY_FT4 **)&TrackMedPolys)[1]', 'see TrackHiPolysAlt (AsmTrackMed)',
-      pair=('TrackMedPolysAlt', '((POLY_FT4 **)&TrackMedPolys)[1]'), decls=['extern POLY_FT4 *TrackMedPolys;'],
-      container_decl='extern POLY_FT4 *TrackMedPolys;'),
-    A('TrackLoPolysAlt', 'TrackLoPolys', '((POLY_FT4 **)&TrackLoPolys)[1]', 'see TrackHiPolysAlt (AsmTrackLo)',
-      pair=('TrackLoPolysAlt', '((POLY_FT4 **)&TrackLoPolys)[1]'), decls=['extern POLY_FT4 *TrackLoPolys;'],
-      container_decl='extern POLY_FT4 *TrackLoPolys;'),
     # initShipData gives each of the 15 ships its grid position (the loop runs i < 15); the last three
     # entries, for the Phantom class, are set by name.
     A('phantomGridPos', 'gridPosition', '(&gridPosition[12])',
       'ships.c: for (i = 0; i < 15; i++) position = gridPosition[i]; phantomGridPos stores +0, +2, +4 of the entries 12..14',
       expr='phantomGridPos[0]', pair=('phantomGridPos[2]', 'gridPosition[14]'),
       decls=['extern short gridPosition[];'], container_decl='extern short gridPosition[];'),
+    # The pause menu is one record: its two-player stage, the answer to the confirmation prompt and the choice
+    # are the bytes after its five words (PauseMenu.stage, .confirmed, .confirmChoice at +23, +24, +25).
+    A('twoPlayerPauseStatus', 'pauseState', 'pauseState.stage',
+      'race() loads pauseState + 23 and stores +24, +25 as bytes; the PauseMenu fields stage, confirmed, confirmChoice sit there',
+      includes=['ayrace.h'], decls=['extern struct PauseMenu pauseState;']),
+    A('twoPlayerMode', 'pauseState', '(*(signed char *)&pauseState.confirmed)', 'see twoPlayerPauseStatus',
+      includes=['ayrace.h'], decls=['extern struct PauseMenu pauseState;']),
+    A('twoPlayerFlag', 'pauseState', '(*(signed char *)&pauseState.confirmChoice)', 'see twoPlayerPauseStatus',
+      includes=['ayrace.h'], decls=['extern struct PauseMenu pauseState;']),
+    # The score tab record (HiScoreData, 72 bytes) is followed on the console by one byte of its own, hudDisabled
+    # at +36, which is HiScoreData.highScore.
+    A('hudDisabled', 'scoreTabData', 'scoreTabData.highScore',
+      'Restart stores and race() loads the byte at scoreTabData + 36 = HiScoreData.highScore; the record runs up to PrimitiveBuffer0',
+      includes=['hiscores.h'], decls=['extern HiScoreData scoreTabData;'], container_decl='extern HiScoreData scoreTabData;'),
+    # The mono-rail record (48 bytes) has three words of its padding that InitTrainLights and the train muzzle code
+    # name on their own (+20, +24, +28).
+    A('trainMuzzleX', 'monoRail', 'monoRail.pad10[1]',
+      'the train muzzle position is stored as the words at monoRailFlag + 20, +24, +28, inside MonoRailData.pad10',
+      includes=['effects.h'], decls=['extern MonoRailData monoRail;']),
+    A('trainMuzzleY', 'monoRail', 'monoRail.pad10[2]', 'see trainMuzzleX', includes=['effects.h'], decls=['extern MonoRailData monoRail;']),
+    A('trainMuzzleZ', 'monoRail', 'monoRail.pad10[3]', 'see trainMuzzleX', includes=['effects.h'], decls=['extern MonoRailData monoRail;']),
     A('sharkBodyModel', 'shipShapeTable', 'shipShapeTable[2]',
       'UpdateSharkModel loads shipShapeTable + 8 and CopySharkVerts + 16 without index: slots 2 and 4',
       decls=['extern Object *shipShapeTable[];'], container_decl='extern Object *shipShapeTable[];'),
     A('sharkLegModel', 'shipShapeTable', 'shipShapeTable[4]', 'see sharkBodyModel',
       decls=['extern Object *shipShapeTable[];'], container_decl='extern Object *shipShapeTable[];'),
 ]
+
+# Names the sources used to declare that the build branch has since rewritten (the field, the element or
+# the container itself is used directly): they are no longer declared, so nothing defines or aliases
+# them. Kept as the record of what the machine code says about each: name -> (container, evidence).
+RESOLVED = {
+    'dispOffX0': ('DispEnv0', 'halfword stores at DispEnv0 + 8 and + 10 only (ShakeScreen, InitGameDisplay...): DISPENV.screen.x and .y'),
+    'dispOffY0': ('DispEnv0', 'see dispOffX0'),
+    'dispOffX1': ('DispEnv1', 'see dispOffX0'),
+    'dispOffY1': ('DispEnv1', 'see dispOffX0'),
+    'cardUsed': ('cardSlots', 'InitCard stores cardSlots + 10 with strides (1, 90): the used byte of each 90-byte entry'),
+    'cardFileNames': ('cardSlots', 'cardSlots + 11: the 32-byte file name of the entry'),
+    'cardNames': ('cardSlots', 'cardSlots + 43: the label of the entry'),
+    'cardFlags': ('cardSlots', 'cardSlots + 75 with strides (90, 1350) in DupFileCheck, LoadSave, DisplayCardBack: the type byte of the entries'),
+    'quadClutField': ('quadPool', 'AddText/AddTime store quadPool + 14 and + 22 with stride 40: the clut and tpage fields of the 600 POLY_FT4s'),
+    'quadTPageField': ('quadPool', 'see quadClutField'),
+    'racingLine': ('raceLines', 'racingLine[i] is accessed at raceLines + 4 + 16 * i (x, y, z): the same 16-byte stride'),
+    'shipOrder': ('shipRank', 'shipOrder[i][0] is shipRank + 2 + 4 * i = shipRank[i].shipNo (SortAllShips, getShipBehindLAP)'),
+    'raceResetWord0': ('savedLapTimes', 'main() stores savedLapTimes + 0, 4, 8, 12, 16 in a row; hud.c indexes savedLapTimes[lap] (5 words up to recordBuffer)'),
+    'screenFill1': ('screenFills', 'VsyncFunc loads screenFills + 4 * screen; InitPop and InitResidentMenu store +0 and +4 one after the other'),
+    'TrackLoPolysAlt': ('TrackLoPolys', 'see TrackHiPolysAlt (AsmTrackLo)'),
+    'smokeColourGreen': ('smokeColour', 'smokeColour is a CVECTOR (loaded as one word by TrackSpecificFunctions); race() stores bytes at +0, +1, +2'),
+    'smokeColourBlue': ('smokeColour', 'see smokeColourGreen'),
+    'raceCheckpointResults': ('checkCells', 'strides (6, 36, 144) from checkCells + 2 in race() and SetUpFirstCheckPoint: the bonusSeconds field of the 6-byte cells'),
+    'raceCheckpointFlags': ('checkCells', 'strides (6, 36, 144) from checkCells + 4: the done field of the 6-byte cells'),
+    'StaticRVertY': ('StaticRVert', 'DrawEnvMap loads +0, +4, +8 of StaticRVert with stride 16 and the three names are 4 bytes apart'),
+    'StaticRVertZ': ('StaticRVert', 'see StaticRVertY'),
+    'recordKeyCount': ('recordBuffer', 'RecordKeypresses and InitGhostShip access recordBuffer + 4 as a word; the buffer is 0x104 header bytes then the keys'),
+    'recordKeyTotal': ('recordBuffer', 'see recordKeyCount'),
+    'recordControl': ('recordBuffer', 'see recordKeyCount'),
+    'recordDisabled': ('recordBuffer', 'see recordKeyCount'),
+    'recordMagic': ('recordBuffer', 'see recordKeyCount'),
+    'recordTrackNum': ('recordBuffer', 'see recordKeyCount'),
+    'recordShipClass': ('recordBuffer', 'see recordKeyCount'),
+    'replayKeyCount': ('replayBuffer', 'same layout as recordBuffer (it is a copy of one)'),
+    'replayKeyTotal': ('replayBuffer', 'see replayKeyCount'),
+    'replayControl': ('replayBuffer', 'see replayKeyCount'),
+    'replayDisabled': ('replayBuffer', 'see replayKeyCount'),
+    'replayMagic': ('replayBuffer', 'see replayKeyCount'),
+    'replayTrackNum': ('replayBuffer', 'see replayKeyCount'),
+    'replayShipClass': ('replayBuffer', 'see replayKeyCount'),
+    'fadeTileRed': ('fadeTile', 'UpdateFadeScreen stores bytes at fadeTile + 4, 5, 6: the colour of the first TILE'),
+    'fadeTileGreen': ('fadeTile', 'see fadeTileRed'),
+    'fadeTileBlue': ('fadeTile', 'see fadeTileRed'),
+    'progLoadAddr': ('progHeader', 'LoadProg loads progHeader + 24 and + 28 (t_addr, t_size of the 136-byte PS-X EXE header it just read)'),
+    'progSize': ('progHeader', 'see progLoadAddr'),
+    'linkPadButtons': ('playerControl', 'see linkPadHead'),
+    'linkPadPressed': ('playerControl', 'see linkPadHead (the two pad bytes at +6)'),
+    'remotePadHead': ('remoteControl', 'doSerialGame stores the received packet at remoteControl + 0, +2, +4, +6 (halfwords), +8, +9 (bytes)'),
+    'remotePadButtons': ('remoteControl', 'see remotePadHead'),
+    'remotePadPressed': ('remoteControl', 'see remotePadHead'),
+    'remotePadAux0': ('remoteControl', 'see remotePadHead'),
+    'remotePadAux1': ('remoteControl', 'see remotePadHead'),
+    'raceResetWord1': ('savedLapTimes', 'see raceResetWord0'),
+    'raceResetWord2': ('savedLapTimes', 'see raceResetWord0'),
+    'raceResetWord3': ('savedLapTimes', 'see raceResetWord0'),
+    'waterfallSaved': ('waterfallBuf', 'effects.c passes waterfallSaved - 4 (= waterfallBuf) to LoadImage; the three names are contiguous (+8, +30)'),
+    'waterfallRow': ('waterfallBuf', 'see waterfallSaved'),
+    'TrackHiPolysAlt': ('TrackHiPolys', 'AsmTrackHi loads TrackHiPolys + 4 * screen (stride 4); trackasm.c allocates TrackHiPolys and the pointer 4 bytes after it'),
+    'TrackMedPolysAlt': ('TrackMedPolys', 'see TrackHiPolysAlt (AsmTrackMed)'),
+}
+
+# Globals the sources declare under a name the console's tables do not have: the build branch made one object
+# of several symbols. name -> (the symbol the object starts at, why).
+RENAMED = {
+    'raceCamera': ('residentSkeletons', 'residentSkeletons (the camera skeleton pointer) and cameraSections (the 24 bytes after it) are the '
+                                         'one TrackCamera that cameraPtr points at and CameraUpdate and DrawShips take'),
+    'monoRail': ('monoRailFlag', 'the mono-rail carriage state: its first field, the step index, was monoRailFlag; trainMuzzleX/Y/Z follow it'),
+}
 
 # Symbols defined under another C name: the executable's symbol -> the identifier in the data file.
 RENAMES = {}
@@ -315,7 +254,6 @@ SIZES = {
     'TrackLoPolys': (2, 'one polygon pool per screen (see TrackHiPolys)'),
     'tileSurfaces': (32, 'indexed by the face texture number (crack.c, trackasm.c, AsmLowResTile...): the executable has 64 of the 252-byte surfaces (32 textures, 2 each) up to muzzleright; the sources declared 24'),
     'textureTable': (800, 'the slots run up to the end of menuTexturePtrsB (3172 bytes at slot 7): 800 pointers'),
-    'waterfallBuf': (32, 'with waterfallSaved and waterfallRow after it: sixteen halfwords'),
     'shipShapeTable': (31, '30 ship shapes and the rescue droid model at [30] (RescueDroidModel); menuModels follows'),
 }
 

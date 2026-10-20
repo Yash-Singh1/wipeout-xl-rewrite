@@ -1,6 +1,6 @@
 #include "functions.h"
 #include "animover.h"
-extern CreditEntry creditEntries[];
+extern CreditEntry creditEntries[35]; /* InitCredits fills entries 0 to 34 */
 
 char *Mds;
 char *DirDev;

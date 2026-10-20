@@ -179,6 +179,12 @@ class Env:
             self.extra_labels.append((name, addr, sec.name))
             self.rows.append((addr, name, 'data'))
             self.label_sec[name] = sec.name
+        # Globals the sources declare under a name the console's tables do not have: one object that was
+        # several names there (D.RENAMED: new name -> the first of those names).
+        for new, (anchor, _why) in D.RENAMED.items():
+            addr = next(a for a, n, *_ in self.rows if n == anchor)
+            self.rows.append((addr, new, 'data'))
+            self.label_sec[new] = self.label_sec[anchor]
         for a, n in sorted(self.funcs.items()):
             sec = self.pe.section_of(a)
             if sec is None or sec.name not in ('.pre', '.text'):

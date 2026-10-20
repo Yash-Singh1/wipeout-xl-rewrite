@@ -1,23 +1,23 @@
 /* Global data of main.c, generated from the executable by tools/gendata.py. */
 #include "functions.h"
+#include "ayrace.h"
 
-int fixedHeapAddress;
-unsigned short gClutX;
-unsigned short gClutY;
+short gClutX;
+short gClutY;
 int remoteShip;
 int savedTextureTableCount;
 u_long *OT2[2];
 int trackNo;
 int attractDelayFrames;
 u_char cdMusicIndex;
-int reserveHeapCopy;
+HeapBlock *reserveHeapCopy;
 int linkSendFlag;
 short gTextureX;
 short gTextureY;
 WADFILE *textureWad;
 int raceContext;
 int cdMusicCount;
-int cdStatus;
+struct WipeCdStatus cdStatus[1];
 int savedLapTimes[5];
 CdlLOC cdTrackLocs[20];
 u_char cdMusicTable[16];

@@ -2,48 +2,34 @@
 #include "weapon.h"
 
 /* Globals shared with other modules. */
-extern SParticle *particleSlots;
 extern short startBoomCount;
 extern char nameStartBoom[];
 extern char msgTooManyStartBooms[];
 extern char nameRedLight[];
 extern char nameLight[];
-extern void *textureWad;
 extern TrackSection *lightSections[];
 extern Texture *textureTable[];
 extern short CurrentScreen;
-extern u_char waterfallBuf[];
+extern u_short waterfallBuf[16];
 extern u_long commonPath[];
 
-extern u_short TextureTableCount;
 extern char trainCmpExt[];
 extern char trainPrmExt[];
 extern TrackSection *droidStartSections[];
 extern TrackSection *droidPickSection;
 extern short startLinePos[];
-extern u_char classLaps[];
 extern SideTable droidSideTable;
 extern SideTable droidPickTable;
-extern short numTrackSections;
 extern int ownShip;
 extern int raceType;
 extern RaceLine raceLines[];
-extern ConfigData *tempGameData;
 extern ConfigData *gameData;
 extern TrackData *track;
-extern Object *monoRailObjs[];
-extern VECTOR posMonoRail[];
-extern short monoRailFlag;
-extern void *volatile zeppelinObj;
 extern int zeppelinBaseX;
 extern int zeppelinBaseY;
 extern int zeppelinBaseZ;
 extern Object *lightGroups[];
 extern int startCountdown;
-extern Skeleton **cameraPtr;
-extern int *OT[];
-extern DISPENV DispEnv0; /* Port: dispOffX0 is a part of it, see data_alias.h */
-extern DISPENV DispEnv1; /* Port: dispOffX1 is a part of it, see data_alias.h */
 extern int remoteShip;
 extern int lightUpdate;
 
@@ -91,7 +77,7 @@ ship_loop:
         } while (i < 2);
     }
     ship += 1;
-    if ((int)ship < (int)shipEnd) goto ship_loop;
+    if (ship < shipEnd) goto ship_loop;
 
     weapon = weapons;
 weapon_loop:
@@ -122,7 +108,7 @@ weapon_loop:
         weapon->count = 0;
     }
     weapon += 1;
-    if ((int)weapon < (int)(weapons + 30)) goto weapon_loop;
+    if (weapon < weapons + 30) goto weapon_loop;
 }
 
 
@@ -569,7 +555,7 @@ void Video(Object **objects, int count)
     short hdr;
     int k;
     int i;
-    void **objp;
+    Object **objp;
     void *cursor;
 
     objp = objects;
@@ -586,14 +572,14 @@ void Video(Object **objects, int count)
     if ((count << 0x10) > lowerBound) {
         i = 0;
         do {
-            prim = (*(  short ** )((signed char *)( *objp ) + (  0x24 ))) ;
+            prim = (short *)(*objp)->primitives;
             k = 0;
             cursor = (u_char *)prim + 0x10;
 loop_6:
             hdr = *prim;
             if (hdr != 4) {
                 if (hdr == 8) {
-                    if ((*(  u_char * )((signed char *)( tempGameData ) + (  5 )))  == 6) {
+                    if (tempGameData->actTrackNum  == 6) {
                         (*(  signed char * )((signed char *)( cursor ) + (  2 )))  = 0;
                         (*(  signed char * )((signed char *)( cursor ) + (  3 )))  = 0;
                         colour = rectangles[0] .w;
@@ -604,7 +590,7 @@ loop_6:
                         (*(  signed char * )((signed char *)( cursor ) + (  8 )))  = (signed char) rectangles[0] .w;
                         (*(  signed char * )((signed char *)( cursor ) + (  9 )))  = (signed char) rectangles[0] .h;
                     }
-                    if ((*(  u_char * )((signed char *)( tempGameData ) + (  5 )))  == 7) {
+                    if (tempGameData->actTrackNum  == 7) {
                         (*(  signed char * )((signed char *)( cursor ) + (  2 )))  = 0;
                         colour = rectangles[0] .h;
                         (*(  signed char * )((signed char *)( cursor ) + (  4 )))  = 0;
@@ -622,7 +608,7 @@ loop_6:
                     cursor += 0x2C;
                 }
             } else {
-                if ((*(  u_char * )((signed char *)( tempGameData ) + (  5 )))  == 6) {
+                if (tempGameData->actTrackNum  == 6) {
                     (*(  signed char * )((signed char *)( cursor ) + (  2 )))  = 0;
                     (*(  signed char * )((signed char *)( cursor ) + (  3 )))  = 0;
                     colour = rectangles[0] .w;
@@ -633,7 +619,7 @@ loop_6:
                     (*(  signed char * )((signed char *)( cursor ) + (  8 )))  = (signed char) rectangles[0] .w;
                     (*(  signed char * )((signed char *)( cursor ) + (  9 )))  = (signed char) rectangles[0] .h;
                 }
-                if ((*(  u_char * )((signed char *)( tempGameData ) + (  5 )))  == 7) {
+                if (tempGameData->actTrackNum  == 7) {
                     (*(  signed char * )((signed char *)( cursor ) + (  2 )))  = 0;
                     colour = rectangles[0] .h;
                     (*(  signed char * )((signed char *)( cursor ) + (  4 )))  = 0;
@@ -670,9 +656,9 @@ void WaterFall(void)
     u_short  *destination;
     u_short   first;
 
-    first = waterfallRow[0];
+    first = waterfallBuf[15];
     count = 0xE;
-    destination = waterfallRow;
+    destination = &waterfallBuf[15];
     source = destination - 1;
     rect.x = 0x370;
     rect.y = 0xF1;
@@ -684,8 +670,8 @@ void WaterFall(void)
         destination--;
         count--;
     } while (count >= 4);
-    waterfallSaved[0] = first;
-    ((int (*)(RECT *, u_short *, u_short))LoadImage)(&rect, waterfallSaved - 4, first);
+    waterfallBuf[4] = first;
+    LoadImage(&rect, (u_long *)waterfallBuf);
 }
 
 
@@ -903,16 +889,16 @@ void ResetMonoRail(void)
         current->skeleton->relative.t[2] = posMonoRail[index].vz;
         index++;
     } while (index < 6);
-    monoRailFlag = 0;
+    monoRail.index = 0;
 }
 
 
 /* Puts the zeppelin back at its base position through its skeleton. */
 void ResetZeppelin(void)
 {
-    *(int *)&((Object *)zeppelinObj)->skeleton->relative.t[0] = zeppelinBaseX;
-    *(int *)&((Object *)zeppelinObj)->skeleton->relative.t[1] = zeppelinBaseY;
-    *(int *)&((Object *)zeppelinObj)->skeleton->relative.t[2] = zeppelinBaseZ;
+    zeppelinObj->skeleton->relative.t[0] = zeppelinBaseX;
+    zeppelinObj->skeleton->relative.t[1] = zeppelinBaseY;
+    zeppelinObj->skeleton->relative.t[2] = zeppelinBaseZ;
 }
 
 
@@ -1048,13 +1034,13 @@ void UpdateStartDroid(Object **shapes, ShipData *ships, DroidData *droids, short
             break;
         }
         shape->skeleton->update=1;
-        AsmDrawObject(shape, cameraPtr[0]);
+        AsmDrawObject(shape, cameraPtr->camPos, 0); /* Port: roll was never passed; 0 stands for the console's stale a2 */
     }
     if (player==-1) droidBlinkTick++;
 }
 
 
-void LoadStartDroid(Object **objects, int unused, Skeleton *parent)
+void LoadStartDroid(Object **objects, char *names, Skeleton *parent)
 {
     char    buf[256];
     short   n;
@@ -1076,7 +1062,7 @@ void LoadStartDroid(Object **objects, int unused, Skeleton *parent)
 }
 
 
-void InitDroidThings(Object **objects, int unused1, int unused2, Checkpoint *points, ConfigData *options)
+void InitDroidThings(Object **objects, char *names, Skeleton *parent, Checkpoint *points, ConfigData *options)
 {
     SideTable     table;
     short         count;
@@ -1163,7 +1149,7 @@ void ResetLightStart(void)
 }
 
 
-void UpdateLightStart(Object **objects, int unused1, int unused2, int unused3, int unused4, int mode)
+void UpdateLightStart(Object **objects, ShipData *ships, DroidData *droids, short textureBase, ConfigData *game, int mode)
 {
     short         count = 3;
     short         i, j;
@@ -1229,7 +1215,7 @@ void UpdateLightStart(Object **objects, int unused1, int unused2, int unused3, i
             }
         }
         object->skeleton->update = 1;
-        AsmDrawObject(object, cameraPtr[0]);
+        AsmDrawObject(object, cameraPtr->camPos, 0); /* Port: roll was never passed; 0 stands for the console's stale a2 */
     }
     if (mode == -1) {
         if (!(lightUpdateTick & 1)) {
@@ -1240,7 +1226,7 @@ void UpdateLightStart(Object **objects, int unused1, int unused2, int unused3, i
 }
 
 
-void MoveMonoRail(Object **objects, short count, MonoRailData *mono, int ships, int mode)
+void MoveMonoRail(Object **objects, short count, MonoRailData *mono, ShipData *ships, int mode)
 {
     int lowerBound;
     int remaining;
@@ -1248,22 +1234,22 @@ void MoveMonoRail(Object **objects, short count, MonoRailData *mono, int ships, 
     int dx;
     int dy;
     int dz;
-    int *camera;
-    short *skeleton;
+    TrackCamera *camera;
+    Skeleton *skeleton;
     int i;
     u_char shipByte;
-    void **unusedCursor;
-    short *skel;
-    short *shipPtr;
-    void *obj;
-    shipPtr = (ownShip * 0xF0) + ships;
-    if ((*(  short * )((signed char *)( shipPtr ) + (  0xC8 )))  == 0xD2) {
-        shipByte = (*(  u_char * )((signed char *)( shipPtr ) + (  0xC6 ))) ;
-        if ((*(  short * )((signed char *)( mono ) + (  0 )))  != (signed char) shipByte) {
-            (*(  short * )((signed char *)( mono ) + (  0 )))  = (short) (signed char) shipByte;
+    Object **unusedCursor;
+    Skeleton *skel;
+    ShipData *shipPtr;
+    Object *obj;
+    shipPtr = ships + ownShip;
+    if (shipPtr->nearSecNo == 0xD2) {
+        shipByte = shipPtr->lap;
+        if (mono->index != (signed char) shipByte) {
+            mono->index = (short) (signed char) shipByte;
             monoRailSettle = 0x76C;
         }
-        }
+    }
     remaining = count;
     i = 0;
     lowerBound = 0;
@@ -1273,25 +1259,25 @@ void MoveMonoRail(Object **objects, short count, MonoRailData *mono, int ships, 
         do {
             obj = objects[i];
             if ((mode == -1) && (monoRailSettle != 0)) {
-                if (!((*(  u_char * )((signed char *)( ((ownShip * 0xF0) + ships) ) + (  0xC6 )))  & 1)) {
-                    skel = (*(  void ** )((signed char *)( obj ) + (  0x30 ))) ;
-                    dx = (*(  int * )((signed char *)( mono ) + (  4 ))) ;
-                    dy = (*(  int * )((signed char *)( mono ) + (  8 ))) ;
-                    dz = (*(  int * )((signed char *)( mono ) + (  0xC ))) ;
-                    x = (*(  int * )((signed char *)( skel ) + (  0x14 ))) ;
-                    y = (*(  int * )((signed char *)( skel ) + (  0x18 ))) ;
-                    z = (*(  int * )((signed char *)( skel ) + (  0x1C ))) ;
+                if (!((ships + ownShip)->lap & 1)) {
+                    skel = obj->skeleton;
+                    dx = mono->stepX;
+                    dy = mono->stepY;
+                    dz = mono->stepZ;
+                    x = skel->relative.t[0];
+                    y = skel->relative.t[1];
+                    z = skel->relative.t[2];
                     dx = x - (-dx);
                     dy = y - (-dy);
                     dz = z - (-dz);
                 } else {
-                    skel = (*(  void ** )((signed char *)( obj ) + (  0x30 ))) ;
-                    dx = (*(  int * )((signed char *)( mono ) + (  4 ))) ;
-                    dy = (*(  int * )((signed char *)( mono ) + (  8 ))) ;
-                    dz = (*(  int * )((signed char *)( mono ) + (  0xC ))) ;
-                    x = (*(  int * )((signed char *)( skel ) + (  0x14 ))) ;
-                    y = (*(  int * )((signed char *)( skel ) + (  0x18 ))) ;
-                    z = (*(  int * )((signed char *)( skel ) + (  0x1C ))) ;
+                    skel = obj->skeleton;
+                    dx = mono->stepX;
+                    dy = mono->stepY;
+                    dz = mono->stepZ;
+                    x = skel->relative.t[0];
+                    y = skel->relative.t[1];
+                    z = skel->relative.t[2];
                     dx = x - dx;
                     dy = y - dy;
                     dz = z - dz;
@@ -1299,12 +1285,12 @@ void MoveMonoRail(Object **objects, short count, MonoRailData *mono, int ships, 
                 SetSkeletonPosition(skel, dx, dy, dz);
                 monoRailSettle = (u_short) monoRailSettle - 1;
             }
-            skeleton = (*(  short ** )((signed char *)( obj ) + (  0x30 ))) ;
+            skeleton = obj->skeleton;
             camera = cameraPtr;
-            (*(  short * )((signed char *)( skeleton ) + (  0x40 )))  = 1;
+            skeleton->update = 1;
             unusedCursor = objects + i + 1;
             i += 1;
-            AsmDrawObject(obj, *camera);
+            AsmDrawObject(obj, camera->camPos, 0); /* Port: roll was never passed; 0 stands for the console's stale a2 */
         } while (i < count);
     }
 }
@@ -1438,8 +1424,6 @@ void InitShadowCluts(void)
 }
 
 
-extern u_char sillyShips;
-extern HeapBlock *heap;
 extern char texShadow1[];
 extern char texShadow2[];
 extern char texSilly1[];
@@ -1455,7 +1439,7 @@ Shadow *InitShadow(void)
     POLY_FT4 *poly;
     u_char *cellPtr;
     u_char *shipBase;
-    int rowBase;
+    u_char *rowBase;
     POLY_FT4 *rowPoly;
     int ship, shipOffset;
     int screen, screenOffset;
@@ -1478,7 +1462,7 @@ Shadow *InitShadow(void)
     LoadTexture(secondName, 1);
     ship = 0;
     ShowLoadMessage();
-    shadows = DAlloc(heap, 0x4B20);
+    shadows = DAlloc(heap, 15 * sizeof(Shadow) + 32);
     u[0] = shadowTexture->u0;
     u[4] = shadowTexture->u1;
     u[2] = (u[0] + u[4]) >> 1;
@@ -1573,10 +1557,10 @@ Shadow *InitShadow(void)
             rowScale = (row * 2) * 2;
             rowOffset = rowIndex;
             do {
-                rowBase = shipOffset + (int)shadows;
+                rowBase = (u_char *)shadows + shipOffset;
                 quadOffset = (rowScale + col) * (sizeof(POLY_FT4) * 2);
                 uvIndex = rowOffset + col;
-                rowPoly = (POLY_FT4 *)(gridOffset + (quadOffset + rowBase));
+                rowPoly = (POLY_FT4 *)(rowBase + (gridOffset + quadOffset));
                 rowPoly->u0 = u[uvIndex];
                 rowPoly->v0 = v[uvIndex];
                 rowPoly->u1 = u[uvIndex + 1];
@@ -1586,10 +1570,10 @@ Shadow *InitShadow(void)
                 rowPoly->u3 = u[uvIndex + 6];
                 rowPoly->v3 = v[uvIndex + 6];
                 if (ship >= 12) {
-                    ((POLY_FT4 *)(rowBase + (gridOffset + quadOffset)))->u0 += 0x80;
-                    ((POLY_FT4 *)(rowBase + (gridOffset + quadOffset)))->u1 += 0x80;
-                    ((POLY_FT4 *)(rowBase + (gridOffset + quadOffset)))->u2 += 0x80;
-                    ((POLY_FT4 *)(rowBase + (gridOffset + quadOffset)))->u3 += 0x80;
+                    rowPoly->u0 += 0x80;
+                    rowPoly->u1 += 0x80;
+                    rowPoly->u2 += 0x80;
+                    rowPoly->u3 += 0x80;
                 }
                 col++;
             } while (col < 4);
@@ -1635,13 +1619,13 @@ void DrawShadow(void *shapes, ShipData *ships, Shadow *shadow)
     POLY_FT4 *poly;
     ShipData *ship;
     Shadow *shadowEntry;
-    cameraPtr[0]->super->update=1;
-    SetSkeletonTransform(cameraPtr[0]->super);
+    cameraPtr->camPos->super->update=1;
+    SetSkeletonTransform(cameraPtr->camPos->super);
     for(i=0;i<15;i++) {
         ship=ships+i;shadowEntry=shadow+i;
         if((raceType==3 && (i==ownShip || i==remoteShip)) || (raceType==1 && i==ownShip) || (raceType!=1 && raceType!=3)) {
             if((ship->attr & (FLYING | VISIBLE)) != VISIBLE) continue;
-            if (*(int *)&ship->combatAttr & 0x8080) continue;
+            if (ship->combatAttr & 0x8080) continue;
             face=track->faces+ship->nearTrkSect->faceStart;
             do { faceFlags=face->flags;face++;if(faceFlags & 1) {face--;break;} } while(1);
             a.vx=(ship->ppivot.vx+((ship->unitVecNose.vx*3)>>5))-(ship->unitVecWing.vx>>4);
@@ -1675,22 +1659,22 @@ void DrawShadow(void *shapes, ShipData *ships, Shadow *shadow)
             d.vx-=(alpha*face->normal.vx)>>12;
             d.vy-=(alpha*face->normal.vy)>>12;
             d.vz-=(alpha*face->normal.vz)>>12;
-            vertex[0].vx=a.vx+cameraPtr[0]->relative.t[0];
-            vertex[0].vy=a.vy+cameraPtr[0]->relative.t[1];
-            vertex[0].vz=a.vz+cameraPtr[0]->relative.t[2];
-            vertex[1].vx=b.vx+cameraPtr[0]->relative.t[0];
-            vertex[1].vy=b.vy+cameraPtr[0]->relative.t[1];
-            vertex[1].vz=b.vz+cameraPtr[0]->relative.t[2];
-            vertex[2].vx=c.vx+cameraPtr[0]->relative.t[0];
-            vertex[2].vy=c.vy+cameraPtr[0]->relative.t[1];
-            vertex[2].vz=c.vz+cameraPtr[0]->relative.t[2];
-            vertex[3].vx=d.vx+cameraPtr[0]->relative.t[0];
-            vertex[3].vy=d.vy+cameraPtr[0]->relative.t[1];
-            vertex[3].vz=d.vz+cameraPtr[0]->relative.t[2];
-            depth[0]=RotTransPers(&vertex[0],&screen[0],&p,&flag);
-            depth[1]=RotTransPers(&vertex[1],&screen[1],&p,&flag);
-            depth[2]=RotTransPers(&vertex[2],&screen[2],&p,&flag);
-            depth[3]=RotTransPers(&vertex[3],&screen[3],&p,&flag);
+            vertex[0].vx=a.vx+cameraPtr->camPos->relative.t[0];
+            vertex[0].vy=a.vy+cameraPtr->camPos->relative.t[1];
+            vertex[0].vz=a.vz+cameraPtr->camPos->relative.t[2];
+            vertex[1].vx=b.vx+cameraPtr->camPos->relative.t[0];
+            vertex[1].vy=b.vy+cameraPtr->camPos->relative.t[1];
+            vertex[1].vz=b.vz+cameraPtr->camPos->relative.t[2];
+            vertex[2].vx=c.vx+cameraPtr->camPos->relative.t[0];
+            vertex[2].vy=c.vy+cameraPtr->camPos->relative.t[1];
+            vertex[2].vz=c.vz+cameraPtr->camPos->relative.t[2];
+            vertex[3].vx=d.vx+cameraPtr->camPos->relative.t[0];
+            vertex[3].vy=d.vy+cameraPtr->camPos->relative.t[1];
+            vertex[3].vz=d.vz+cameraPtr->camPos->relative.t[2];
+            depth[0]=RotTransPers(&vertex[0],(int *)&screen[0],&p,&flag);
+            depth[1]=RotTransPers(&vertex[1],(int *)&screen[1],&p,&flag);
+            depth[2]=RotTransPers(&vertex[2],(int *)&screen[2],&p,&flag);
+            depth[3]=RotTransPers(&vertex[3],(int *)&screen[3],&p,&flag);
             if(flag & 0x80460000) continue;
             x[0]=screen[0].vx;
             x[4]=screen[1].vx;
@@ -1762,7 +1746,7 @@ void DrawShadow(void *shapes, ShipData *ships, Shadow *shadow)
                     bufferOffset=buffer*40;
                     polyIndex*=80;
                     x0=x[grid];
-                    poly=(POLY_FT4 *)(bufferOffset+(polyIndex+(int)shadowQuads));
+                    poly=(POLY_FT4 *)((u_char *)shadowQuads+(polyIndex+bufferOffset));
                     poly->x0=x0;poly->y0=y[grid];
                     poly->x1=x[grid+1];poly->y1=y[grid+1];
                     poly->x2=x[grid+5];poly->y2=y[grid+5];
@@ -1776,8 +1760,6 @@ void DrawShadow(void *shapes, ShipData *ships, Shadow *shadow)
     }
 }
 
-
-extern POLY_FT4 weaponIconPrims[];
 
 void InitWeaponIcons(POLY_FT4 *icons, Texture **textures)
 {
@@ -1862,7 +1844,7 @@ void DrawWeaponIcons(POLY_FT4 *icons, Texture **textures, ShipData *ship)
         icons[CurrentScreen].v3 = textures[textureIndex]->v3;
         icons[CurrentScreen].clut = textures[textureIndex]->cba;
         tpage = GetTPage(0, 1, textures[textureIndex]->textureX, textures[textureIndex]->textureY);
-        poly = (POLY_FT4 *)((CurrentScreen * sizeof(POLY_FT4)) + (int)icons);
+        poly = &icons[CurrentScreen];
         poly->code |= 2;
         poly->tpage = tpage;
         AddPrim(OT[CurrentScreen], &icons[CurrentScreen]);
@@ -1892,23 +1874,23 @@ void ShakeScreen(void)
         rnd = newRand();
         offsetX = rnd % (int) shakeAmount;
         posX = *(u_short *)&gameData->screenX + (((int) shakeAmount >> 1) - offsetX);
-        dispOffX1 = posX;
-        dispOffX0 = posX;
+        DispEnv1.screen.x = posX;
+        DispEnv0.screen.x = posX;
         rnd2 = newRand();
         offsetY = rnd2 % (int) shakeAmount;
         halfShake = (int) shakeAmount >> 1;
         posY = *(u_short *)&gameData->screenY + (halfShake - offsetY);
         shakeAmount -= 1;
-        dispOffY1 = posY;
-        dispOffY0 = posY;
+        DispEnv1.screen.y = posY;
+        DispEnv0.screen.y = posY;
     } else if (shakeAmount == 1) {
         posX2 = *(u_short *)&gameData->screenX;
-        dispOffX1 = posX2;
-        dispOffX0 = posX2;
+        DispEnv1.screen.x = posX2;
+        DispEnv0.screen.x = posX2;
         posY2 = *(u_short *)&gameData->screenY;
         shakeAmount = 0;
-        dispOffY1 = posY2;
-        dispOffY0 = posY2;
+        DispEnv1.screen.y = posY2;
+        DispEnv0.screen.y = posY2;
     }
 }
 void InitPitCycle(void)

@@ -8,25 +8,10 @@ extern int    remoteShip;
 extern TrackData *track;
 extern short  beamCollide;
 extern short  scrapeVol;
-extern SParticle *particleSlots;
 
 int collideMinAlpha;
 
-/* A track section's localRadius and flags viewed as one 32-bit word. */
-typedef union SectionAttributes {
-    u_long word;
-    struct {
-        u_short pad;
-        u_short flags;
-    } part;
-} SectionAttributes;
 #include "dynam.h"
-
-extern TrackData   *track__dynam __asm__("track");
-extern ConfigData  *tempGameData__dynam __asm__("tempGameData");
-
-void OuterProduct12(VECTOR *v0, VECTOR *v1, VECTOR *v2);
-void VectorNormal(VECTOR *v0, VECTOR *v1);
 
 
 void doShipShipCollision(int shipNo, ShipData *shipIndex, Object **shipShapes)
@@ -166,17 +151,12 @@ int collideLineToPlane(int shipNo1, int shipNo2, Object **shipShapes, ShipData *
     ShipData *playerShip;
     char skeletonWorkspace[40];
 
-    playerShip = (ShipData *)(shipNo1 << 4);
-    playerShip = (ShipData *)((int)playerShip - shipNo1);
-    playerShip = (ShipData *)((int)playerShip << 4);
-    playerShip = (ShipData *)((int)playerShip + (int)shipIndex);
+    /* Port: the console computed shipIndex + shipNo * 240 with shifts and a subtract. */
+    playerShip = &shipIndex[shipNo1];
     shipShape = shipShapes[playerShip->highResTableIndex];
     SetSkeletonPosition(shipShape->skeleton, playerShip->ppivot.vx, playerShip->ppivot.vy, playerShip->ppivot.vz);
     SetSkeletonDirectionHPR(shipShape->skeleton, playerShip->hdg, playerShip->pitch, playerShip->roll);
-    playerShip = (ShipData *)(shipNo2 << 4);
-    playerShip = (ShipData *)((int)playerShip - shipNo2);
-    playerShip = (ShipData *)((int)playerShip << 4);
-    playerShip = (ShipData *)((int)playerShip + (int)shipIndex);
+    playerShip = &shipIndex[shipNo2];
     shipShape = shipShapes[playerShip->highResTableIndex];
     SetSkeletonPosition(shipShape->skeleton, playerShip->ppivot.vx, playerShip->ppivot.vy, playerShip->ppivot.vz);
     SetSkeletonDirectionHPR(shipShape->skeleton, playerShip->hdg, playerShip->pitch, playerShip->roll);
@@ -460,7 +440,7 @@ void Ship2Track(ShipData *playerShip, Face *facePtr, Object **shipShapes) {
             wingPos.vz=playerShip->ppivot.vz-(playerShip->unitVecWing.vz>>shift)-(playerShip->unitVecNose.vz>>shift);
             alpha=PlaneLineCollision(facePoint,wingPos,facePtr->normal);
             if(alpha<=0) {
-                if(((SectionAttributes *)&playerShip->nearTrkSect->localRadius)->word&0x180000) {
+                if(playerShip->nearTrkSect->flags&0x18) {
                     if(CheckPolygonCollision(facePtr,wingPos,alpha,1)==1) {NewWingCollision(playerShip,facePtr,-downTrack,alpha);collided=1;}
                 } else if(collided) WingCollision(playerShip,facePtr,-downTrack,alpha);
                 else NewWingCollision(playerShip,facePtr,-downTrack,alpha);
@@ -470,7 +450,7 @@ void Ship2Track(ShipData *playerShip, Face *facePtr, Object **shipShapes) {
             wingPos.vz=playerShip->ppivot.vz+(playerShip->unitVecWing.vz>>shift)-(playerShip->unitVecNose.vz>>shift);
             alpha=PlaneLineCollision(facePoint,wingPos,facePtr->normal);
             if(alpha<=0) {
-                if(((SectionAttributes *)&playerShip->nearTrkSect->localRadius)->word&0x180000) {
+                if(playerShip->nearTrkSect->flags&0x18) {
                     if(CheckPolygonCollision(facePtr,wingPos,alpha,1)==1) {NewWingCollision(playerShip,facePtr,-downTrack,alpha);collided=1;}
                 } else if(collided) WingCollision(playerShip,facePtr,-downTrack,alpha);
                 else NewWingCollision(playerShip,facePtr,-downTrack,alpha);
@@ -560,7 +540,7 @@ void Ship2Track(ShipData *playerShip, Face *facePtr, Object **shipShapes) {
             wingPos.vz=playerShip->ppivot.vz-(playerShip->unitVecWing.vz>>shift)-(playerShip->unitVecNose.vz>>shift);
             alpha=PlaneLineCollision(facePoint,wingPos,facePtr->normal);
             if(alpha<=0) {
-                if(((SectionAttributes *)&playerShip->nearTrkSect->localRadius)->word&0x180000) {
+                if(playerShip->nearTrkSect->flags&0x18) {
                     if(CheckPolygonCollision(facePtr,wingPos,alpha,1)==1) {NewWingCollision(playerShip,facePtr,downTrack,alpha);collided=1;}
                 } else if(collided) WingCollision(playerShip,facePtr,downTrack,alpha);
                 else NewWingCollision(playerShip,facePtr,downTrack,alpha);
@@ -570,7 +550,7 @@ void Ship2Track(ShipData *playerShip, Face *facePtr, Object **shipShapes) {
             wingPos.vz=playerShip->ppivot.vz+(playerShip->unitVecWing.vz>>shift)-(playerShip->unitVecNose.vz>>shift);
             alpha=PlaneLineCollision(facePoint,wingPos,facePtr->normal);
             if(alpha<=0) {
-                if(((SectionAttributes *)&playerShip->nearTrkSect->localRadius)->word&0x180000) {
+                if(playerShip->nearTrkSect->flags&0x18) {
                     if(CheckPolygonCollision(facePtr,wingPos,alpha,1)==1) {NewWingCollision(playerShip,facePtr,downTrack,alpha);collided=1;}
                 } else if(collided) WingCollision(playerShip,facePtr,downTrack,alpha);
                 else NewWingCollision(playerShip,facePtr,downTrack,alpha);

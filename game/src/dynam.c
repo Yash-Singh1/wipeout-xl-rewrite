@@ -1,18 +1,11 @@
 #include "functions.h"
+#include "ghost.h"
 #include "dynam.h"
 
 extern TrackData   *track;
 extern int          raceType;
-extern ConfigData  *tempGameData;
-extern Skeleton    *residentSkeletons[];
-extern Skeleton    *upperSkeleton;
-
-void OuterProduct12(VECTOR *v0, VECTOR *v1, VECTOR *v2);
-void VectorNormal(VECTOR *v0, VECTOR *v1);
-
 
 extern int droidFlyin;
-#include "ghost.h" /* Port: recordDisabled is a part of it, see data_alias.h */
 
 void ShipTrkReaction(ShipData *playerShip, Object **shipShapes)
 {
@@ -25,6 +18,7 @@ void ShipTrkReaction(ShipData *playerShip, Object **shipShapes)
     Face *face;
     TrackSection *current, *neighbour, *next;
 
+    /* boost is not assigned for a negative thrustCount: the original reads it uninitialised */
     if (playerShip->thrustCount == 0) boost = 1;
     else if ((unsigned short)(playerShip->thrustCount - 1) < 2) boost = 3;
     else if (playerShip->thrustCount >= 3) boost = 6;
@@ -144,7 +138,7 @@ void ShipTrkReaction(ShipData *playerShip, Object **shipShapes)
         if (GetMagnitude(toTarget) > 32000) {
             playerShip->update = UpdateRescueDroid; playerShip->updateCount = 500; droidFlyin = 1000;
             playerShip->thrust = 0; playerShip->attr |= 0x401;
-            if (raceType == 1) recordDisabled = 1;
+            if (raceType == 1) recordBuffer->disabled = 1;
         }
         brake = playerShip->r_brake_rot + playerShip->l_brake_rot;
         playerShip->apivot.vx = (targetVelocity.vx - playerShip->vpivot.vx) / ((brake << 2) + 20);
@@ -152,6 +146,7 @@ void ShipTrkReaction(ShipData *playerShip, Object **shipShapes)
         playerShip->apivot.vz = (targetVelocity.vz - playerShip->vpivot.vz) / ((brake << 2) + 20);
         altitudeDifference = playerShip->nearTrkSect->centre.vy - playerShip->ppivot.vy;
         if (altitudeDifference > 704) {
+            /* mass is only assigned in the branch above: the original reads it uninitialised here */
             if (mass == 110) playerShip->ppivot.vy += 80;
             if (playerShip->vpivot.vy < 0) playerShip->vpivot.vy >>= 1;
             playerShip->ppivot.vy += 16;
@@ -217,20 +212,20 @@ void getWorldPoint(VECTOR *output, Object *object, Object *objectCollide, int po
     VECTOR worldPosition;
     int   flag;
 
-    cameraPosition.vx = residentSkeletons[0]->relative.t[0];
-    cameraPosition.vy = residentSkeletons[0]->relative.t[1];
-    cameraPosition.vz = residentSkeletons[0]->relative.t[2];
+    cameraPosition.vx = raceCamera.camPos->relative.t[0];
+    cameraPosition.vy = raceCamera.camPos->relative.t[1];
+    cameraPosition.vz = raceCamera.camPos->relative.t[2];
     worldPosition.vx = upperSkeleton->relative.t[0];
     worldPosition.vy = upperSkeleton->relative.t[1];
     worldPosition.vz = upperSkeleton->relative.t[2];
-    SetSkeletonPosition(residentSkeletons[0], 0, 0, 0);
-    SetSkeletonDirection(residentSkeletons[0], 0, 0, 0);
+    SetSkeletonPosition(raceCamera.camPos, 0, 0, 0);
+    SetSkeletonDirection(raceCamera.camPos, 0, 0, 0);
     SetSkeletonPosition(upperSkeleton, 0, 0, 0);
     SetSkeletonDirection(upperSkeleton, 0, 0, 0);
     SetSkeletonTransform(object->skeleton);
-    residentSkeletons[0]->relative.t[0] = cameraPosition.vx;
-    residentSkeletons[0]->relative.t[1] = cameraPosition.vy;
-    residentSkeletons[0]->relative.t[2] = cameraPosition.vz;
+    raceCamera.camPos->relative.t[0] = cameraPosition.vx;
+    raceCamera.camPos->relative.t[1] = cameraPosition.vy;
+    raceCamera.camPos->relative.t[2] = cameraPosition.vz;
     upperSkeleton->relative.t[0] = worldPosition.vx;
     upperSkeleton->relative.t[1] = worldPosition.vy;
     upperSkeleton->relative.t[2] = worldPosition.vz;

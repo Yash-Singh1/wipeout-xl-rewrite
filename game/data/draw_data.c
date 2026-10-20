@@ -2,4 +2,4 @@
 #include "functions.h"
 
 u_short clipLevel;
-short visibleObjects[140];
+short visibleObjects[128];

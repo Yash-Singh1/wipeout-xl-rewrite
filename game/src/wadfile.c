@@ -9,43 +9,34 @@ typedef struct WadEntryHeader {
     char pad15[11];
 } WadEntryHeader;
 
-/* $gp-relative globals are tentative definitions; the rest are extern. */
-s16        loadFrame;
-WADFILE   *currentWad;
-int       lastWadCurrent;
-int       loadTicks;
-char      *linePrims;
-extern HeapBlock *heap;
-extern HeapBlock *reserveHeap;
-
-/* functions.h declares WDclose without arguments; the retail caller passes the wad handle,
-   which the callee ignores, so the call goes through this declaration. */
-void WDclose__wadfile(int handle) __asm__("WDclose");
+/* loadFrame, currentWad, lastWadCurrent, loadTicks and linePrims are the load screen's state
+   and are defined in progress.c (declared in globals.h). */
 
 
-WADFILE *openwadfile(int fileNo)
+WADFILE *openwadfile(char *name)
 {
     WadEntryHeader header;
     WADFILE       *wad;
     int            handle;
+    int            entry;
 
     wad = DAlloc(heap, 0x108);
-    handle = WDopen(fileNo, 0, 0);
+    handle = WDopen(name, 0, 0);
     wad->handle = handle;
     if (handle == -1) {
-        printf("wadfile.c:openwadfile(): can't open %s\n", fileNo);
+        printf("wadfile.c:openwadfile(): can't open %s\n", name);
         return 0;
     }
     WDread(handle, (u_char *)&wad->count, 2);
-    fileNo = 0;
+    entry = 0;
     if (wad->count > 0) {
         do {
             WDread(wad->handle, (u_char *)header.name, 0x10);
             WDread(wad->handle, (u_char *)&header.ignoredEntryWord, 4);
-            WDread(wad->handle, (u_char *)&wad->sizes[fileNo], 4);
+            WDread(wad->handle, (u_char *)&wad->sizes[entry], 4);
             WDread(wad->handle, (u_char *)&header.flag, 1);
-            fileNo += 1;
-        } while (fileNo < wad->count);
+            entry += 1;
+        } while (entry < wad->count);
     }
     wad->current = 0;
     currentWad = wad;
@@ -58,29 +49,30 @@ WADFILE *openwadfile(int fileNo)
 }
 
 
-WADFILE *openwadfilenvc(int fileNo)
+WADFILE *openwadfilenvc(char *name)
 {
     WadEntryHeader header;
     WADFILE       *wad;
     int            handle;
+    int            entry;
 
     wad = DAlloc(heap, 0x108);
-    handle = WDopen(fileNo, 0, 0);
+    handle = WDopen(name, 0, 0);
     wad->handle = handle;
     if (handle == -1) {
-        printf("wadfile.c:openwadfilenvc(): can't open %s\n", fileNo);
+        printf("wadfile.c:openwadfilenvc(): can't open %s\n", name);
         return 0;
     }
     WDread(handle, (u_char *)&wad->count, 2);
-    fileNo = 0;
+    entry = 0;
     if (wad->count > 0) {
         do {
             WDread(wad->handle, (u_char *)header.name, 0x10);
             WDread(wad->handle, (u_char *)&header.ignoredEntryWord, 4);
-            WDread(wad->handle, (u_char *)&wad->sizes[fileNo], 4);
+            WDread(wad->handle, (u_char *)&wad->sizes[entry], 4);
             WDread(wad->handle, (u_char *)&header.flag, 1);
-            fileNo += 1;
-        } while (fileNo < wad->count);
+            entry += 1;
+        } while (entry < wad->count);
     }
     wad->current = 0;
     currentWad = wad;
@@ -93,7 +85,7 @@ WADFILE *openwadfilenvc(int fileNo)
 
 void closewadfilenvc(WADFILE *wad)
 {
-    WDclose__wadfile(wad->handle);
+    WDclose(wad->handle);
     DFree(heap, (char *)wad);
 }
 
@@ -102,12 +94,12 @@ void closewadfile(WADFILE *wad)
 {
     do { } while (0);
     while (loadFrame < 0);
-    WDclose__wadfile(wad->handle);
+    WDclose(wad->handle);
     DFree(heap, (char *)wad);
     VSyncCallback(0);
     DrawSync(0);
     Close2DParticle();
-    DFree(reserveHeap, linePrims);
+    DFree(reserveHeap, (char *)linePrims);
 }
 
 

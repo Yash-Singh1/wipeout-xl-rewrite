@@ -7,6 +7,7 @@ u_char shipTeamNames0[12] = "AG SYSTEMS";
 u_char track6DescriptionLine0[16] = "SOUTH PACIFIC";
 u_char track7DescriptionLine0[16] = "NORTH AMERICA";
 u_char track17DescriptionLine0[12] = "BLACK SEA";
+BLK_FILL *screenFills[2];
 s32 wadHandle;
 u8 vsyncBusy;
 s32 *particleLife;

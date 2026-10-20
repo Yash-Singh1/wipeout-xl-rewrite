@@ -383,11 +383,10 @@ char *keyFunctionNames[6] = { msgThrust, "FIRE", "CHANGE VIEW", "DISCARD WEAPON"
 short pitLaneSection1[8] = { 257, 300, 446, 358, 16, 362, 312, 68 };
 short pitLaneSection2[8] = { 290, 325, 468, 378, 57, 379, 337, 88 };
 int pitLaneDirection[8] = { 8192, 8192, 8192, 8192, 8192, 8192, 8192, 8192 };
-u_char pbStereoLookup[30] = {
+u_char pbStereoLookup[32] = {
     255, 255, 255, 255, 255, 255, 255, 255, 243, 243, 230, 230, 218, 218, 205, 179, 167, 155, 143,
-    131, 119, 107, 95, 83, 71, 60, 48, 35, 23, 12,
+    131, 119, 107, 95, 83, 71, 60, 48, 35, 23, 12, 0, 0,
 };
-u_char panGainFR[2] = { 0 };
 u_char pbRearLookup[32] = {
     255, 255, 255, 255, 255, 255, 255, 255, 243, 243, 230, 230, 218, 218, 205, 179, 167, 167, 155,
     155, 143, 143, 131, 131, 119, 119, 107, 107, 95, 95, 83, 0,
@@ -425,7 +424,7 @@ u_char pbQPanLookup[31][4] = {
     { 0, 255, 230, 0 },
     { 0, 255, 255, 0 }
 };
-u_char activateOT2 = 0;
+signed char activateOT2 = 0;
 int attractCycles = 0;
 short sixTracks = 0;
 short sixXPlayed = 0;
@@ -441,7 +440,7 @@ int attractLoopFlag = 1;
 short fastFrame = 0;
 unsigned char turnDivisor = 196;
 short linked = 0;
-s16 menuSendKey = 0;
+short menuSendKey = 0;
 short linkDropped = 0;
 short linkTimer = 0;
 short linkMyState = 0;
@@ -449,8 +448,8 @@ short menuRecvKey = 0;
 short linkRemoteState = 0;
 short menuRecvMode = 0;
 short startBoomCount = 0;
-u_char sillyShips = 0;
-u_short TextureTableCount = 0;
+unsigned char sillyShips = 0;
+unsigned short TextureTableCount = 0;
 unsigned short ghostClutX = 320;
 unsigned short ghostClutY = 256;
 int spareMax = 0;

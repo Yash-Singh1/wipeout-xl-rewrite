@@ -3,14 +3,11 @@
 #define TrackVersion 8
 extern Object     **trackObjects;
 extern int          raceType;
-extern u_short      clipLevel;
-extern int         clipNearTable1[];
-extern int         clipFarTable1[];
-extern int         clipNearTable2[];
-extern int         clipFarTable2[];
-extern short        visibleObjects[];
-int         waveIndex;
-
+extern int         clipNearTable1[8];
+extern int         clipFarTable1[8];
+extern int         clipNearTable2[8];
+extern int         clipFarTable2[8];
+extern short        visibleObjects[128];
 
 char TrackDirection(TrackCamera *camera)
 {

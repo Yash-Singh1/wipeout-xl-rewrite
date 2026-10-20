@@ -1,9 +1,10 @@
 /* Global data of pad.c, generated from the executable by tools/gendata.py. */
 #include "functions.h"
+#include "pad.h"
 
 u_short keysPrev;
-u_char padBuf2[8];
-u16 keyDefineDitch[2];
+struct PadPacket padBuf2[1];
+u_short keyDefineDitch[2];
 int checkTimer;
 u_short keyDef[6];
 int cheatHistory[25];

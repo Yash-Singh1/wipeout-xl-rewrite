@@ -1,8 +1,8 @@
 /* Global data of ayrace.c, generated from the executable by tools/gendata.py. */
 #include "functions.h"
-
-/* Types that ayrace.c declares privately. */
-typedef unsigned char u_char_eq1;
+#include "ghost.h"
+#include "hiscores.h"
+#include "weapon.h"
 
 char selectLabel[8] = "SELECT";
 int attractModeFlag = 0;
@@ -37,21 +37,24 @@ short torchNumber = 0;
 short redBullCount = 0;
 short redBullNumber = 0;
 int bobCount = 0;
-short prmCount = 0;
+u_short prmCount = 0;
 u_short startTextureBase = 0;
 char startDroidNames[8] = "sroid";
 char lightGroupNames[8] = "light";
-u_char_eq1 cameraDroidNames[8] = "camera";
-u_char_eq1 fanNames[] = "fan";
+char cameraDroidNames[8] = "camera";
+char fanNames[] = "fan";
 u_char raceEndState;
 TrackData *track;
 u_char raceCompleteFlag;
 u_short padType;
 int cdMusicTrack;
-void *continuesTexture;
+Texture *continuesTexture;
 u_short idleTimer;
-u_char_eq1 keysPressed[4];
+u_short keysPressed;
 short droneSwitchStep;
 ShipData *shipIndex;
 u_char linkRaceDone;
 u_char linkSyncB;
+HiScoreData scoreTabData;
+/* Port: the take header holds words (recordKeyCount...); the executable has it word-aligned */
+GhostReplay recordBuffer[1] __attribute__((aligned(4)));

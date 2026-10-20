@@ -1,35 +1,27 @@
 #include "hud.h"
 #include "hiscores.h"
+#include "ayrace.h"
 #include "include_asm_g8.h"
 
 /* Font textures are loaded at consecutive texture-table slots; the last one is the dimmed colour. */
-extern u_short TextureTableCount;
 extern short   hudTexIndex16;
 extern short   hudTexIndex12;
 extern short   hudTexIndex8;
 extern short   hudTexIndexAlt;
 
-extern u_char  classLaps[];
 extern u_char  trackMedals[];
 extern int     savedLapTimes[];
-extern int     shipTargetIndex[];
 extern int     shipDamage[];
 extern int     envmapr;
 extern int     envmapg;
 extern int     envmapb;
 extern short   sixTracks;
 extern short   eightTracks;
-extern short   numTrackSections;
-extern short   playerPosition;
-extern short   finishPosition;
-extern CameraUpdateFunc CameraUpdate;
 extern short   rivalFinishPos;
 extern u_char  raceEndState;
 extern int     ownShip;
 extern int     raceType;
-extern u_char  gameType;
 extern int     cardNum;
-extern Object *teamShip;
 extern int     quadIndex;
 extern POLY_FT4 quadPool[];
 extern FontGlyph fontGlyphs16[];
@@ -38,16 +30,13 @@ extern FontGlyph fontGlyphs8[];
 extern u_short glyphWidths16[];
 extern u_short glyphWidths12[];
 extern u_short glyphWidths8[];
-extern int   *OT[];
-extern int   *OT2[];
 extern short   CurrentScreen;
 extern Texture *textureTable[];
-extern WADFILE *textureWad;
 extern char    drFontsFile[];
 /* Leading part of every challenge texture path. */
 typedef struct PathSeed {
     char text[22];
-} PathSeed __attribute__((aligned(4)));
+} PathSeed; /* Port: the PlayStation compiler aligned this typedef to 4 (size stays 22); clang needs the size to be a multiple. */
 
 extern PathSeed texturePathSeed[];
 extern char    extCmp[];
@@ -88,7 +77,6 @@ int     bonusFlashFrame;
 int     bonusFrames;
 
 extern short           linkDropped;
-extern u_char          cheatTime;
 extern int             checkTimer;
 extern u_char          noCheckPoints;
 extern TrackData      *track;
@@ -228,7 +216,8 @@ extern SpeedDividers speedDividerTable;
 extern SpeedDividers speedDividerTableAlt;
 int energyBlinkFrame;
 
-#define SPEEDO_QUAD(part) ((Speedo *)(CurrentScreen * sizeof(POLY_FT4) + (int)speedo))->part[0]
+/* Port: was ((Speedo *)(CurrentScreen * sizeof(POLY_FT4) + (int)speedo)); the same quad of the current screen. */
+#define SPEEDO_QUAD(part) speedo->part[CurrentScreen]
 
 void fill_speedo(Speedo *speedo, ShipData *ships, ConfigData *game, int player)
 {
@@ -586,7 +575,7 @@ void AddNumber(int number, int x, int y, int size, int colour)
         quads = quadPool;
         glyphIndex = digits[digitIndex] + 26;
         width = charSet[glyphIndex].width;
-        quad = &quads[quadIndex];
+        quad = (POLY_FT4 *)((char *)quads + quadIndex * 40);
         quad->x0 = x; quad->y0 = y;
         quad->x1 = width + x; quad->y1 = y;
         quad->x2 = x; quad->y2 = y + size;
@@ -604,8 +593,9 @@ void AddNumber(int number, int x, int y, int size, int colour)
         quads[quadIndex].tpage = texturePage;
         if (colour == 1) clut = charTexture->cba;
         else clut = textureTable[hudTexIndexAlt]->cba;
-        *(u_short *) ((char *) quadClutField + quadOffset) = clut;
-        AddPrim(OT[CurrentScreen], (POLY_FT4 *) (quadIndex * 40 + (int) quads));
+        /* Port: stored through quadClutField, a symbol inside quadPool. */
+        ((POLY_FT4 *)((char *)quads + quadOffset))->clut = clut;
+        AddPrim(OT[CurrentScreen], (POLY_FT4 *)((char *)quads + quadIndex * 40));
         quadIndex++;
         x += width;
     }
@@ -647,7 +637,7 @@ void AddJustifyNumber(int number, int xInput, int y, int size, int colour)
         quads = quadPool;
         glyphIndex = digits[digitIndex] + 26;
         width = charSet[glyphIndex].width;
-        quad = &quads[quadIndex];
+        quad = (POLY_FT4 *)((char *)quads + quadIndex * 40);
         quad->x0 = x; quad->y0 = y;
         quad->x1 = width + x; quad->y1 = y;
         quad->x2 = x; quad->y2 = y + size;
@@ -665,8 +655,9 @@ void AddJustifyNumber(int number, int xInput, int y, int size, int colour)
         quads[quadIndex].tpage = texturePage;
         if (colour == 1) clut = charTexture->cba;
         else clut = textureTable[hudTexIndexAlt]->cba;
-        *(u_short *) ((char *) quadClutField + quadOffset) = clut;
-        AddPrim(OT[CurrentScreen], (POLY_FT4 *) (quadIndex * 40 + (int) quads));
+        /* Port: stored through quadClutField, a symbol inside quadPool. */
+        ((POLY_FT4 *)((char *)quads + quadOffset))->clut = clut;
+        AddPrim(OT[CurrentScreen], (POLY_FT4 *)((char *)quads + quadIndex * 40));
         quadIndex++;
         x += width;
     }
@@ -679,7 +670,7 @@ void AddDelEnd(unsigned char isDelete, int x, int y, int height, int colour)
     Texture   *deleteTexture = deleteTextures[hudTexIndexAlt];
     Texture   *endTexture = endTextures[hudTexIndexAlt];
     POLY_FT4  *quads = quadPool;
-    POLY_FT4  *quad = (POLY_FT4 *) (quadIndex * 40 + (int) quads);
+    POLY_FT4  *quad = (POLY_FT4 *)((char *)quads + quadIndex * 40);
     int       right = x + 24;
     int       bottom = y + height;
     u_short    texturePage, clut;
@@ -709,11 +700,13 @@ void AddDelEnd(unsigned char isDelete, int x, int y, int height, int colour)
     }
     texturePage = GetTPage(0, 0, 576, 256);
     quadOffset = quadIndex * 40;
-    *(u_short *) ((char *) quadTPageField + quadOffset) = texturePage;
+    /* Port: stored through quadTPageField, a symbol inside quadPool. */
+    ((POLY_FT4 *)((char *)quads + quadOffset))->tpage = texturePage;
     if (colour == 1) clut = deleteTexture->cba;
     else clut = textureTable[hudTexIndexAlt]->cba;
-    *(u_short *) ((char *) quadClutField + quadOffset) = clut;
-    AddPrim(OT[CurrentScreen], (POLY_FT4 *) (quadIndex * 40 + (int) quadPool));
+    /* Port: stored through quadClutField, a symbol inside quadPool. */
+    ((POLY_FT4 *)((char *)quads + quadOffset))->clut = clut;
+    AddPrim(OT[CurrentScreen], (POLY_FT4 *)((char *)quadPool + quadIndex * 40));
     quadIndex++;
 }
 
@@ -801,7 +794,7 @@ void CentreText(unsigned char *text, int unusedX, int yInput, int sizeInput, int
             if (letter == 0) return;
             glyphIndex = letter - 'A';
             width = charSet[glyphIndex].width;
-            quad = (POLY_FT4 *) (quadIndex * 40 + (int) quads);
+            quad = (POLY_FT4 *)((char *)quads + quadIndex * 40);
             quad->x0 = x; quad->y0 = y;
             quad->x1 = width + x; quad->y1 = y;
             quad->x2 = x; quad->y2 = y + size;
@@ -819,8 +812,9 @@ void CentreText(unsigned char *text, int unusedX, int yInput, int sizeInput, int
             quads[quadIndex].tpage = texturePage;
             if (colour == 1) clut = charTexture->cba;
             else clut = textureTable[hudTexIndexAlt]->cba;
-            *(u_short *) ((char *) quadClutField + quadOffset) = clut;
-            AddPrim(OT[CurrentScreen], (POLY_FT4 *) (quadIndex * 40 + (int) quads));
+            /* Port: stored through quadClutField, a symbol inside quadPool. */
+            ((POLY_FT4 *)((char *)quads + quadOffset))->clut = clut;
+            AddPrim(OT[CurrentScreen], (POLY_FT4 *)((char *)quads + quadIndex * 40));
             quadIndex++;
             x = width + x;
         } else {
@@ -869,7 +863,7 @@ void CentreText2(unsigned char *text, int x, int y, int size, int colour)
             if (letter == 0) return;
             glyphIndex = letter - 'A';
             width = charSet[glyphIndex].width;
-            quad = (POLY_FT4 *) (quadIndex * 40 + (int) quads);
+            quad = (POLY_FT4 *)((char *)quads + quadIndex * 40);
             quad->x0 = x; quad->y0 = y;
             quad->x1 = width + x; quad->y1 = y;
             quad->x2 = x; quad->y2 = y + size;
@@ -887,8 +881,9 @@ void CentreText2(unsigned char *text, int x, int y, int size, int colour)
             quads[quadIndex].tpage = texturePage;
             if (colour == 1) clut = charTexture->cba;
             else clut = textureTable[hudTexIndexAlt]->cba;
-            *(u_short *) ((char *) quadClutField + quadOffset) = clut;
-            AddPrim(OT[CurrentScreen], (POLY_FT4 *) (quadIndex * 40 + (int) quads));
+            /* Port: stored through quadClutField, a symbol inside quadPool. */
+            ((POLY_FT4 *)((char *)quads + quadOffset))->clut = clut;
+            AddPrim(OT[CurrentScreen], (POLY_FT4 *)((char *)quads + quadIndex * 40));
             quadIndex++;
             x = width + x;
         } else {
@@ -902,14 +897,10 @@ typedef struct { short y[4]; } __attribute__((packed)) HudTextRows;
 
 extern HudTextRows classRowY[];
 extern RaceLine raceLines[];
-extern short remoteRacePos;
 extern int ghostShip;
 extern int remoteShip;
-extern int pauseState;
 extern int cdMusicTrack;
-extern int linkSendFlag;
 extern int attractDelayFrames;
-extern u_char perfectLap;
 extern u_char perfectLapCount;
 extern u_char linkRaceEnd;
 extern u_char cdMusicIndex;
@@ -931,9 +922,6 @@ extern char msgPos[];
 int trackNameScroll;
 int trackNameOffset;
 int hudFrame;
-
-void humanToDroneSpeedArgs() __asm__("humanToDroneSpeed");
-void PrintWithFlag() __asm__("Print");
 
 void UpdateRaceHud(ShipData *shipIndex, Speedo *speedo, int choice, ConfigData *gameData, HiScoreData *scoreData)
 {
@@ -1018,7 +1006,8 @@ void UpdateRaceHud(ShipData *shipIndex, Speedo *speedo, int choice, ConfigData *
         AddText(msgOf, 260, 68, 8, 0);
         AddNumber(classLaps[gameData->shipClass], 282, 60, 16, 1);
         if (shipIndex[ownShip].rearTarget != -1 && rearLockCycle < 13 && shipIndex[ownShip].weapon == 2)
-            PrintCX(msgRearLock, 168, 68, 8);
+            /* Port: the call passed a fourth argument (the size, 8) that PrintCX never reads; dropped. */
+            PrintCX(msgRearLock, 168, 68);
         if (perfectLapCount) {
             CentreText(msgPerfectLap, 120, 160, 8, 1);
             perfectLapCount--;
@@ -1028,13 +1017,14 @@ void UpdateRaceHud(ShipData *shipIndex, Speedo *speedo, int choice, ConfigData *
             if ((unsigned)(trackNameScroll + 199) < 199) trackNameOffset = 0;
             if (trackNameOffset < -199) trackNameOffset += 200;
             if (trackNameOffset < 0) trackNameOffset = -trackNameOffset;
-            if (pauseState == -1) trackNameScroll -= 6;
+            if (pauseState.selection == -1) trackNameScroll -= 6;
             if (gameData->cdTrack == 1) cdMusicTrack = cdMusicTable[cdMusicIndex];
             else cdMusicTrack = gameData->cdTrack;
             trackName = GetCdTrackName(cdMusicTrack - 1);
             artist = (char *)GetCdTrackArtist(cdMusicTrack - 1);
             sprintf(trackNameText, fmtCdTrack, cdMusicTrack - 1, trackName, artist);
-            PrintWithFlag(trackNameText, 16, (trackNameOffset >> 2) + 217, 8, 1);
+            /* Port: the call passed a fifth argument (1) that Print never reads; dropped. */
+            Print(trackNameText, 16, (trackNameOffset >> 2) + 217, 8);
         }
         AddText(msgCheck, 20, 20, 8, 0);
         for (i = 0; i < 15; i++)
@@ -1048,7 +1038,8 @@ void UpdateRaceHud(ShipData *shipIndex, Speedo *speedo, int choice, ConfigData *
                 if (hudFrame % 30 < 21) AddTime(checkTimer, 20, 30, 16, 0, 1);
             } else AddTime(checkTimer, 20, 30, 16, 1, 1);
         }
-        if (choice == -1 && autopilot == 0 && shipDamage[ownShip] < 100 && !(shipIndex[ownShip].attr & 8) && shipIndex[ownShip].nearTrkSect->junction.ptr == (TrackSection *)-1 && shipIndex[ownShip].nearTrkSect->nextSection.ptr->junction.ptr == (TrackSection *)-1)
+        /* Port: junction.ptr == (TrackSection *)-1 tested the 32-bit slot; compare the slot as the index (-1 = no junction). */
+        if (choice == -1 && autopilot == 0 && shipDamage[ownShip] < 100 && !(shipIndex[ownShip].attr & 8) && shipIndex[ownShip].nearTrkSect->junction.index == -1 && shipIndex[ownShip].nearTrkSect->nextSection.ptr->junction.index == -1)
             CentreText(msgWrongWay, 50, 110, 8, 0);
         AddJustifyNumber(speed / 95, 240, 171, 16, 1);
     }
@@ -1061,7 +1052,8 @@ finishShips:
                 shipIndex[i].updateCount = 0;
                 shipIndex[i].attr = 0;
                 shipIndex[i].autopilotCount = 0;
-                humanToDroneSpeedArgs(shipIndex, i, &shipIndex[i]);
+                /* Port: the call passed a third argument (the ship) that humanToDroneSpeed never reads; dropped. */
+                humanToDroneSpeed(shipIndex, i);
             }
         }
     }
@@ -1071,7 +1063,8 @@ finishShips:
         shipIndex[ownShip].updateCount = 0;
         shipIndex[ownShip].attr = 0;
         shipIndex[ownShip].autopilotCount = 0;
-        humanToDroneSpeedArgs(shipIndex, ownShip, &shipIndex[ownShip]);
+        /* Port: the call passed a third argument (the ship) that humanToDroneSpeed never reads; dropped. */
+        humanToDroneSpeed(shipIndex, ownShip);
         CameraUpdate = UpdateCameraAttractMode;
         copyInTempLapTimes(shipIndex);
         gameData->raceInfo = 1;
@@ -1362,7 +1355,7 @@ void DisplayRaceInfo(ConfigData *state, HiScoreData *context, ShipData *scene)
             } while (nextLap < (int) classLaps[state->shipClass]);
         }
         if ((raceType == 0 || raceType == 4) && finishPosition < 4) {
-            DrawTeamShips(0x46, 0, 0xB4, cardNum, 0, teamShip);
+            DrawTeamShips(0x46, 0, 0xB4, cardNum, 0, teamShip[0]);
         }
         AddText(msgRaceTime, 0xF, 0xB4, 8, 0);
         if (raceType == 0 || raceType == 4 || raceType == 1) {
@@ -1470,8 +1463,7 @@ checkpointPass:
 }
 
 
-extern u_short continueAnimFrame;
-extern u_char continuesLeft;
+extern short continueAnimFrame;
 extern POLY_FT4 continuePolys[3][2];
 
 #define CONTINUE_QUAD(i) (&continuePolys[i][CurrentScreen])
@@ -1513,7 +1505,8 @@ void DisplayContinues(Texture *texture, int x, int y)
         left = width - (short)w / 2;
         lx = left;
         right = left + w;
-        poly = (POLY_FT4 *)(i * sizeof(continuePolys[0]) + CurrentScreen * sizeof(POLY_FT4) + (int)continuePolys);
+        /* Port: was address arithmetic on (int)continuePolys; the same quad. */
+        poly = CONTINUE_QUAD(i);
         top = originY - (short)(h >> 5) / 2;
         ty = top;
         bottom = top + (h >> 5);

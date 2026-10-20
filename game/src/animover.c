@@ -3,79 +3,37 @@
 
 extern ConfigData *gameData;
 extern u_char sfxMode;
-extern u_long OT[];
-extern u_long OT2[];
-extern int mainheapcopy;
-extern void *reserveHeap;
+extern u_long *OT[];
+extern u_long *OT2[];
+extern HeapBlock *mainheapcopy;
+extern HeapBlock *reserveHeap;
 extern int quadIndex;
 extern DB doubleBuffer[];
-extern char cdTrackLocs[];
+extern CdlLOC cdTrackLocs[];
 extern short CurrentScreen;
-#include "droid.h"
-extern Header       progHeader[];
-Header             *rambase;
 
-int CdRead(u_long sectors, void *buf, int mode);
-int CdReadSync(int mode, u_char *result);
-void *CdSearchFile(void *fileInfo, int name);
 void AsmDrawObjectLit(Object *object, Skeleton *camera, int roll, CVECTOR *colour);
 
 
-int LoadProg(int progIndex)
-{
-    u_char fileInfo[24];
-    int    mode;
-    int    i;
-    u_long addr;
-
-    mode = 0x80;
-    i = 0;
-    do {
-        CdSearchFile(&fileInfo, progIndex);
-        i += 1;
-    } while (i < 0xA);
-    if (CdControl(2, fileInfo, 0) != 0) {
-        if (CdRead(1U, rambase, mode) != 0) {
-            do {
-            } while (CdReadSync(1, 0) > 0);
-            __builtin_memcpy(progHeader, (void *)rambase, 136);
-            CdIntToPos(CdPosToInt(fileInfo) + 1, fileInfo);
-            addr = progLoadAddr;
-            if (addr <= 0x801F6FFFU) {
-                do {
-                    *(int *)addr = 0;
-                    addr += 4;
-                } while (addr <= 0x801F6FFFU);
-            }
-            if (CdControl(2, fileInfo, 0) != 0) {
-                return CdRead((u_long)(progSize + 0x7FF) >> 0xB, (void *)progLoadAddr, mode);
-            }
-            goto loadFailed;
-        }
-        return 0;
-    }
-loadFailed:
-    return 0;
-}
+/* Port: LoadProg is gone.  It loaded a PS-X EXE from the disc into console RAM (zeroing RAM below
+   0x801F7000 first); nothing called it, and anim() below now hands the movie to the platform. */
 void anim(char *fileName)
 {
-    short rects[28];
+    RECT move;
+    RECT clear;
 
-    InitDynamicMem(reserveHeap, 0xE1000);
-    rects[0] = 0x140;
-    rects[1] = 0x100;
-    rects[2] = 0xA0;
-    rects[3] = 0x100;
+    InitDynamicMem(reserveHeap, RESERVE_HEAP_SIZE);
+    move.x = 0x140;
+    move.y = 0x100;
+    move.w = 0xA0;
+    move.h = 0x100;
     SfxUnInitReverb();
     SfxUnInit();
-    MoveImage(&rects[0], 0x1E0, 0);
+    MoveImage(&move, 0x1E0, 0);
     DrawSync(0);
-    do {
-
-    } while (LoadFile(fileName, (char *)0x80119000) == 0);
-    __builtin_memcpy(progHeader, (void *)0x80119000, 136);
-    LoadFile(fileName, (char *)0x80118800);
-    InitDynamicMem(reserveHeap, 0xE1000);
+    /* Port: the original loaded the movie player (a PS-X EXE named by fileName) into
+       console RAM here and started it with Exec below; the platform plays the movie instead. */
+    InitDynamicMem(reserveHeap, RESERVE_HEAP_SIZE);
     SpuQuit();
     close_iso_events();
     SetDispMask(0);
@@ -83,26 +41,26 @@ void anim(char *fileName)
     ResetGraph(3);
     StopPAD();
     EnterCriticalSection();
-    Exec((ExecBlock *)&progHeader[0].bytes[0x10], 0, 0);
+    PsxPlayMovie(fileName); /* Port: replaces Exec of the player executable */
     ExitCriticalSection();
-    InitDynamicMem(reserveHeap, 0xE1000);
-    CdInit((int)cdTrackLocs, 0);
+    InitDynamicMem(reserveHeap, RESERVE_HEAP_SIZE);
+    CdInit(); /* Port: the original also passed (int)cdTrackLocs and 0, which CdInit does not read */
     iso_init(mainheapcopy);
     InitController();
     SpuStart();
     SetDispMask(0);
-    rects[6] = 0x140;
-    rects[4] = 0;
-    rects[5] = 0;
-    rects[7] = 0x200;
-    ClearImage(&rects[4], 0, 0, 0);
+    clear.w = 0x140;
+    clear.x = 0;
+    clear.y = 0;
+    clear.h = 0x200;
+    ClearImage(&clear, 0, 0, 0);
     DrawSync(0);
     InitSystem();
-    rects[0] = 0x1E0;
-    rects[2] = 0xA0;
-    rects[1] = 0;
-    rects[3] = 0x100;
-    MoveImage(&rects[0], 0x140, 0x100);
+    move.x = 0x1E0;
+    move.w = 0xA0;
+    move.y = 0;
+    move.h = 0x100;
+    MoveImage(&move, 0x140, 0x100);
     DrawSync(0);
     SetDispMask(1);
     ShowLoadMessage();
@@ -113,10 +71,10 @@ void anim(char *fileName)
     CurrentScreen = 0;
     quadIndex = 0;
     PutDrawEnv(doubleBuffer[0].draw);
-    DrawOTag(OT[0] + 0x7FFC);
+    DrawOTag((u_long *)((char *)OT[0] + 0x7FFC));
     DrawSync(0);
     PutDrawEnv(doubleBuffer[1].draw);
-    DrawOTag(OT[0] + 0x7FFC);
+    DrawOTag((u_long *)((char *)OT[0] + 0x7FFC));
     DrawSync(0);
     if (gameData->soundMode != 0) {
         sfxMode = 1;

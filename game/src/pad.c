@@ -1,4 +1,5 @@
 #include "functions.h"
+#include "../../platform/trace.h" /* Port: lockstep test hooks */
 #include "ships.h"
 #include "pad.h"
 #include "menus.h"
@@ -11,15 +12,9 @@ u_char cheatTime;
 u_char cheatMinigun;
 short  cheatfade;
 
-void InitPAD(void *buf1, int len1, void *buf2, int len2);
-void StartPAD(void);
-void ChangeClearPAD(int mode);
-
 /* Pad state: the keys held now and last frame, and the pad type. */
 extern u_short keysDown;
 extern u_short keysPrev;
-extern u_short keysPressed;
-extern short   padType;
 
 /* Button masks of the default pad layout (PlayStation pad bits). */
 extern u_short buttonCross;
@@ -45,17 +40,14 @@ extern u_short keyDefineRBrake[2];
 /* The bindings in use, indexed by action: view, fire, ditch, left brake, right brake, thrust. */
 extern u_short keyDef[6];
 
-extern u_char  padBuf1[8];
-extern u_char  padBuf2[8];
+extern struct PadPacket padBuf1[];
+extern struct PadPacket padBuf2[];
 extern int     cheatHistory[];
 extern int     ownShip;
 extern ShipData *shipIndex;
-extern ConfigData *tempGameData;
-extern u_char  gameType;
 extern int     raceType;
 extern int     checkTimer;
 extern MenuEntry *menu;
-extern CameraUpdateFunc CameraUpdate;
 
 /* The cheat codes are a face button with L1, R1 and Select held (0xC01). */
 #define CHEAT_TRIANGLE 0x1C01
@@ -94,7 +86,7 @@ void InitPadSettings(void)
 /* Bindings above this are analog stick directions (0x8FF0 | axis), not buttons. */
 #define STICK_LIMIT 0x8FEF
 
-void buildGameKeyPad(PadPacket *pad, ControlInput *control)
+void buildGameKeyPad(struct PadPacket *pad, ControlInput *control)
 {
     u_short held;
     u_short buttons;
@@ -234,6 +226,7 @@ void buildFixedPad(struct PadPacket *pad)
     int     held;
     int     header;
 
+    PortScriptFixedPad((unsigned char *)pad); /* Port: scripted pad input for the lockstep tests (WIPEOUT_PADS) */
     prevKeys = keysDown;
     header = pad->header;
     keysDown = 0;

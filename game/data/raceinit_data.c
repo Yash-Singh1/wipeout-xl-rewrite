@@ -1,5 +1,6 @@
 /* Global data of raceinit.c, generated from the executable by tools/gendata.py. */
 #include "functions.h"
+#include "dynam.h"
 
 int trackNameScroll = -9999;
 int raceInfoFrame = 0;
@@ -17,6 +18,7 @@ char sufCheckPoints[] = "\\cpoint";
 char fmtCheckPointClass[8] = "%01d";
 char extChk[8] = ".chk";
 int attractStep = 1;
+WeaponGrid *weaponGrids;
 int roadSectionCount;
 u_int randSeed;
 int weaponGridSections;

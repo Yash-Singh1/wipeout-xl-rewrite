@@ -1,10 +1,11 @@
 /* Global data of weapon.c, generated from the executable by tools/gendata.py. */
 #include "functions.h"
-#include "weapon.h"
 
 /* Types that weapon.c declares privately. */
+typedef struct PathSeed {
+    char text[22];
+} PathSeed;
 typedef struct SpeedDividers { int value[4]; } SpeedDividers;
-typedef unsigned char u_char_eq1;
 
 char msgWeaponTableFull[24] = "weapon table full!!\n";
 char drFontsFile[36] = "c:\\wipeout2\\textures\\drfonts.cmp";
@@ -17,7 +18,7 @@ char msgRearLock[12] = "REAR LOCK";
 char msgPerfectLap[] = "PERFECT LAP";
 char fmtCdTrack[24] = "CD TRACK: %d   %s [%s]";
 char msgWrongWay[12] = "WRONG WAY";
-int texturePathSeed = 0x775c3a63;
+PathSeed texturePathSeed[1] = { { "c:\\wipeout2\\textures\\" } };
 char msgBadLuck[12] = "BAD LUCK";
 char msgOutOfTime[] = "YOU RAN OUT OF TIME";
 char msgShipDestroyed[] = "YOUR SHIP WAS DESTROYED";
@@ -34,18 +35,18 @@ char msgYouBeatPlayerOne[] = "YOU BEAT PLAYER ONE";
 char msgRaceTime[12] = "RACE TIME";
 char msgContinue[12] = "CONTINUE";
 char msgExtendedTime[16] = "EXTENDED TIME";
-u_char_eq1 trackPathTable[12] = "\\track.wad";
-u_char_eq1 track1SmokeTextureSequence[32] = "c:\\wipeout2\\textures\\smoke.cmp";
-u_char_eq1 sharedTrackTextureSequence[36] = "c:\\wipeout2\\textures\\alphared.cmp";
-u_char_eq1 track6TextureSequence[36] = "c:\\wipeout2\\textures\\zetared.cmp";
-u_char_eq1 track20TextureSequence[36] = "c:\\wipeout2\\textures\\upsilred.cmp";
-u_char_eq1 track17TextureSequence[] = "c:\\wipeout2\\textures\\rhored.cmp";
-u_char_eq1 track7TextureSequence[] = "c:\\wipeout2\\textures\\etared.cmp";
-u_char_eq1 track13TorchTextureSequence[32] = "c:\\wipeout2\\textures\\fire.cmp";
-u_char_eq1 track13TextureSequence[32] = "c:\\wipeout2\\textures\\nured.cmp";
-u_char_eq1 track2ZeppelinNames[12] = "zeppelin";
-u_char_eq1 track2TextureSequence[36] = "c:\\wipeout2\\textures\\betared.cmp";
-u_char_eq1 msgOvertake[] = "CRITICAL SHIELD FAILURE";
+char trackPathTable[12] = "\\track.wad";
+char track1SmokeTextureSequence[32] = "c:\\wipeout2\\textures\\smoke.cmp";
+char sharedTrackTextureSequence[36] = "c:\\wipeout2\\textures\\alphared.cmp";
+char track6TextureSequence[36] = "c:\\wipeout2\\textures\\zetared.cmp";
+char track20TextureSequence[36] = "c:\\wipeout2\\textures\\upsilred.cmp";
+char track17TextureSequence[] = "c:\\wipeout2\\textures\\rhored.cmp";
+char track7TextureSequence[] = "c:\\wipeout2\\textures\\etared.cmp";
+char track13TorchTextureSequence[32] = "c:\\wipeout2\\textures\\fire.cmp";
+char track13TextureSequence[32] = "c:\\wipeout2\\textures\\nured.cmp";
+char track2ZeppelinNames[12] = "zeppelin";
+char track2TextureSequence[36] = "c:\\wipeout2\\textures\\betared.cmp";
+u_char msgOvertake[] = "CRITICAL SHIELD FAILURE";
 char startWadPath[] = "c:\\wipeout2\\common\\startwad.wad";
 u_char msgCombatCable[16] = "COMBAT CABLE";
 u_char rearLockCycle = 0;
@@ -66,7 +67,7 @@ short fadeBlue;
 int ambientVoice2;
 short fadeGreen;
 short fadeRed;
-s16 remoteRacePos;
+short remoteRacePos;
 short playerPosition;
 SParticle *particleSlots;
 int fracdamage[15];
