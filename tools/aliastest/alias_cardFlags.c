@@ -4,6 +4,7 @@
 #include "card.h"
 #include "menus.h"
 extern CardSlot cardSlots[2];
+#define cardFlags ((CardFlags (*)[15])&cardSlots[0].entry[0].type)
 
 int alias_cardFlags(void)
 {

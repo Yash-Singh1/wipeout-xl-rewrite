@@ -70,6 +70,10 @@ int alias_menuTexturePtrs(void);
 int alias_menuTexturePtrsB(void);
 int alias_waterfallSaved(void);
 int alias_waterfallRow(void);
+int alias_screenFill1(void);
+int alias_TrackHiPolysAlt(void);
+int alias_TrackMedPolysAlt(void);
+int alias_TrackLoPolysAlt(void);
 int alias_sharkBodyModel(void);
 int alias_sharkLegModel(void);
 
@@ -214,10 +218,18 @@ int main(void)
     if (r) { printf("alias waterfallSaved failed (%d)\n", r); failures++; }
     r = alias_waterfallRow();
     if (r) { printf("alias waterfallRow failed (%d)\n", r); failures++; }
+    r = alias_screenFill1();
+    if (r) { printf("alias screenFill1 failed (%d)\n", r); failures++; }
+    r = alias_TrackHiPolysAlt();
+    if (r) { printf("alias TrackHiPolysAlt failed (%d)\n", r); failures++; }
+    r = alias_TrackMedPolysAlt();
+    if (r) { printf("alias TrackMedPolysAlt failed (%d)\n", r); failures++; }
+    r = alias_TrackLoPolysAlt();
+    if (r) { printf("alias TrackLoPolysAlt failed (%d)\n", r); failures++; }
     r = alias_sharkBodyModel();
     if (r) { printf("alias sharkBodyModel failed (%d)\n", r); failures++; }
     r = alias_sharkLegModel();
     if (r) { printf("alias sharkLegModel failed (%d)\n", r); failures++; }
-    printf("%d alias checks, %d failed\n", 71, failures);
+    printf("%d alias checks, %d failed\n", 75, failures);
     return failures != 0;
 }

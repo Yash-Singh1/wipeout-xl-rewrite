@@ -16,17 +16,18 @@ linked with the data files and run).
 """
 from collections import namedtuple
 
-Alias = namedtuple('Alias', 'name container macro expr pair includes decls container_decl evidence')
+Alias = namedtuple('Alias', 'name container macro expr pair includes decls container_decl evidence in_header')
 
 
-def A(name, container, macro, evidence, expr=None, pair=None, includes=(), decls=(), container_decl=None):
+def A(name, container, macro, evidence, expr=None, pair=None, includes=(), decls=(), container_decl=None, in_header=True):
     """`macro` is the C expression the name stands for; `expr` an lvalue (written with the alias name)
     whose address is the first byte of the aliased storage (default: the name itself); `pair` two
     lvalues that must be the same object (an element further into a strided alias and the container
     element it stands for); `includes`/`decls` what a test file needs to use the container;
     `container_decl` the extern declaration inserted in a source file that uses the alias but does not
-    declare the container."""
-    return Alias(name, container, macro, expr or name, pair, tuple(includes), tuple(decls), container_decl, evidence)
+    declare the container; `in_header` False when the uses were rewritten instead (the macro is then
+    only what the tests use to name the storage)."""
+    return Alias(name, container, macro, expr or name, pair, tuple(includes), tuple(decls), container_decl, evidence, in_header)
 
 
 # Uses the aliases need rewritten, (file, old text, new text): a file that saw the container as one word.
@@ -35,6 +36,13 @@ REWRITES = [
     ('combat.c', 'extern u16 remoteControl;', 'extern ControlInput remoteControl[]; /* Port: the packet\'s control word is its head field */'),
     ('combat.c', '    send.control = playerControl;', '    send.control = playerControl[0].head;'),
     ('combat.c', '    remoteControl = controlIn;', '    remoteControl[0].head = controlIn;'),
+    ('menus.c', 's32 screenFills;', 'extern BLK_FILL *screenFills[]; /* Port: pointers, and the second one is screenFill1 */'),
+    ('menus.c', '    screenFills = (s32)BlockFill(', '    screenFills[0] = BlockFill('),
+    ('menus.c', '    screenFill1 = (s32)BlockFill(', '    screenFill1 = BlockFill('),
+    ('menus.c', '#define CardFlags() (cardFlags[myFinished][fadescreen].flags)', '#define CardFlags() (cardSlots[myFinished].entry[fadescreen].type)'),
+    ('menus.c', '        ((u8 *)cardFlags)[slotOffset] = 1;', '        ((u8 *)&cardSlots[0].entry[0].type)[slotOffset] = 1;'),
+    ('menus.c', '        if (cardFlags[team][slot].flags & 1) {', '        if (cardSlots[team].entry[slot].type & 1) {'),
+    ('menus.c', '        if (!(cardFlags[card][i].flags & 1)) {', '        if (!(cardSlots[card].entry[i].type & 1)) {'),
     ('main.c', 'extern int savedLapTimes;', 'extern int savedLapTimes[]; /* Port: the lap times and the four words after them */'),
     ('main.c', '        savedLapTimes = 0;', '        savedLapTimes[0] = 0;'),
 ]
@@ -138,7 +146,8 @@ ALIASES = [
     A('cardFlags', 'cardSlots', '((CardFlags (*)[15])&cardSlots[0].entry[0].type)',
       'cardSlots + 75 with strides (90, 1350) in DupFileCheck, LoadSave, DisplayCardBack: the type byte of the entries',
       expr='cardFlags[0][0].flags', pair=('cardFlags[1][2].flags', 'cardSlots[1].entry[2].type'),
-      includes=['card.h', 'menus.h'], decls=['extern CardSlot cardSlots[];'], container_decl='extern CardSlot cardSlots[];'),
+      includes=['card.h', 'menus.h'], decls=['extern CardSlot cardSlots[];'], container_decl='extern CardSlot cardSlots[];',
+      in_header=False),
     # The text sprites are POLY_FT4s (40 bytes); the code fills their clut and tpage through arrays of their own.
     A('quadClutField', 'quadPool', '((u_short *)&quadPool[0].clut)',
       'AddText/AddTime store quadPool + 14 and + 22 with stride 40: the clut and tpage fields of the 600 POLY_FT4s',
@@ -259,6 +268,24 @@ ALIASES = [
     A('waterfallRow', 'waterfallBuf', '((u_short *)(waterfallBuf + 30))', 'see waterfallSaved',
       expr='waterfallRow[0]', pair=('waterfallRow[0]', 'waterfallBuf[30]'),
       decls=['extern u8 waterfallBuf[];'], container_decl='extern u8 waterfallBuf[];'),
+    # The fill polygons of the two screens: VsyncFunc indexes screenFills by the screen number; the menus
+    # and the loader store the second one by its own name.
+    A('screenFill1', 'screenFills', 'screenFills[1]',
+      'VsyncFunc loads screenFills + 4 * screen; InitPop and InitResidentMenu store +0 and +4 one after the other',
+      pair=('screenFill1', 'screenFills[1]'), decls=['extern BLK_FILL *screenFills[];'],
+      container_decl='extern BLK_FILL *screenFills[];'),
+    # The track polygon pools are double buffered: the assembly AsmTrackHi/Med/Lo load Pool + 4 * screen,
+    # trackasm.c names the second pointer of each.
+    A('TrackHiPolysAlt', 'TrackHiPolys', '((POLY_FT4 **)&TrackHiPolys)[1]',
+      'AsmTrackHi loads TrackHiPolys + 4 * screen (stride 4); trackasm.c allocates TrackHiPolys and the pointer 4 bytes after it',
+      pair=('TrackHiPolysAlt', '((POLY_FT4 **)&TrackHiPolys)[1]'), decls=['extern POLY_FT4 *TrackHiPolys;'],
+      container_decl='extern POLY_FT4 *TrackHiPolys;'),
+    A('TrackMedPolysAlt', 'TrackMedPolys', '((POLY_FT4 **)&TrackMedPolys)[1]', 'see TrackHiPolysAlt (AsmTrackMed)',
+      pair=('TrackMedPolysAlt', '((POLY_FT4 **)&TrackMedPolys)[1]'), decls=['extern POLY_FT4 *TrackMedPolys;'],
+      container_decl='extern POLY_FT4 *TrackMedPolys;'),
+    A('TrackLoPolysAlt', 'TrackLoPolys', '((POLY_FT4 **)&TrackLoPolys)[1]', 'see TrackHiPolysAlt (AsmTrackLo)',
+      pair=('TrackLoPolysAlt', '((POLY_FT4 **)&TrackLoPolys)[1]'), decls=['extern POLY_FT4 *TrackLoPolys;'],
+      container_decl='extern POLY_FT4 *TrackLoPolys;'),
     A('sharkBodyModel', 'shipShapeTable', 'shipShapeTable[2]',
       'UpdateSharkModel loads shipShapeTable + 8 and CopySharkVerts + 16 without index: slots 2 and 4',
       decls=['extern Object *shipShapeTable[];'], container_decl='extern Object *shipShapeTable[];'),
@@ -276,6 +303,10 @@ PREFER = {
 
 # Entries of incomplete arrays that the extent cannot give because the names inside them cut it short.
 SIZES = {
+    'TrackHiPolys': (2, 'one polygon pool per screen: AsmTrackHi picks TrackHiPolys[screen]; trackasm.c calls the second TrackHiPolysAlt'),
+    'TrackMedPolys': (2, 'one polygon pool per screen (see TrackHiPolys)'),
+    'TrackLoPolys': (2, 'one polygon pool per screen (see TrackHiPolys)'),
+    'tileSurfaces': (32, 'indexed by the face texture number (crack.c, trackasm.c, AsmLowResTile...): the executable has 64 of the 252-byte surfaces (32 textures, 2 each) up to muzzleright; the sources declared 24'),
     'textureTable': (800, 'the slots run up to the end of menuTexturePtrsB (3172 bytes at slot 7): 800 pointers'),
     'waterfallBuf': (32, 'with waterfallSaved and waterfallRow after it: sixteen halfwords'),
     'shipShapeTable': (31, '30 ship shapes and the rescue droid model at [30] (RescueDroidModel); menuModels follows'),

@@ -34,49 +34,20 @@ char msgYouBeatPlayerOne[] = "YOU BEAT PLAYER ONE";
 char msgRaceTime[12] = "RACE TIME";
 char msgContinue[12] = "CONTINUE";
 char msgExtendedTime[16] = "EXTENDED TIME";
-u_char_eq1 trackPathTable[12] = { 92, 116, 114, 97, 99, 107, 46, 119, 97, 100, 0, 0 };
-u_char_eq1 track1SmokeTextureSequence[32] = {
-    99, 58, 92, 119, 105, 112, 101, 111, 117, 116, 50, 92, 116, 101, 120, 116, 117, 114, 101, 115,
-    92, 115, 109, 111, 107, 101, 46, 99, 109, 112, 0, 0,
-};
-u_char_eq1 sharedTrackTextureSequence[36] = {
-    99, 58, 92, 119, 105, 112, 101, 111, 117, 116, 50, 92, 116, 101, 120, 116, 117, 114, 101, 115,
-    92, 97, 108, 112, 104, 97, 114, 101, 100, 46, 99, 109, 112, 0, 0, 0,
-};
-u_char_eq1 track6TextureSequence[36] = {
-    99, 58, 92, 119, 105, 112, 101, 111, 117, 116, 50, 92, 116, 101, 120, 116, 117, 114, 101, 115,
-    92, 122, 101, 116, 97, 114, 101, 100, 46, 99, 109, 112, 0, 0, 0, 0,
-};
-u_char_eq1 track20TextureSequence[36] = {
-    99, 58, 92, 119, 105, 112, 101, 111, 117, 116, 50, 92, 116, 101, 120, 116, 117, 114, 101, 115,
-    92, 117, 112, 115, 105, 108, 114, 101, 100, 46, 99, 109, 112, 0, 0, 0,
-};
-u_char_eq1 track17TextureSequence[32] = {
-    99, 58, 92, 119, 105, 112, 101, 111, 117, 116, 50, 92, 116, 101, 120, 116, 117, 114, 101, 115,
-    92, 114, 104, 111, 114, 101, 100, 46, 99, 109, 112, 0,
-};
-u_char_eq1 track7TextureSequence[32] = {
-    99, 58, 92, 119, 105, 112, 101, 111, 117, 116, 50, 92, 116, 101, 120, 116, 117, 114, 101, 115,
-    92, 101, 116, 97, 114, 101, 100, 46, 99, 109, 112, 0,
-};
-u_char_eq1 track13TorchTextureSequence[32] = {
-    99, 58, 92, 119, 105, 112, 101, 111, 117, 116, 50, 92, 116, 101, 120, 116, 117, 114, 101, 115,
-    92, 102, 105, 114, 101, 46, 99, 109, 112, 0, 0, 0,
-};
-u_char_eq1 track13TextureSequence[32] = {
-    99, 58, 92, 119, 105, 112, 101, 111, 117, 116, 50, 92, 116, 101, 120, 116, 117, 114, 101, 115,
-    92, 110, 117, 114, 101, 100, 46, 99, 109, 112, 0, 0,
-};
-u_char_eq1 track2ZeppelinNames[12] = { 122, 101, 112, 112, 101, 108, 105, 110, 0, 0, 0, 0 };
-u_char_eq1 track2TextureSequence[36] = {
-    99, 58, 92, 119, 105, 112, 101, 111, 117, 116, 50, 92, 116, 101, 120, 116, 117, 114, 101, 115,
-    92, 98, 101, 116, 97, 114, 101, 100, 46, 99, 109, 112, 0, 0, 0, 0,
-};
-u_char_eq1 msgOvertake[24] = {
-    67, 82, 73, 84, 73, 67, 65, 76, 32, 83, 72, 73, 69, 76, 68, 32, 70, 65, 73, 76, 85, 82, 69, 0,
-};
+u_char_eq1 trackPathTable[12] = "\\track.wad";
+u_char_eq1 track1SmokeTextureSequence[32] = "c:\\wipeout2\\textures\\smoke.cmp";
+u_char_eq1 sharedTrackTextureSequence[36] = "c:\\wipeout2\\textures\\alphared.cmp";
+u_char_eq1 track6TextureSequence[36] = "c:\\wipeout2\\textures\\zetared.cmp";
+u_char_eq1 track20TextureSequence[36] = "c:\\wipeout2\\textures\\upsilred.cmp";
+u_char_eq1 track17TextureSequence[] = "c:\\wipeout2\\textures\\rhored.cmp";
+u_char_eq1 track7TextureSequence[] = "c:\\wipeout2\\textures\\etared.cmp";
+u_char_eq1 track13TorchTextureSequence[32] = "c:\\wipeout2\\textures\\fire.cmp";
+u_char_eq1 track13TextureSequence[32] = "c:\\wipeout2\\textures\\nured.cmp";
+u_char_eq1 track2ZeppelinNames[12] = "zeppelin";
+u_char_eq1 track2TextureSequence[36] = "c:\\wipeout2\\textures\\betared.cmp";
+u_char_eq1 msgOvertake[] = "CRITICAL SHIELD FAILURE";
 char startWadPath[] = "c:\\wipeout2\\common\\startwad.wad";
-u_char msgCombatCable[16] = { 67, 79, 77, 66, 65, 84, 32, 67, 65, 66, 76, 69, 0, 0, 0, 0 };
+u_char msgCombatCable[16] = "COMBAT CABLE";
 u_char rearLockCycle = 0;
 u_char perfectLap = 0;
 u_char perfectLapCount = 0;

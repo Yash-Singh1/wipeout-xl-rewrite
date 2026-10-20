@@ -29,7 +29,6 @@ BLK_FILL      *screenFillTop __asm__("screenFills");
 
 extern u8              barHeight[];
 extern BLK_FILL       *screenFills[];
-extern BLK_FILL       *screenFill1;
 extern char            numberText[];
 extern char            singleDigitFormat[];
 extern u8              loadScreenFooter[];

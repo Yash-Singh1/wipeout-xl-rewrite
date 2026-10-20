@@ -16,11 +16,8 @@ extern int        *frameValues;
 
 /* Double-buffered polygon pools for the three tile levels. */
 POLY_FT4 *TrackLoPolys;
-extern POLY_FT4 *TrackLoPolysAlt;
 POLY_FT4 *TrackMedPolys;
-extern POLY_FT4 *TrackMedPolysAlt;
 POLY_FT4 *TrackHiPolys;
-extern POLY_FT4 *TrackHiPolysAlt;
 
 Surface tileSurfaces[24][2];
 

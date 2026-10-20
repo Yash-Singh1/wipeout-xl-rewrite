@@ -63,8 +63,6 @@
 #define cardFileNames ((u8 *)cardSlots[0].entry[0].filename)
 /* cardNames: cardSlots + 43: the label of the entry */
 #define cardNames ((u8 *)&cardSlots[0].entry[0].label)
-/* cardFlags: cardSlots + 75 with strides (90, 1350) in DupFileCheck, LoadSave, DisplayCardBack: the type byte of the entries */
-#define cardFlags ((CardFlags (*)[15])&cardSlots[0].entry[0].type)
 /* quadClutField: AddText/AddTime store quadPool + 14 and + 22 with stride 40: the clut and tpage fields of the 600 POLY_FT4s */
 #define quadClutField ((u_short *)&quadPool[0].clut)
 /* quadTPageField: see quadClutField */
@@ -143,6 +141,14 @@
 #define waterfallSaved ((u_short *)(waterfallBuf + 8))
 /* waterfallRow: see waterfallSaved */
 #define waterfallRow ((u_short *)(waterfallBuf + 30))
+/* screenFill1: VsyncFunc loads screenFills + 4 * screen; InitPop and InitResidentMenu store +0 and +4 one after the other */
+#define screenFill1 screenFills[1]
+/* TrackHiPolysAlt: AsmTrackHi loads TrackHiPolys + 4 * screen (stride 4); trackasm.c allocates TrackHiPolys and the pointer 4 bytes after it */
+#define TrackHiPolysAlt ((POLY_FT4 **)&TrackHiPolys)[1]
+/* TrackMedPolysAlt: see TrackHiPolysAlt (AsmTrackMed) */
+#define TrackMedPolysAlt ((POLY_FT4 **)&TrackMedPolys)[1]
+/* TrackLoPolysAlt: see TrackHiPolysAlt (AsmTrackLo) */
+#define TrackLoPolysAlt ((POLY_FT4 **)&TrackLoPolys)[1]
 /* sharkBodyModel: UpdateSharkModel loads shipShapeTable + 8 and CopySharkVerts + 16 without index: slots 2 and 4 */
 #define sharkBodyModel shipShapeTable[2]
 /* sharkLegModel: see sharkBodyModel */

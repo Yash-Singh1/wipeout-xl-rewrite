@@ -1,10 +1,7 @@
 /* Global data of ships.c, generated from the executable by tools/gendata.py. */
 #include "functions.h"
 
-extern u_char msgReturningToMenus[1136];
-extern u8 msgNameIsUsedAsDefaultHighScore[104];
 extern char msgThrust[8];
-extern u8 msgWeapons[16];
 
 char msgInsufficientMemory[36] = "insufficient continuous memory!\n";
 char msgAllocRequest[28] = "requested:%d  -  free:%d\n";
@@ -366,17 +363,13 @@ u_short glyphWidths8[38] = {
 char *crapArray[8] = { "ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT" };
 int skyPos[15] = { -820, -2520, -1930, -5000, -5000, -5000, -2260, -40, -2700, 0, -240, -2120, -2700, 0, 0 };
 char *cdTrackNames[13] = {
-    "RANDOM", (char *)&msgReturningToMenus[1044], (char *)&msgReturningToMenus[1032],
-    (char *)&msgReturningToMenus[1016], "V6", (char *)&msgReturningToMenus[1000],
-    (char *)&msgReturningToMenus[984], (char *)&msgReturningToMenus[964],
-    (char *)&msgReturningToMenus[944], (char *)&msgReturningToMenus[924], "CANADA",
-    (char *)&msgReturningToMenus[908], "",
+    "RANDOM", "WE HAVE EXPLOSIVE", "LANDMASS", "ATOMBOMB INSTR.", "V6", "DUST UP BEATS",
+    "LOOPS OF FURY", "THE THIRD SEQUENCE", "TIN THERE [EDIT]", "FIRESTARTER INSTR.", "CANADA",
+    "BODY IN MOTION", "",
 };
 char *cdTrackArtists[13] = {
-    "RANDOM", (char *)&msgReturningToMenus[1124], (char *)&msgReturningToMenus[1124], "FLUKE",
-    "FLUKE", (char *)&msgReturningToMenus[1104], (char *)&msgReturningToMenus[1104], "PHOTEK",
-    (char *)&msgReturningToMenus[1092], (char *)&msgReturningToMenus[1080],
-    (char *)&msgReturningToMenus[1064], (char *)&msgReturningToMenus[1064], "",
+    "RANDOM", "F.S.O.L.", "F.S.O.L.", "FLUKE", "FLUKE", "CHEMICAL BROTHERS", "CHEMICAL BROTHERS",
+    "PHOTEK", "UNDERWORLD", "THE PRODIGY", "COLD STORAGE", "COLD STORAGE", "",
 };
 int cameraDroidHeight[25] = { 0 };
 unsigned short savedSelection[2] = { 0 };
@@ -385,11 +378,7 @@ unsigned short savedClassSelection[2] = { 0 };
 unsigned short savedTrackSelection = 0;
 u16 savedMainSelection = 3;
 short trackModelOrder[8] = { 5, 7, 1, 2, 6, 4, 0, 3 };
-char *keyFunctionNames[6] = {
-    msgThrust, (char *)&msgWeapons[8], (char *)&msgNameIsUsedAsDefaultHighScore[92],
-    (char *)&msgNameIsUsedAsDefaultHighScore[76], (char *)&msgNameIsUsedAsDefaultHighScore[60],
-    (char *)&msgNameIsUsedAsDefaultHighScore[44],
-};
+char *keyFunctionNames[6] = { msgThrust, "FIRE", "CHANGE VIEW", "DISCARD WEAPON", "LEFT AIR BRAKE", "RIGHT AIR BRAKE" };
 short pitLaneSection1[8] = { 257, 300, 446, 358, 16, 362, 312, 68 };
 short pitLaneSection2[8] = { 290, 325, 468, 378, 57, 379, 337, 88 };
 int pitLaneDirection[8] = { 8192, 8192, 8192, 8192, 8192, 8192, 8192, 8192 };

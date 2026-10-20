@@ -22,6 +22,6 @@ u_char globalVolume = 255;
 int totalSampleMem = 0;
 u_char nextVoice = 0;
 s32 scoreTabFrame = 0;
-u8 msgSelect[8] = { 83, 69, 76, 69, 67, 84, 0, 1 };
+u8 msgSelect[] = "SELECT";
 RaceLine raceLines[600];
 ShipRank shipRank[15];

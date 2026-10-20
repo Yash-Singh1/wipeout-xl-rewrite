@@ -13,7 +13,7 @@
 #define Popup() AddPrim(OT[CurrentScreen],&polys->boxFill[CurrentScreen]);AddPrim(OT[CurrentScreen],&polys->boxBorder[CurrentScreen])
 #define CardMessage(card) AddPrim(OT[CurrentScreen],&polys->lowerFill[card][CurrentScreen]);AddPrim(OT[CurrentScreen],&polys->lowerBorder[card][CurrentScreen])
 #define SelectedCard() (&cardSlots[myFinished].entry[fadescreen])
-#define CardFlags() (cardFlags[myFinished][fadescreen].flags)
+#define CardFlags() (cardSlots[myFinished].entry[fadescreen].type)
 typedef struct { unsigned int tag; unsigned char r0,g0,b0,code; short x0,y0; unsigned char u0,v0; unsigned short clut; short x1,y1; unsigned char u1,v1; unsigned short tpage; short x2,y2; unsigned char u2,v2; unsigned short pad2; short x3,y3; unsigned char u3,v3; unsigned short pad3; } POLY_FT4__L;
 typedef struct { char text[13]; } Password__L;
 typedef struct { unsigned int tag; unsigned char r0,g0,b0,code; short x0,y0; unsigned char r1,g1,b1,pad1; short x1,y1; unsigned char r2,g2,b2,pad2; short x2,y2; unsigned char r3,g3,b3,pad3; short x3,y3; } POLY_G4__L;
@@ -363,8 +363,7 @@ void PrintCX__L() __asm__("PrintCX");
 
 typedef struct { s16 h[5]; } Table10;
 extern s32 textureWad;
-s32 screenFills;
-extern s32 screenFill1;
+extern BLK_FILL *screenFills[]; /* Port: pointers, and the second one is screenFill1 */
 extern char msgInitializingCombatLink[];
 extern char msgLinkFailed[];
 extern char msgMasterLinkEstablished[];
@@ -2039,7 +2038,7 @@ void InitCard(s32 card)
         *(Label6 *)(slotOffset + names) = *defaultName;
         cardUsed[slotOffset] = 0;
         cardFileNames[slotOffset] = 0;
-        ((u8 *)cardFlags)[slotOffset] = 1;
+        ((u8 *)&cardSlots[0].entry[0].type)[slotOffset] = 1;
     }
 }
 
@@ -2419,7 +2418,7 @@ short IsTeamCardEmpty(int team)
     short slot;
 
     for (slot = 0; slot < 15; slot++) {
-        if (cardFlags[team][slot].flags & 1) {
+        if (cardSlots[team].entry[slot].type & 1) {
             return 0;
         }
     }
@@ -2433,7 +2432,7 @@ int CheckCardFull(int card)
     short i = 0;
 
     do {
-        if (!(cardFlags[card][i].flags & 1)) {
+        if (!(cardSlots[card].entry[i].type & 1)) {
             count++;
         }
         i++;
@@ -6383,8 +6382,8 @@ void InitResidentMenu(void)
 {
     LoadButtons();
     fontTexture = WADLoadTexture(textureWad, 1);
-    screenFills = (s32)BlockFill(0, 0, 0x140, 0xF0, 0, 0, 0);
-    screenFill1 = (s32)BlockFill(0, 0xF0, 0x140, 0xF0, 0, 0, 0);
+    screenFills[0] = BlockFill(0, 0, 0x140, 0xF0, 0, 0, 0);
+    screenFill1 = BlockFill(0, 0xF0, 0x140, 0xF0, 0, 0, 0);
 }
 
 

@@ -102,6 +102,13 @@ class Env:
         bss_size = int(re.search(r'bss_size: (0x[0-9A-Fa-f]+)', yaml).group(1), 16)
         text_va = main_vram + text_off - main_off
         data_va = main_vram + data_off - main_off
+        # the assembler output of rodata that is not literals of a C file: [start, end) in the image
+        subs = [(int(a, 16), k) for a, k in re.findall(r'^\s*- \[(0x[0-9A-Fa-f]+), ([^\]]*)\]', yaml, re.M)]
+        subs.sort()
+        self.asm_rodata = []
+        for i, (off, kind) in enumerate(subs):
+            if kind.strip() == 'rodata' and i + 1 < len(subs):
+                self.asm_rodata.append((main_vram + off - main_off, main_vram + subs[i + 1][0] - main_off))
         self.sections = [Section('.pre', IMAGE_BASE, main_vram), Section('.rodata', main_vram, text_va),
                          Section('.text', text_va, data_va), Section('.data', data_va, bss_vram),
                          Section('.bss', bss_vram, bss_vram + bss_size)]
@@ -850,6 +857,12 @@ def build_symbols(env, scan, tys):
     for i, sy in enumerate(order):
         sec = sy.section
         end = sec.end if sec else sy.addr
+        if sy.kind == 'rdata':
+            # an object of an assembler rodata file stops at the end of the file: what follows are the
+            # literals and jump tables of a C file's functions, not data
+            for lo_, hi_ in env.asm_rodata:
+                if lo_ <= sy.addr < hi_:
+                    end = hi_
         k = bisect.bisect_right(ends, i)
         nxt = order[ends[k]].addr if k < len(ends) else end
         nraw = order[i + 1].addr if i + 1 < len(order) else end
@@ -1220,7 +1233,7 @@ class Emitter:
         n = ty.n
         e = ty.elem
         raw = self.raw(addr, n * e.size)
-        if e.kind == 'int' and e.spelling == 'char' and not any(a in self.env.relocs for a in range(addr, addr + len(raw))):
+        if e.kind == 'int' and e.spelling in ('char', 'unsigned char') and not any(a in self.env.relocs for a in range(addr, addr + len(raw))):
             z = raw.find(b'\0')
             body = raw if z < 0 else raw[:z]
             if z != 0 and body and all(32 <= c < 127 or c in (9, 10, 13) for c in body) \
@@ -1358,9 +1371,6 @@ def finalize(env, syms, order):
         if lib:
             sy.lib = True
             continue
-        if sy.name.startswith(('IID_', 'GUID_')):
-            sy.decl, sy.ty, sy.qual, sy.size, sy.inferred = None, None, None, 16, True
-            continue
         if sy.ty is None:
             sib = sibling_decl(sy, syms)
             if sib is not None:
@@ -1369,11 +1379,6 @@ def finalize(env, syms, order):
                 sy.notes.append('type taken from %s (no declaration)' % sib.name)
             else:
                 sy.inferred = True
-                if sy.name.startswith(('IID_', 'GUID_')):
-                    sy.ty = None
-                    sy.size = 16
-                    sy.qual = None
-                    continue
                 if sy.kind == 'rdata' and sy.extent in (4, 8):
                     sy.ty = Flt(sy.extent)
                     sy.qual = 'const float' if sy.extent == 4 else 'const double'
@@ -1385,6 +1390,14 @@ def finalize(env, syms, order):
                     sy.qual = 'unsigned char[%d]' % sy.extent
                 continue
         t = sy.ty
+        if sy.name in D.SIZES and t.kind != 'arr':
+            # a scalar the decisions table makes an array (its other elements have names of their own)
+            n = D.SIZES[sy.name][0]
+            sy.ty = Arr(t, n)
+            sy.qual = sy.qual + '[]'
+            sy.size, sy.count = n * t.size, n
+            sy.notes.append('%d entries: %s' % (n, D.SIZES[sy.name][1]))
+            continue
         if sy.name in D.SIZES and t.kind == 'arr' and t.n is not None:
             # a complete array the decisions table makes longer (names that are parts of it follow)
             n = D.SIZES[sy.name][0]
@@ -1397,7 +1410,7 @@ def finalize(env, syms, order):
         if t.kind == 'arr' and t.n is None:
             e = t.elem
             n = sy.extent // e.size if e.size else 0
-            if e.kind == 'int' and e.spelling == 'char' and sy.kind in ('data', 'rdata'):
+            if e.kind == 'int' and e.spelling in ('char', 'unsigned char') and sy.kind in ('data', 'rdata'):
                 s = printable_string(pe.read(sy.addr, min(sy.extent, 4096)))
                 if s is not None:
                     tail = pe.read(sy.addr + len(s) + 1, max(sy.extent - len(s) - 1, 0))
@@ -1642,10 +1655,6 @@ def header_closure():
     return includes_of(os.path.join(ROOT, 'game', 'include', 'functions.h'))
 
 
-def needs_sdk(uses):
-    return False
-
-
 def symbol_comment(sy, em):
     out = []
     if sy.synthetic:
@@ -1670,11 +1679,6 @@ def symbol_comment(sy, em):
 def symbol_text(sy, em, tys):
     """The definition of one symbol."""
     em.cur = sy.name
-    if sy.ty is None and sy.size == 16 and sy.name.startswith(('IID_', 'GUID_')):
-        b = em.raw(sy.addr, 16)
-        d1, d2, d3 = struct.unpack('<IHH', b[:8])
-        tail = ', '.join('0x%02x' % x for x in b[8:])
-        return 'const GUID %s = { 0x%08x, 0x%04x, 0x%04x, { %s } };' % (sy.name, d1, d2, d3, tail)
     decl_tys = sy.decl.tys if sy.decl is not None else None
     count = getattr(sy, 'count', None)
     if sy.synthetic:
@@ -1731,7 +1735,7 @@ def generate(env, scan, quiet=False):
         if sy.lib:
             skipped['lib'].append(sy)
             continue
-        if sy.decl is None and not sy.name.startswith(('IID_', 'GUID_')):
+        if sy.decl is None:
             skipped['undeclared'].append(sy)
             continue
         if any(d.has_init and not d.static for d in sy.decls):
@@ -1750,18 +1754,17 @@ def generate(env, scan, quiet=False):
         uses = set(sy.decl.uses) if sy.decl is not None else set()
         sy.uses = uses
         sy.use_nodes = dict(sy.decl.use_nodes) if sy.decl is not None else {}
-        sy.sdk = False
         results[sy.name] = text
-        modules.setdefault((sy.module, sy.sdk), []).append(sy)
+        modules.setdefault(sy.module, []).append(sy)
     for name, addr, ctype, count, module, why in D.SYNTHETIC:
         sy = Sym(addr, name)
         sy.kind, sy.module, sy.extent = 'data', module, count
         sy.ty = Arr(BUILTIN[ctype], count)
         sy.size, sy.count, sy.qual = sy.ty.size, count, '%s[]' % ctype
-        sy.uses, sy.use_nodes, sy.sdk, sy.synthetic = set(), {}, False, why
+        sy.uses, sy.use_nodes, sy.synthetic = set(), {}, why
         em.cur = name
         results[name] = symbol_text(sy, em, tys)
-        modules.setdefault((module, False), []).append(sy)
+        modules.setdefault(module, []).append(sy)
         g_synth[name] = sy
     header_typedefs = {n['name'] for nodes in scan.values() for n in nodes
                        if n['kind'] == 'TypedefDecl' and '/include/' in (n['_where'][0] or '')}
@@ -1810,7 +1813,7 @@ def write_files(g, outdir):
         os.remove(f)
     closure = header_closure()
     written = []
-    for (module, sdk), members in sorted(g['modules'].items()):
+    for module, members in sorted(g['modules'].items()):
         members.sort(key=lambda s: s.addr)
         name = '%s_data.c' % module
         header_lines = ['#include "functions.h"']
@@ -1963,7 +1966,7 @@ def compare_symbol(env, g, res, bad, co, name, sec, start, size, tag, lim=None):
                 res['%s: pointer words holding console RAM addresses (ABSOLUTE)' % tag] += 1
     for lo, hi in g['em'].partial.get(name, []):
         skip.update(range(lo - addr, hi - addr))
-    res['%s: bytes not representable in C89 (union members)' % tag] += len(set(range(lo_, hi_)) & set(range(size))) if False else 0
+    res['%s: bytes not representable in C89 (union members)' % tag] += 0
     for lo_, hi_ in g['em'].partial.get(name, []):
         res['%s: bytes not representable in C89 (union members)' % tag] += hi_ - lo_
     for off in range(size):
@@ -2023,8 +2026,9 @@ def alias_header_text():
            '   containers only. */',
            '#ifndef DATA_ALIAS_H', '#define DATA_ALIAS_H', '']
     for a in D.ALIASES:
-        out.append('/* %s: %s */' % (a.name, a.evidence))
-        out.append('#define %s %s' % (a.name, a.macro))
+        if a.in_header:
+            out.append('/* %s: %s */' % (a.name, a.evidence))
+            out.append('#define %s %s' % (a.name, a.macro))
     out += ['', '#endif', '']
     return '\n'.join(out)
 
@@ -2047,7 +2051,8 @@ def write_alias_tests(env, g):
         cdecl = 'extern ' + decl_text(csy.qual, csy.cname, getattr(csy, 'count', None), csy.decl.tys if csy.decl else None) + ';'
         head = ['/* Generated by tools/gendata.py from tools/gendata_decisions.py: alias %s. */' % a.name,
                 '#include <string.h>', '#include "functions.h"'] + alias_includes(a) + \
-            [d for d in a.decls if not d.startswith('extern ')] + [cdecl]
+            [d for d in a.decls if not d.startswith('extern ')] + [cdecl] + \
+            ([] if a.in_header else ['#define %s %s' % (a.name, a.macro)])
         snippet32 = head + [
             '/* In the executable %s is at %s + 0x%x. */' % (a.name, a.container, off),
             'typedef char alias_offset_%s[((char *)&(%s) - (char *)&(%s) == 0x%x) ? 1 : -1];' % (
@@ -2281,7 +2286,7 @@ def check(env, g, outdir):
         if e_.kind != 'ptr' and not pointer_slots(e_):
             continue
         res['arrays of pointer-bearing elements (sized by 32-bit element count)'] += 1
-        if sy_.decl.ty.n is None and sy_.ty.n != sy_.extent // sy_.ty.elem.size and not sy_.notes:
+        if getattr(sy_.decl.ty, 'n', 0) is None and sy_.ty.n != sy_.extent // sy_.ty.elem.size and not sy_.notes:
             bad.append('%s: %d elements but the extent holds %d of %d bytes' % (
                 sy_.name, sy_.ty.n, sy_.extent // sy_.ty.elem.size, sy_.ty.elem.size))
     # data the game's own sources define with initialisers (ships.c: startStateTable): compare their bytes
@@ -2348,15 +2353,19 @@ def report(env, g):
     out = []
     P = out.append
     P('== counts')
-    P('data symbols in symbols.tsv: %d' % len(order))
-    P('  already defined by game/src: %d' % len(g['skipped']['defined']))
+    P('labelled data symbols (asm/data/*.s and symbol_addrs.txt): %d' % len(order))
+    P('  game/src defines them with their data itself: %d (%s)' % (
+        len(g['skipped'].get('initialised', [])), ' '.join(s.name for s in g['skipped'].get('initialised', []))))
+    P('  names that stand for a part of another global (aliases): %d' % len(g['skipped']['alias']))
     P('  runtime/library data left out: %d (%s)' % (len(g['skipped']['lib']), ' '.join(s.name for s in g['skipped']['lib'])))
-    P('  not declared anywhere in game/ (not generated): %d (%s)' % (
-        len(g['skipped']['undeclared']), ' '.join(s.name for s in g['skipped']['undeclared'])))
+    P('  not declared anywhere in game/ (not generated): %d' % len(g['skipped']['undeclared']))
     P('  generated: %d' % len(gen))
     for kind in ('rdata', 'data', 'bss'):
         P('    %-6s %d' % (kind, sum(1 for s in gen if s.kind == kind)))
-    P('  files: %d (%d need the Windows SDK types)' % (len(g['modules']), sum(1 for k in g['modules'] if k[1])))
+    P('  of which game/src has a tentative definition (--externalize makes it extern): %d' % len(g['skipped']['defined']))
+    P('  files: %d' % len(g['modules']))
+    P('  decisions: %d aliases, %d truncated declarations, %d sizes, %d alignments, %d absolute pointers, %d use rewrites' % (
+        len(D.ALIASES), len(D.TRUNCATE), len(D.SIZES), len(D.ALIGN), len(D.ABSOLUTE), len(D.REWRITES)))
     P('')
     P('== declarations that disagree')
     kinds = collections.Counter()
@@ -2420,7 +2429,7 @@ def report(env, g):
         P('%s: %s' % (sy, msg))
     P('')
     P('== types the game declares privately in a .c file (repeated in the data file)')
-    for (module, sdk), members in sorted(g['modules'].items()):
+    for module, members in sorted(g['modules'].items()):
         names = sorted({n['name'] or n['id'] for sy in members for n in sy.use_nodes.values()
                         if n['_where'][0] and '/game/src/' in n['_where'][0] and n.get('name')})
         if names:
@@ -2502,6 +2511,7 @@ def main():
     ap.add_argument('--span', type=int, default=None)
     a = ap.parse_args()
     if a.apply_aliases:
+        open(ALIAS_HEADER, 'w').write(alias_header_text())
         for line in apply_aliases():
             print(line)
         return 0

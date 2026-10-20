@@ -2,27 +2,27 @@
 #include "functions.h"
 #include "sparks.h"
 
-u_char track1DescriptionLine2[8] = { 55, 52, 32, 77, 0, 0, 0, 0 };
-u_char track2DescriptionLine0[8] = { 70, 82, 65, 78, 67, 69, 0, 0 };
-u_char track2DescriptionLine1[8] = { 51, 46, 53, 32, 75, 77, 0, 0 };
-u_char track2DescriptionLine2[8] = { 49, 55, 57, 32, 77, 0, 0, 0 };
-u_char track6DescriptionLine1[8] = { 53, 46, 49, 32, 75, 77, 0, 0 };
-u_char track6DescriptionLine2[8] = { 57, 55, 32, 77, 0, 0, 0, 0 };
-u_char track7DescriptionLine1[8] = { 52, 46, 48, 32, 75, 77, 0, 0 };
-u_char track7DescriptionLine2[8] = { 56, 50, 32, 77, 0, 0, 0, 0 };
-u_char track8DescriptionLine0[8] = { 78, 69, 80, 65, 76, 0, 0, 0 };
-u_char track8DescriptionLine1[8] = { 52, 46, 51, 32, 75, 77, 0, 0 };
-u_char track8DescriptionLine2[8] = { 49, 53, 56, 32, 77, 0, 0, 0 };
-u_char track13DescriptionLine0[8] = { 67, 72, 73, 76, 69, 0, 0, 0 };
-u_char track13DescriptionLine1[8] = { 51, 46, 57, 32, 75, 77, 0, 0 };
-u_char track13DescriptionLine2[8] = { 50, 50, 48, 32, 77, 0, 0, 0 };
-u_char track17DescriptionLine1[8] = { 52, 46, 52, 32, 75, 77, 0, 0 };
-u_char track17DescriptionLine2[8] = { 49, 50, 49, 32, 77, 0, 0, 0 };
-u_char track20DescriptionLine0[8] = { 71, 69, 82, 77, 65, 78, 89, 0 };
-u_char track20DescriptionLine1[8] = { 51, 46, 56, 32, 75, 77, 0, 0 };
-u_char track20DescriptionLine2[8] = { 49, 51, 55, 32, 77, 0, 0, 0 };
+u_char track1DescriptionLine2[8] = "74 M";
+u_char track2DescriptionLine0[8] = "FRANCE";
+u_char track2DescriptionLine1[8] = "3.5 KM";
+u_char track2DescriptionLine2[8] = "179 M";
+u_char track6DescriptionLine1[8] = "5.1 KM";
+u_char track6DescriptionLine2[8] = "97 M";
+u_char track7DescriptionLine1[8] = "4.0 KM";
+u_char track7DescriptionLine2[8] = "82 M";
+u_char track8DescriptionLine0[8] = "NEPAL";
+u_char track8DescriptionLine1[8] = "4.3 KM";
+u_char track8DescriptionLine2[8] = "158 M";
+u_char track13DescriptionLine0[8] = "CHILE";
+u_char track13DescriptionLine1[8] = "3.9 KM";
+u_char track13DescriptionLine2[8] = "220 M";
+u_char track17DescriptionLine1[8] = "4.4 KM";
+u_char track17DescriptionLine2[8] = "121 M";
+u_char track20DescriptionLine0[] = "GERMANY";
+u_char track20DescriptionLine1[8] = "3.8 KM";
+u_char track20DescriptionLine2[8] = "137 M";
 char singleDigitFormat[4] = "%d";
-u8 loadScreenFooter[4] = { 84, 77, 0, 0 };
+u8 loadScreenFooter[4] = "TM";
 int missflareat = 0;
 int pitsparkat = 0;
 int rockflareat = 0;
