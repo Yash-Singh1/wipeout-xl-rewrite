@@ -76,8 +76,10 @@ static void *LinkPointer(uint32_t id)
     return linkPointers[id];
 }
 
-void AddPrim(u_long *ot, u_long *p)
+void AddPrim(u_long *ot, void *primitive)
 {
+    u_long *p = primitive; /* the game passes any POLY_*, LINE_*, TILE or DR_* packet (psyq.h) */
+
     *p = (*p & 0xFF000000u) | (*ot & 0x00FFFFFFu);
     *ot = (*ot & 0xFF000000u) | (LinkId(p) & 0x00FFFFFFu);
 }

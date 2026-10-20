@@ -1,8 +1,8 @@
 #include "functions.h"
 #include "trackasm.h"
+#include "port_widen.h"
 
 extern char        errorString[];
-extern HeapBlock *heap;
 extern Texture     *textureTable[];
 
 short IntelPrim(Prm prm)
@@ -246,10 +246,15 @@ retry_load:
         readnextfile(wad, start);
     }
 
+    /* Port: the file holds the console's 32-bit Object and Skeleton records; widen them to the
+       native records (port_widen.h).  The walk below then starts each object on an 8-byte boundary. */
+    start = PortWidenPrmImage(heap, start, &length);
+    finish = start + length;
     prm.ptr = start;
     firstObject = prm.object;
     lastObject = 0;
     while (prm.ptr < finish) {
+        prm.ptr = PortAlignPrm(start, prm.ptr); /* Port: skip the padding before a native Object */
         object = prm.object++;
         IntelShort(&object->vertexCount);
         IntelShort(&object->normalCount);
@@ -486,7 +491,8 @@ retry_load:
                 break;
 
             default:
-                sprintf(errorString, "Bad primitive type %x in $%x \n", prm.f3->type, name);
+                /* Port: %p; the console printed the address of name with %x */
+                sprintf(errorString, "Bad primitive type %x in $%p \n", prm.f3->type, (void *)name);
                 Error(errorString, Fatal);
                 break;
             }
@@ -518,7 +524,7 @@ Object *NewInstance(Object *source)
     char   *name;
     char   *sourceName;
 
-    copy = DAlloc(heap, 0x40);
+    copy = DAlloc(heap, sizeof(Object));
     copy->vertexCount = source->vertexCount;
     copy->vertices = source->vertices;
     copy->normalCount = source->normalCount;
@@ -527,7 +533,7 @@ Object *NewInstance(Object *source)
     copy->primitives = source->primitives;
     copy->scratch = source->scratch;
     copy->bspTree = source->bspTree;
-    copy->skeleton = DAlloc(heap, 0x50);
+    copy->skeleton = DAlloc(heap, sizeof(Skeleton));
     copy->skeleton->super = source->skeleton->super;
     copy->skeleton->sub = source->skeleton->sub;
     copy->skeleton->next = source->skeleton->next;
@@ -538,6 +544,6 @@ Object *NewInstance(Object *source)
     sourceName = source->name;
     do {
         *name++ = *sourceName++;
-    } while ((int)name < (int)(copy->name + 16));
+    } while (name < copy->name + 16);
     return copy;
 }

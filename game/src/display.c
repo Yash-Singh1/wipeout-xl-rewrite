@@ -1,43 +1,28 @@
 #include "functions.h"
 #include "object2.h"
+#include "../../platform/trace.h" /* Port: lockstep test hooks */
 
-extern HeapBlock *heap;
 extern DRAWENV DrawEnv0;
 extern DRAWENV DrawEnv1;
-extern DISPENV DispEnv0;
-extern DISPENV DispEnv1;
-extern DB doubleBuffer[];
+extern DB doubleBuffer[2];
 extern short CurrentScreen;
-extern u_long *OT[];
-extern u_long *OT2[];
-extern u_long otBuffer0[];
-extern u_long otBuffer1[];
-extern u_long ot2Buffer0[];
-extern u_long ot2Buffer1[];
+/* The two ordering tables of each screen: 0x2000 entries (the console reserved 0x2100) and 0x640 entries.
+   Port: DrawOTag starts from the last entry, OT[n] + 0x1FFF and OT2[n] + 0x63F (these were byte offsets,
+   0x7FFC and 0x18FC). */
+extern u_long otBuffer0[0x2000];
+extern u_long otBuffer1[0x2000];
+extern u_long ot2Buffer0[0x640];
+extern u_long ot2Buffer1[0x640];
+/* The primitive pool of each screen (44032 bytes on the console). */
 extern char *primBuffers[];
-extern char PrimitiveBuffer0[];
-extern char PrimitiveBuffer1[];
-extern PrimPtr nextPrim;
+extern char PrimitiveBuffer0[0xAC00];
+extern char PrimitiveBuffer1[0xAC00];
 extern ConfigData *gameData;
-extern HeapBlock *reserveHeap;
-extern u_short dispOffX0;
-extern u_short dispOffY0;
-extern u_short dispOffX1;
-extern u_short dispOffY1;
-extern u_char activateOT2;
-extern u_char gameType;
 extern short fastFrame;
 extern int primsDrawn;
 extern char errorString[];
 
-void SetGraphDebug(int level);
-void InitGeom(void);
-void SetVideoMode(int mode);
-void SfxDoSfx(void);
-void DrawPrim(void *prim);
-void SetBlockFill(BLK_FILL *prim);
-
-char  menuSendFlags;
+u_char menuSendFlags;
 short gpuWarning;
 short cpuWarning;
 int   max;
@@ -97,10 +82,11 @@ void InitMenuDisplay(int geomY, int keepOffsets)
     SetDefDispEnv(&DispEnv0, 0, 0, 0x140, 0xB4);
     SetDefDispEnv(&DispEnv1, 0, 0x100, 0x140, 0xB4);
     if (keepOffsets == 0) {
-        dispOffX0 = *(u_short *)&gameData->screenX;
-        dispOffY0 = *(u_short *)&gameData->screenY;
-        dispOffX1 = *(u_short *)&gameData->screenX;
-        dispOffY1 = *(u_short *)&gameData->screenY;
+        /* Port: dispOffX0, dispOffY0, dispOffX1 and dispOffY1 were names for these four fields. */
+        DispEnv0.screen.x = gameData->screenX;
+        DispEnv0.screen.y = gameData->screenY;
+        DispEnv1.screen.x = gameData->screenX;
+        DispEnv1.screen.y = gameData->screenY;
     }
     SetGeomOffset(0xA0, geomY);
     SetGeomScreen(0xA0);
@@ -113,10 +99,11 @@ void InitGameDisplay(int keepOffsets)
     SetDefDispEnv(&DispEnv0, 0, 0, 0x140, 0xF0);
     SetDefDispEnv(&DispEnv1, 0, 0x100, 0x140, 0xF0);
     if (keepOffsets == 0) {
-        dispOffX1 = *(u_short *)&gameData->screenX;
-        dispOffX0 = dispOffX1;
-        dispOffY1 = *(u_short *)&gameData->screenY;
-        dispOffY0 = dispOffY1;
+        /* Port: dispOffX1, dispOffX0, dispOffY1 and dispOffY0 were names for these four fields. */
+        DispEnv1.screen.x = gameData->screenX;
+        DispEnv0.screen.x = DispEnv1.screen.x;
+        DispEnv1.screen.y = gameData->screenY;
+        DispEnv0.screen.y = DispEnv1.screen.y;
     }
     SetGeomOffset(0xA0, 0x78);
     SetGeomScreen(0xA0);
@@ -161,7 +148,7 @@ void Swap(void)
     vcountNow = GsGetVcount();
     max = vcountNow;
     menuSendFlags = vcountNow / 262;
-    GsClearVcount(0);
+    GsClearVcount(); /* Port: the library call takes no argument; the 0 the console passed was ignored */
     if (max >= 0x220) {
         if (drawTime >= 0xB) {
             gpuWarning = 2;
@@ -175,12 +162,13 @@ void Swap(void)
     CurrentScreen = nextScreen;
     PutDrawEnv(draw);
     PutDispEnv(doubleBuffer[CurrentScreen].disp);
-    DrawOTag((u_long *)((char *)OT[((CurrentScreen + 1) & 1)] + 0x7FFC));
+    DrawOTag(OT[(CurrentScreen + 1) & 1] + 0x1FFF);
     if (activateOT2 != 0) {
-        DrawOTag((u_long *)((char *)OT2[((CurrentScreen + 1) & 1)] + 0x18FC));
+        DrawOTag(OT2[(CurrentScreen + 1) & 1] + 0x63F);
     }
     nextPrim.ptr = primBuffers[CurrentScreen];
     SfxDoSfx();
+    PortTraceBoundary(TRACE_SWAP); /* Port: end of a game-loop iteration, for the lockstep tests */
 }
 
 
@@ -193,9 +181,10 @@ void CallbackSwap(void)
     CurrentScreen = nextScreen;
     PutDrawEnv(doubleBuffer[nextScreen].draw);
     PutDispEnv(doubleBuffer[CurrentScreen].disp);
-    DrawOTag((u_long *)((char *)OT[((CurrentScreen + 1) & 1)] + 0x7FFC));
-    DrawOTag((u_long *)((char *)OT2[((CurrentScreen + 1) & 1)] + 0x18FC));
+    DrawOTag(OT[(CurrentScreen + 1) & 1] + 0x1FFF);
+    DrawOTag(OT2[(CurrentScreen + 1) & 1] + 0x63F);
     nextPrim.ptr = primBuffers[CurrentScreen];
+    PortTraceBoundary(TRACE_CALLBACK_SWAP); /* Port: end of a game-loop iteration, for the lockstep tests */
 }
 
 

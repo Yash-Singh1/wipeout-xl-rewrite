@@ -1,10 +1,10 @@
 #include "functions.h"
 #include "track.h"
+#include "port_widen.h"
 #define TrackVersion 8
 
 
 
-extern HeapBlock *heap;
 extern TrackData   *track;
 extern char         msgNewline[];
 
@@ -117,6 +117,10 @@ void IndexToPointers(void)
 
         if (section->junction.index != -1) {
             section->junction.ptr = track->sections + section->junction.index;
+        } else {
+            /* Port: the slot keeps -1 as a pointer too (a zero-extended file value would not
+               compare equal to (TrackSection *)-1 natively). */
+            section->junction.ptr = (TrackSection *)-1;
         }
 
         section++;
@@ -131,11 +135,11 @@ void PointersToIndex(void)
 
     section = track->sections;
     for (i = 0; i < track->sectionCount; i++) {
-        section->prevSection.index = section->prevSection.ptr - track->sections;
-        section->nextSection.index = section->nextSection.ptr - track->sections;
+        section->prevSection.index = (int)(section->prevSection.ptr - track->sections);
+        section->nextSection.index = (int)(section->nextSection.ptr - track->sections);
 
         if (section->junction.index != -1) {
-            section->junction.index = section->junction.ptr - track->sections;
+            section->junction.index = (int)(section->junction.ptr - track->sections);
         }
 
         section++;
@@ -150,7 +154,7 @@ void WADInitVertices(WADFILE *wad)
     length = wad->sizes[wad->current];
 
     track->vertices = (VECTOR *)DAlloc(heap, length + 32);
-    printf("verts at : %x\n", track->vertices);
+    printf("verts at : %p\n", (void *)track->vertices); /* Port: %p (was %x of the address) */
     if (!track->vertices) {
         Error("Track.c:InitVertices: Failed to allocate memory for track vertices", Fatal);
     }
@@ -205,7 +209,9 @@ void WADInitSections(WADFILE *wad)
     }
 
     readnextfile(wad, (char *)track->sections);
-    track->sectionCount = length / sizeof(TrackSection);
+    track->sectionCount = length / PORT_FILE_SIZEOF_TrackSection; /* Port: the file holds 156-byte records */
+    /* Port: widen the file's 32-bit TrackSection records to native ones (port_widen.h). */
+    track->sections = PortWidenHeapRecords(heap, &PortRecord_TrackSection, (char *)track->sections, track->sectionCount);
 
     IntelSection();
     IndexToPointers();
@@ -258,7 +264,7 @@ void WADInitViewList(WADFILE *wad)
     }
 
     if ((total * 2) != length) {
-        printf(msgNewline);
+        printf("%s", msgNewline); /* Port: not a literal format */
         printf("total  %d\n", total);
         printf("length %d\n", length);
         Error("track.c::InitViewList():problem with view list", Fatal);
