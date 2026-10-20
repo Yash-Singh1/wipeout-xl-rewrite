@@ -64,8 +64,9 @@ static const KeyBinding keyBindings[] = {
 #define KEY_COUNT (sizeof(keyBindings) / sizeof(keyBindings[0]))
 
 static bool keyDown[KEY_COUNT];
-/* Keys that were held when the context changed and mean something else now stay quiet until they
-   are released (Enter pauses the race: it must not also accept the first menu entry). */
+/* Keys that were held when the context changed, pressed buttons there and press others now stay
+   quiet until they are released (Enter pauses the race: it must not also accept the first menu
+   entry). A key that pressed nothing before, like S held while the race starts, takes effect. */
 static bool keyHeldOver[KEY_COUNT];
 static PadContext keyContext = PAD_CONTEXT_MENU;
 static SDL_Gamepad *gamepads[PORTS];
@@ -118,7 +119,9 @@ void PsxPadSdlField(void)
         size_t i;
 
         for (i = 0; i < KEY_COUNT; i++) {
-            keyHeldOver[i] = keyDown[i] && key_buttons(i, keyContext) != key_buttons(i, context);
+            uint16_t before = key_buttons(i, keyContext);
+
+            keyHeldOver[i] = keyDown[i] && before && before != key_buttons(i, context);
         }
         keyContext = context;
         PortLog("pad: keyboard in %s (thrust is button %04X)\n", context == PAD_CONTEXT_RACE ? "the race" : "the menus",

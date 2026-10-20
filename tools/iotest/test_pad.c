@@ -1,6 +1,6 @@
 /* The pad: the BIOS buffers the game reads (PadPacket: 0x4100 digital pad, 0x2300 NeGcon, buttons
-   active low), scripted input by video field, the keyboard layout through SDL key events, and
-   the NeGcon mapping. Gamepad hot-plug needs a device and is checked by hand. */
+   active low), scripted input by video field, the keyboard layout in the menus and in a race
+   through SDL key events, and the NeGcon mapping. Gamepad hot-plug needs a device and is checked by hand. */
 #include <SDL3/SDL.h>
 
 #include <stdio.h>
@@ -137,46 +137,144 @@ int main(void)
     PsxVBlank();
     CHECK_EQ_INT(packet(buf1).header, 0x4100);  /* the keyboard is always plugged into port 1 */
     CHECK_EQ_INT(packet(buf2).header & 0xFF, 0xFF); /* nothing in port 2 */
+    /* the keys of the menus: the cursor, accept and back (Enter is Start too, for the title) */
     {
-        static const struct { SDL_Scancode key; uint16_t buttons; } map[] = {
-            {SDL_SCANCODE_S, PAD_CROSS},        /* accelerate */
-            {SDL_SCANCODE_SPACE, PAD_CIRCLE},   /* fire */
-            {SDL_SCANCODE_LALT, PAD_SQUARE},    /* drop weapon */
-            {SDL_SCANCODE_A, PAD_L2},           /* left air brake */
-            {SDL_SCANCODE_D, PAD_R2},           /* right air brake */
-            {SDL_SCANCODE_LEFT, PAD_LEFT},      /* steer */
-            {SDL_SCANCODE_RIGHT, PAD_RIGHT},
-            {SDL_SCANCODE_UP, PAD_UP},          /* pitch */
-            {SDL_SCANCODE_DOWN, PAD_DOWN},
-            {SDL_SCANCODE_RETURN, PAD_START | PAD_CROSS},
+        static const struct { SDL_Scancode key; uint16_t buttons; } menus[] = {
+            {SDL_SCANCODE_RETURN, PAD_CROSS | PAD_START},
             {SDL_SCANCODE_ESCAPE, PAD_TRIANGLE},
-            {SDL_SCANCODE_V, PAD_TRIANGLE},
+            {SDL_SCANCODE_SPACE, PAD_CIRCLE},
+            {SDL_SCANCODE_LALT, PAD_SQUARE},
+            {SDL_SCANCODE_LEFT, PAD_LEFT},
+            {SDL_SCANCODE_RIGHT, PAD_RIGHT},
+            {SDL_SCANCODE_UP, PAD_UP},
+            {SDL_SCANCODE_DOWN, PAD_DOWN},
+            {SDL_SCANCODE_P, PAD_START},
+            {SDL_SCANCODE_BACKSPACE, PAD_SELECT},
+            {SDL_SCANCODE_Q, PAD_L1},
+            {SDL_SCANCODE_E, PAD_R1},
+            {SDL_SCANCODE_S, 0}, /* the race keys do nothing in the menus */
+            {SDL_SCANCODE_A, 0},
+            {SDL_SCANCODE_F1, 0},
         };
         size_t i;
 
-        for (i = 0; i < sizeof(map) / sizeof(map[0]); i++) {
-            key(map[i].key, true);
+        CHECK_EQ_INT(PsxPadContext(), PAD_CONTEXT_MENU);
+        CHECK_EQ_INT(PsxPadLastDevice(), PAD_DEVICE_NONE);
+        for (i = 0; i < sizeof(menus) / sizeof(menus[0]); i++) {
+            key(menus[i].key, true);
             PsxVBlank();
-            CHECK_EQ_INT(PsxPadButtons(0), map[i].buttons);
-            CHECK_EQ_INT(packet(buf1).buttons, (uint16_t)~map[i].buttons);
-            key(map[i].key, false);
+            CHECK_EQ_INT(PsxPadButtons(0), menus[i].buttons);
+            CHECK_EQ_INT(packet(buf1).buttons, (uint16_t)~menus[i].buttons);
+            key(menus[i].key, false);
             PsxVBlank();
             CHECK_EQ_INT(packet(buf1).buttons, 0xFFFF);
         }
-        /* combinations, and a key released while another is held */
-        key(SDL_SCANCODE_S, true);
-        key(SDL_SCANCODE_LEFT, true);
-        key(SDL_SCANCODE_A, true);
-        PsxVBlank();
-        CHECK_EQ_INT(PsxPadButtons(0), PAD_CROSS | PAD_LEFT | PAD_L2);
-        key(SDL_SCANCODE_LEFT, false);
-        PsxVBlank();
-        CHECK_EQ_INT(PsxPadButtons(0), PAD_CROSS | PAD_L2);
-        key(SDL_SCANCODE_S, false);
-        key(SDL_SCANCODE_A, false);
+        CHECK_EQ_INT(PsxPadLastDevice(), PAD_DEVICE_KEYBOARD);
     }
+    /* the keys of a race that is being steered press the buttons the player bound to the actions */
+    {
+        static const struct { SDL_Scancode key; int action; uint16_t buttons; } race[] = {
+            {SDL_SCANCODE_S, PAD_ACTION_THRUST, PAD_CROSS},
+            {SDL_SCANCODE_SPACE, PAD_ACTION_FIRE, PAD_CIRCLE},
+            {SDL_SCANCODE_LALT, PAD_ACTION_DITCH, PAD_SQUARE},
+            {SDL_SCANCODE_A, PAD_ACTION_BRAKE_LEFT, PAD_L2},
+            {SDL_SCANCODE_D, PAD_ACTION_BRAKE_RIGHT, PAD_R2},
+            {SDL_SCANCODE_F1, PAD_ACTION_VIEW, PAD_TRIANGLE},
+            {SDL_SCANCODE_V, PAD_ACTION_VIEW, PAD_TRIANGLE},
+        };
+        static const uint16_t defaults[PAD_ACTIONS] = {PAD_TRIANGLE, PAD_CIRCLE, PAD_SQUARE, PAD_R2, PAD_L2, PAD_CROSS};
+        static const uint16_t rebound[PAD_ACTIONS] = {PAD_L1, PAD_R1, PAD_L2, PAD_CROSS, PAD_CIRCLE, 0x8FF0};
+        size_t i;
+
+        PsxPadRaceFrame(true, defaults);
+        PsxVBlank();
+        CHECK_EQ_INT(PsxPadContext(), PAD_CONTEXT_RACE);
+        for (i = 0; i < sizeof(race) / sizeof(race[0]); i++) {
+            key(race[i].key, true);
+            PsxVBlank();
+            PsxPadRaceFrame(true, defaults);
+            CHECK_EQ_INT(PsxPadButtons(0), race[i].buttons);
+            key(race[i].key, false);
+            PsxVBlank();
+            PsxPadRaceFrame(true, defaults);
+            CHECK_EQ_INT(packet(buf1).buttons, 0xFFFF);
+        }
+        /* Enter, Escape and P pause; the arrows steer and pitch whatever the bindings */
+        key(SDL_SCANCODE_RETURN, true);
+        PsxVBlank();
+        CHECK_EQ_INT(PsxPadButtons(0), PAD_START);
+        key(SDL_SCANCODE_RETURN, false);
+        key(SDL_SCANCODE_ESCAPE, true);
+        key(SDL_SCANCODE_LEFT, true);
+        PsxVBlank();
+        CHECK_EQ_INT(PsxPadButtons(0), PAD_START | PAD_LEFT);
+        key(SDL_SCANCODE_ESCAPE, false);
+        key(SDL_SCANCODE_LEFT, false);
+        /* rebound actions: the keys keep their meaning, an analogue binding falls back to the default */
+        PsxPadRaceFrame(true, rebound);
+        key(SDL_SCANCODE_S, true);
+        key(SDL_SCANCODE_SPACE, true);
+        key(SDL_SCANCODE_LALT, true);
+        key(SDL_SCANCODE_A, true);
+        key(SDL_SCANCODE_D, true);
+        key(SDL_SCANCODE_F1, true);
+        PsxVBlank();
+        PsxPadRaceFrame(true, rebound);
+        CHECK_EQ_INT(PsxPadButtons(0), PAD_CROSS | PAD_L1 | PAD_R1 | PAD_L2 | PAD_CIRCLE);
+        key(SDL_SCANCODE_S, false);
+        key(SDL_SCANCODE_SPACE, false);
+        key(SDL_SCANCODE_LALT, false);
+        key(SDL_SCANCODE_A, false);
+        key(SDL_SCANCODE_D, false);
+        key(SDL_SCANCODE_F1, false);
+        PsxVBlank();
+        /* paused: the game says the ship is not steered, and the menus are back */
+        PsxPadRaceFrame(false, defaults);
+        PsxVBlank();
+        CHECK_EQ_INT(PsxPadContext(), PAD_CONTEXT_MENU);
+        key(SDL_SCANCODE_S, true);
+        PsxVBlank();
+        CHECK_EQ_INT(PsxPadButtons(0), 0);
+        key(SDL_SCANCODE_S, false);
+        /* the game stops calling (the race is over): the menus are back a few fields later */
+        PsxPadRaceFrame(true, defaults);
+        PsxVBlank();
+        CHECK_EQ_INT(PsxPadContext(), PAD_CONTEXT_RACE);
+        for (i = 0; i < 6; i++) {
+            PsxVBlank();
+        }
+        CHECK_EQ_INT(PsxPadContext(), PAD_CONTEXT_MENU);
+    }
+    /* Enter pauses the race and must not also accept the first entry of the pause menu: a key held
+       through the change of context stays quiet until it is released */
+    PsxPadRaceFrame(true, (const uint16_t[PAD_ACTIONS]){PAD_TRIANGLE, PAD_CIRCLE, PAD_SQUARE, PAD_R2, PAD_L2, PAD_CROSS});
+    PsxVBlank();
+    key(SDL_SCANCODE_RETURN, true);
+    key(SDL_SCANCODE_RIGHT, true);
+    PsxVBlank();
+    CHECK_EQ_INT(PsxPadButtons(0), PAD_START | PAD_RIGHT);
+    PsxPadRaceFrame(false, (const uint16_t[PAD_ACTIONS]){PAD_TRIANGLE, PAD_CIRCLE, PAD_SQUARE, PAD_R2, PAD_L2, PAD_CROSS});
+    PsxVBlank();
+    CHECK_EQ_INT(PsxPadButtons(0), PAD_RIGHT); /* Enter is held over; the arrow means the same in both */
+    key(SDL_SCANCODE_RETURN, false);
+    key(SDL_SCANCODE_RIGHT, false);
+    key(SDL_SCANCODE_RETURN, true);
+    PsxVBlank();
+    CHECK_EQ_INT(PsxPadButtons(0), PAD_CROSS | PAD_START);
+    key(SDL_SCANCODE_RETURN, false);
+    /* combinations, and a key released while another is held */
+    key(SDL_SCANCODE_Q, true);
+    key(SDL_SCANCODE_LEFT, true);
+    key(SDL_SCANCODE_SPACE, true);
+    PsxVBlank();
+    CHECK_EQ_INT(PsxPadButtons(0), PAD_L1 | PAD_LEFT | PAD_CIRCLE);
+    key(SDL_SCANCODE_LEFT, false);
+    PsxVBlank();
+    CHECK_EQ_INT(PsxPadButtons(0), PAD_L1 | PAD_CIRCLE);
+    key(SDL_SCANCODE_Q, false);
+    key(SDL_SCANCODE_SPACE, false);
     /* losing window focus releases every key */
-    key(SDL_SCANCODE_S, true);
+    key(SDL_SCANCODE_SPACE, true);
     {
         SDL_Event e;
 
@@ -185,8 +283,9 @@ int main(void)
         PsxInputEvent(&e);
     }
     CHECK_EQ_INT(PsxPadButtons(0), 0);
-    /* NeGcon on the keyboard: twist from the arrow keys, S is button I, Space button II */
+    /* NeGcon on the keyboard: twist from the arrow keys, S is button I, Space button II (in a race) */
     PsxPadSetType(0, PAD_NEGCON);
+    PsxPadRaceFrame(true, (const uint16_t[PAD_ACTIONS]){PAD_TRIANGLE, PAD_CIRCLE, PAD_SQUARE, PAD_R2, PAD_L2, PAD_CROSS});
     key(SDL_SCANCODE_LEFT, true);
     key(SDL_SCANCODE_S, true);
     PsxVBlank();
