@@ -24,7 +24,7 @@ static void Usage(void)
             "environment: WIPEOUT_XL_DISC, WIPEOUT_XL_PC_DATA; tests: WIPEOUT_MUTE, WIPEOUT_HIDDEN,\n"
             "  WIPEOUT_FIXED_STEP, WIPEOUT_FRAMES, WIPEOUT_CAPTURE_DIR, WIPEOUT_CAPTURE_EVERY,\n"
             "  WIPEOUT_TRACE (trace file), WIPEOUT_PADS (pad script), WIPEOUT_VCOUNTS (counter reads),\n"
-            "  WIPEOUT_CD_SPEED (disc speed-up)\n");
+            "  WIPEOUT_CD_SPEED (disc speed-up), WIPEOUT_SAVE_DIR (memory cards; default: the user's data folder)\n");
 }
 
 int main(int argc, char **argv)
@@ -64,7 +64,10 @@ int main(int argc, char **argv)
         Usage();
         return 1;
     }
-    portConfig.savePath = SDL_GetPrefPath("Psygnosis", "WipeoutXL");
+    portConfig.savePath = SDL_getenv("WIPEOUT_SAVE_DIR");
+    if (!portConfig.savePath) {
+        portConfig.savePath = SDL_GetPrefPath("Psygnosis", "WipeoutXL");
+    }
     if (portConfig.muted) {
         SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "dummy");
     }
