@@ -36,7 +36,6 @@ extern const ShipStartStates startStateTable;
 extern u_short     numTrackSections;
 extern short       activeShipCount;
 extern short       finishPosition;
-extern short       phantomGridPos[];
 extern short       gridPosition[];
 extern ShipRank    shipRank[];
 extern RaceLine    raceLines[];

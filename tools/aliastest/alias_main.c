@@ -74,6 +74,7 @@ int alias_screenFill1(void);
 int alias_TrackHiPolysAlt(void);
 int alias_TrackMedPolysAlt(void);
 int alias_TrackLoPolysAlt(void);
+int alias_phantomGridPos(void);
 int alias_sharkBodyModel(void);
 int alias_sharkLegModel(void);
 
@@ -226,10 +227,12 @@ int main(void)
     if (r) { printf("alias TrackMedPolysAlt failed (%d)\n", r); failures++; }
     r = alias_TrackLoPolysAlt();
     if (r) { printf("alias TrackLoPolysAlt failed (%d)\n", r); failures++; }
+    r = alias_phantomGridPos();
+    if (r) { printf("alias phantomGridPos failed (%d)\n", r); failures++; }
     r = alias_sharkBodyModel();
     if (r) { printf("alias sharkBodyModel failed (%d)\n", r); failures++; }
     r = alias_sharkLegModel();
     if (r) { printf("alias sharkLegModel failed (%d)\n", r); failures++; }
-    printf("%d alias checks, %d failed\n", 75, failures);
+    printf("%d alias checks, %d failed\n", 76, failures);
     return failures != 0;
 }

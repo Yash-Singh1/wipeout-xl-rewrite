@@ -1423,12 +1423,6 @@ def finalize(env, syms, order):
                         sy.notes.append('string')
             if e.kind == 'arr' and e.n:
                 n = sy.extent // e.size
-            if sy.kind in ('data', 'rdata') and e.size > 1 and n > 1:
-                off = text_tail(env, sy.addr, n * e.size)
-                if off is not None:
-                    k = max(off // e.size, 1)
-                    sy.notes.append('table of %d entries; string literals follow it' % k)
-                    n = k
             if sy.kind in ('data', 'rdata') and e.kind in ('rec', 'int', 'float', 'arr') and n > 0:
                 k = valid_prefix(env, e, sy.addr, n)
                 if k < n:
@@ -1496,30 +1490,6 @@ def valid_prefix(env, e, addr, n):
     return n
 
 
-def text_tail(env, addr, extent):
-    """Offset where a run of NUL-terminated strings (string literals that follow a table in the
-    data segment) starts and fills the rest of the extent, or None."""
-    b = env.pe.read(addr, extent)
-    for start in range(0, extent - 5, 4):
-        i = start
-        longest = 0
-        ok = True
-        while i < extent:
-            while i < extent and b[i] == 0:
-                i += 1
-            if i >= extent:
-                break
-            j = i
-            while j < extent and 32 <= b[j] < 127 or j < extent and b[j] in (9, 10, 13):
-                j += 1
-            if j >= extent or b[j] != 0 or j == i:
-                ok = False
-                break
-            longest = max(longest, j - i)
-            i = j + 1
-        if ok and longest >= 5 and b[start] != 0:
-            return start
-    return None
 
 
 def lnds(seq):

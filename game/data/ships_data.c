@@ -341,11 +341,12 @@ short arccos_tab[4096] = {
     564, 552, 540, 528, 515, 502, 489, 475, 461, 446, 431, 415, 399, 382, 364, 345, 326, 304, 282,
     257, 230, 199, 162, 115,
 };
-u_char weaponChance[4][11] = {
+u_char weaponChance[5][11] = {
     { 15, 30, 40, 45, 65, 70, 75, 80, 85, 100, 0 },
     { 15, 25, 35, 45, 60, 65, 70, 75, 85, 100, 0 },
     { 15, 30, 35, 45, 55, 60, 65, 75, 90, 100, 0 },
-    { 15, 30, 35, 40, 45, 50, 55, 70, 90, 100, 0 }
+    { 15, 30, 35, 40, 45, 50, 55, 70, 90, 100, 0 },
+    { 25, 35, 40, 45, 45, 50, 55, 80, 100, 100, 0 }
 };
 u_char weaponDrone[12] = { 10, 30, 40, 60, 80, 100, 30, 70, 90, 90, 90, 100 };
 u_short glyphWidths16[38] = {
@@ -482,6 +483,6 @@ GhostClut ghostCluts[123];
 SharkVert sharkFootVerts[10];
 int shipTargetIndex[15];
 int sharkFootIndex[426];
-short gridPosition[12];
-short phantomGridPos[6];
+/* Port: one entry per ship (initShipData loops i < 15); the Phantom class entries 12..14 are phantomGridPos */
+short gridPosition[15];
 SharkVert sharkBaseVerts[40];

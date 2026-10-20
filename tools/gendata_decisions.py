@@ -286,6 +286,12 @@ ALIASES = [
     A('TrackLoPolysAlt', 'TrackLoPolys', '((POLY_FT4 **)&TrackLoPolys)[1]', 'see TrackHiPolysAlt (AsmTrackLo)',
       pair=('TrackLoPolysAlt', '((POLY_FT4 **)&TrackLoPolys)[1]'), decls=['extern POLY_FT4 *TrackLoPolys;'],
       container_decl='extern POLY_FT4 *TrackLoPolys;'),
+    # initShipData gives each of the 15 ships its grid position (the loop runs i < 15); the last three
+    # entries, for the Phantom class, are set by name.
+    A('phantomGridPos', 'gridPosition', '(&gridPosition[12])',
+      'ships.c: for (i = 0; i < 15; i++) position = gridPosition[i]; phantomGridPos stores +0, +2, +4 of the entries 12..14',
+      expr='phantomGridPos[0]', pair=('phantomGridPos[2]', 'gridPosition[14]'),
+      decls=['extern short gridPosition[];'], container_decl='extern short gridPosition[];'),
     A('sharkBodyModel', 'shipShapeTable', 'shipShapeTable[2]',
       'UpdateSharkModel loads shipShapeTable + 8 and CopySharkVerts + 16 without index: slots 2 and 4',
       decls=['extern Object *shipShapeTable[];'], container_decl='extern Object *shipShapeTable[];'),
@@ -303,6 +309,7 @@ PREFER = {
 
 # Entries of incomplete arrays that the extent cannot give because the names inside them cut it short.
 SIZES = {
+    'gridPosition': (15, 'one entry per ship (initShipData loops i < 15); the Phantom class entries 12..14 are phantomGridPos'),
     'TrackHiPolys': (2, 'one polygon pool per screen: AsmTrackHi picks TrackHiPolys[screen]; trackasm.c calls the second TrackHiPolysAlt'),
     'TrackMedPolys': (2, 'one polygon pool per screen (see TrackHiPolys)'),
     'TrackLoPolys': (2, 'one polygon pool per screen (see TrackHiPolys)'),

@@ -149,6 +149,8 @@
 #define TrackMedPolysAlt ((POLY_FT4 **)&TrackMedPolys)[1]
 /* TrackLoPolysAlt: see TrackHiPolysAlt (AsmTrackLo) */
 #define TrackLoPolysAlt ((POLY_FT4 **)&TrackLoPolys)[1]
+/* phantomGridPos: ships.c: for (i = 0; i < 15; i++) position = gridPosition[i]; phantomGridPos stores +0, +2, +4 of the entries 12..14 */
+#define phantomGridPos (&gridPosition[12])
 /* sharkBodyModel: UpdateSharkModel loads shipShapeTable + 8 and CopySharkVerts + 16 without index: slots 2 and 4 */
 #define sharkBodyModel shipShapeTable[2]
 /* sharkLegModel: see sharkBodyModel */
