@@ -124,3 +124,11 @@ declared type that does not fit before the next declared name): run `--evidence`
 accesses and the C text, add an `A(...)` to `ALIASES` (or `TRUNCATE`, `SIZES`, `ALIGN`, `PREFER`,
 `ABSOLUTE`), run `--apply-aliases` and `--check`. A name the sources stop using moves to `RESOLVED`
 (`--check` reports decisions that no longer apply as STALE).
+
+## What is extent, not evidence
+
+Some lengths come only from the distance to the next declared name, because the code indexes them with
+variables: `textureTable[800]`, `tileSurfaces[32][2]` (the sources declared 24), `skyPos`, `weaponChance[5][11]`.
+They are as long as the executable's space allows; a shorter true length would only waste bytes. The
+unaccounted bytes between some objects (the 64 bytes after `raceCamera`, the 4 after `fadedrm`...) belong to
+nothing the sources name; they are not defined.
