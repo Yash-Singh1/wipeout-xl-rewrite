@@ -26,7 +26,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 LLVM = Path('/opt/homebrew/opt/llvm/bin')
 OUT = Path('/tmp/oracle32')
-FLAGS = ['-target', 'mipsel-unknown-none-elf', '-march=mips1', '-mabi=o32', '-O2', '-fno-pic',
+OPT = os.environ.get('ORACLE_OPT', '-O2')   # ORACLE_OPT=-O0 compares unoptimised code (no scheduling noise)
+FLAGS = ['-target', 'mipsel-unknown-none-elf', '-march=mips1', '-mabi=o32', OPT, '-fno-pic',
          '-mno-abicalls', '-msoft-float', '-ffreestanding', '-nostdinc', '-fsigned-char',
          '-fno-strict-aliasing', '-fwrapv', '-std=gnu11', '-w', '-Wno-error',
          # the sources are compiled as the PlayStation compiler accepted them

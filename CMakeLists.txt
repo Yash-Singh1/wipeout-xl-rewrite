@@ -30,39 +30,50 @@ if(GAME_DATA_SOURCES)
         -fsigned-char -fno-strict-aliasing -fwrapv -Wno-pointer-sign)
 endif()
 
-# ---- Platform: the PsyQ libraries and the program entry (platform/*.c, platform/*/*.c) ----
-file(GLOB_RECURSE PLATFORM_SOURCES ${CMAKE_SOURCE_DIR}/platform/*.c)
+# ---- Platform: the PsyQ libraries and the program entry ----
+# platform/*.c: entry point, window, movies, traces.  platform/psx/: the libraries (gte, gpu, etc here;
+# the sound, disc, controller and memory card libraries are the psxio target of platform/psx/CMakeLists.txt).
+set(PSXIO_SDL ON CACHE BOOL "Audio output and input through SDL3")
+add_subdirectory(platform/psx psxio)
+file(GLOB PLATFORM_TOP_SOURCES ${CMAKE_SOURCE_DIR}/platform/*.c)
+set(PLATFORM_PSX_SOURCES
+    platform/psx/gte.c platform/psx/gte_tables.c platform/psx/gpu_gl.c
+    platform/psx/libetc.c platform/psx/libgpu.c platform/psx/libgte.c)
+list(TRANSFORM PLATFORM_PSX_SOURCES PREPEND ${CMAKE_SOURCE_DIR}/)
+set(PLATFORM_SOURCES ${PLATFORM_TOP_SOURCES} ${PLATFORM_PSX_SOURCES})
 list(SORT PLATFORM_SOURCES)
-if(PLATFORM_SOURCES)
-    find_package(SDL3 CONFIG)
-    add_executable(wipeoutxl ${PLATFORM_SOURCES})
-    target_include_directories(wipeoutxl PRIVATE ${CMAKE_SOURCE_DIR}/platform ${CMAKE_SOURCE_DIR}/platform/psx
+find_package(SDL3 CONFIG)
+find_package(ZLIB QUIET)   # optional: compressed lockstep traces (platform/trace.c)
+
+function(port_platform_target name)
+    target_include_directories(${name} PRIVATE ${CMAKE_SOURCE_DIR}/platform ${CMAKE_SOURCE_DIR}/platform/psx
         ${CMAKE_SOURCE_DIR}/game/include)
-    target_compile_options(wipeoutxl PRIVATE -fsigned-char -fno-strict-aliasing)
-    target_link_libraries(wipeoutxl PRIVATE game m)
+    target_compile_options(${name} PRIVATE -fsigned-char -fno-strict-aliasing)
+    target_link_libraries(${name} PRIVATE game psxio m)
     if(GAME_DATA_SOURCES)
-        target_link_libraries(wipeoutxl PRIVATE gamedata)
+        target_link_libraries(${name} PRIVATE gamedata)
     endif()
     if(SDL3_FOUND)
-        target_link_libraries(wipeoutxl PRIVATE SDL3::SDL3)
+        target_link_libraries(${name} PRIVATE SDL3::SDL3)
     endif()
-    # Optional: compressed lockstep traces (platform/trace.c).
-    find_package(ZLIB QUIET)
     if(ZLIB_FOUND)
-        target_link_libraries(wipeoutxl PRIVATE ZLIB::ZLIB)
-        target_compile_definitions(wipeoutxl PRIVATE PORT_HAVE_ZLIB)
+        target_link_libraries(${name} PRIVATE ZLIB::ZLIB)
+        target_compile_definitions(${name} PRIVATE PORT_HAVE_ZLIB)
     endif()
     if(APPLE)
-        target_link_libraries(wipeoutxl PRIVATE "-framework OpenGL")
+        target_link_libraries(${name} PRIVATE "-framework OpenGL")
     elseif(WIN32)
-        target_link_libraries(wipeoutxl PRIVATE opengl32)
+        target_link_libraries(${name} PRIVATE opengl32)
     else()
         find_package(OpenGL)
         if(OpenGL_FOUND)
-            target_link_libraries(wipeoutxl PRIVATE OpenGL::GL)
+            target_link_libraries(${name} PRIVATE OpenGL::GL)
         endif()
     endif()
-endif()
+endfunction()
+
+add_executable(wipeoutxl ${PLATFORM_SOURCES})
+port_platform_target(wipeoutxl)
 
 # ---- Link check: which symbols does the game still need from the platform and the data? ----
 # tools/linkstub.py writes build/linkstub.c: weak definitions for every symbol that the game
@@ -76,22 +87,7 @@ add_custom_target(linkstub
     COMMENT "Generating the weak link stubs"
     VERBATIM)
 
-if(PLATFORM_SOURCES AND EXISTS ${CMAKE_SOURCE_DIR}/tools/linkstub.c)
+if(EXISTS ${CMAKE_SOURCE_DIR}/tools/linkstub.c)
     add_executable(linkcheck EXCLUDE_FROM_ALL ${PLATFORM_SOURCES} ${CMAKE_SOURCE_DIR}/tools/linkstub.c)
-    target_include_directories(linkcheck PRIVATE ${CMAKE_SOURCE_DIR}/platform ${CMAKE_SOURCE_DIR}/platform/psx
-        ${CMAKE_SOURCE_DIR}/game/include)
-    target_link_libraries(linkcheck PRIVATE game m)
-    if(GAME_DATA_SOURCES)
-        target_link_libraries(linkcheck PRIVATE gamedata)
-    endif()
-    if(SDL3_FOUND)
-        target_link_libraries(linkcheck PRIVATE SDL3::SDL3)
-    endif()
-    if(ZLIB_FOUND)
-        target_link_libraries(linkcheck PRIVATE ZLIB::ZLIB)
-        target_compile_definitions(linkcheck PRIVATE PORT_HAVE_ZLIB)
-    endif()
-    if(APPLE)
-        target_link_libraries(linkcheck PRIVATE "-framework OpenGL")
-    endif()
+    port_platform_target(linkcheck)
 endif()
