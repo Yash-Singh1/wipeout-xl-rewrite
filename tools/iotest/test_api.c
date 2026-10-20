@@ -228,6 +228,18 @@ int main(void)
         printf("(no SDL audio: real-time part skipped)\n");
     }
 
+    /* an audio device that stops: the game does not wait forever, time follows the fields */
+    if (test_io_start(1.0, NULL)) {
+        uint8_t result[16], mode = 5;
+        Uint64 w0 = SDL_GetTicks();
+
+        g_io.deviceClock = true; /* a device clock that never advances */
+        CHECK_EQ_INT(CdControlB(0xE, &mode, result), 1);
+        CHECK(!g_io.deviceClock);
+        CHECK((SDL_GetTicks() - w0) < 3000);
+        test_io_stop();
+    }
+
     /* lock stress: a thread renders as the audio device would, the game thread calls in */
     if (test_io_start(1.0, NULL)) {
         atomic_int stop = 0;

@@ -386,6 +386,23 @@ void CdDriveStartRead(CdDrive *cd, int sectors, int mode)
     begin_seek(cd, target, CD_READING);
 }
 
+uint64_t CdDriveReadEta(const CdDrive *cd)
+{
+    double period = sector_period(cd), first;
+    int remaining;
+
+    if (!cd->job.active) {
+        return 0;
+    }
+    remaining = cd->job.total - cd->job.arrived;
+    if (cd->state == CD_SEEKING) {
+        first = (double)cd->seekDone + period;
+    } else {
+        first = cd->nextSector;
+    }
+    return (uint64_t)(first + period * (double)(remaining > 0 ? remaining - 1 : 0)) + 2;
+}
+
 static void arrive_sector(CdDrive *cd)
 {
     cd->nextSector += sector_period(cd);

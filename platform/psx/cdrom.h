@@ -100,6 +100,8 @@ int CdDriveCommand(CdDrive *cd, int command, const uint8_t *param, int paramCoun
 int32_t CdDriveReadTarget(const CdDrive *cd);
 /* Starts reading `sectors` sectors from the Setloc position (or the head), as CdRead does. */
 void CdDriveStartRead(CdDrive *cd, int sectors, int mode);
+/* The sample time at which the running read job will have all its sectors, 0 if none. */
+uint64_t CdDriveReadEta(const CdDrive *cd);
 /* Pops a queued event; false if none. */
 bool CdDrivePopEvent(CdDrive *cd, CdEventKind *kind);
 

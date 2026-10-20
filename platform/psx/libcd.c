@@ -253,9 +253,10 @@ int CdReadSync(int mode, uint8_t *result)
 {
     for (;;) {
         int remaining = 0;
+        uint64_t eta = 0;
+        bool aborted = false;
 
         PsxIoService();
-        bool aborted = false;
 
         PsxLock();
         if (rd.pending && !g_io.cd.job.active && !g_io.cd.job.finished) {
@@ -267,6 +268,7 @@ int CdReadSync(int mode, uint8_t *result)
             if (remaining < 1) {
                 remaining = 1;
             }
+            eta = CdDriveReadEta(&g_io.cd);
         }
         PsxUnlock();
         if (aborted) {
@@ -281,7 +283,7 @@ int CdReadSync(int mode, uint8_t *result)
             }
             return 0;
         }
-        PsxIoWait(0);
+        PsxIoWait(eta);
         if (mode) {
             if (result) {
                 result[0] = current_status();

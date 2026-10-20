@@ -90,10 +90,32 @@ uint64_t PsxIoNow(void)
     return now;
 }
 
+/* With an audio device the clock is the device's. If it stops (the device is stuck or was
+   removed) the game would wait forever; after a second without progress the device is given up
+   and time follows the video fields. */
+static void watch_device(uint64_t now)
+{
+    static uint64_t lastNow;
+    static unsigned stalledMs;
+
+    if (now != lastNow) {
+        lastNow = now;
+        stalledMs = 0;
+    } else if (++stalledMs >= 1000) {
+        PortLog("audio: the output device stopped; time follows the video fields\n");
+        stalledMs = 0;
+        PsxAudioDeviceClose();
+        g_io.deviceClock = false;
+    }
+}
+
 void PsxIoWait(uint64_t deadline)
 {
     uint64_t now = PsxIoNow();
 
+    if (g_io.deviceClock) {
+        watch_device(now);
+    }
     if (deadline > now && deadline - now < SAMPLES_PER_FIELD) {
         if (g_io.deviceClock) {
             sleep_ms(1);
