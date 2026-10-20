@@ -4,9 +4,7 @@ int     attractStep;
 u_int   randSeed;
 u_char  cdMusicIndex;
 extern int             ownShip;
-extern u_char          gameType;
 extern int             cdMusicCount;
-extern u_char          cdMusicTable[];
 extern int             cdMusicTrack;
 extern int             trackNameScroll;
 extern int             attractModeFlag;
@@ -16,25 +14,17 @@ extern int             roadSectionCount;
 extern int             weaponGridSections;
 extern TrackData      *track;
 extern ConfigData     *gameData;
-extern HeapBlock    *heap;
-extern CameraUpdateFunc CameraUpdate;
 extern char            sufCheckPoints[];
 extern char            fmtCheckPointClass[];
 extern char            extChk[];
 extern char            fmtTwoDigits[];
 extern char            errorString[];
 
-/* SetTrackAttributes is defined with a short section number; the weapon-grid walk passes
-   the number as a full int, so its calls go through this type. */
-typedef int (*SetTrackAttributesFunc)(TrackSection *section, int sectionNo, int state, int noWeaponGrids, int config, int mode);
-
 /* Walks the sections under the player's ship: a checkpoint the player passes adds its time
    bonus, and the bonus counter flashes "EXTENDED TIME" while it runs down. */
 
-extern int             linkSendFlag;
 extern int             linkRaceFlag;
 extern RaceLine        raceLines[];
-extern short           numTrackSections;
 extern u_char          cdMusicIndex;
 
 
@@ -53,16 +43,16 @@ void InitTrackTextures(ConfigData *fileId)
     sourceOffset = 0;
     __builtin_memcpy(path, "c:\\wipeout2\\track", 18);
     sprintf(filename, fmtTwoDigits, fileId->actTrackNum);
-    strcat(&path, filename);
-    strcat(&path, "\\track.tex");
-    fileSize = FileLength(&path);
+    strcat(path, filename);
+    strcat(path, "\\track.tex");
+    fileSize = FileLength(path);
     if (fileSize > 0) {
         buffer = DAlloc(heap, fileSize + 0x20);
         if (buffer == 0) {
             sprintf(errorString, "initrace.c : InitTrackTextures(): Fail allocate memory\n");
             Error(errorString, 2);
         }
-        if (LoadFile(&path, buffer) != fileSize) {
+        if (LoadFile(path, buffer) != fileSize) {
             sprintf(errorString, "initrace.c:InitTrackTextures(): Failed to load file \n");
             Error(errorString, 2);
         }
@@ -120,25 +110,19 @@ void InitCheckPoints(CheckPoints *checkpoints, ConfigData *config)
 
 
 /* Paints the red and green tiles of the in-game menu rows and the footer bars. */
-void InitInGameMenu(InGameMenu *menu)
+void InitInGameMenu(struct InGameMenu *menu)
 {
     short    group;
     short    slot;
     POLY_G4 *tile;
-    POLY_G4 *firstRow;
-    POLY_G4 *secondRow;
-    int      rowOffset;
-    int      footerOffset;
+    int      row;
     u_short  texturePage;
 
     group = 0;
     do {
         slot = 0;
-        rowOffset = group * 72;
-        firstRow = (POLY_G4 *) ((u_char *) menu + 328 + rowOffset);
-        secondRow = (POLY_G4 *) ((u_char *) menu + 1768 + rowOffset);
         do {
-            tile = &firstRow[slot];
+            tile = &menu->red[group][slot];
             SetPolyG4(tile);
             menu->red[group][slot].r0 = 0x3F;
             menu->red[group][slot].g0 = 0;
@@ -152,7 +136,7 @@ void InitInGameMenu(InGameMenu *menu)
             menu->red[group][slot].r3 = 0xFF;
             menu->red[group][slot].g3 = 0;
             menu->red[group][slot].b3 = 0;
-            tile = &secondRow[slot];
+            tile = &menu->green[group][slot];
             SetPolyG4(tile);
             menu->green[group][slot].r0 = 0;
             menu->green[group][slot].g0 = 0x3F;
@@ -173,33 +157,34 @@ void InitInGameMenu(InGameMenu *menu)
     } while (group < 0x14);
     group = 0;
     do {
-        rowOffset = group << 16;
-        rowOffset >>= 16;
-        tile = (POLY_G4 *) (rowOffset * 36 + 232);
-        footerOffset = (int) tile;
-        tile = (POLY_G4 *) ((int) menu + footerOffset);
+        row = group << 16;
+        row >>= 16;
+        tile = &menu->footer[row];
         SetPolyG4(tile);
-        menu->footer[rowOffset].r0 = 0x20;
-        menu->footer[rowOffset].g0 = 0x20;
-        menu->footer[rowOffset].b0 = 0x20;
-        menu->footer[rowOffset].r1 = 0x40;
-        menu->footer[rowOffset].g1 = 0x40;
-        menu->footer[rowOffset].b1 = 0x40;
-        menu->footer[rowOffset].r2 = 0x40;
-        menu->footer[rowOffset].g2 = 0x40;
-        menu->footer[rowOffset].b2 = 0x40;
-        menu->footer[rowOffset].r3 = 0x20;
-        menu->footer[rowOffset].g3 = 0x20;
-        menu->footer[rowOffset].b3 = 0x20;
+        menu->footer[row].r0 = 0x20;
+        menu->footer[row].g0 = 0x20;
+        menu->footer[row].b0 = 0x20;
+        menu->footer[row].r1 = 0x40;
+        menu->footer[row].g1 = 0x40;
+        menu->footer[row].b1 = 0x40;
+        menu->footer[row].r2 = 0x40;
+        menu->footer[row].g2 = 0x40;
+        menu->footer[row].b2 = 0x40;
+        menu->footer[row].r3 = 0x20;
+        menu->footer[row].g3 = 0x20;
+        menu->footer[row].b3 = 0x20;
         SetSemiTrans(tile, 1);
         texturePage = GetTPage(2, 2, 0, 0);
-        SetDrawMode((DR_MODE *) menu->textureWindow[rowOffset], 1, 1, texturePage, 0);
+        SetDrawMode((DR_MODE *) menu->textureWindow[row], 1, 1, texturePage, 0);
         group++;
     } while (group < 2);
 }
 
 
-void InitWeaponGrids(int state, TrackData *context, int *scene, int config, int mode)
+/* Port: the parameters were typed int (they hold the weapon grid table, the grid count and the
+   special grid table that SetTrackAttributes takes); the call below no longer goes through a
+   cast function pointer type. */
+void InitWeaponGrids(WeaponGrid *weaponGrids, TrackData *context, int *noWeaponGrids, short *specialCount, SpecialGrid *specialGrid)
 {
     TrackSection *section;
     TrackSection *original;
@@ -228,7 +213,7 @@ void InitWeaponGrids(int state, TrackData *context, int *scene, int config, int 
             face++;
             face->flags |= 0x40;
         }
-        *scene = ((SetTrackAttributesFunc) SetTrackAttributes)(section, number, state, *scene, config, mode);
+        *noWeaponGrids = SetTrackAttributes(section, number, weaponGrids, *noWeaponGrids, specialCount, specialGrid);
         if (section->junction.index != -1 && (section->junction.ptr->flags & 16)) {
             original = section;
             section = section->junction.ptr;
@@ -248,7 +233,7 @@ void InitWeaponGrids(int state, TrackData *context, int *scene, int config, int 
                     face++;
                     face->flags |= 0x40;
                 }
-                *scene = ((SetTrackAttributesFunc) SetTrackAttributes)(section, number, state, *scene, config, mode);
+                *noWeaponGrids = SetTrackAttributes(section, number, weaponGrids, *noWeaponGrids, specialCount, specialGrid);
                 section = section->nextSection.ptr;
                 if (section->junction.index != -1) branch = 0;
             }
@@ -269,7 +254,7 @@ void InitWeaponGrids(int state, TrackData *context, int *scene, int config, int 
                 face++;
                 face->flags |= 0x40;
             }
-            *scene = ((SetTrackAttributesFunc) SetTrackAttributes)(section, number, state, *scene, config, mode);
+            *noWeaponGrids = SetTrackAttributes(section, number, weaponGrids, *noWeaponGrids, specialCount, specialGrid);
             roadSectionCount++;
             if (section == context->sections) more = 0;
         }
@@ -282,15 +267,15 @@ void InitWeaponGrids(int state, TrackData *context, int *scene, int config, int 
 }
 
 
-void InitAttractMode(int mode, RaceShip *ships)
+void InitAttractMode(int mode, ShipData *ships)
 {
     int       attributes;
     int       nextAttract;
     int       quotient;
-    RaceShip *ship;
+    ShipData *ship;
 
     if (mode == 1) {
-        ship = (RaceShip *) (ownShip * 0xF0 + (int) ships);
+        ship = &ships[ownShip];
         attributes = ship->attr;
         nextAttract = attractStep + 1;
         quotient = nextAttract / 3;
@@ -392,7 +377,7 @@ void GetJoyPadPacketOnVsync(int flags)
 }
 
 
-void InitRaceData(struct RaceData *race)
+void InitRaceData(RaceData *race)
 {
     race->selection = -1;
     race->showOptions = 1;

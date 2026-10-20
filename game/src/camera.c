@@ -5,8 +5,6 @@ short cameraTarget;
 int   raceExternalVel;
 int   droidViewVel;
 extern u_char           medalDisplay;
-extern CameraUpdateFunc CameraUpdate;
-extern ConfigData      *tempGameData;
 extern int              raceType;
 extern int              ownShip;
 extern ShipData        *shipIndex;

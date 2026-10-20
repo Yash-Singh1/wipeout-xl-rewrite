@@ -12,7 +12,7 @@ int           cardHwEvent0;
 int           cardHwEvent1;
 int           cardHwEvent2;
 int           cardHwEvent3;
-CardImage    *cardIconInfo;
+Texture      *cardIconInfo;
 unsigned char TrackHiCount;
 unsigned char cardDirLoaded1;
 unsigned char cardDirChanged0;
@@ -30,30 +30,16 @@ extern u_short       keyDefineDitch[];
 extern u_short       keyDefineRBrake[];
 extern u_short       keyDefineLBrake[];
 extern u_char        trackMedals[];
-extern u_char        hiScoreTable[];
-extern u_char        cdMusicTable[];
-extern CardKeys      savedKeyConfig;
 extern Label6        labelEmpty[];
 extern char          cardPattern0[];
 extern char          cardPattern1[];
 extern Label6        labelGame[];
 extern Label5        labelUsed[];
-extern HeapBlock  *heap;
-extern HeapBlock  *mainheapcopy;
-extern HeapBlock  *reserveHeap;
-
-/* The browser entry list of card slot `slot`: each slot is one CardSlot of the cards array. */
-#define SLOT_ENTRIES(cards, slot) ((CardEntry *)((slot) * sizeof(CardSlot) + (char *)(cards)))
-
-int  OpenEvent(u_long desc, int spec, int mode, int func);
-int  EnableEvent(int event);
-int  CloseEvent(int event);
-void _card_info(int channel);
 
 void LoadCardTexture(void)
 {
     heap = reserveHeap;
-    cardIconInfo = (CardImage *) LoadTexture("c:\\wipeout2\\textures\\lucky.tim", 1);
+    cardIconInfo = LoadTexture("c:\\wipeout2\\textures\\lucky.tim", 1);
     heap = mainheapcopy;
 }
 
@@ -202,13 +188,13 @@ int QuickUnFormat(int slot)
 
 u_char SaveCardFile(char *name, int slot, ConfigData *settings)
 {
-    u_char header[0x200];
+    CardHeader header;
     char   fileName[0x20];
 
-    GetHeader(header, name);
+    GetHeader(header.bytes, name);
     MakeFileName(name, fileName, slot);
     if (CreateFile(fileName) & 0xFF) {
-        return (WriteFile(header, fileName, settings) & 0xFF) != 0;
+        return (WriteFile(header.bytes, fileName, settings) & 0xFF) != 0;
     }
     return 0;
 }
@@ -218,13 +204,13 @@ int RenameFile1(char *card, char *source, int type, void *output)
 {
     char    header1[32];
     char    header2[32];
-    u_char  data[512];
+    CardHeader data;
 
     MakeFileName(source, header1, type);
     MakeFileName(card, header2, type);
-    GetHeader(data, header2);
+    GetHeader(data.bytes, header2);
     if (rename(header1, header2) != 0) {
-        return (WriteFile(data, header2, output) & 0xFF) != 0;
+        return (WriteFile(data.bytes, header2, output) & 0xFF) != 0;
     }
     return 0;
 }
@@ -232,12 +218,12 @@ int RenameFile1(char *card, char *source, int type, void *output)
 
 int RenameFile(char *name, int slot, ConfigData *settings)
 {
-    char header[512];
+    CardHeader header;
     char fileName[32];
 
-    GetHeader(header, name);
+    GetHeader(header.bytes, name);
     MakeFileName(name, fileName, slot);
-    return (WriteFile(header, fileName, settings) & 0xFF) != 0;
+    return (WriteFile(header.bytes, fileName, settings) & 0xFF) != 0;
 }
 
 
@@ -268,16 +254,16 @@ void GetHeader(u_char *buffer, u_char *name)
     }
     buffer[2 * i + 16] = 0x81;
     buffer[2 * i + 17] = 0x40;
-    rect.x = cardIconInfo->image.x;
-    rect.y = cardIconInfo->image.y;
-    rect.w = cardIconInfo->image.w;
-    rect.h = cardIconInfo->image.h;
+    rect.x = cardIconInfo->clutX;
+    rect.y = cardIconInfo->clutY;
+    rect.w = cardIconInfo->clutW;
+    rect.h = cardIconInfo->clutH;
     StoreImage(&rect, (u_long *)(buffer + 96));
     DrawSync(0);
-    rect.x = cardIconInfo->cx;
-    rect.y = cardIconInfo->cy;
+    rect.x = cardIconInfo->textureX;
+    rect.y = cardIconInfo->textureY;
     rect.w = 4;
-    rect.h = cardIconInfo->ch;
+    rect.h = cardIconInfo->textureH;
     StoreImage(&rect, (u_long *)(buffer + 128));
     DrawSync(0);
 }
@@ -419,7 +405,7 @@ void LoadCardFiles(CardSlot *cards, int slot)
         uv.y = 207;
     }
     for (i = 0; i < 15; i++) {
-        entry = (CardEntry *)(i * sizeof(CardEntry) + (slot * sizeof(CardSlot) + (int)cards));
+        entry = &cards[slot].entry[i];
         entry->name[0] = 0;
         entry->used = 0;
         entry->filename[0] = 0;
@@ -448,47 +434,47 @@ void LoadCardFiles(CardSlot *cards, int slot)
                 i = 0;
                 j = 12;
                 do {
-                    SLOT_ENTRIES(cards, slot)[count].name[i] = directory.name[j];
+                    cards[slot].entry[count].name[i] = directory.name[j];
                     i++;
                     j++;
                 } while (i < 8);
-                SLOT_ENTRIES(cards, slot)[count].name[8] = 0;
-                SLOT_ENTRIES(cards, slot)[count].used = 1;
-                strcpy(SLOT_ENTRIES(cards, slot)[count].filename, directory.name);
-                SLOT_ENTRIES(cards, slot)[count].type = 4;
-                SLOT_ENTRIES(cards, slot)[count].label = labelGame[0];
-                strcat((char *)&SLOT_ENTRIES(cards, slot)[count].label, SLOT_ENTRIES(cards, slot)[count].name);
+                cards[slot].entry[count].name[8] = 0;
+                cards[slot].entry[count].used = 1;
+                strcpy(cards[slot].entry[count].filename, directory.name);
+                cards[slot].entry[count].type = 4;
+                cards[slot].entry[count].label = labelGame[0];
+                strcat((char *)&cards[slot].entry[count].label, cards[slot].entry[count].name);
                 count++;
             } else {
                 blocks = directory.size / 8192;
                 for (i = 0; i < blocks; i++) {
-                    SLOT_ENTRIES(cards, slot)[count].name[0] = 0;
-                    SLOT_ENTRIES(cards, slot)[count].used = 1;
-                    strcpy(SLOT_ENTRIES(cards, slot)[count].filename, directory.name);
-                    SLOT_ENTRIES(cards, slot)[count].type = 2;
-                    *(Label5 *)&SLOT_ENTRIES(cards, slot)[count].label = labelUsed[0];
-                    SLOT_ENTRIES(cards, slot)[count].first = 1;
-                    if (blocks > 1) SLOT_ENTRIES(cards, slot)[count].multi = 1;
-                    if (i != 0) SLOT_ENTRIES(cards, slot)[count].first = 0;
+                    cards[slot].entry[count].name[0] = 0;
+                    cards[slot].entry[count].used = 1;
+                    strcpy(cards[slot].entry[count].filename, directory.name);
+                    cards[slot].entry[count].type = 2;
+                    *(Label5 *)&cards[slot].entry[count].label = labelUsed[0];
+                    cards[slot].entry[count].first = 1;
+                    if (blocks > 1) cards[slot].entry[count].multi = 1;
+                    if (i != 0) cards[slot].entry[count].first = 0;
                     count++;
                 }
             }
             printf("Filename = %s \n", directory.name);
         } while (nextfile(&directory) == &directory);
         for (i = 0; i < 15; i++) {
-            if (SLOT_ENTRIES(cards, slot)[i].type == 2) {
+            if (cards[slot].entry[i].type == 2) {
                 if (slot == 0) {
                     __builtin_memcpy(filename.bytes, &cardPrefix0, 6);
                 } else {
                     __builtin_memcpy(filename.bytes, &cardPrefix1, 6);
                 }
-                strcat(filename.bytes, SLOT_ENTRIES(cards, slot)[i].filename);
-                if (SLOT_ENTRIES(cards, slot)[i].first == 1) {
+                strcat(filename.bytes, cards[slot].entry[i].filename);
+                if (cards[slot].entry[i].first == 1) {
                     LoadSaveIcons(filename.bytes, slot, &uv.u, &uv.v, &uv.x, &uv.y, i);
                 }
                 for (j = 0; j < 15; j++) {
-                    source = &SLOT_ENTRIES(cards, slot)[i];
-                    dest = &SLOT_ENTRIES(cards, slot)[j];
+                    source = &cards[slot].entry[i];
+                    dest = &cards[slot].entry[j];
                     if (strncmp(source->filename, dest->filename, 20) == 0 && dest->first == 0) {
                         dest->icon[0] = source->icon[0];
                         dest->icon[1] = source->icon[1];
@@ -519,7 +505,7 @@ u_char LoadCardData(char *name, int slot, ConfigData *settings)
     short   k;
     u_char  header[0x200];
     char    fileName[0x20];
-    u_char  data[0x100];
+    u_short data[0x80];
     int     fd;
     u_short setting0, setting1, setting2, setting3, setting4, setting5;
     u_char *bytes;
@@ -534,13 +520,13 @@ u_char LoadCardData(char *name, int slot, ConfigData *settings)
         return 0;
     }
     ReInitGameProgress();
-    cursor = data + 12;
-    setting0 = ((u_short *)data)[0];
-    setting1 = ((u_short *)data)[1];
-    setting2 = ((u_short *)data)[2];
-    setting3 = ((u_short *)data)[3];
-    setting4 = ((u_short *)data)[4];
-    setting5 = ((u_short *)data)[5];
+    cursor = (u_char *)data + 12;
+    setting0 = data[0];
+    setting1 = data[1];
+    setting2 = data[2];
+    setting3 = data[3];
+    setting4 = data[4];
+    setting5 = data[5];
     pair = 0;
     settings->musicVolume = setting0;
     settings->effectVolume = setting1;
@@ -657,7 +643,7 @@ next:
 
 void LoadFirstFile(u_short *count, int slot, char *name)
 {
-    char     record[40];
+    DIRENTRY record;
     char    *path;
     char    *dirName;
     u_char   i;
@@ -673,21 +659,17 @@ void LoadFirstFile(u_short *count, int slot, char *name)
         dirName = dirName2;
         path = dirName;
     }
-    {
-        char *returned = (char *)firstfile(path, (DIRENTRY *)record);
-        if (returned != record) {
-            *count = 0;
-            return;
-        }
-        slot = (int)returned;
+    if (firstfile(path, &record) != &record) {
+        *count = 0;
+        return;
     }
     *count = 0;
     for (;;) {
-        if (strncmp(record, "BASCUS-94351", 12) == 0) {
+        if (strncmp(record.name, "BASCUS-94351", 12) == 0) {
             i = 0;
             j = 12;
             do {
-                name[i] = ((char *)slot)[j];
+                name[i] = record.name[j];
                 i++;
                 j++;
             } while ((i & 0xFF) < 8);
@@ -695,7 +677,7 @@ void LoadFirstFile(u_short *count, int slot, char *name)
             *count += 1;
             return;
         }
-        if (nextfile((DIRENTRY *)record) == 0) {
+        if (nextfile(&record) == 0) {
             return;
         }
     }

@@ -8,12 +8,9 @@ s32 scoreTabFrame;
 extern int          raceType;
 extern u16          keysDown;
 extern int          ownShip;
-extern u8           classLaps[];
 extern int          savedLapTimes[];
-extern s8           raceCompleteFlag;
 extern s32          myBestLap;
 extern s32          myBestRace;
-extern HiScore      hiScoreTable[][4];
 extern GlyphWidth   glyphWidth[];
 extern u8           msgSelect[];
 
@@ -71,7 +68,7 @@ void ScoreTabInit(ConfigData *config)
                 hiScoreTable[track][cls].time = raceTimes.time[trackSlot][cls];
                 strcpy(hiScoreTable[track][cls].lapName, names.name[trackSlot][cls]);
                 hiScoreTable[track][cls].lapTime = lapTimes.time[trackSlot][cls];
-                ((HiScore *)((char *)hiScoreTable + track * sizeof(HiScore[4]) + cls * sizeof(HiScore)))->lapShip = 15;
+                hiScoreTable[track][cls].lapShip = 15;
                 hiScoreTable[track][cls].ship = 15;
             }
         }
@@ -117,13 +114,13 @@ void CheckForHiScore(ConfigData *config, HiScoreData *score, ShipData *ships, in
     else trackNum = config->trackNum;
     score->totalTime = 0;
     if (lap == 1) {
-        ship = (ShipData *)(shipNum * 240 + (int)ships);
+        ship = &ships[shipNum];
         lapNum = ship->lap;
         if (lapNum == 2 || !score->flag) {
             if (ship->lapTimes[lapNum - 2] < hiScoreTable[trackNum][config->shipClass].lapTime) {
                 shipNo = ownShip;
-                own = (ShipData *)(shipNo * 240 + (int)ships);
-                record = *(volatile s32 *)((u8 *)own + (own->lap << 2) + 196);
+                own = &ships[shipNo];
+                record = *(volatile s32 *)&own->lapTimes[own->lap - 2];
                 flag = *(volatile u8 *)&score->flag | 1;
                 score->lapPilot = shipNo;
                 score->flag = flag;

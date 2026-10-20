@@ -10,16 +10,12 @@ extern int           ghostShip;
 extern int           remoteShip;
 extern int           raceType;
 extern int           checkTimer;
-extern short         playerPosition;
-extern short         remoteRacePos;
 extern short         activeShipCount;
-extern ControlInput  playerControl[];
 extern ControlInput  ghostControl[];
 extern ControlInput  remoteControl[];
 extern RaceLine      raceLines[];
 extern ShipRank      shipRank[];
 extern TrackData    *track;
-extern ConfigData   *tempGameData;
 extern int           classCheckTime[];
 extern short         startLinePos[];
 extern CheckCell     checkCells[][4][6];
@@ -27,8 +23,6 @@ extern BrakeModes    brakeModes[];
 extern unsigned char turnDivisor;
 extern unsigned char twist;
 extern int           currScreen;
-extern int           shipTargetIndex[];
-extern CameraUpdateFunc CameraUpdate;
 extern char          countdownActive;
 void UpdateShips(ShipData *shipIndex, WeaponShape *unused, Object **shipShapes, WeaponData *weaponIndex)
 {
@@ -53,7 +47,7 @@ void UpdateShips(ShipData *shipIndex, WeaponShape *unused, Object **shipShapes, 
         SortAllShips(shipIndex);
         for (i = 0; i < activeShipCount; i++) {
             shipNo = shipRank[i].shipNo;
-            playerShip = (ShipData *)((shipNo * sizeof(ShipData)) + ((int)shipIndex));
+            playerShip = &shipIndex[shipNo];
             lastPos.vx = playerShip->ppivot.vx;
             lastPos.vy = playerShip->ppivot.vy;
             lastPos.vz = playerShip->ppivot.vz;
@@ -63,7 +57,7 @@ void UpdateShips(ShipData *shipIndex, WeaponShape *unused, Object **shipShapes, 
                 if (shipNo == ownShip) {
                     playerShip->update(shipIndex, shipShapes, shipNo, weaponIndex, playerControl);
                 } else if (shipNo == ghostShip) {
-                    buildGhostReplayData((int)shipIndex);
+                    buildGhostReplayData(shipIndex);
                     playerShip->update(shipIndex, shipShapes, shipNo, weaponIndex, ghostControl);
                 }
                 break;
@@ -126,7 +120,7 @@ void SortAllShips(ShipData *shipIndex)
     count = 0;
     for (i = 0; i < activeShipCount; i++) {
         currentShip = shipRank[i].shipNo;
-        playerShip = (ShipData *)(currentShip * sizeof(ShipData) + (int)shipIndex);
+        playerShip = &shipIndex[currentShip];
         if (!(playerShip->combatAttr & 0x8000)) {
             savedShip = currentShip;
             sectionNumber = raceLines[playerShip->nearSecNo].distance;
@@ -142,8 +136,8 @@ void SortAllShips(ShipData *shipIndex)
         do {
             swapped = 0;
             for (i = 0; i < activeShipCount - 1; i++) {
-                current = (ShipRank *)(i * sizeof(ShipRank) + (int)rank);
-                next = (ShipRank *)(i * sizeof(ShipRank) + (int)nextRank);
+                current = &rank[i];
+                next = &nextRank[i];
                 firstSection = current->position;
                 if (firstSection < shipRank[i + 1].position) {
                     short savedSection;
@@ -157,10 +151,7 @@ void SortAllShips(ShipData *shipIndex)
                     current->shipNo = swapSection;
                     swapped = 1;
                 } else if (firstSection == next->position) {
-                    playerShip = (ShipData *)(current->shipNo << 4);
-                    playerShip = (ShipData *)((int)playerShip - current->shipNo);
-                    playerShip = (ShipData *)((int)playerShip << 4);
-                    playerShip = (ShipData *)((int)shipIndex - (-(int)playerShip));
+                    playerShip = &shipIndex[current->shipNo];
                     distanceA.vx = playerShip->ppivot.vx - playerShip->nearTrkSect->centre.vx;
                     distanceA.vy = playerShip->ppivot.vy - playerShip->nearTrkSect->centre.vy;
                     distanceA.vz = playerShip->ppivot.vz - playerShip->nearTrkSect->centre.vz;
@@ -190,7 +181,7 @@ void SortAllShips(ShipData *shipIndex)
 }
 
 
-void UpdatePlayerShipStart(ShipData *shipIndex, void *shipShapes, int shipNo, void *weaponIndex, ControlInput *controller)
+void UpdatePlayerShipStart(ShipData *shipIndex, Object **shipShapes, int shipNo, WeaponData *weaponIndex, ControlInput *controller)
 {
     ShipData *playerShip;
     int thrust;
@@ -283,7 +274,7 @@ void SetUpFirstCheckPoint(void)
 }
 
 
-void UpdatePlayerShip(ShipData *ships, void *shapes, int shipNo, void *weapons, ControlInput *control)
+void UpdatePlayerShip(ShipData *ships, Object **shapes, int shipNo, WeaponData *weapons, ControlInput *control)
 {
     int        pad[4];
     BrakeModes  modes;

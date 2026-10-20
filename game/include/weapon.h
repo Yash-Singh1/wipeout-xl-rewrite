@@ -66,10 +66,4 @@ typedef struct ShadedQuad {
     DVECTOR       xy3;
 } ShadedQuad;
 
-typedef union ShadedPtr {
-    void       *ptr;
-    ShadedTri  *tri;
-    ShadedQuad *quad;
-} ShadedPtr;
-
 #endif

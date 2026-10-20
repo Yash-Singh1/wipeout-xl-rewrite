@@ -2,7 +2,6 @@
 #include "ttf.h"
 
 extern char        errorString[];
-extern HeapBlock *heap;
 
 TexTemplate *LoadTtfFile(char *file, short *count, short libraryTextures)
 {
@@ -10,6 +9,7 @@ TexTemplate *LoadTtfFile(char *file, short *count, short libraryTextures)
     char  *ttfFile;
     short *tex;
     short  i;
+    char   message[256];
 
     length = FileLength(file);
     if (length <= 0) {
@@ -19,8 +19,10 @@ TexTemplate *LoadTtfFile(char *file, short *count, short libraryTextures)
 
     ttfFile = DAlloc(heap, length + 32);
     if (!ttfFile) {
-        /* Formats into the message literal, not errorString (behaviour kept). */
-        sprintf("Ttf.c:LoadTtfFile: Failed to allocate memory for file %s\n", file);
+        /* Port: the console formatted the file name over the message literal itself (not into
+           errorString, which Error then uses unchanged); a literal is read-only natively, so the
+           copy goes to a local buffer that nothing reads. */
+        snprintf(message, sizeof message, "%s", file);
         Error(errorString, Fatal);
     }
 

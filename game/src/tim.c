@@ -14,17 +14,7 @@
 
 
 
-extern HeapBlock *heap;
-extern HeapBlock *reserveHeap;
 extern char errorString[];
-
-/* Next free CLUT slot and texture cell in VRAM for auto-placed textures. */
-extern short gClutX;
-extern short gClutY;
-extern short gTextureX;
-extern short gTextureY;
-
-void readnextfile(WADFILE *wad, char *buffer);
 
 /* Uploads an in-memory TIM and returns its texture record. */
 Texture *loadtexcom(Tim *tim, short translucent)
@@ -165,7 +155,7 @@ Texture *LoadTexture(char *name, short translucent)
     if (length <= 0) {
         sprintf(errorString, "Tim.c:LoadTexture: File %s not found\n", name);
         Error(errorString, 0);
-        return;
+        return 0; /* Port: the console returned whatever Error left in $v0 (sprintf's length): a bad pointer */
     }
 
     tim = DAlloc(reserveHeap, length + 32);

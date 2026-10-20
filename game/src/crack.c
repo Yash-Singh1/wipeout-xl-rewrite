@@ -4,11 +4,13 @@
 
 extern TrackData   *track;
 extern short        CurrentScreen;
-extern int        *OT[];
 extern Surface      tileSurfaces[24][2];
-extern PolyFT3      medLoCrackPolys[][2];
-extern PolyFT3      hiMedCrackPolysA[][4];
-extern PolyFT3      hiMedCrackPolysB[][4];
+/* One section holds at most 8 faces (the console reserved 8 entries for each table). The console laid
+   hiMedCrackPolysB out inside hiMedCrackPolysA's rows (columns 2 and 3 of each row); here they are
+   two tables of 8 rows, which behaves the same. */
+extern PolyFT3      medLoCrackPolys[8][2];
+extern PolyFT3      hiMedCrackPolysA[8][4];
+extern PolyFT3      hiMedCrackPolysB[8][4];
 void FillMedLoCrack(TrackSection *section, Skeleton *view)
 {
     CrackLocals     locals;

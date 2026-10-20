@@ -1,14 +1,13 @@
 #include "functions.h"
 
 extern char msgSkeletonAllocFailed[]; /* "Skeleton.c:NewSkeleton(): Failed to allocate skeleton\n" */
-extern HeapBlock *heap;
 Skeleton *NewSkeleton(void)
 {
     Skeleton *skeleton;
 
     skeleton = DAlloc(heap, sizeof(Skeleton));
     if (!skeleton) {
-        printf(msgSkeletonAllocFailed);
+        printf("%s", msgSkeletonAllocFailed); /* Port: not a literal format */
         return 0;
     }
 

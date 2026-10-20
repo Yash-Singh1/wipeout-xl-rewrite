@@ -9,14 +9,6 @@
 /* Both-endian 32-bit field of a directory or path table record. */
 #define DirRecordLong(rec, off) ((*(u_short *)((rec) + (off))) | (*(u_short *)((rec) + (off) + 2) << 16))
 
-int OpenEvent(u_long desc, int spec, int mode, void (*func)(void));
-void EnableEvent(int event);
-void CloseEvent(int event);
-int  WaitEvent(int event);
-int  CdGetToc2(int mode, void *toc);
-int  CdControlF(u_char com, void *param);
-int  CdReadSync(int mode, u_char *result);
-int  CdRead(int sectors, void *buf, int mode);
 int  toupper(int c);
 
 extern u_char toc_loc[];
@@ -71,7 +63,8 @@ int iso_fileloc(int fileNo)
 }
 
 
-void my_error_handler(void)
+/* Port: an event handler returns int (OpenEvent's callback type); this one never returns. */
+int my_error_handler(void)
 {
     exit(-1);
 }
@@ -87,7 +80,9 @@ void LogicalSectorToLoc(u_int sector, CdlLOC *loc)
 
 int iso_init(HeapBlock *heap)
 {
-    u_char sector[2048];
+    /* Port: CdRead fills the buffer a word at a time and the volume descriptor is read as words,
+       so the sector buffer is word aligned (a plain u_char array is not guaranteed to be). */
+    union { u_char bytes[2048]; u_int words[2048 / 4]; } sector;
     CdlLOC loc;
     int    pathBytes;
     int    i;
@@ -101,23 +96,23 @@ int iso_init(HeapBlock *heap)
     EnableEvent(cdReadEvent);
     EnableEvent(cdErrorEvent);
     ExitCriticalSection();
-    CdGetToc2(1, toc_loc);
+    CdGetToc2(1, (CdlLOC *)toc_loc);
     track1_start_sec = btoi(toc_loc[5]) * 75 + btoi(toc_loc[6]);
     LogicalSectorToLoc(0x10, &loc);
-    CdControlF(0x15, &loc);
+    CdControlF(0x15, (u_char *)&loc);
     WaitEvent(cdReadEvent);
-    CdRead(1, sector, 0x80);
+    CdRead(1, sector.words, 0x80);
     CdReadSync(0, 0);
-    if (sector[0] == 1) {
+    if (sector.bytes[0] == 1) {
         isoHeap = heap;
-        pathBytes = ((*(int *)(sector + 0x84) + 0x7FF) >> 11) << 11;
-        pathTableSize = *(int *)(sector + 0x84);
+        pathBytes = ((*(int *)(sector.bytes + 0x84) + 0x7FF) >> 11) << 11;
+        pathTableSize = *(int *)(sector.bytes + 0x84);
         pathTable = DAlloc(heap, pathBytes);
         if (pathTable != 0) {
-            LogicalSectorToLoc(*(int *)(sector + 0x8C), &loc);
-            CdControlF(0x15, &loc);
+            LogicalSectorToLoc(*(int *)(sector.bytes + 0x8C), &loc);
+            CdControlF(0x15, (u_char *)&loc);
             WaitEvent(cdReadEvent);
-            CdRead(pathBytes / 0x800, pathTable, 0x80);
+            CdRead(pathBytes / 0x800, (u_long *)pathTable, 0x80);
             CdReadSync(0, 0);
             num_of_open_files = 0;
             for (i = 15; i >= 0; i--) {
@@ -149,7 +144,7 @@ u_char *NextPath(u_char *dirRecord)
     u_char *next;
 
     next = dirRecord + ((*dirRecord + 9) & 0xFE);
-    return (u_char *)((int)next & -((u_long)(next - pathTable) < (u_long)pathTableSize));
+    return (u_char *)((uintptr_t)next & -(uintptr_t)((u_long)(next - pathTable) < (u_long)pathTableSize));
 }
 
 
@@ -162,7 +157,7 @@ int match_dir(char *dirname, char *testname, u_char test_len)
 
     dn = dirname;
     tn = testname;
-    len = strlen(dirname);
+    len = (int)strlen(dirname);
     if (len != test_len) {
         return 0;
     }
@@ -246,9 +241,9 @@ int find_file(char *filename, int loc, IsoFileInfo *fi)
     if ((loc != cached_dir_loc) && (loc != cached_dir_start_loc)) {
         cache_size = DIR_CACHE_SIZE;
         LogicalSectorToLoc(loc, &cdLoc);
-        CdControlF(0x15, &cdLoc);
+        CdControlF(0x15, (u_char *)&cdLoc);
         WaitEvent(cdReadEvent);
-        CdRead(DIR_CACHE_SIZE / 2048, dirCache, 0x80);
+        CdRead(DIR_CACHE_SIZE / 2048, (u_long *)dirCache, 0x80);
         CdReadSync(0, 0);
         cached_dir_loc = cached_dir_start_loc = loc;
         dirRec = dirCache;
@@ -274,9 +269,9 @@ int find_file(char *filename, int loc, IsoFileInfo *fi)
         }
         cache_size = DIR_CACHE_SIZE;
         LogicalSectorToLoc(searchLoc, &cdLoc);
-        CdControlF(0x15, &cdLoc);
+        CdControlF(0x15, (u_char *)&cdLoc);
         WaitEvent(cdReadEvent);
-        CdRead(DIR_CACHE_SIZE / 2048, dirCache, 0x80);
+        CdRead(DIR_CACHE_SIZE / 2048, (u_long *)dirCache, 0x80);
         CdReadSync(0, 0);
         cached_dir_loc = searchLoc;
         res = search(filename, fi);
@@ -333,7 +328,7 @@ int iso_get_file_info(char *pathname, IsoFileInfo *fi)
         *tmpS++ = toupper(*c++);
     }
     *tmpS = 0;
-    fnameLen = tmpS - tmpString;
+    fnameLen = (int)(tmpS - tmpString);
     filename = tmpString;
     if ((fnameLen < 1) || (fnameLen > 12)) {
         return 0;
@@ -415,7 +410,7 @@ int iso_read(void *buffer, int nsec, int fd)
     }
     LogicalSectorToLoc(fd_tab[fd].fp, &cdLoc);
     while (check == -1) {
-        CdControlF(0x15, &cdLoc);
+        CdControlF(0x15, (u_char *)&cdLoc);
         WaitEvent(cdReadEvent);
         CdRead(nsec, buffer, 0x80);
         while ((check = CdReadSync(1, 0)) > 0) {

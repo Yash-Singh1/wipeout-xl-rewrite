@@ -45,6 +45,7 @@ struct InGameMenu;
 int PsxMain(void); /* Port: the game's main(); the platform owns the program entry point */
 
 /* object.c */
+void AsmDrawObjectLit(Object *object, Skeleton *camera, int roll, CVECTOR *colour);
 void InitMatrix(MATRIX *m);
 void InitialiseAmbientColour(void);
 void InitialiseColourMatrix(void);
@@ -138,8 +139,8 @@ void loadShipData(TrackSection *section, ShipData *shipIndex, Object **shipShape
 void GeneralStartProcs(ShipData *s);
 void SetUpFirstCheckPoint(void);
 void SortAllShips(ShipData *shipIndex);
-void UpdatePlayerShip(ShipData *ships, void *shapes, int shipNo, void *weapons, ControlInput *control);
-void UpdatePlayerShipStart(ShipData *shipIndex, void *shipShapes, int shipNo, void *weaponIndex, ControlInput *controller);
+void UpdatePlayerShip(ShipData *ships, Object **shapes, int shipNo, WeaponData *weapons, ControlInput *control);
+void UpdatePlayerShipStart(ShipData *shipIndex, Object **shipShapes, int shipNo, WeaponData *weaponIndex, ControlInput *controller);
 void UpdateShips(ShipData *shipIndex, WeaponShape *unused, Object **shipShapes, WeaponData *weaponIndex);
 
 /* utils.c */
@@ -214,7 +215,7 @@ void UpdateRocket(ShipData *shipIndex, WeaponShape *weaponShapes, WeaponData *we
 void UpdateShield(ShipData *ships, WeaponShape *shapes, WeaponData *weapon, WeaponData *weapons);
 void UpdateSmartBomb(ShipData *ships, WeaponShape *shapes, WeaponData *weapon, WeaponData *weapons);
 void Weapon2Mine(WeaponData *weapon, WeaponData *weaponIndex, WeaponShape *weaponShapes);
-void initWeapons();
+void initWeapons(WeaponShape *shapes, Skeleton *camPos, WeaponData *weapons);
 
 /* dynam.c */
 int SetTrackAttributes(TrackSection *section, short sectionNo, WeaponGrid *weaponGrid, int noWeaponGrids, short *specialCount, SpecialGrid *specialGrid);
@@ -274,7 +275,7 @@ void InitRaceLine(TrackData *track, ConfigData *game);
 void InitRaceResetData(struct ResetData *arg0, ShipData *arg1, ConfigData *arg2, WeaponData *arg3, WeaponShape *arg4, RescueData *arg5, Object **arg6, CheckPoints *arg7);
 void InitShufflePlay(void);
 void InitTrackTextures(ConfigData *fileId);
-void InitWeaponGrids(int state, TrackData *context, int *scene, int config, int mode);
+void InitWeaponGrids(WeaponGrid *weaponGrids, TrackData *context, int *noWeaponGrids, short *specialCount, SpecialGrid *specialGrid);
 int myrand(void);
 
 /* ayrace.c */
@@ -369,34 +370,34 @@ void ColourRedLight(Object *light);
 void ColourStartBoom(int noToLight);
 void DoNeonSign(Object **objects, int count);
 void DrawShadow(void *shapes, ShipData *ships, Shadow *shadow);
-void DrawWeaponIcons(POLY_FT4 *icons, struct Texture **textures, ShipData *ship);
-void InitDroidThings(Object **objects, int unused1, int unused2, Checkpoint *points, ConfigData *options);
+void DrawWeaponIcons(POLY_FT4 *icons, Texture **textures, ShipData *ship);
+void InitDroidThings(Object **objects, char *names, Skeleton *parent, Checkpoint *points, ConfigData *options);
 void InitMonoData(Object **objects, short unused, volatile MonoRailData *mono);
 void InitObject(Object **prm, short prmCount, Object **found, char *name, short len, short *count);
 void InitRedLight(Object **prm, short prmCount, Object **redLight);
-Shadow *InitShadow();
+Shadow *InitShadow(void);
 void InitShadowCluts(void);
 void InitStartBoom(Object **prm, short prmCount);
 void InitTrainLights(Object **unused0, short unused1, Object **objects, int mode);
 void InitWaterFall(void);
-void InitWeaponIcons(POLY_FT4 *icons, struct Texture **textures);
-void LoadStartDroid();
+void InitWeaponIcons(POLY_FT4 *icons, Texture **textures);
+void LoadStartDroid(Object **objects, char *names, Skeleton *parent);
 void LoadTrain(Object **arg0, char *arg1, Skeleton *arg2, VECTOR *arg3);
 void MoveAdvert(Object **objects, int count);
 void MoveCameraDroid(Object **objects, short count, ShipData *ships, int *bobCount);
 void MoveFan(Object **objects, int count);
-void MoveMonoRail(Object **objects, short count, MonoRailData *mono, int ships, int arg4);
+void MoveMonoRail(Object **objects, short count, MonoRailData *mono, ShipData *ships, int mode);
 void MoveRadar(Object **objects, short count);
 void MoveZeppelin(Object **objects, int unused, ShipData *ships);
 void RedBullAnimate(Object **objects, short count, short arg2, short arg3, short arg6);
 void ResetAnimatedObjects(void);
 void ResetLightStart(void);
 void ResetMonoRail(void);
-void ResetStartBoom();
+void ResetStartBoom(void);
 void ResetZeppelin(void);
 void SetShake(int amount);
 void ShakeScreen(void);
-void UpdateLightStart(Object **objects, int unused1, int unused2, int unused3, int unused4, int mode);
+void UpdateLightStart(Object **objects, ShipData *ships, DroidData *droids, short textureBase, ConfigData *game, int mode);
 void UpdateStartDroid(Object **shapes, ShipData *ships, DroidData *droids, short textureBase, ConfigData *game, int player);
 void Video(Object **objects, int count);
 void WaterFall(void);
@@ -407,9 +408,9 @@ void InitTrackCycle(void);
 void _init_cont(void);
 void DrawLinkSign(ShipData *ships);
 void InitLinkUpSign(void);
-void _error(void);
+int _error(void);
 void doSerialGame(int unused, ShipData *ships);
-void doSerialMenu(ConfigData *config, u_char *selection);
+void doSerialMenu(ConfigData *config, MenuSelection *selection);
 int doSerialTransfer(u_char *send, u_char *recv, int count);
 int receiveSerialPacket(int unused, u_char *data, int len);
 int sendSerialPacket(int type, u_char *data, int count);
@@ -434,7 +435,7 @@ int search(char *filename, IsoFileInfo *fi);
 int iso_fileloc(int arg0);
 int iso_filesize(int arg0);
 u_char *iso_toc(void);
-void my_error_handler(void);
+int my_error_handler(void);
 
 /* menus.c */
 void AudioConfig(ConfigData *gameData, MenuPolys *polys, MenuSelection *selection, MusicScreen *musicScreen);
@@ -442,8 +443,8 @@ int CheckCardFull(int card);
 void ClassSelect(ConfigData *gameData, MenuSelection *selection);
 void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSelection, KeyConfig *keyConfig, char *cardState);
 u_char DecodePassword(ConfigData *gameData, u_char *password);
-void DispHiScores(UnlockData *unlock, int unused, unsigned char raceMode);
-int DisplayCardBack();
+void DispHiScores(UnlockData *unlock, void *unused, unsigned char raceMode);
+int DisplayCardBack(MenuPolys *polys, int cursorArg, int cardArg, SaveSelection *selectionArg);
 void DisplayConfig(ConfigData *gameData, MenuSelection *selection, HiScoreData *score, MenuPolys *polys);
 void DisplayPassword(ConfigData *gameData);
 void DisplayTexture(Texture *texture, s32 left, s32 top, POLY_FT4 *polys);
@@ -456,7 +457,7 @@ void DrawHighLight(POLY_F4 (*prim)[2], int x, int y, int width, int height, shor
 void DrawMusicScreen(MusicScreen *menu);
 void DrawTeamShips(int x, int y, int z, int dir, int scale, Object *obj);
 short DupFileCheck(SaveSelection *selection);
-short EnterFileName();
+short EnterFileName(MenuPolys *polys, SaveSelection *selection);
 char *GetKeyFunction(int index);
 char * GetTrackName(short type, short x, short y, short draw);
 void InitCard(int card);
@@ -477,9 +478,9 @@ void InitLineEditor(void);
 int LoadSaveIcons(char *fileName, int arg1, u_char *arg2, u_char *arg3, u_short *arg4, u_short *arg5, int arg6);
 void MakePassword(ConfigData *gameData);
 int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMemorySize);
-void MenuFunction(void *gameData, void *polys, void *keyConfig, void *selection, void *cardState, int musicScreen);
+void MenuFunction(void *gameData, void *polys, void *keyConfig, void *selection, void *cardState, void *musicScreen);
 void Print(u_char *text, int x, int y, int size);
-int PrintCX();
+void PrintCX(u_char *text, int x, int y);
 void ResetKeyConfig(MenuSelection *selection);
 void ResetLoadMenu(SaveSelection *selection);
 void ScreenConfig(ConfigData *gameData, MenuPolys *polys, short *screenPosition);
@@ -488,7 +489,7 @@ void ShowMenuBackground(POLY_FT4 *menuPrim, POLY_FT4 *menu1Prim, LoadedImage *im
 void ShowScreen(POLY_FT4 *menuPrim, POLY_FT4 *menu1Prim, LoadedImage *image, int x, int y);
 void TeamSelect(ConfigData *gameData, MenuSelection *selection, void *shipShapes);
 void setupBackgrndPolys(short firstCard, int endCard);
-void EstablishLink();
+void EstablishLink(void);
 void InitChallenges(void);
 void InitMovies(void);
 void InitRaceLoad(void);
@@ -555,7 +556,7 @@ void SetDroidVectors(RescueData *d, Object **shapes);
 void UpdateDroidCircle(RescueData *d, ShipData *ship, Object **shapes);
 void UpdateDroidRescue(RescueData *rescueDroid, ShipData *ship, Object **shapes);
 void UpdateDroidStart(RescueData *droid, ShipData *ships, Object **shapes);
-void UpdateRescueDroid(ShipData *ships, int unused1, int shipNo, int unused3, ControlInput *control);
+void UpdateRescueDroid(ShipData *ships, Object **unused1, int shipNo, WeaponData *unused3, ControlInput *control);
 
 /* animover.c */
 void anim(char *fileName);
@@ -584,8 +585,8 @@ void InitPop(void);
 void Insert2DParticle(int x, int y);
 void RefreshCache(void);
 void Update2DParticle(void);
-void WDclose(void);
-int WDopen(int fileNo, int unused1, int unused2);
+void WDclose(int handle);
+int WDopen(char *name, int unused1, int unused2);
 void WDread(int unused, u_char *destArg, int count);
 void VsyncFunc(void);
 
@@ -593,8 +594,8 @@ void VsyncFunc(void);
 void closewadfile(WADFILE *wad);
 void closewadfilenvc(WADFILE *wad);
 void readnextfile(WADFILE *arg0, char *arg1);
-WADFILE *openwadfile(int fileNo);
-WADFILE *openwadfilenvc(int fileNo);
+WADFILE *openwadfile(char *name);
+WADFILE *openwadfilenvc(char *name);
 
 /* sparks.c */
 SParticle *InitParticle(void);
@@ -651,11 +652,11 @@ void UpdateTarget(int x, int y, int distance, int target);
 void InitGhostShip(ConfigData *config, ShipData *ships);
 void RecordKeypresses(ShipData *ships);
 void buildGhostReplayData(ShipData *ships);
-void storeGhostTrail(void *unused, ConfigData *config);
+void storeGhostTrail(ConfigData *config, HiScoreData *score);
 
 /* drone.c */
 void UpdateDroneShip(ShipData *ships, Object **shapes, int shipNo, WeaponData *weapons, ControlInput *control);
-void UpdateDroneShipStart(ShipData *ships, Object **unused, int shipNo);
+void UpdateDroneShipStart(ShipData *ships, Object **unused, int shipNo, WeaponData *unusedWeapons, ControlInput *unusedControl);
 void calcMyXPos(ShipData *arg0, short arg1, short *arg2, short *arg3);
 void followRaceLine(VECTOR *relative, ShipData *ships, Face *segment, int ship);
 short getShipBehindLAP(ShipData *ships, short ship);
@@ -714,7 +715,9 @@ void InitScoreTabData(HiScoreData *arg0);
 void ScoreTabInit(ConfigData *arg0);
 
 /* asm */
-void AsmDrawObject();
+/* The assembly routine reads roll (a2) when it rotates sprite primitives; callers that pass only two
+   arguments leave a2 as the console had it, an undefined value. */
+void AsmDrawObject(Object *object, Skeleton *camera, int roll);
 void AsmTrackHi(TrackSection *firstSection, Skeleton *camera, AutoMeshData *autoMesh, short hiCount);
 void AsmTrackLo(TrackSection *firstSection, Skeleton *camera, short loCount);
 void AsmTrackMed(TrackSection *firstSection, Skeleton *camera, short medCount);

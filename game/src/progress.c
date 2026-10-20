@@ -9,12 +9,11 @@ volatile s32   wadRemaining;
 s32            wadSize;
 volatile s32   bufat;
 s32            loadPercent;
-u_short        loadFrame;
+short          loadFrame;
 s32            scanPhase;
 u8             vsyncBusy;
-s32            lastWadCurrent;
-s32            loadTicks;
-s32            waveIndex;
+int            lastWadCurrent;
+int            loadTicks;
 s32           *particleLife;
 s32           *particleX;
 s32           *particleY;
@@ -25,24 +24,14 @@ LINE_F2       *linePrims;
 s32            lineat;
 s32            loopat;
 WADFILE       *currentWad;
-BLK_FILL      *screenFillTop __asm__("screenFills");
 
 extern u8              barHeight[];
-extern BLK_FILL       *screenFills[];
-extern BLK_FILL       *screenFill1;
 extern char            numberText[];
 extern char            singleDigitFormat[];
 extern u8              loadScreenFooter[];
-extern Skeleton       *upperSkeleton;
-extern Skeleton       *residentSkeletons[];
-extern Object         *shipShapeTable[];
-extern u_long         *OT[];
-extern u_long         *OT2[];
 extern short           CurrentScreen;
 extern int            quadIndex;
-extern ConfigData     *tempGameData;
 extern int             ownShip;
-extern void          *reserveHeap;
 
 /* Menu strings, drawn with Print/AddText. */
 extern u_char loadInstructionLine0[];
@@ -93,12 +82,12 @@ void RefreshCache(void)
 }
 
 
-int WDopen(int fileNo, int unused1, int unused2)
+int WDopen(char *name, int unused1, int unused2)
 {
     s32 size;
 
     wadCache = (u8 *)recordBuffer;
-    wadHandle = iso_open((char *)fileNo, 0);
+    wadHandle = iso_open(name, 0);
     bufat = 0;
     size = iso_filesize(wadHandle);
     wadSize = size;
@@ -108,11 +97,11 @@ int WDopen(int fileNo, int unused1, int unused2)
 }
 
 
-void WDcloseFile() __asm__("iso_close");
-
-void WDclose(void)
+/* Port: the console linked this to iso_close and the callers' handle went through in $a0
+   untouched; the handle is a parameter now. */
+void WDclose(int handle)
 {
-    WDcloseFile();
+    iso_close(handle);
 }
 
 
@@ -247,8 +236,9 @@ void InitPop(void)
     } while (i < 0x80);
     scanPhase = 0;
     loadPercent = 0;
-    screenFillTop = BlockFill(0, 0x50, 0x140, 0x64, 0, 0, 0x2E);
-    screenFill1 = BlockFill(0, 0x150, 0x140, 0x64, 0, 0, 0x2E);
+    /* Port: screenFills[1] was the separate symbol screenFill1 (adjacent words). */
+    screenFills[0] = BlockFill(0, 0x50, 0x140, 0x64, 0, 0, 0x2E);
+    screenFills[1] = BlockFill(0, 0x150, 0x140, 0x64, 0, 0, 0x2E);
 }
 
 
@@ -258,7 +248,7 @@ void DrawLine(int x0, int y0, int x1, int y1, u_char r, u_char g, u_char b)
 
     if (lineat <= 0x100) {
         SetLineF2(&linePrims[lineat]);
-        line = (LINE_F2 *)((lineat * sizeof(LINE_F2)) + (s32)linePrims);
+        line = &linePrims[lineat];
         line->r0 = r;
         line->x0 = x0;
         line->y0 = y0;

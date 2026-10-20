@@ -14,16 +14,10 @@ int           rockang;
 int           pitsparkat;
 int           exdelay;
 u8            partpos;
-extern HeapBlock    *heap;
-extern void         *reserveHeap;
-extern TrackCamera  *cameraPtr;
 extern ShipData     *shipIndex;
 extern int           ownShip;
 extern short         CurrentScreen;
-extern int         *OT[];
-extern short         TextureTableCount;
 extern Texture      *textureTable[];
-extern WADFILE      *textureWad;
 extern Texture      *explodeTexture[];
 extern Texture      *birdTexture[];
 extern char          birdTextureFile[];
@@ -621,7 +615,8 @@ void DrawBirds(void)
         if (birds[n].vz < -320) {
             birds[n].vz = -320;
         }
-        bird = (Bird *)(n * sizeof(Bird) + (int)birds);
+        /* Port: array indexing instead of (int) address arithmetic. */
+        bird = &birds[n];
         bird->x += bird->vx;
         bird->y += bird->vy;
         bird->z += bird->vz;
@@ -652,7 +647,7 @@ void DrawBirds(void)
         if (size > 280) {
             size = 280;
         }
-        prim = (POLY_FT4 *)((n * 2 + CurrentScreen) * sizeof(POLY_FT4) + (int)birdPrims);
+        prim = &birdPrims[n * 2 + CurrentScreen];
         prim->r0 = 96;
         half = size >> 1;
         sx -= half;
@@ -676,7 +671,7 @@ void DrawBirds(void)
         birdPrims[n * 2 + CurrentScreen].u3 = birdTexture[frame]->u3;
         birdPrims[n * 2 + CurrentScreen].v3 = birdTexture[frame]->v3;
         page = GetTPage(0, 0, birdTexture[frame]->textureX, birdTexture[frame]->textureY);
-        quad = (POLY_FT4 *)((n * 2 + CurrentScreen) * sizeof(POLY_FT4) + (int)birdPrims);
+        quad = &birdPrims[n * 2 + CurrentScreen];
         quad->tpage = page;
         quad->clut = birdTexture[frame]->cba;
         AddPrim(OT[CurrentScreen] + (depth >> 1), quad);

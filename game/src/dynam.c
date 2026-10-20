@@ -3,13 +3,6 @@
 
 extern TrackData   *track;
 extern int          raceType;
-extern ConfigData  *tempGameData;
-extern Skeleton    *residentSkeletons[];
-extern Skeleton    *upperSkeleton;
-
-void OuterProduct12(VECTOR *v0, VECTOR *v1, VECTOR *v2);
-void VectorNormal(VECTOR *v0, VECTOR *v1);
-
 
 extern int droidFlyin;
 extern short recordDisabled;
@@ -25,6 +18,7 @@ void ShipTrkReaction(ShipData *playerShip, Object **shipShapes)
     Face *face;
     TrackSection *current, *neighbour, *next;
 
+    /* boost is not assigned for a negative thrustCount: the original reads it uninitialised */
     if (playerShip->thrustCount == 0) boost = 1;
     else if ((unsigned short)(playerShip->thrustCount - 1) < 2) boost = 3;
     else if (playerShip->thrustCount >= 3) boost = 6;
@@ -152,6 +146,7 @@ void ShipTrkReaction(ShipData *playerShip, Object **shipShapes)
         playerShip->apivot.vz = (targetVelocity.vz - playerShip->vpivot.vz) / ((brake << 2) + 20);
         altitudeDifference = playerShip->nearTrkSect->centre.vy - playerShip->ppivot.vy;
         if (altitudeDifference > 704) {
+            /* mass is only assigned in the branch above: the original reads it uninitialised here */
             if (mass == 110) playerShip->ppivot.vy += 80;
             if (playerShip->vpivot.vy < 0) playerShip->vpivot.vy >>= 1;
             playerShip->ppivot.vy += 16;

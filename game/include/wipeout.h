@@ -64,6 +64,8 @@ typedef struct Texture {
     short u0, v0, u1, v1, u2, v2, u3, v3;
 } Texture;
 
+/* The textures of one decompressed sequence: memBase holds them one after another and
+   memOffset[i] is the byte offset of the i-th TIM from memBase. */
 typedef struct TIMlist {
     char *memBase;
     int  memOffset[400];
@@ -407,9 +409,9 @@ typedef struct Face {
     SVector normal;
     char    texture;
     char    flags;
-    char    red;
-    char    green;
-    char    blue;
+    u_char  red;
+    u_char  green;
+    u_char  blue;
 } Face;
 
 typedef struct TrackSection {
@@ -475,6 +477,7 @@ typedef struct TrackCamera {
 
 struct Object;
 struct WeaponData;
+struct ControlInput;
 
 /* ShipData.attr */
 #define IN_TOW        0x1
@@ -551,7 +554,8 @@ typedef struct ShipData {
     int           updateCount;
     int           padE4;
     int           startY;
-    void        (*update)();
+    void        (*update)(struct ShipData *ships, struct Object **shipShapes, int shipNo,
+                          struct WeaponData *weapons, struct ControlInput *control);
 } ShipData;
 
 /* droid.c */

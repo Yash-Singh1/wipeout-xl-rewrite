@@ -2,22 +2,20 @@
 #include "include_asm_g8.h"
 
 extern TrackData *track;
-extern VECTOR     racingLine[];
 extern short      activeShipCount;
-extern short      shipOrder[][2];
+extern ShipRank   shipRank[];
 
-/* The second argument is the register residue the original call leaves behind. */
-int SectionSearchResidue(ShipData *ship, TrackData *residue) __asm__("SectionSearch");
-
-/* A new drone is lifted to its flying height over its first 200 frames, then starts steering. */
-void UpdateDroneShipStart(ShipData *ships, Object **unused, int shipNo)
+/* A new drone is lifted to its flying height over its first 200 frames, then starts steering.
+   Port: it is called through ShipData.update, so it takes the five arguments of every update function;
+   the last two are not read. */
+void UpdateDroneShipStart(ShipData *ships, Object **unused, int shipNo, WeaponData *unusedWeapons, ControlInput *unusedControl)
 {
     ShipData *ship;
     int       remaining;
 
     ship = &ships[shipNo];
     ship->prevShipSect = ship->nearTrkSect;
-    SectionSearchResidue(ship, track);
+    SectionSearch(ship); /* Port: the console also left track in the unused second argument register */
     if (ship->updateCount == 200) {
         ship->startY = ship->ppivot.vy;
     }
@@ -31,12 +29,6 @@ void UpdateDroneShipStart(ShipData *ships, Object **unused, int shipNo)
 
 extern int       ownShip;
 extern int       remoteShip;
-extern u_short   shipClassIndex;
-extern u_short   numTrackSections;
-extern u_short   clipLevel;
-extern u_char    gameType;
-extern short     remoteRacePos;
-extern short     playerPosition;
 extern short     pitLaneSection1[];
 extern short     pitLaneSection2[];
 extern int       pitLaneDirection[];
@@ -567,9 +559,10 @@ void followRaceLine(VECTOR *relative, ShipData *ships, Face *segment, int ship)
 
     index = ships[ship].nearSecNo;
     t = track;
-    relative->vx = racingLine[index].vx - t->vertices[segment->vertex[0]].vx;
-    relative->vy = racingLine[index].vy - t->vertices[segment->vertex[0]].vy;
-    relative->vz = racingLine[index].vz - t->vertices[segment->vertex[0]].vz;
+    /* Port: racingLine[n].vx, vy and vz were another name for raceLines[n].x, y and z. */
+    relative->vx = raceLines[index].x - t->vertices[segment->vertex[0]].vx;
+    relative->vy = raceLines[index].y - t->vertices[segment->vertex[0]].vy;
+    relative->vz = raceLines[index].z - t->vertices[segment->vertex[0]].vz;
 }
 
 /* Steers past the ship ahead when the two are level sideways and there is room beside it. */
@@ -645,7 +638,7 @@ void calcMyXPos(ShipData *ships, short shipNo, short *lateral, short *along)
     edge.vx = track->vertices[face->vertex[0]].vx - track->vertices[face->vertex[1]].vx;
     edge.vy = track->vertices[face->vertex[0]].vy - track->vertices[face->vertex[1]].vy;
     edge.vz = track->vertices[face->vertex[0]].vz - track->vertices[face->vertex[1]].vz;
-    ship = (ShipData *)(shipNo * sizeof(ShipData) + (int)ships);
+    ship = &ships[shipNo];
     fromCentre.vx = ship->nearTrkSect->centre.vx - ship->ppivot.vx;
     fromCentre.vy = ship->nearTrkSect->centre.vy - ship->ppivot.vy;
     fromCentre.vz = ship->nearTrkSect->centre.vz - ship->ppivot.vz;
@@ -703,8 +696,9 @@ short getShipInfrontLAP(ShipData *ships, short ship)
     short attempts;
     short candidate;
 
+    /* Port: shipOrder[n][0] was another name for shipRank[n].shipNo. */
     for (position = 0; position < activeShipCount; position++) {
-        if (shipOrder[position][0] == ship) {
+        if (shipRank[position].shipNo == ship) {
             break;
         }
     }
@@ -713,7 +707,7 @@ short getShipInfrontLAP(ShipData *ships, short ship)
             position = activeShipCount;
         }
         position--;
-        candidate = shipOrder[position][0];
+        candidate = shipRank[position].shipNo;
         if (!(ships[candidate].combatAttr & DESTROYED)) {
             if (candidate != ship) {
                 return candidate;
@@ -731,7 +725,7 @@ short getShipBehindLAP(ShipData *ships, short ship)
     short candidate;
 
     for (position = 0; position < activeShipCount; position++) {
-        if (shipOrder[position][0] == ship) {
+        if (shipRank[position].shipNo == ship) {
             break;
         }
     }
@@ -740,7 +734,7 @@ short getShipBehindLAP(ShipData *ships, short ship)
         if (position >= activeShipCount) {
             position = 0;
         }
-        candidate = shipOrder[position][0];
+        candidate = shipRank[position].shipNo;
         if (!(ships[candidate].combatAttr & DESTROYED)) {
             if (candidate != ship) {
                 return candidate;
@@ -756,7 +750,7 @@ void humanToDroneSpeed(ShipData *ships, int shipNo)
     ShipData *ship;
     int       speed;
 
-    ship = (ShipData *)(shipNo * sizeof(ShipData) + (int)ships);
+    ship = &ships[shipNo];
     speed = ship->moveDist * 9;
     if (ship->remoteMax < speed) {
         speed = ship->remoteMax;

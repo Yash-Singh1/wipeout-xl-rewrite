@@ -6,7 +6,7 @@ int           remoteSamp1;
 int           remoteSamp2;
 short         scrapeVol;
 int           reverblev;
-signed char   undercover;
+unsigned char undercover;
 int           enginesamp;
 int           turbulancesamp;
 char         *sampleBuffer;
@@ -26,12 +26,9 @@ extern char         msgCrowdPrefix[];
 extern int          cdMusicCount;
 extern int          ownShip;
 extern ShipData    *shipIndex;
-extern TrackCamera *cameraPtr;
-extern CameraUpdateFunc CameraUpdate;
 extern int          sampleHandle[];
 extern int          oldcam[3];
 extern int          totalSampleMem;
-extern HeapBlock   *reserveHeap;
 extern CdlLOC       cdTrackLocs[];
 extern char        sampleNameTwo[];
 extern char        sampleNameOne[];
@@ -67,7 +64,7 @@ void InitSpuSound(void)
     SfxInitReverb();
     SfxReverbOn();
     SfxSetReverbDepth(0);
-    sampleWad = openwadfilenvc((int)"c:\\wipeout2\\sound\\samples.wad");
+    sampleWad = openwadfilenvc("c:\\wipeout2\\sound\\samples.wad");
     LoadSample(0, "shipship.vag");
     for (i = 1; i < 0x80; i++) {
         sampleHandle[i] = sampleHandle[0];
@@ -362,7 +359,7 @@ void AdjustDopplerEngine(int shipNo, int channel, int unused)
     short     sample;
 
     volume = 0;
-    ship = (ShipData *)(shipNo * sizeof(ShipData) + (int)shipIndex);
+    ship = &shipIndex[shipNo];
     pitch = (u_short)ship->speed >> 8;
     if (oldcameraupdate != CameraUpdate) {
         oldcam[0] = cameraPtr->camPos->relative.t[0];
@@ -379,7 +376,7 @@ void AdjustDopplerEngine(int shipNo, int channel, int unused)
     distance.vz = (previous.vz + oldcam[2]) >> 2;
     engine = GetMagnitude(distance);
 
-    futureShip = (ShipData *)(shipNo * sizeof(ShipData) + (int)shipIndex);
+    futureShip = &shipIndex[shipNo];
     future.vx = futureShip->ppivot.vx + (futureShip->vpivot.vx >> 6);
     future.vy = futureShip->ppivot.vy + (futureShip->vpivot.vy >> 6);
     future.vz = futureShip->ppivot.vz + (futureShip->vpivot.vz >> 6);

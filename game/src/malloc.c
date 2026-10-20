@@ -3,7 +3,6 @@
 extern char msgInsufficientMemory[];
 extern char msgAllocRequest[];
 extern char msgDFreeNotFound[];
-extern HeapBlock *mainheapcopy;
 
 
 int lowTideMark;
@@ -13,7 +12,8 @@ void InitDynamicMem(HeapBlock *head, int size)
 {
     int avail;
 
-    avail = size - sizeof(HeapBlock);
+    /* Port: block sizes stay multiples of 8 (see DAlloc), so the usable size is rounded down. */
+    avail = (size - sizeof(HeapBlock)) & ~7;
     head->flags = 0;
     head->size = avail;
     head->data = (char *)(head + 1);
@@ -35,7 +35,11 @@ void *DAlloc(HeapBlock *head, int size)
     best = 0;
     smallest = 0x800000;
     size += 4;
-    size = (size | 3) ^ 3;
+    /* Port: the console rounded down to a multiple of 4 (blocks only needed word alignment). A block
+       header is 32 bytes natively and the blocks hold 64-bit pointers, so sizes are rounded up to
+       a multiple of 8 and every block (and the pointer it hands out) stays 8-byte aligned; the
+       result is never smaller than the console's. */
+    size = (size + 7) & ~7;
     while (block) {
         if (block->size >= size + sizeof(HeapBlock) && block->size < smallest && block->flags == 0) {
             smallest = block->size;
@@ -49,7 +53,7 @@ void *DAlloc(HeapBlock *head, int size)
         block = block->next;
     }
     if (!best) {
-        printf(msgInsufficientMemory);
+        printf("%s", msgInsufficientMemory);
         printf(msgAllocRequest, size, head->free);
         return 0;
     }
@@ -102,5 +106,5 @@ void DFree(HeapBlock *head, char *ptr)
         prevBlock = block;
         block = block->next;
     }
-    printf(msgDFreeNotFound);
+    printf("%s", msgDFreeNotFound);
 }

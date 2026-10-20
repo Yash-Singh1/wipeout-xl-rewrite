@@ -15,12 +15,12 @@ typedef struct DIRENTRY {
 DIRENTRY *firstfile(char *name, DIRENTRY *dir);
 DIRENTRY *nextfile(DIRENTRY *dir);
 
-/* Icon rectangles of the save-icon image, in VRAM coordinates. */
-typedef struct CardImage {
-    u_char reserved[6];
-    RECT   image;
-    u_short cx, cy, cw, ch;
-} CardImage;
+/* The 512-byte header of a card file. StoreImage fills the icon into it a word at a time,
+   so it is word aligned like the console's local buffers. */
+typedef union CardHeader {
+    u_char bytes[512];
+    u_long align[128];
+} CardHeader;
 
 typedef struct Label6 {
     signed char bytes[6];

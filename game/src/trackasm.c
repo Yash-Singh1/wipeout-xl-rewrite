@@ -2,25 +2,18 @@
 #include "trackasm.h"
 #include "ttf.h"
 
-int  OpenEvent(u_long desc, int spec, int mode, int func);
-int  EnableEvent(int event);
-int  CloseEvent(int event);
-void _card_info(int channel);
-
-extern HeapBlock *heap;
 extern short        CurrentScreen;
 extern Texture     *textureTable[];
-extern int         lastWadCurrent[];
-extern int         particleX[];
-extern int        *frameValues;
+/* Port: the console stored the address of lastWadCurrent or of particleX here (as int *); nothing
+   reads it back. */
+extern void       *frameValues;
 
-/* Double-buffered polygon pools for the three tile levels. */
-POLY_FT4 *TrackLoPolys;
-extern POLY_FT4 *TrackLoPolysAlt;
-POLY_FT4 *TrackMedPolys;
-extern POLY_FT4 *TrackMedPolysAlt;
-POLY_FT4 *TrackHiPolys;
-extern POLY_FT4 *TrackHiPolysAlt;
+/* Double-buffered polygon pools for the three tile levels: one pool per screen buffer.
+   Port: these were the adjacent symbols TrackLoPolys/TrackLoPolysAlt, TrackMedPolys/...Alt and
+   TrackHiPolys/...Alt, indexed by CurrentScreen in the assembly tile drawers. */
+POLY_FT4 *TrackLoPolys[2];
+POLY_FT4 *TrackMedPolys[2];
+POLY_FT4 *TrackHiPolys[2];
 
 Surface tileSurfaces[24][2];
 
@@ -151,26 +144,26 @@ void AsmGenerateTiles(TexTemplate *tiles, short tileCount)
         AsmHighResTile(tiles, tile, 1);
     }
 
-    TrackLoPolys = DAlloc(heap, 0x5780);
-    TrackLoPolysAlt = DAlloc(heap, 0x5780);
-    TrackMedPolys = DAlloc(heap, 0x1180);
-    TrackMedPolysAlt = DAlloc(heap, 0x1180);
-    TrackHiPolys = DAlloc(heap, 0x4600);
-    TrackHiPolysAlt = DAlloc(heap, 0x4600);
+    TrackLoPolys[0] = DAlloc(heap, 0x5780);
+    TrackLoPolys[1] = DAlloc(heap, 0x5780);
+    TrackMedPolys[0] = DAlloc(heap, 0x1180);
+    TrackMedPolys[1] = DAlloc(heap, 0x1180);
+    TrackHiPolys[0] = DAlloc(heap, 0x4600);
+    TrackHiPolys[1] = DAlloc(heap, 0x4600);
 
     for (tile = 0; tile < 0x230; tile++) {
-        SetPolyFT4(TrackLoPolys + tile);
-        SetPolyFT4(TrackLoPolysAlt + tile);
+        SetPolyFT4(TrackLoPolys[0] + tile);
+        SetPolyFT4(TrackLoPolys[1] + tile);
     }
 
     for (tile = 0; tile < 0x70; tile++) {
-        SetPolyFT4(TrackMedPolys + tile);
-        SetPolyFT4(TrackMedPolysAlt + tile);
+        SetPolyFT4(TrackMedPolys[0] + tile);
+        SetPolyFT4(TrackMedPolys[1] + tile);
     }
 
     for (tile = 0; tile < 0x1c0; tile++) {
-        SetPolyFT4(TrackHiPolys + tile);
-        SetPolyFT4(TrackHiPolysAlt + tile);
+        SetPolyFT4(TrackHiPolys[0] + tile);
+        SetPolyFT4(TrackHiPolys[1] + tile);
     }
 }
 
@@ -181,8 +174,8 @@ void AsmNextFrame(void)
     medTileCount = 0;
     hiTileCount = 0;
     if (CurrentScreen == 0) {
-        frameValues = lastWadCurrent;
+        frameValues = &lastWadCurrent;
     } else {
-        frameValues = particleX;
+        frameValues = &particleX;
     }
 }

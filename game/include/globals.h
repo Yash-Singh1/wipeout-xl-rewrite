@@ -8,15 +8,100 @@
 
 /* --- group 1 (menus.c) --- */
 
+extern HeapBlock       *heap;
+extern HeapBlock       *mainheapcopy;
+extern Skeleton        *residentSkeletons[];
+extern Skeleton        *upperSkeleton;
+extern Object          *shipShapeTable[];
+extern unsigned short   TextureTableCount;
+extern short            highResTable[];
+extern unsigned char    cheatWeapon;
+extern unsigned char    cheatDamage;
+extern unsigned char    cheatRain;
+extern unsigned char    cheatTime;
+extern unsigned char    cheatMinigun;
+extern unsigned char    continuesLeft;
+extern unsigned char    gameType;
+extern unsigned char    sillyShips;
+extern unsigned char    menuSendFlags;
+extern short            menuSendKey;
+extern short            menuTextures;
+extern HiScore          hiScoreTable[][4];
+
 /* --- group 2 (weapon.c, effects.c) --- */
+
+extern int              ambientVoice2;
+extern u_char           classLaps[];
+extern short            monoRailFlag[];
+extern Object          *monoRailObjs[];
+extern PrimPtr          nextPrim;
+extern short            numTrackSections;
+extern SParticle       *particleSlots;
+extern u_char           perfectLap;
+extern VECTOR           posMonoRail[];
+extern short            remoteRacePos;
+extern int              shipTargetIndex[];
+extern WeaponShape     *weaponBars;
+extern POLY_FT4         weaponIconPrims[];
+extern WeaponData      *weaponIndex;
+extern Object          *zeppelinObj;
 
 /* --- group 3 (hud.c, sparks.c, trails.c, camera.c) --- */
 
+extern CameraUpdateFunc CameraUpdate;
+extern TrackCamera     *cameraPtr;
+extern short            finishPosition;
+extern int              linkSendFlag;
+extern u_long          *OT[];
+extern u_long          *OT2[];
+extern int              pauseState;
+extern short            playerPosition;
+extern HeapBlock       *reserveHeap;
+extern Object          *teamShip;
+extern ConfigData      *tempGameData;
+extern WADFILE         *textureWad;
+
 /* --- group 4 (collide.c, combat.c, control.c, crack.c, credits.c, display.c, draw.c, droid.c, drone.c, dynam.c, error.c) --- */
+
+extern signed char      activateOT2;
+extern u_short          clipLevel;
+extern int              controlledSfxId;
+/* The screen offsets are DispEnv0.screen.x/y and DispEnv1.screen.x/y (the console had them as the
+   separate names dispOffX0, dispOffY0, dispOffX1 and dispOffY1 for the same storage). */
+extern DISPENV          DispEnv0;
+extern DISPENV          DispEnv1;
 
 /* --- group 5 (card.c, ayrace.c, hiscores.c, ghost.c, init.c, iso9660.c, lzss.c, file.c, malloc.c, object.c, options.c, pad.c) --- */
 
+extern Texture         *cardIconInfo;
+extern Texture         *continuesTexture;
+extern u_short          keysPressed;
+extern u_short          padType;
+extern ControlInput     playerControl[];
+extern u_char           raceCompleteFlag;
+extern struct CardKeys  savedKeyConfig;
+extern char             scenePath[];
+extern u_short          shipClassIndex;
+
 /* --- group 6 (progress.c, raceinit.c, radscn.c, scene.c, search.c, sfx.c, ships.c, skeleton.c, sound.c, tim.c, track.c, trackasm.c, ttf.c, utils.c, wadfile.c) --- */
+
+/* The load screen's state (defined in progress.c, used by wadfile.c). */
+extern short     loadFrame;
+extern WADFILE  *currentWad;
+extern int       lastWadCurrent;
+extern int       loadTicks;
+extern LINE_F2  *linePrims;
+extern int       waveIndex;
+extern BLK_FILL *screenFills[2];
+extern s32      *particleX;
+
+/* Where the next texture without a VRAM position is placed (tim.c, init.c, main.c). */
+extern short     gClutX;
+extern short     gClutY;
+extern short     gTextureX;
+extern short     gTextureY;
+
+extern u_char   cdMusicTable[];
 
 /* --- shared by several groups (add here, alphabetical) --- */
 

@@ -2,6 +2,9 @@
 #include "ayrace.h"
 #include "weapon.h"
 #include "hud.h"
+#include "ghost.h"
+#include "hiscores.h"
+#include "options.h"
 #include "raceinit.h"
 #include "include_asm_g8.h"
 
@@ -14,20 +17,16 @@ extern short            linkRemoteState;
 extern short            linkTimer;
 extern short            linked;
 extern u_char           medalDisplay;
-extern u_char           perfectLap;
 extern u_char           perfectLapCount;
 extern u_char           plasmaShotBusy;
 extern u_char           raceEndState;
-extern u_char           raceCompleteFlag;
 extern u_char           linkRaceDone;
 extern u_char           hudDisabled;
 extern u_char           sfxMode;
-extern u_char           gameType;
 extern int              trackNameScroll;
 extern int              playCredits;
 extern int              ownShip;
 extern int              raceType;
-extern int              linkSendFlag;
 extern int              raceEndTimer;
 extern int              attractLoopFlag;
 extern int              checkTimer;
@@ -37,11 +36,7 @@ extern int              oneMoreTime;
 extern int              masterWait;
 extern int              raceContext;
 extern u_short          idleTimer;
-extern u_short          keysPressed;
 extern u_short          keysDown;
-extern u_short          padType;
-extern short            recordDisabled;
-extern short            finishPosition;
 extern short            sixTracks;
 extern short            sixXPlayed;
 extern short            eightTracks;
@@ -49,22 +44,16 @@ extern short            eightXPlayed;
 extern short            phantomDone;
 extern short            piranhaDone;
 extern u_char           linkSyncB;
-extern u_char           continuesLeft;
 extern u_char           linkRaceEnd;
-extern void            *continuesTexture;
 extern u_char           cdMusicIndex;
 extern int              cdMusicTrack;
-extern u_char           cdMusicTable[];
 extern u_char           linkPadAux0;
 extern u_char           linkPadAux1;
-extern CameraUpdateFunc CameraUpdate;
 extern ConfigData      *gameData;
-extern TrackCamera     *cameraPtr;
 extern TrackData       *track;
 extern ShipData        *shipIndex;
 extern int              shipDamage[];
 extern int              fracdamage[];
-extern int              shipTargetIndex[];
 extern char            *crapArray[];
 extern char             selectLabel[];
 
@@ -517,7 +506,7 @@ void CheckGamePause(ShipData *ships, int *pauseFlag, int unused, short *pauseCho
         CdMusicStop();
         PlayNote(9, 0xFF, 0xF, 0xF, 0x100);
         if (raceType == 1) {
-            recordDisabled = 1;
+            recordBuffer->disabled = 1;
         }
         *pauseFlag = 0;
         *pauseChoice = 0;
@@ -544,7 +533,7 @@ void Check2PlayerPause(u_char status, u_char *lastStatus, int *musicPaused)
 }
 
 
-void SelectPauseOption(int *selection, int canMove, ConfigData *config, PauseMenu *pause)
+void SelectPauseOption(int *selection, int canMove, ConfigData *config, struct PauseMenu *pause)
 {
     int up;
     int down;
@@ -563,7 +552,7 @@ void SelectPauseOption(int *selection, int canMove, ConfigData *config, PauseMen
             *selection = down;
             if (down >= 4) {
                 *selection = 0;
-played:
+played:;
             }
             PlayNote(8, 255, 15, 15, 256);
         }
@@ -571,7 +560,7 @@ played:
 }
 
 
-int PerformPauseOperations(PauseMenu *pause, struct SelectBox *box, ConfigData *config)
+int PerformPauseOperations(struct PauseMenu *pause, struct SelectBox *box, ConfigData *config)
 {
     int selection;
     int stage;
@@ -581,7 +570,9 @@ int PerformPauseOperations(PauseMenu *pause, struct SelectBox *box, ConfigData *
             UpdateNotes(0);
             SelectPauseOption(&pause->selection, pause->showOptions, config, pause);
             if (pause->showOptions) {
-                InGameReset(pause, config, box);
+                /* Port: InGameReset names the pause menu and its polygons by its own private views
+                   (PauseState, OptionsPolys) of the same memory. */
+                InGameReset((PauseState *)pause, config, (OptionsPolys *)box);
                 if (pause->musicPaused == 0 && CdControl(9, 0, 0) != 0) {
                     pause->musicPaused = 1;
                 }
@@ -656,7 +647,7 @@ int PerformPauseOperations(PauseMenu *pause, struct SelectBox *box, ConfigData *
 }
 
 
-void InitiateTwoPlayerPause(PauseMenu *pause)
+void InitiateTwoPlayerPause(struct PauseMenu *pause)
 {
     int command;
 
@@ -695,7 +686,7 @@ block_5:
 }
 
 
-void Perform2PlayerPauseCommand(PauseMenu *pause)
+void Perform2PlayerPauseCommand(struct PauseMenu *pause)
 {
     if ((linkRemoteState == 1) && (pause->active == 0)) {
         pause->stage = 1;

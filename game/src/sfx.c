@@ -24,7 +24,6 @@ extern int      pwVolumeStore[SFX_VOICES][2];
 extern u_char    pbStereoLookup[];
 extern u_char    pbRearLookup[];
 extern u_char    pbQPanLookup[][4];
-extern u_char    panGainFR[];
 extern char      msgSfxTransEffectMalloc[];
 extern char      msgSfxTransEffectNoIds[];
 extern char      msgSfxTransEffectRateMismatch[];
@@ -237,8 +236,8 @@ void SfxPause(void)
         attr.mask = 3;
         attr.voice = 1 << voice;
         SpuGetVoiceAttr(&attr);
-        ((int *)pwVolumeStore)[voice * 2] = attr.volume.left;
-        ((int *)pwVolumeStore)[voice * 2 + 1] = attr.volume.right;
+        pwVolumeStore[voice][0] = attr.volume.left;
+        pwVolumeStore[voice][1] = attr.volume.right;
         attr.voice = 1 << voice;
         attr.mask = 3;
         attr.volume.left = 0;
@@ -280,8 +279,8 @@ void SfxContinue(void)
         rightValue = *rightVolume;
         leftVolume += 2;
         attr.volume.right = (s16) rightValue;
-        *(s32 *)((s32)&voiceList[0].left + voiceOffset) = (s32) (s16) leftValue;
-        *(s32 *)((s32)&voiceList[0].right + voiceOffset) = attr.volume.right;
+        voiceList[voice].left = (s16) leftValue;
+        voiceList[voice].right = attr.volume.right;
         rightVolume += 2;
         SpuSetVoiceAttr(&attr);
         voice += 1;
@@ -290,6 +289,7 @@ void SfxContinue(void)
 }
 
 
+/* Port: the messages are data, so they are printed through "%s" (printf of a non-literal format). */
 int SfxTransEffect(void *left, void *right)
 {
     VagHeader *vag;
@@ -320,16 +320,16 @@ int SfxTransEffect(void *left, void *right)
     address = SpuMalloc(size);
     if (address == -1) {
 noMemory:
-        printf(msgSfxTransEffectMalloc);
+        printf("%s", msgSfxTransEffectMalloc);
         return -2;
     }
     if (Big2Little(vag->rate) != rate) {
-        printf(msgSfxTransEffectRateMismatch);
+        printf("%s", msgSfxTransEffectRateMismatch);
         return -4;
     }
     goto transferRight;
 noSlot:
-    printf(msgSfxTransEffectNoIds);
+    printf("%s", msgSfxTransEffectNoIds);
     return -3;
 transferRight:
     effectList[sample].addressRight = address;
@@ -452,8 +452,8 @@ int SfxPlayId(int sample, u_char volume, u_char lrPan, u_char fbPan, int pitch, 
     int          mix;
 
     level = (u_int)(globalVolume * volume) >> 8;
-    if (!sfxInitialized) return;
-    if (!sfxEnabled) return;
+    if (!sfxInitialized) return 0;
+    if (!sfxEnabled) return 0;
     sound = GetFreePlayId();
     if (sound == -1) return -1;
     mix = level * sfxGain / 255;
@@ -736,14 +736,14 @@ void SetQSoundVolume(int sound)
     pan = playList[sound].lrPan;
     volume = gain << 6;
     if (playList[sound].voiceRight != -1) {
-        pan <<= 2;
-        frontLeft = (pbQPanLookup[0][pan] * volume) >> 8;
-        frontRight = (pbQPanLookup[0][pan + 1] * volume) >> 8;
-        rearLeft = (pbQPanLookup[0][pan + 2] * volume) >> 8;
-        rearRight = (pbQPanLookup[0][pan + 3] * volume) >> 8;
+        frontLeft = (pbQPanLookup[pan][0] * volume) >> 8;
+        frontRight = (pbQPanLookup[pan][1] * volume) >> 8;
+        rearLeft = (pbQPanLookup[pan][2] * volume) >> 8;
+        rearRight = (pbQPanLookup[pan][3] * volume) >> 8;
     } else {
         frontLeft = (volume * pbStereoLookup[pan]) >> 8;
-        frontRight = (volume * panGainFR[-pan]) >> 8;
+        /* Port: this was panGainFR[-pan], where panGainFR was the name of pbStereoLookup[30]. */
+        frontRight = (volume * pbStereoLookup[30 - pan]) >> 8;
         rearLeft = 0;
         rearRight = 0;
     }

@@ -3,10 +3,7 @@
 #include "include_asm_g8.h"
 
 
-extern u_char gameType;
 extern short CurrentScreen;
-extern u_long *OT[];
-extern int *OT2[];
 extern char msgAreYouSure[];
 extern char msgWantToRestart[];
 extern char msgWantToQuit[];
@@ -48,14 +45,12 @@ short         boxHeight;
 short         boxX;
 short         boxY;
 
-extern unsigned short padType;
 extern unsigned short keysDown;
 extern unsigned char cdMusicIndex;
 extern int cdMusicCount;
 extern int cdMusicTrack;
 extern int ambientVoice1;
 extern int trackNameScroll;
-extern unsigned char cdMusicTable[];
 extern char msgControllerRemoved[];
 extern char msgPaused[];
 extern char labelAccept[];

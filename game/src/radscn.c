@@ -5,7 +5,6 @@ u_short debugPadState;
 extern u_short debugPadInput;
 
 
-extern HeapBlock *heap;
 extern TrackData   *track;
 extern Object     **trackObjects;
 void CalcNewRadius(TrackSection *section, Object *objects)
@@ -256,7 +255,7 @@ void RadiusControl(TrackCamera *camera, Object **prm)
 
     junctionIndex = camera->section->junction.index;
     if ((xpad & 0x08) && (junctionIndex != noJunction)) {
-        camera->section = (TrackSection *)junctionIndex;
+        camera->section = camera->section->junction.ptr;
     } else if (xpad & 0x1000) {
         camera->section = camera->section->nextSection.ptr;
     } else if (xpad & 0x4000) {

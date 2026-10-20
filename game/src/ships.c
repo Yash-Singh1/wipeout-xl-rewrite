@@ -8,7 +8,6 @@ int           sharkWiggle;
 u_char        sharkToggle;
 short         shipTex;
 short         bigGrid;
-extern int    shipTargetIndex[];
 
 typedef union ShipPath {
     char name[25];
@@ -23,33 +22,26 @@ typedef struct {
 extern TrackData  *track;
 extern int         ownShip;
 extern int         raceType;
-extern u_char      gameType;
 extern int         remoteShip;
 extern int         ghostShip;
 extern int         shakeAmount;
-extern u_char      sillyShips;
-extern u_short     TextureTableCount;
 extern char        errorString[];
 extern char        shipCmpExt[];
 extern char        shipPrmExt[];
 extern const ShipStartStates startStateTable;
-extern u_short     numTrackSections;
 extern short       activeShipCount;
-extern short       finishPosition;
 extern short       phantomGridPos[];
 extern short       gridPosition[];
 extern ShipRank    shipRank[];
 extern RaceLine    raceLines[];
 extern Texture *textureTable[];
 extern GhostClut   ghostCluts[];
-extern Object     *shipShapeTable[];
 extern Object     *sharkBodyModel;
 extern Object     *sharkLegModel;
 extern SharkVert   sharkBaseVerts[];
 extern SharkVert   sharkFootVerts[];
 extern int         sharkFootIndex[];
 extern short       startLinePos[];
-extern u_short     highResTable[];
 extern u_short     spreadScale0[];
 extern u_short     spreadScale1[];
 extern u_short     spreadScale2[];
@@ -64,8 +56,6 @@ extern u_short shipMaxHeadingClass0[], shipMaxHeadingClass1[], shipMaxHeadingCla
 extern u_short shipRemoteMaxClass0[], shipRemoteMaxClass1[], shipRemoteMaxClass2[], shipRemoteMaxClass3[];
 extern u_short shipRemoteMagClass0[], shipRemoteMagClass1[], shipRemoteMagClass2[], shipRemoteMagClass3[];
 
-void RotTrans(SVECTOR *v0, VECTOR *v1, int *flag);
-void AsmDrawObjectLit(Object *object, Skeleton *camera, int unused, void *win);
 void DrawShips(ShipData *shipIndex, Object **shipShapes, int camShip, TrackCamera camera, int flg)
 {
     int       i;
@@ -81,7 +71,7 @@ void DrawShips(ShipData *shipIndex, Object **shipShapes, int camShip, TrackCamer
     int       v;
     u_char    flags;
     Face     *face;
-    void     *win;
+    CVECTOR  *win;
 
     proximity = 0;
     baseIndex = (u_short)raceLines[camera.section->secNo].distance;
@@ -137,7 +127,7 @@ void DrawShips(ShipData *shipIndex, Object **shipShapes, int camShip, TrackCamer
                     } while (!(flags & 1));
                     face--;
                     if (!(shipIndex[i].attr & LSIDE)) face++;
-                    win = &face->red;
+                    win = (CVECTOR *)&face->red;
                     if (raceType == 3) {
                         if ((i == remoteShip) || (i == ownShip)) {
                             AsmDrawObjectLit(obj, camera.camPos, 0, win);
@@ -602,7 +592,7 @@ void initShipData(TrackSection *section, ShipData *shipIndex, ConfigData *option
         locals.point.vx = (track->vertices[face->vertex[0]].vx + track->vertices[face->vertex[2]].vx) >> 1;
         locals.point.vy = (track->vertices[face->vertex[0]].vy + track->vertices[face->vertex[2]].vy) >> 1;
         locals.point.vz = (track->vertices[face->vertex[0]].vz + track->vertices[face->vertex[2]].vz) >> 1;
-        ship = (ShipData *)(i * sizeof(ShipData) + (int)shipIndex);
+        ship = &shipIndex[i];
         ship->ppivot.vx = locals.point.vx + ((face->normal.vx * 75) >> 10);
         ship->ppivot.vy = locals.point.vy + ((face->normal.vy * 75) >> 10);
         ship->ppivot.vz = locals.point.vz + ((face->normal.vz * 75) >> 10);

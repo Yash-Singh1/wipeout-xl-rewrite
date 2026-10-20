@@ -20,4 +20,9 @@ typedef struct Surface {
     Tile high[16];
 } Surface;
 
+/* The polygon pools of the three tile levels, one per screen buffer (indexed by CurrentScreen). */
+extern POLY_FT4 *TrackLoPolys[2];
+extern POLY_FT4 *TrackMedPolys[2];
+extern POLY_FT4 *TrackHiPolys[2];
+
 #endif

@@ -25,12 +25,6 @@ typedef struct MusicScreen {
     POLY_FT4 rows[6][2];
 } MusicScreen;
 
-/* Per-slot flags byte; the flags live at the start of each 90-byte card slot record. */
-typedef struct CardFlags {
-    unsigned char flags;
-    unsigned char pad[89];
-} CardFlags;
-
 /* Six rows of box polys (one pair per screen buffer) and the outline of the screen. */
 typedef struct DrBox {
     short coords[24];

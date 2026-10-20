@@ -12,12 +12,8 @@ Texture *linkSignTexture;
 int      combError;
 int      combErrorSeen;
 
-extern WADFILE *textureWad;
 extern s32 remoteShip;
 extern s16 CurrentScreen;
-
-
-int _comb_control(int op, int reg, int value);
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
 int           serialResult;
@@ -27,14 +23,10 @@ int           writeFlag;
 u_char        serialWriteSeq;
 extern short   menuRecvMode;
 extern short   menuRecvKey;
-extern u_short menuSendKey;
-extern u_char  menuSendFlags;
 extern u_char  menuRecvFlags;
 extern int     raceType;
 extern int     negconCentre;
 extern int     remoteStartGame;
-extern u_char  gameType;
-void memcpy_80089544(void *dst, void *src, int len);
 
 /* Link-up sign polygons, one per screen. */
 extern POLY_FT4 linkSign[2];
@@ -78,9 +70,6 @@ void InitLinkUpSign(void)
 }
 
 
-extern Skeleton **cameraPtr;
-extern int *OT[];
-
 void DrawLinkSign(ShipData *ships)
 {
     SVECTOR    svec;
@@ -93,11 +82,12 @@ void DrawLinkSign(ShipData *ships)
     int        size, depth, half, screen, right, bottom, page;
 
     if (ships[remoteShip].attr & 0x200) {
-        cam.vx = (*cameraPtr)->relative.t[0];
-        cam.vy = (*cameraPtr)->relative.t[1];
-        cam.vz = (*cameraPtr)->relative.t[2];
-        (*cameraPtr)->super->update = 1;
-        SetSkeletonTransform((*cameraPtr)->super);
+        /* Port: cameraPtr is a TrackCamera *; the console code read its first field, camPos, through a Skeleton ** */
+        cam.vx = cameraPtr->camPos->relative.t[0];
+        cam.vy = cameraPtr->camPos->relative.t[1];
+        cam.vz = cameraPtr->camPos->relative.t[2];
+        cameraPtr->camPos->super->update = 1;
+        SetSkeletonTransform(cameraPtr->camPos->super);
         world.vx = ships[remoteShip].ppivot.vx + cam.vx;
         world.vy = ships[remoteShip].ppivot.vy + cam.vy - 500;
         world.vz = ships[remoteShip].ppivot.vz + cam.vz;
@@ -153,11 +143,12 @@ void DrawLinkSign(ShipData *ships)
 }
 
 
-void _error(void)
+int _error(void)
 {
     _comb_control(2, 0, 0);
     combError = 1;
     combErrorSeen = 1;
+    return 0; /* Port: OpenEvent's handler type returns int; the console's handler returned nothing and the value was ignored */
 }
 
 void _init_cont(void)
@@ -171,7 +162,7 @@ void _init_cont(void)
     _comb_control(1, 1, 0);
 }
 
-void doSerialMenu(ConfigData *config, u_char *selection)
+void doSerialMenu(ConfigData *config, MenuSelection *selection)
 {
     u_char send[16];
     u_char recv[16];
@@ -180,10 +171,11 @@ void doSerialMenu(ConfigData *config, u_char *selection)
     u_char value;
 
     GsGetVcount();
-    send[0] = selection[0x15];
+    /* Port: selection was addressed by byte offset (0x15, 0x14 and 0x12 are ship, shipClass and actTrackNum). */
+    send[0] = selection->ship;
     send[1] = (signed char)raceType;
-    send[2] = selection[0x14];
-    send[3] = selection[0x12];
+    send[2] = selection->shipClass;
+    send[3] = selection->actTrackNum;
     send[4] = (signed char)menuSendKey;
     send[5] = config->weaponsOn;
     send[6] = config->trackNum;
@@ -200,10 +192,10 @@ void doSerialMenu(ConfigData *config, u_char *selection)
         if (gameType == 1) {
             raceType = recv[1];
             value = recv[2];
-            selection[0x14] = value;
+            selection->shipClass = value;
             config->shipClass = value;
             spare = recv[3];
-            selection[0x12] = spare;
+            selection->actTrackNum = spare;
             config->actTrackNum = spare;
             config->weaponsOn = recv[5];
             config->trackNum = recv[6];
@@ -248,24 +240,17 @@ extern s16 linkMyState;
 extern s16 linkRemoteState;
 extern s32 seedWep;
 extern u8 raceEndState;
-extern u8 raceCompleteFlag;
 extern s16 rivalFinishPos;
-extern u8 finishPosition;
 extern u8 remoteRaceDone;
 extern s32 ownShip;
-extern u8 linkSendFlag;
 extern s32 remoteBestLap;
-extern s16 remoteRacePos;
 extern s32 myBestLap;
 extern s32 remoteBestRace;
 extern s32 linkRaceFlag;
 extern u8 linkRaceDone;
 extern u8 linkRaceEnd;
-extern u8 playerPosition;
 extern u8 linkSyncB;
 extern s32 myBestRace;
-extern s32 shipTargetIndex[];
-extern u16 playerControl;
 extern u16 linkPadHead;
 extern u16 linkPadButtons;
 extern u16 linkPadPressed;
@@ -320,7 +305,7 @@ void doSerialGame(int unused, ShipData *ships)
     send.padButtons = buttons;
     send.padPressed = pressed;
     send.padAux0 = aux0;
-    send.control = playerControl;
+    send.control = playerControl[0].head; /* Port: playerControl is a ControlInput; this is its first halfword */
     send.padHead = linkPadHead;
     send.padAux1 = aux1;
     send.posX = px;
@@ -580,14 +565,14 @@ int sendSerialPacket(int type, u_char *data, int count)
 
     checksum = 0;
     buffer[0] = (type << 4) | (serialWriteSeq & 15);
-    memcpy_80089544(buffer + 1, data, count);
+    memcpy(buffer + 1, data, count); /* Port: the console's memcpy, called by its address */
     p = buffer;
     if (count + 1 > 0) {
         length = count + 1;
-        end = (u_char *)(length + (int)p);
+        end = p + length;
         do {
             checksum += *p++;
-        } while ((int)p < (int)end);
+        } while (p < end);
     }
     buffer[count + 1] = checksum;
     write(serialWriteFd, buffer, count + 2);
@@ -614,14 +599,14 @@ int receiveSerialPacket(int unused, u_char *data, int len)
     p = buf;
     count = len + 1;
     if (count > 0) {
-        end = (u_char *)(count + (int)p);
+        end = p + count;
         do {
             sum += *p++;
-        } while ((int)p < (int)end);
+        } while (p < end);
     }
     if ((sum & 0xFF) == buf[len + 1]) {
         serialReadSeq = buf[0] & 0xF;
-        memcpy_80089544(data, &buf[1], len);
+        memcpy(data, &buf[1], len);
         sum = 0;
     } else {
         sum = 1;

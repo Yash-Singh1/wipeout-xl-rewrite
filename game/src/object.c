@@ -7,8 +7,6 @@ unsigned char PsxScratchpad[1024] __attribute__((aligned(8)));
 extern MATRIX cameraMatrix;
 extern VECTOR cameraOffset;
 
-void OuterProduct12(VECTOR *v0, VECTOR *v1, VECTOR *v2);
-
 void SetCameraPosition(int x, int y, int z)
 {
     cameraOffset.vx = 0;
@@ -328,17 +326,12 @@ extern int StaticRVertY[][4];
 extern int StaticRVertZ[][4];
 extern unsigned char envMapU[];
 extern unsigned char envMapV[];
-extern int *OT2[];
-char *volatile nextPrim;
+PrimPtr nextPrim;
 int envmapr;
 int envmapg;
 int envmapb;
 short CurrentScreen;
 unsigned char medalDisplay;
-void RotTransPersN();
-int NormalClip();
-int AverageZ3();
-int AverageZ4();
 
 typedef struct EnvMapWork {
     VECTOR reflect, unusedVector, eye;
@@ -368,6 +361,9 @@ typedef struct EnvMapWork {
     volatile u32 nextPrimitive;
 } EnvMapWork;
 
+/* Port: DrawEnvMap (proven-equivalent text, rewritten by the coordinator) names the primitive
+   cursor as a bare pointer; the shared declaration wraps it in PrimPtr. Remove with the rewrite. */
+#define nextPrim nextPrim.ptr
 void DrawEnvMap(Object *object, void *unused, SVECTOR *normals, int xOffsetIn, int yOffset, int scale)
 {
     EnvMapWork ws;
@@ -643,6 +639,7 @@ triAdvanceCached:
 envDone:
     medalDisplay = 1;
 }
+#undef nextPrim
 
 
 void InitFonts(void)
