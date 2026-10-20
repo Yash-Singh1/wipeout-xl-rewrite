@@ -315,7 +315,7 @@ def scan_all(force=False):
 
 
 # --------------------------------------------------------------------------
-# type model (MSVC i686 layout)
+# type model (the 32-bit MIPS o32 record layout)
 
 
 class Ty:
@@ -2674,11 +2674,11 @@ def report(env, g):
     names = '|'.join(re.escape(s.name) for s in gen)
     hint = re.compile(r'past the|bytes past|follows it in memory|adjacent|overrun|writes index|reads entries|beyond the end|next global', re.I)
     files = glob.glob(os.path.join(ROOT, 'game', 'src', '*.c')) + glob.glob(os.path.join(ROOT, 'game', 'include', '*.h'))
-    files += glob.glob(os.path.join(env.decomp, 'notes', '*.md'))
+    files += glob.glob(os.path.join(env.decomp, 'notes', '*.md')) + glob.glob(os.path.join(ROOT, 'docs', 'port-notes', '*.md'))
     for f in sorted(files):
         for ln, line in enumerate(open(f, encoding='latin-1'), 1):
             if hint.search(line) and re.search(r'\b(%s)\b' % names, line):
-                P('%s:%d: %s' % (os.path.relpath(f, ROOT) if f.startswith(ROOT) else 'decomp-pc/notes/' + os.path.basename(f), ln, line.strip()[:200]))
+                P('%s:%d: %s' % (os.path.relpath(f, ROOT) if f.startswith(ROOT) else 'decomp/notes/' + os.path.basename(f), ln, line.strip()[:200]))
     P('')
     P('== notes per symbol')
     for sy in gen:
