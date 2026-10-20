@@ -1,4 +1,5 @@
 #include "functions.h"
+#include "../../platform/trace.h" /* Port: lockstep test hooks */
 #include "ships.h"
 #include "control.h"
 
@@ -6,6 +7,7 @@
 extern int startCountdown;
 
 extern int           ownShip;
+extern ConfigData   *gameData;
 extern int           ghostShip;
 extern int           remoteShip;
 extern int           raceType;
@@ -36,6 +38,7 @@ void UpdateShips(ShipData *shipIndex, WeaponShape *unused, Object **shipShapes, 
     SVECTOR position;
     ShipData *playerShip;
 
+    PortScriptWrites(&shipIndex[ownShip], gameData); /* Port: scripted writes for the lockstep tests (WIPEOUT_WRITES) */
     activeCount = 0;
     for (i = 0; i < 15; i++) {
         if (!(shipIndex[i].combatAttr & 0x8000)) {

@@ -9,6 +9,7 @@
                            buttons active high in hex, applied from the
                            COUNT-th read of the fixed pad on */
 #include <SDL3/SDL.h>
+#include <dlfcn.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,6 +27,7 @@ enum {
     KIND_GP0 = 3,
     KIND_GP1 = 4,
     KIND_PAD = 11,
+    KIND_STATE = 14,
     KIND_END = 18
 };
 
@@ -184,17 +186,140 @@ void PortScriptGamePad(unsigned char *packet)
     TracePad(1, packet);
 }
 
+/* ---- scripted writes ---- */
+
+typedef struct ScriptWrite {
+    uint32_t count;      /* applied at the first UpdateShips from this pad read on */
+    char target[64];     /* ship, config or a global's name */
+    uint32_t offset, width, value;
+    int done;
+} ScriptWrite;
+
+static ScriptWrite *scriptWrites;
+static int scriptWriteCount;
+
+static void LoadWrites(const char *path)
+{
+    FILE *f = fopen(path, "r");
+    ScriptWrite w;
+    int capacity = 0;
+
+    if (!f) {
+        fprintf(stderr, "trace: cannot read the write script %s\n", path);
+        exit(1);
+    }
+    memset(&w, 0, sizeof(w));
+    while (fscanf(f, "%u %63s %u %u %u", &w.count, w.target, &w.offset, &w.width, &w.value) == 5) {
+        if (scriptWriteCount == capacity) {
+            capacity = capacity ? capacity * 2 : 64;
+            scriptWrites = SDL_realloc(scriptWrites, (size_t)capacity * sizeof(*scriptWrites));
+        }
+        scriptWrites[scriptWriteCount++] = w;
+    }
+    fclose(f);
+}
+
+void PortScriptWrites(void *ship, void *config)
+{
+    int i;
+
+    for (i = 0; i < scriptWriteCount; i++) {
+        ScriptWrite *w = &scriptWrites[i];
+        unsigned char *base;
+
+        if (w->done || padReads < w->count) {
+            continue;
+        }
+        w->done = 1;
+        if (!strcmp(w->target, "ship")) {
+            base = ship;
+        } else if (!strcmp(w->target, "config")) {
+            base = config;
+        } else {
+            base = dlsym(RTLD_DEFAULT, w->target);
+        }
+        if (!base) {
+            fprintf(stderr, "trace: write target %s not found\n", w->target);
+            exit(1);
+        }
+        if (w->width == 1) {
+            base[w->offset] = (unsigned char)w->value;
+        } else if (w->width == 2) {
+            uint16_t v = (uint16_t)w->value;
+            memcpy(base + w->offset, &v, 2);
+        } else {
+            memcpy(base + w->offset, &w->value, 4);
+        }
+    }
+}
+
+/* ---- loading screens ---- */
+
+static uint32_t *loadFrames;
+static int loadCount, loadNext;
+static uint32_t callbackSwaps, loadStart;
+
+static void LoadLoads(const char *path)
+{
+    FILE *f = fopen(path, "r");
+    unsigned value;
+    int capacity = 0;
+
+    if (!f) {
+        fprintf(stderr, "trace: cannot read the loading script %s\n", path);
+        exit(1);
+    }
+    while (fscanf(f, "%u", &value) == 1) {
+        if (loadCount == capacity) {
+            capacity = capacity ? capacity * 2 : 16;
+            loadFrames = SDL_realloc(loadFrames, (size_t)capacity * sizeof(*loadFrames));
+        }
+        loadFrames[loadCount++] = value;
+    }
+    fclose(f);
+}
+
+void PortLoadingStarts(void)
+{
+    loadStart = callbackSwaps;
+}
+
+void PortLoadingEnds(void)
+{
+    uint32_t target;
+    int guard = 0;
+
+    if (loadNext >= loadCount) {
+        return;
+    }
+    target = loadFrames[loadNext++];
+    if (callbackSwaps - loadStart > target) {
+        PortLog("trace: load %d took %u frames, the recording %u\n", loadNext, callbackSwaps - loadStart, target);
+    }
+    while (callbackSwaps - loadStart < target && guard++ < 100000) {
+        PsxVBlank();
+    }
+}
+
 /* ---- recording ---- */
 
 void PortTraceInit(void)
 {
     const char *path = SDL_getenv("WIPEOUT_TRACE");
     const char *pads = SDL_getenv("WIPEOUT_PADS");
+    const char *writes = SDL_getenv("WIPEOUT_WRITES");
+    const char *loads = SDL_getenv("WIPEOUT_LOADS");
     static const unsigned char magic[12] = {'W', 'X', 'L', 'T', 'R', 'C', '0', '1', 1, 0, 0, 0};
     size_t length;
 
     if (pads) {
         LoadPads(pads);
+    }
+    if (writes) {
+        LoadWrites(writes);
+    }
+    if (loads) {
+        LoadLoads(loads);
     }
     if (!path) {
         return;
@@ -246,10 +371,32 @@ void PortTraceReturn(uint32_t function, uint32_t value)
     }
 }
 
+/* The recorder's state event, with the fields the port fills: the pad-read
+   count and the game's random seed. */
+static void TraceState(void)
+{
+    static int32_t *seed;
+    static int looked;
+    uint32_t words[32];
+
+    if (!looked) {
+        looked = 1;
+        seed = dlsym(RTLD_DEFAULT, "attractShip");
+    }
+    memset(words, 0, sizeof(words));
+    words[0] = padReads;
+    words[19] = seed ? (uint32_t)*seed : 0;
+    Event(KIND_STATE, words, 32);
+}
+
 void PortTraceBoundary(uint32_t marker)
 {
+    if (marker == TRACE_CALLBACK_SWAP) {
+        callbackSwaps++;
+    }
     if (PortTracing()) {
         uint32_t words[2] = {marker, 0};
+        TraceState();
         Event(KIND_BOUNDARY, words, 2);
     }
     iteration++;

@@ -20,6 +20,7 @@ from reader import events
 from gp0 import Decoder
 
 MOVIE_LOW, MOVIE_HIGH = 0x80119000, 0x80140000
+CALLBACK_SWAP = 0x800686E8
 ROM_LOW = 0xBFC00000  # the boot ROM's own writes (around Exec), not the game's
 META = {'iteration', 'frame', 'tick', 'address', 'order', 'words'}
 
@@ -62,6 +63,7 @@ class Frame:
         self.table_of = []         # table number of each node
         self.late_heads = []
         self.late = {}             # link number -> (next link number, words)
+        self.marker = None         # the boundary that ended its iteration
 
 
 def frames(path):
@@ -69,7 +71,7 @@ def frames(path):
     decoder = RawDecoder()
     frame, started = None, False
     dma = False
-    kinds = {'gp0', 'gp1', 'dma', 'table', 'late_table', 'late_packet'}
+    kinds = {'gp0', 'gp1', 'dma', 'table', 'late_table', 'late_packet', 'boundary'}
     tables = 0
     for e in events(path, kinds=kinds):
         kind = e['kind']
@@ -85,6 +87,10 @@ def frames(path):
                 decoder.mode, decoder.offset, decoder.window = 0, [0, 0], 0
             continue
         if frame is None and kind != 'gp0':
+            continue
+        if kind == 'boundary':
+            if frame.marker is None:
+                frame.marker = e['words'][0]
             continue
         if kind == 'table':
             pairs = list(zip(e['words'][0::2], e['words'][1::2]))
@@ -131,6 +137,27 @@ def frames(path):
                 frame.state = deepcopy(decoder)
     if frame is not None:
         yield frame
+
+
+def buffer_relative(frame):
+    """A frame drawn into the second display buffer (y 256), described as if
+    it were drawn into the first: which buffer a frame goes to depends on how
+    many loading-screen frames the disc took, which the port does not match."""
+    if not frame.packets or frame.packets[0].get('type') != 'draw_area_min' or frame.packets[0]['xy'][1] < 256:
+        return frame
+    def shift(p):
+        p = dict(p)
+        if p.get('type') in ('draw_area_min', 'draw_area_max', 'draw_offset'):
+            p['xy'] = [p['xy'][0], p['xy'][1] - 256]
+        if 'draw_offset' in p:
+            p['draw_offset'] = [p['draw_offset'][0], p['draw_offset'][1] - 256]
+        if p.get('type') in ('fill',) and p['xy'][1] >= 256:
+            p['xy'] = [p['xy'][0], p['xy'][1] - 256]
+        return p
+    frame.packets = [shift(p) for p in frame.packets]
+    if frame.state is not None:
+        frame.state.offset = [frame.state.offset[0], frame.state.offset[1] - 256]
+    return frame
 
 
 END = 0xFFFFFF
@@ -272,6 +299,20 @@ def bounded_race(console, port, head):
     return j == len(steady)
 
 
+def colours_only(a, b):
+    """The frames differ only in the colours of some vertices (e.g. a colour
+    computed from memory the game never initialised)."""
+    if len(a.packets) != len(b.packets):
+        return False
+    def strip(p):
+        p = dict(p)
+        p.pop('colour', None)
+        if 'vertices' in p:
+            p['vertices'] = [{k: v for k, v in x.items() if k != 'colour'} for x in p['vertices']]
+        return p
+    return all(x == y or strip(x) == strip(y) for x, y in zip(a.packets, b.packets))
+
+
 def first_plain_list(x, y):
     for i in range(max(len(x), len(y))):
         if i >= len(x) or i >= len(y) or x[i] != y[i]:
@@ -293,8 +334,11 @@ def main():
     args = p.parse_args()
 
     console = args.console / 'trace.bin.gz' if args.console.is_dir() else args.console
-    left, right = frames(console), frames(args.port)
-    count = same = timing = 0
+    # loading screens (drawn from the vertical-blank callback) last as long as
+    # the disc takes; the comparison goes on with the game's own frames
+    left = (buffer_relative(f) for f in frames(console) if f.marker != CALLBACK_SWAP)
+    right = (buffer_relative(f) for f in frames(args.port) if f.marker != CALLBACK_SWAP)
+    count = same = timing = colours = 0
     mismatched = []
     first = None
     while args.frames is None or count < args.frames:
@@ -309,12 +353,15 @@ def main():
             same += 1
             timing += a.packets != b.packets
             continue
+        if b is not None and colours_only(a, b):
+            colours += 1
         mismatched.append((count - 1, a.iteration, b.iteration if b else None,
                            len(a.packets), len(b.packets) if b else 0))
         if first is None:
             first = count - 1, a, b, index
     print(f'frames compared: {count}, the same: {same} ({same - timing} packet for packet, '
-          f'{timing} as the console GPU read the tables while the game went on), different: {count - same}')
+          f'{timing} as the console GPU read the tables while the game went on), different: {count - same}'
+          + (f' ({colours} only in vertex colours)' if colours else ''))
     for index, ci, pi, cn, pn in mismatched[:args.show]:
         print(f'  frame {index}: console iteration {ci} ({cn} packets), port iteration {pi} ({pn} packets)')
     if first:

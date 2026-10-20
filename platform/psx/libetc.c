@@ -99,7 +99,13 @@ int VSync(int mode)
 
 int VSyncCallback(void (*f)(void))
 {
+    if (vblankCallback && !f) {
+        PortLoadingEnds(); /* lockstep tests: the console's number of loading frames */
+    }
     vblankCallback = f;
+    if (f) {
+        PortLoadingStarts();
+    }
     return 0;
 }
 

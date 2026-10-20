@@ -28,9 +28,22 @@ void PortTraceReturn(uint32_t function, uint32_t value);
 /* The end of a game-loop iteration. */
 void PortTraceBoundary(uint32_t marker);
 
+/* Loading screens (WIPEOUT_LOADS: the loading-screen frames of each load in
+   a console recording, one number per line). The game draws its loading
+   screen from the vertical-blank callback, which also advances the random
+   seed, so the number of loading frames changes the race that follows. The
+   disc and the console's decompression set that number; when a load ends
+   early the port goes on with loading frames until it is the console's. */
+void PortLoadingStarts(void);
+void PortLoadingEnds(void);
+
 /* Scripted pad input (WIPEOUT_PADS): the game's fixed-pad read calls this
    with its packet before using it, counting the reads... */
 int PortPadScripted(void);
+/* Scripted writes (WIPEOUT_WRITES, made from the recording's writes.txt by
+   tools/trace/writes.py): UpdateShips calls this first with the player's
+   ship and the game's configuration. */
+void PortScriptWrites(void *ship, void *config);
 void PortScriptFixedPad(unsigned char *packet);
 /* ... and so does buildGameKeyPad, without advancing the count. */
 void PortScriptGamePad(unsigned char *packet);
