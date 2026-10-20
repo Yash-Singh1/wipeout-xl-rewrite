@@ -1,0 +1,99 @@
+{
+ "name": "race-20-phenitia-park",
+ "frames": 16000,
+ "autopilot": true,
+ "skip_intro": true,
+ "script": [
+  [
+   0,
+   0
+  ],
+  [
+   120,
+   "START"
+  ],
+  [
+   125,
+   0
+  ],
+  [
+   240,
+   "UP"
+  ],
+  [
+   245,
+   0
+  ],
+  [
+   360,
+   "RIGHT"
+  ],
+  [
+   365,
+   0
+  ],
+  [
+   480,
+   "RIGHT"
+  ],
+  [
+   485,
+   0
+  ],
+  [
+   600,
+   "CROSS"
+  ],
+  [
+   605,
+   0
+  ],
+  [
+   720,
+   "DOWN"
+  ],
+  [
+   725,
+   0
+  ],
+  [
+   840,
+   "RIGHT"
+  ],
+  [
+   845,
+   0
+  ],
+  [
+   960,
+   "CROSS"
+  ],
+  [
+   965,
+   0
+  ],
+  [
+   1080,
+   "DOWN"
+  ],
+  [
+   1085,
+   0
+  ],
+  [
+   1200,
+   "CROSS"
+  ],
+  [
+   1205,
+   0
+  ],
+  [
+   1320,
+   "UP"
+  ]
+ ],
+ "coverage": [
+  "Arcade race on Phenitia Park under autopilot: start, laps, AI, weapons"
+ ]
+}
