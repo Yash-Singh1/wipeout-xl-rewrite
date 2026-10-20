@@ -56,5 +56,4 @@ ShipData *shipIndex;
 u_char linkRaceDone;
 u_char linkSyncB;
 HiScoreData scoreTabData;
-/* Port: the take header holds words (recordKeyCount...); the executable has it word-aligned */
-GhostReplay recordBuffer[1] __attribute__((aligned(4)));
+GhostReplay recordBuffer[1];

@@ -20,6 +20,7 @@ import re
 import struct
 import subprocess
 import sys
+import shutil
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -1745,7 +1746,7 @@ def generate(env, scan, quiet=False):
     header_typedefs = {n['name'] for nodes in scan.values() for n in nodes
                        if n['kind'] == 'TypedefDecl' and '/include/' in (n['_where'][0] or '')}
     return dict(syms=syms, order=order, em=em, modules=modules, results=results, runs=runs, tys=tys,
-                skipped=skipped, header_typedefs=header_typedefs, synthetic=g_synth, funcdecls=funcdecls)
+                skipped=skipped, header_typedefs=header_typedefs, synthetic=g_synth, funcdecls=funcdecls, scan=scan)
 
 
 def source_includes(module):
@@ -2100,7 +2101,7 @@ def apply_aliases(dry=False):
     return report
 
 
-def externalize(g, dry=False):
+def externalize(g, dry=False, root=ROOT):
     """Turn the tentative definitions of game/src that the data files define into extern declarations
     (without this the program has two definitions of each, and the game's would be zero-filled).
     Returns (changed lines, lines it could not handle)."""
@@ -2113,7 +2114,7 @@ def externalize(g, dry=False):
             if not d.extern and not d.static and not d.invalid:
                 byfile[d.tu].append((d.where[1], sy, d))
     for tu, items in sorted(byfile.items()):
-        path = os.path.join(ROOT, 'game', 'src', tu)
+        path = os.path.join(root, 'game', 'src', tu)
         lines = open(path, encoding='latin-1').read().split('\n')
         for ln, sy, d in sorted(items):
             line = lines[ln - 1]
@@ -2196,6 +2197,61 @@ def check_aliases(env, g, tmp, res, bad):
     res['aliases checked natively'] += len(D.ALIASES) if r.returncode == 0 else 0
     if r.returncode:
         bad.append('alias test failed:\n' + r.stdout[:1500])
+
+
+def nm_symbols(objs, flags):
+    """Names the object files define (flags 'B', 'D', 'C'...) or leave undefined ('U')."""
+    r = subprocess.run(['nm', '-g'] + objs, capture_output=True, text=True)
+    out = collections.defaultdict(set)
+    for line in r.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[-2] in flags:
+            n = parts[-1]
+            out[parts[-2]].add(n[1:] if n.startswith('_') and sys.platform == 'darwin' else n)
+    return out
+
+
+def link_check(env, g, tmp, data_files, res, bad):
+    """The program's globals as the linker sees them: compile the game sources (a copy in which the tentative
+    definitions the data files define are made extern: --externalize) and the data files, then look for
+    globals defined twice and variables used but defined nowhere."""
+    work = os.path.join(tmp, 'tree')
+    shutil.copytree(os.path.join(ROOT, 'game'), os.path.join(work, 'game'), ignore=shutil.ignore_patterns('data'))
+    done, problems = externalize(g, False, work)
+    for p_ in problems:
+        bad.append('--externalize cannot handle %s' % p_)
+    res['game sources: tentative definitions made extern (--externalize)'] += len(done)
+    plat = os.path.join(ROOT, 'platform', 'include')
+    objs = []
+    for f in sorted(glob.glob(os.path.join(work, 'game', 'src', '*.c'))):
+        o = os.path.join(tmp, 'link-' + os.path.basename(f) + '.o')
+        r = subprocess.run(['clang', '-c', '-w', '-fsigned-char', '-fno-strict-aliasing', '-fwrapv', '-D_FORTIFY_SOURCE=0',
+                            '-std=gnu11', '-include', os.path.join(plat, 'port.h'), '-I' + os.path.join(work, 'game', 'include'),
+                            '-I' + plat, '-o', o, f], capture_output=True, text=True)
+        if r.returncode:
+            res['game sources that do not compile natively (skipped by the link check)'] += 1
+            continue
+        objs.append(o)
+        res['game sources compiled natively'] += 1
+    dobjs = []
+    for f in data_files:
+        o = os.path.join(tmp, 'link-' + os.path.basename(f) + '.o')
+        r = subprocess.run(compile_cmd(f, o, True), capture_output=True, text=True)
+        if r.returncode == 0:
+            dobjs.append(o)
+    game = nm_symbols(objs, 'BDCRSTbdcrst')
+    data = nm_symbols(dobjs, 'BDCRSTbdcrst')
+    defined_game = set().union(*(game[k] for k in game if k != 'U')) if game else set()
+    defined_data = set().union(*(data[k] for k in data if k != 'U')) if data else set()
+    for n_ in sorted(defined_game & defined_data):
+        bad.append('%s is defined by the data files and by a game source' % n_)
+    variables = {n['name'] for tu_ in g['scan'].values() for n in tu_ if n['kind'] == 'VarDecl' and n.get('storageClass') != 'static'}
+    undefined = (game.get('U', set()) | data.get('U', set())) - defined_game - defined_data
+    missing = sorted(n_ for n_ in undefined if n_ in variables)
+    res['variables used but defined by neither the data files nor the game sources'] += len(missing)
+    g['undefined_variables'] = missing
+    for n_ in missing:
+        print('UNDEFINED VARIABLE', n_)
 
 
 def check(env, g, outdir):
@@ -2291,6 +2347,21 @@ def check(env, g, outdir):
             continue
         bad.append('%s (%d bytes, extent %d) contains the declared names %s: needs an alias or TRUNCATE decision' % (
             sy_.name, real_size(sy_), sy_.extent, ' '.join('%s@+%d' % (o.name, o.addr - sy_.addr) for o in inner)))
+    link_check(env, g, tmp, files, res, bad)
+    # decisions the sources no longer need
+    stale = []
+    live_overlap = {sy_.name for sy_, _ in overlaps(g)}
+    for n_ in D.TRUNCATE:
+        if n_ not in live_overlap:
+            stale.append('TRUNCATE %s: no declared name inside it any more' % n_)
+    for n_ in list(D.SIZES) + list(D.ABSOLUTE) + list(D.ALIGN):
+        if n_ not in g['results']:
+            stale.append('%s: not a defined global any more' % n_)
+    for a_ in D.ALIASES:
+        if a_.container not in g['results']:
+            stale.append('alias %s: container %s is not defined' % (a_.name, a_.container))
+    for line_ in stale:
+        print('STALE', line_)
     check_aliases(env, g, tmp, res, bad)
     return res, bad, native_bad, tmp
 

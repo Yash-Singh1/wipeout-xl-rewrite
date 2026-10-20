@@ -268,14 +268,11 @@ TRUNCATE = {
 
 # Definitions that must be aligned stricter than their type (the aliases read words from them).
 ALIGN = {
-    'recordBuffer': (4, 'the take header holds words (recordKeyCount...); the executable has it word-aligned'),
-    'replayBuffer': (4, 'the take header holds words (replayKeyCount...); the executable has it word-aligned'),
 }
 
 # Pointers that hold an address of the console's RAM outside the program's image (the area above the end of
 # .bss): written as 0, they mean nothing to a native program. name -> why.
 ABSOLUTE = {
-    'rambase': 'holds 0x80100000, the first byte of console RAM above the program; only LoadProg (dead code) used it',
 }
 
 SYNTHETIC = []

@@ -405,8 +405,7 @@ POLY_FT4 menuButtons[30][2];
 Texture *textureTable[800];
 FontGlyph fontGlyphs8[40];
 SVECTOR VertexNormal[140];
-/* Port: the take header holds words (replayKeyCount...); the executable has it word-aligned */
-GhostReplay replayBuffer[1] __attribute__((aligned(4)));
+GhostReplay replayBuffer[1];
 FontGlyph fontGlyphs16[40];
 CardSlot cardSlots[2];
 ControlInput playerControl[1];
