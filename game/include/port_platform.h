@@ -12,6 +12,11 @@ void PsxPlayMovie(const char *fileName);
    (screen coordinates at +0, depths at +0x200, clip flags at +0x300).  Defined in game/src/object.c. */
 extern unsigned char PsxScratchpad[1024];
 
+/* The window keeps showing its last picture until the area of video memory on display has been drawn
+   again (an ordering table drawn there): for a wipe of video memory between two pictures that the player
+   is not meant to see. */
+void PsxHoldPicture(void);
+
 /* A buffer of packets that gets link numbers of its own (libgpu numbers every packet address it links;
    a large buffer whose packets move from frame to frame would use up its table). */
 void PsxLinkRegion(void *start, size_t bytes);

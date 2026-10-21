@@ -448,9 +448,42 @@ int DrawSync(int mode)
 /* The display: libetc's VSync calls this when a frame is shown. The GPU scans out 240 lines (NTSC)
    from the display start whatever height the environment gives (the menus say 180 and draw down to
    line 230); only a height above 256 is an interlaced picture of twice that. */
+/* The window keeps its last picture until the area to be shown has been drawn again (PsxHoldPicture):
+   the drawing areas of the tables drawn since. */
+#define HOLD_AREAS 4
+static int holdPicture, holdAreaCount;
+static struct {
+    int left, top, right, bottom;
+} holdAreas[HOLD_AREAS];
+
+void PsxHoldPicture(void)
+{
+    holdPicture = 1;
+    holdAreaCount = 0;
+}
+
+static int HoldReleased(void)
+{
+    int i;
+
+    for (i = 0; i < holdAreaCount; i++) {
+        if (state.displayX >= holdAreas[i].left && state.displayX <= holdAreas[i].right &&
+            state.displayY >= holdAreas[i].top && state.displayY <= holdAreas[i].bottom) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 void PsxShowDisplay(void)
 {
     GpuFlush();
+    if (holdPicture) {
+        if (!HoldReleased()) {
+            return;
+        }
+        holdPicture = 0;
+    }
     if (state.displayEnabled && state.displayW > 0 && state.displayH > 0) {
         GpuPresent(state.displayX, state.displayY, state.displayW, state.displayH > 256 ? 480 : 240);
     } else {
@@ -969,6 +1002,13 @@ static void ReadPendingTables(void)
 
 void DrawOTag(u_long *p)
 {
+    if (holdPicture && holdAreaCount < HOLD_AREAS) {
+        holdAreas[holdAreaCount].left = state.areaLeft;
+        holdAreas[holdAreaCount].top = state.areaTop;
+        holdAreas[holdAreaCount].right = state.areaRight;
+        holdAreas[holdAreaCount].bottom = state.areaBottom;
+        holdAreaCount++;
+    }
     u_long *node;
     int tracing = PortTracing() && pendingCount < PENDING_TABLES;
 

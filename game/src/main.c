@@ -237,6 +237,9 @@ music_done:
             rect.w = 0x140;
             rect.x = 0;
             rect.y = 0;
+            /* Port: the console showed this wipe of both screens for a few fields between the loading
+               message after a race and the one of the menus; the window keeps the loading message instead. */
+            PsxHoldPicture();
             ClearImage(&rect, 0, 0, 0);
             DrawSync(0);
             SetCdVolume((gameData->musicVolume * 0xFF) / 100);
