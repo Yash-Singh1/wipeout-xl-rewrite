@@ -121,12 +121,12 @@ void AsmTrackLo(TrackSection *firstSection, Skeleton *camera, short loCount)
             poly->g0 = face->green;
             poly->b0 = face->blue;
             AddPrim((u_long *)((char *)ordering + (depth & 0xFFFC)), poly);
+            PortFarMarkFace(face); /* Port: the far view draws the faces the game did not */
             poly++;
             loTileCount++;
         next_face:
             face++;
         } while (--faceCount > 0);
-        PortFarMarkSection(section); /* Port: the far view draws the sections the game did not */
         section++;
     } while (--loCount > 0);
 }
@@ -181,6 +181,7 @@ static POLY_FT4 *DrawGridQuad(POLY_FT4 *poly, u_long *ordering, Face *face, Tile
     GteWriteData(19, p3->depth);
     GteExecute(GTE_AVSZ4);
     AddPrim(ordering + GteReadData(7), poly);
+    PortFarMarkFace(face); /* Port: the far view draws the faces the game did not */
     return poly + 1;
 }
 
@@ -266,7 +267,6 @@ void AsmTrackMed(TrackSection *firstSection, Skeleton *camera, short medCount)
             }
             face++;
         } while (--faceCount > 0);
-        PortFarMarkSection(section); /* Port: the far view draws the sections the game did not */
         section++;
     } while (--medCount > 0);
 }
@@ -388,6 +388,7 @@ static void DrawPartialCell(GridPoint *cell[4], Tile *tile, Face *face, u_long *
         GteWriteData(19, d->depth);
         GteExecute(GTE_AVSZ4);
         AddPrim(ordering + GteReadData(7), poly);
+        PortFarMarkFace(face); /* Port */
         nextPrim.ptr = (char *)(poly + 1);
     }
 }
@@ -469,14 +470,14 @@ void AsmTrackHi(TrackSection *firstSection, Skeleton *camera, AutoMeshData *auto
             }
             face++;
         } while (--faceCount > 0);
-        PortFarMarkSection(section); /* Port: the far view draws the sections the game did not */
         section++;
     } while (--hiCount > 0);
     hiTileCount = (short)count;
 }
 
 
-/* Port: a section beyond the game's view lists, in the low detail of AsmTrackLo, projected in full precision
+/* Port: the faces of a section the game did not draw (beyond its view lists, or dropped: a corner farther
+   than 16 bits or deeper than the GTE's depth range), in the low detail of AsmTrackLo, projected in full precision
    (portfar.h). Faces with a corner too near or beyond the GPU's coordinates are left out, as the GTE's flags
    leave them out of AsmTrackLo; so are faces wholly off screen. */
 void PortTrackFar(TrackSection *section, const PortView *view)
@@ -490,6 +491,9 @@ void PortTrackFar(TrackSection *section, const PortView *view)
         POLY_FT4     *poly;
         int           left = 0, right = 0, above = 0, below = 0;
 
+        if (PortFarFaceDrawn(face)) {
+            continue; /* the game drew it */
+        }
         for (k = 0; k < 4; k++) {
             VECTOR *vertex = &track->vertices[face->vertex[k]];
 

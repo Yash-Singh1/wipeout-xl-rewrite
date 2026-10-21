@@ -33,7 +33,8 @@ typedef struct PortFarVertex {
 void PortFade(int on);
 
 /* The game marks what it drew this frame. */
-void PortFarMarkSection(TrackSection *section);
+void PortFarMarkFace(Face *face);     /* a track face the game drew (some of) */
+int PortFarFaceDrawn(Face *face);
 void PortFarMarkObject(Object *object);
 void PortFarMarkShip(int ship);
 

@@ -27,8 +27,8 @@ static u_long   farTable[2][FAR_BUCKETS];
 static char     arena[2][ARENA_BYTES];
 static int      arenaUsed;
 static uint32_t frame = 1;
-static uint32_t *sectionMarks;
-static int      sectionMarkCount;
+static uint32_t *faceMarks;      /* the frame each track face was last drawn by the game */
+static int      faceMarkCount;
 static uint32_t shipMarks[15];
 static struct {
     Object  *object;
@@ -48,22 +48,29 @@ static int Enabled(void)
     return enabled;
 }
 
-void PortFarMarkSection(TrackSection *section)
+void PortFarMarkFace(Face *face)
 {
     int index;
 
     if (!track || !Enabled()) {
         return;
     }
-    if (sectionMarkCount < track->sectionCount) {
-        sectionMarks = realloc(sectionMarks, (size_t)track->sectionCount * sizeof(*sectionMarks));
-        memset(sectionMarks + sectionMarkCount, 0, (size_t)(track->sectionCount - sectionMarkCount) * sizeof(*sectionMarks));
-        sectionMarkCount = track->sectionCount;
+    if (faceMarkCount < track->faceCount) {
+        faceMarks = realloc(faceMarks, (size_t)track->faceCount * sizeof(*faceMarks));
+        memset(faceMarks + faceMarkCount, 0, (size_t)(track->faceCount - faceMarkCount) * sizeof(*faceMarks));
+        faceMarkCount = track->faceCount;
     }
-    index = (int)(section - track->sections);
-    if (index >= 0 && index < sectionMarkCount) {
-        sectionMarks[index] = frame;
+    index = (int)(face - track->faces);
+    if (index >= 0 && index < faceMarkCount) {
+        faceMarks[index] = frame;
     }
+}
+
+int PortFarFaceDrawn(Face *face)
+{
+    int index = track ? (int)(face - track->faces) : -1;
+
+    return index >= 0 && index < faceMarkCount && faceMarks[index] == frame;
 }
 
 static int ObjectSlot(Object *object)
@@ -242,9 +249,6 @@ static void DrawFarTrack(TrackCamera *camera)
         TrackSection *section = track->sections + i;
         double c[3];
 
-        if (i < sectionMarkCount && sectionMarks[i] == frame) {
-            continue;
-        }
         for (k = 0; k < 3; k++) {
             c[k] = view.m[k][0] * section->centre.vx + view.m[k][1] * section->centre.vy + view.m[k][2] * section->centre.vz +
                    view.t[k];
