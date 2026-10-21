@@ -545,6 +545,7 @@ static int DrawNearPrimitive(Object *object, int index, u_long *ordering, Poly p
     int            count, gouraud = 0, rejected = 0, i, k, n = 0, slot;
     NearCorner     corner[4], clipped[8];
     double         sum = 0.0, h = (double)(u_short)GteReadControl(26);
+    int            margin = PortScreenMargin(); /* widescreen's sides */
     char          *start, *out;
     const double  *a, *b, *c;
 
@@ -625,7 +626,8 @@ static int DrawNearPrimitive(Object *object, int index, u_long *ordering, Poly p
     for (i = 0, k = 0; i < n; i++) {
         double x = clipped[i].c[0] * h / clipped[i].c[2], y = clipped[i].c[1] * h / clipped[i].c[2];
 
-        k |= (x < 200.0) | (x > -200.0) << 1 | (y < 160.0) << 2 | (y > -160.0) << 3; /* a generous screen */
+        /* a generous screen (widescreen's sides included) */
+        k |= (x < 200.0 + margin) | (x > -200.0 - margin) << 1 | (y < 160.0) << 2 | (y > -160.0) << 3;
         sum += clipped[i].c[2];
     }
     if (k != 15) {

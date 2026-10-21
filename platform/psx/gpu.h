@@ -79,4 +79,8 @@ void GpuFlush(void);
    when it is wider (square pixels). */
 void GpuShowImage(const uint8_t *rgb, int width, int height);
 
+/* Widescreen: how far the picture reaches beyond each side of the screen's 320 columns while a race is shown
+   wide (0: the console's 4:3). Also the game's (port_platform.h), with PortWideScene. */
+int PortScreenMargin(void);
+
 #endif

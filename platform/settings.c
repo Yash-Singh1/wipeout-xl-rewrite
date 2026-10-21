@@ -7,7 +7,7 @@
 #include "platform.h"
 #include "settings.h"
 
-PortSettings portSettings = {0, 1, 1, 64000, 96000, 0, 1, 0, 1, 0, ""};
+PortSettings portSettings = {0, 1, 1, 64000, 96000, 0, 1, 0, 0, 1, 0, ""};
 
 static char path[1024];
 static char defaultSaveDir[1024];
@@ -40,6 +40,8 @@ static void Set(const char *key, const char *value)
         portSettings.depthTest = number != 0;
     } else if (!strcmp(key, "large_polygons")) {
         portSettings.largePolygons = number != 0;
+    } else if (!strcmp(key, "widescreen")) {
+        portSettings.widescreen = number != 0;
     } else if (!strcmp(key, "skip_intro")) {
         portSettings.skipIntro = number != 0;
     } else if (!strcmp(key, "record_frames")) {
@@ -99,6 +101,9 @@ void PortSettingsLoad(void)
     if ((value = SDL_getenv("WIPEOUT_LARGE_POLYGONS"))) {
         portSettings.largePolygons = SDL_atoi(value) != 0;
     }
+    if ((value = SDL_getenv("WIPEOUT_WIDESCREEN"))) {
+        portSettings.widescreen = SDL_atoi(value) != 0;
+    }
     if ((value = SDL_getenv("WIPEOUT_FADE"))) {
         int a = 0, b = 0;
 
@@ -125,9 +130,10 @@ int PortSettingsSave(void)
     fprintf(file,
             "# Wipeout XL settings (the backtick key opens the debug console that changes them)\n"
             "show_fps = %d\nfar_view = %d\nfade = %d\nfade_near = %d\nfade_far = %d\ndepth_test = %d\n"
-            "large_polygons = %d\nskip_intro = %d\nrecord_frames = %d\nrecord_replays = %d\nsave_dir = %s\n",
+            "large_polygons = %d\nwidescreen = %d\nskip_intro = %d\nrecord_frames = %d\nrecord_replays = %d\nsave_dir = %s\n",
             portSettings.showFps, portSettings.farView, portSettings.fade, portSettings.fadeNear, portSettings.fadeFar,
-            portSettings.depthTest, portSettings.largePolygons, portSettings.skipIntro, portSettings.recordFrames,
+            portSettings.depthTest, portSettings.largePolygons, portSettings.widescreen, portSettings.skipIntro,
+            portSettings.recordFrames,
             portSettings.recordReplays,
             portSettings.saveDir);
     fclose(file);

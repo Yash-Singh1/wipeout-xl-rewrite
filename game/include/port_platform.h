@@ -31,6 +31,11 @@ void PsxLinkRegion(void *start, size_t bytes);
 /* Whether the port draws the whole track in view (portfar.h): not in the lockstep tests (WIPEOUT_TRACE)
    or with WIPEOUT_FAR_VIEW=0. */
 int PortFarViewEnabled(void);
+/* Widescreen (the settings): how far the picture reaches beyond each side of the console's 320 columns, in
+   console pixels; 0 for the console's 4:3. Only a race's scene is shown wide (the game says so every frame it
+   draws one): the menus and the loading screens keep the console's shape. */
+int PortScreenMargin(void);
+void PortWideScene(void);
 /* The distance fade's range in world units; whether it is on (the settings, platform/settings.c). */
 int PortFadeRange(int *nearDistance, int *farDistance);
 

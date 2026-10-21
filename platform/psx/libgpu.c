@@ -697,6 +697,8 @@ void SetDumpFnt(int id)
 
 /* ---- drawing packets ---- */
 
+static float hudShift; /* widescreen: the HUD element being drawn goes this far towards its edge (DrawAnchored) */
+
 /* A vertex at packet position xy, from its projection when it was found. */
 static void Vertex(GpuVertex *v, uint32_t xy, const GtePrecise *precise)
 {
@@ -709,7 +711,7 @@ static void Vertex(GpuVertex *v, uint32_t xy, const GtePrecise *precise)
         v->a = (uint8_t)(precise->fade * 255.0f + 0.5f);
         v->background = (uint8_t)precise->background;
     } else {
-        v->x = (float)(x + state.offsetX);
+        v->x = (float)(x + state.offsetX) + hudShift;
         v->y = (float)(y + state.offsetY);
         v->w = 0.0f; /* no depth: affine */
     }
@@ -974,7 +976,7 @@ static void Rectangle(const uint32_t *w, uint32_t code)
     memset(v, 0, sizeof(v));
     for (k = 0; k < 4; k++) {
         Colour(&v[k], colour);
-        v[k].x = (float)(x + state.offsetX + ((k & 1) ? width : 0));
+        v[k].x = (float)(x + state.offsetX + ((k & 1) ? width : 0)) + hudShift;
         v[k].y = (float)(y + state.offsetY + ((k & 2) ? height : 0));
         v[k].u = (float)((uv & 0xFF) + ((k & 1) ? width : 0));
         v[k].v = (float)(((uv >> 8) & 0xFF) + ((k & 2) ? height : 0));
@@ -1143,6 +1145,126 @@ static void HudPoint(GpuVertex *v)
     v->y = oy + 120.0f + (v->y - oy - 120.0f) * 0.5f;
 }
 
+/* The rectangle a drawing packet covers, in drawing-area coordinates; 0 for packets that draw nothing. */
+static int PacketBounds(const uint32_t *w, int words, int box[4])
+{
+    uint32_t code = w[0] >> 24;
+    int i, k = 1, count = 0;
+    int32_t xs[4], ys[4];
+
+    if (code >= 0x20 && code < 0x40) {
+        int gouraud = (code & 0x10) != 0, textured = (code & 0x04) != 0;
+
+        for (i = 0; i < ((code & 0x08) ? 4 : 3) && k < words; i++) {
+            if (i > 0 && gouraud) {
+                k++;
+            }
+            xs[count] = (int32_t)(w[k] << 21) >> 21;
+            ys[count++] = (int32_t)(w[k] << 5) >> 21;
+            k += textured ? 2 : 1;
+        }
+    } else if (code >= 0x40 && code < 0x60) {
+        xs[0] = (int32_t)(w[1] << 21) >> 21;
+        ys[0] = (int32_t)(w[1] << 5) >> 21;
+        k = (code & 0x10) ? 3 : 2;
+        xs[1] = k < words ? (int32_t)(w[k] << 21) >> 21 : xs[0];
+        ys[1] = k < words ? (int32_t)(w[k] << 5) >> 21 : ys[0];
+        count = 2;
+    } else if (code >= 0x60 && code < 0x80) {
+        int size = (code >> 3) & 3, width, height;
+
+        k = (code & 0x04) ? 3 : 2;
+        if (size == 0) {
+            width = k < words ? (int)(w[k] & 0x3FF) : 0;
+            height = k < words ? (int)((w[k] >> 16) & 0x1FF) : 0;
+        } else {
+            width = height = size == 1 ? 1 : size == 2 ? 8 : 16;
+        }
+        xs[0] = (int32_t)(w[1] << 21) >> 21;
+        ys[0] = (int32_t)(w[1] << 5) >> 21;
+        xs[1] = xs[0] + width;
+        ys[1] = ys[0] + height;
+        count = 2;
+    }
+    if (!count) {
+        return 0;
+    }
+    box[0] = box[2] = xs[0];
+    box[1] = box[3] = ys[0];
+    for (i = 1; i < count; i++) {
+        box[0] = xs[i] < box[0] ? xs[i] : box[0];
+        box[2] = xs[i] > box[2] ? xs[i] : box[2];
+        box[1] = ys[i] < box[1] ? ys[i] : box[1];
+        box[3] = ys[i] > box[3] ? ys[i] : box[3];
+    }
+    return 1;
+}
+
+/* Widescreen (gpu_gl.c): an ordering table drawn with the HUD's elements at the edges of the wide picture. The
+   HUD's packets (from hudEntry on, or all of hudTable) are taken apart into elements, runs of packets that
+   touch (the letters of a text, the parts of the speedometer), and an element wholly in the left or the right
+   part of the console's picture goes to that edge; what reaches the middle (centred messages, the weapon icon,
+   the pause menu) stays where the game put it. */
+#define ANCHOR_GAP 10    /* packets this close side by side are one element */
+#define ANCHOR_LEFT 140  /* an element ending left of this goes to the left edge */
+#define ANCHOR_RIGHT 180 /* ... beginning right of this to the right edge */
+
+static void DrawAnchored(u_long *p, int margin)
+{
+    static u_long **hud;
+    static int capacity;
+    int count = 0, inHud = p == hudTable, i, first;
+    u_long *node;
+
+    for (node = p; node; node = NodeAfter(node)) {
+        if (node == hudEntry) {
+            inHud = 1;
+        }
+        if (!(*node >> 24)) {
+            continue;
+        }
+        if (!inHud) {
+            Submit((const uint32_t *)(node + 1), (int)(*node >> 24));
+            continue;
+        }
+        if (count == capacity) {
+            capacity = capacity ? capacity * 2 : 1024;
+            hud = realloc(hud, (size_t)capacity * sizeof(*hud));
+        }
+        hud[count++] = node;
+    }
+    for (first = 0; first < count;) {
+        int box[4], group[4], have = 0, last, shift;
+
+        /* the element from `first`: packets that touch the ones before them */
+        for (last = first; last < count; last++) {
+            if (!PacketBounds((const uint32_t *)(hud[last] + 1), (int)(*hud[last] >> 24), box)) {
+                continue;
+            }
+            if (have && (box[0] > group[2] + ANCHOR_GAP || box[2] < group[0] - ANCHOR_GAP || box[1] > group[3] ||
+                         box[3] < group[1])) {
+                break;
+            }
+            if (!have) {
+                memcpy(group, box, sizeof(group));
+                have = 1;
+            } else {
+                group[0] = box[0] < group[0] ? box[0] : group[0];
+                group[1] = box[1] < group[1] ? box[1] : group[1];
+                group[2] = box[2] > group[2] ? box[2] : group[2];
+                group[3] = box[3] > group[3] ? box[3] : group[3];
+            }
+        }
+        shift = !have ? 0 : group[2] <= ANCHOR_LEFT ? -margin : group[0] >= ANCHOR_RIGHT ? margin : 0;
+        hudShift = (float)shift;
+        for (i = first; i < last; i++) {
+            Submit((const uint32_t *)(hud[i] + 1), (int)(*hud[i] >> 24));
+        }
+        hudShift = 0.0f;
+        first = last > first ? last : first + 1;
+    }
+}
+
 void DrawOTag(u_long *p)
 {
     u_long *node;
@@ -1170,6 +1292,11 @@ void DrawOTag(u_long *p)
             }
         }
         hudActive = 0;
+        GteFrameDrawn();
+        return;
+    }
+    if (PortScreenMargin() && !tracing) {
+        DrawAnchored(p, PortScreenMargin());
         GteFrameDrawn();
         return;
     }

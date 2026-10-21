@@ -405,6 +405,7 @@ frame:
     DrawShips(shipIndex,shipShapeTable,ownShip,raceCamera,pauseState.selection);
     if(!medalDisplay) DrawLandscape(&shipIndex[ownShip],&raceCamera);
     if(!medalDisplay) PortFarDraw(&raceCamera,shipIndex,shipShapeTable); /* Port: the rest of the track in view (portfar.h) */
+    if(!medalDisplay) PortWideScene(); /* Port: widescreen shows the race wide */
     prmObjects[(short)locals.skyIndex]->skeleton->update=one;
     savedUpperY=raceCamera.camPos->super->relative.t[1];
     if(gameData->actTrackNum==17) {

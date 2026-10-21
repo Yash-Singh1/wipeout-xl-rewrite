@@ -523,6 +523,12 @@ static void Console(void)
             }
             ImGui::TextDisabled("The console skips polygons over 1023x511 pixels: holes in the track close to the camera.");
             ImGui::Separator();
+            bool wide = portSettings.widescreen != 0;
+            if (ImGui::Checkbox("Widescreen", &wide)) {
+                portSettings.widescreen = wide;
+                Changed();
+            }
+            ImGui::TextDisabled("In a window wider than 4:3 a race fills it, the HUD at the edges; the menus stay 4:3.");
             bool fullscreen = (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) != 0;
             if (ImGui::Checkbox("Full screen (Alt+Enter, F11)", &fullscreen)) {
                 SDL_SetWindowFullscreen(window, fullscreen);

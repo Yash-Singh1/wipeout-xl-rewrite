@@ -40,6 +40,11 @@ models, but decals such as sign faces then flicker against their boards). The
 disc is read as fast as the image allows, so loading takes a moment instead
 of the console's seconds (`WIPEOUT_CD_SPEED=1` for the console's drive).
 
+Widescreen (the debug console's Graphics tab, or `WIPEOUT_WIDESCREEN=1`): in a
+window wider than 4:3 a race fills the whole width, showing more of the scene at
+the sides, with the HUD at the window's edges. The menus, loading screens and
+movies keep the console's 4:3, and the game computes exactly what it did.
+
 `--window 1920x1440` sets the window size, `--fullscreen` starts full screen;
 Alt+Enter or F11 switches while playing. The environment variables
 The environment variable `WIPEOUT_XL_DISC` can stand in for the disc's path.

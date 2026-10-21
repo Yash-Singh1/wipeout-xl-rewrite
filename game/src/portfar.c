@@ -310,8 +310,8 @@ static int MaybeVisible(const double c[3], double radius)
     if (z < h * 0.5) {
         return 0;
     }
-    /* the screen is 320x240 about the centre: a generous cone */
-    return fabs(c[0]) - radius < z * (200.0 / h) && fabs(c[1]) - radius < z * (160.0 / h);
+    /* the screen is 320x240 about the centre, and as much wider as widescreen adds: a generous cone */
+    return fabs(c[0]) - radius < z * ((200.0 + PortScreenMargin()) / h) && fabs(c[1]) - radius < z * (160.0 / h);
 }
 
 static void DrawFarTrack(TrackCamera *camera)

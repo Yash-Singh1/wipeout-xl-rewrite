@@ -497,6 +497,7 @@ static void DrawNearFace(Face *face, const PortView *view, u_short tpage, u_shor
     PortFarVertex  point[8];
     double         deepest = 0.0;
     int            count = 0, left = 0, right = 0, above = 0, below = 0;
+    int            margin = PortScreenMargin(); /* widescreen's sides */
     int            i, k;
 
     for (i = 0; i < 4; i++) {
@@ -530,8 +531,8 @@ static void DrawNearFace(Face *face, const PortView *view, u_short tpage, u_shor
     }
     for (i = 0; i < count; i++) {
         PortFarProjectCamera(clipped[i][0], clipped[i][1], clipped[i][2], &point[i]);
-        left += point[i].x < 0;
-        right += point[i].x > 320;
+        left += point[i].x < -margin;
+        right += point[i].x > 320 + margin;
         above += point[i].y < 0;
         below += point[i].y > 240;
         deepest = point[i].z > deepest ? point[i].z : deepest;
@@ -578,6 +579,7 @@ void PortTrackFar(TrackSection *section, const PortView *view)
 {
     Face *face = track->faces + (u_short)section->faceStart;
     int   faceCount = (u_short)section->faceCount;
+    int   margin = PortScreenMargin(); /* widescreen's sides */
     int   n, k;
 
     /* a face the game drew in part is drawn whole here, a hair deeper, so that the game's cells cover it */
@@ -598,8 +600,8 @@ void PortTrackFar(TrackSection *section, const PortView *view)
             if (corner[k].rejected) {
                 break;
             }
-            left += corner[k].x < 0;
-            right += corner[k].x > 320;
+            left += corner[k].x < -margin;
+            right += corner[k].x > 320 + margin;
             above += corner[k].y < 0;
             below += corner[k].y > 240;
         }
