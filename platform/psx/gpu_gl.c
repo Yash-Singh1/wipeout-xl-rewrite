@@ -51,7 +51,8 @@
     X(PFNGLBLITFRAMEBUFFERPROC, glBlitFramebuffer) \
     X(PFNGLBLENDEQUATIONPROC, glBlendEquation) \
     X(PFNGLBLENDCOLORPROC, glBlendColor) \
-    X(PFNGLACTIVETEXTUREPROC, glActiveTexture)
+    X(PFNGLACTIVETEXTUREPROC, glActiveTexture) \
+    X(PFNGLGENERATEMIPMAPPROC, glGenerateMipmap)
 
 #define DECLARE_GL(type, name) static type p_##name;
 GL_FUNCTIONS(DECLARE_GL)
@@ -86,6 +87,7 @@ GL_FUNCTIONS(DECLARE_GL)
 #define glBlendEquation p_glBlendEquation
 #define glBlendColor p_glBlendColor
 #define glActiveTexture p_glActiveTexture
+#define glGenerateMipmap p_glGenerateMipmap
 
 #ifndef GL_R16UI
 #define GL_R16UI 0x8234
@@ -114,7 +116,7 @@ static int LoadFunctions(void)
 static int scale = 1;
 static GLuint framebuffer, colour;   /* all of video memory, scaled */
 static GLuint vramTexture;           /* the CPU copy, R16UI */
-static GLuint glyphTexture;          /* the glyph page (GpuSetGlyphMemory), R16UI */
+static GLuint glyphTexture;          /* the glyph page (GpuSetGlyphMemory): RGBA, premultiplied, filtered */
 static GLuint program, vertexArray, vertexBuffer;
 static GLint uniformVram, uniformGlyphs, uniformTexture, uniformClut, uniformWindow, uniformMode, uniformTarget;
 static int vramDirty = 1;
@@ -152,15 +154,15 @@ static const char *vertexSource =
     "}\n";
 
 /* mode: x = textured (0/1), y = raw, z = pass (0 all, 1 opaque texels, 2 semi texels), w = depth
-   texture: page x, page y; clut: x, y; window: mask x, mask y, offset x, offset y */
+   texturePage: page x, page y; clut: x, y; window: mask x, mask y, offset x, offset y */
 static const char *fragmentSource =
     "#version 330 core\n"
     "in vec3 vColour;\n"
     "in vec3 vTexel;\n"
     "noperspective in vec2 vTexelAffine;\n"
     "uniform usampler2D vram;\n"
-    "uniform usampler2D glyphs;\n"
-    "uniform ivec4 texture;\n"
+    "uniform sampler2D glyphs;\n"
+    "uniform ivec4 texturePage;\n"
     "uniform ivec4 clut;\n"
     "uniform ivec4 window;\n"
     "uniform ivec4 mode;\n"
@@ -174,22 +176,27 @@ static const char *fragmentSource =
     "        return;\n"
     "    }\n"
     "    vec2 t = vTexel.xy;\n"
+    "    if (mode.w == 3) {\n"                 /* the platform's glyphs: smooth, with coverage */
+    "        vec4 g = texture(glyphs, t / 256.0);\n"
+    "        if (g.a < 0.004) discard;\n"
+    "        vec3 rgb = mode.y == 0 ? min(g.rgb * c * (255.0 / 128.0), vec3(g.a)) : g.rgb;\n"
+    "        fragment = vec4(rgb, g.a);\n"
+    "        return;\n"
+    "    }\n"
     "    ivec2 uv = ivec2(floor(t)) & 255;\n"
     "    uv.x = (uv.x & ~(window.x * 8)) | ((window.z & window.x) * 8);\n"
     "    uv.y = (uv.y & ~(window.y * 8)) | ((window.w & window.y) * 8);\n"
     "    uint texel;\n"
     "    if (mode.w == 0) {\n"
-    "        uint word = Fetch(texture.xy + ivec2(uv.x >> 2, uv.y));\n"
+    "        uint word = Fetch(texturePage.xy + ivec2(uv.x >> 2, uv.y));\n"
     "        uint index = (word >> uint((uv.x & 3) * 4)) & 15u;\n"
     "        texel = Fetch(clut.xy + ivec2(int(index), 0));\n"
     "    } else if (mode.w == 1) {\n"
-    "        uint word = Fetch(texture.xy + ivec2(uv.x >> 1, uv.y));\n"
+    "        uint word = Fetch(texturePage.xy + ivec2(uv.x >> 1, uv.y));\n"
     "        uint index = (word >> uint((uv.x & 1) * 8)) & 255u;\n"
     "        texel = Fetch(clut.xy + ivec2(int(index), 0));\n"
-    "    } else if (mode.w == 3) {\n"
-    "        texel = texelFetch(glyphs, uv, 0).r;\n"
     "    } else {\n"
-    "        texel = Fetch(texture.xy + uv);\n"
+    "        texel = Fetch(texturePage.xy + uv);\n"
     "    }\n"
     "    if (texel == 0u) discard;\n"
     "    bool semi = (texel & 0x8000u) != 0u;\n"
@@ -261,7 +268,7 @@ int GpuInit(void)
     }
     uniformVram = glGetUniformLocation(program, "vram");
     uniformGlyphs = glGetUniformLocation(program, "glyphs");
-    uniformTexture = glGetUniformLocation(program, "texture");
+    uniformTexture = glGetUniformLocation(program, "texturePage");
     uniformClut = glGetUniformLocation(program, "clut");
     uniformWindow = glGetUniformLocation(program, "window");
     uniformMode = glGetUniformLocation(program, "mode");
@@ -288,10 +295,11 @@ int GpuInit(void)
 
     glGenTextures(1, &glyphTexture);
     glBindTexture(GL_TEXTURE_2D, glyphTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_R16UI, GLYPH_PAGE_SIZE, GLYPH_PAGE_SIZE, 0, GL_RED_INTEGER, GL_UNSIGNED_SHORT,
-                 NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, GLYPH_ATLAS_SIZE, GLYPH_ATLAS_SIZE, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
     scale = ChooseScale();
     glGenTextures(1, &colour);
@@ -341,11 +349,14 @@ void GpuVramChanged(int x, int y, int w, int h)
     }
 }
 
-void GpuSetGlyphMemory(const uint16_t *pixels)
+void GpuSetGlyphMemory(const uint32_t *rgba)
 {
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, glyphTexture);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, GLYPH_PAGE_SIZE, GLYPH_PAGE_SIZE, GL_RED_INTEGER, GL_UNSIGNED_SHORT, pixels);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, GLYPH_ATLAS_SIZE, GLYPH_ATLAS_SIZE, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
+    glGenerateMipmap(GL_TEXTURE_2D);
     glActiveTexture(GL_TEXTURE0);
 }
 
@@ -404,6 +415,11 @@ static void SetBlend(int semi)
         glBlendColor(0, 0, 0, 0.25f);
         glBlendFunc(GL_CONSTANT_ALPHA, GL_ONE);
         break;
+    case 4: /* the platform's glyphs: their coverage, premultiplied */
+        glEnable(GL_BLEND);
+        glBlendEquation(GL_FUNC_ADD);
+        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+        break;
     default:
         glDisable(GL_BLEND);
         break;
@@ -417,6 +433,8 @@ static void DrawBatch(int pass)
     glUniform4i(uniformMode, s->textured, s->raw, pass, s->depth);
     if (pass == 1) {
         SetBlend(-1);
+    } else if (s->textured && s->depth == 3 && s->semi < 0) {
+        SetBlend(4);
     } else {
         SetBlend(s->semi);
     }

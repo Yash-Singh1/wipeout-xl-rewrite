@@ -13,7 +13,7 @@ real game.
 - Your copy of the PlayStation disc as a `.cue` with its `.bin` tracks
   (Wipeout XL USA). The music plays from the disc's audio tracks.
 - Optional: the Windows release's CD. Its `MPEG` folder gives the intro and
-  ending movies, `PICS` the keyboard key caps.
+  ending movies.
 - To build: CMake, a C compiler, SDL3 (and zlib for the test traces).
 
 ## Build

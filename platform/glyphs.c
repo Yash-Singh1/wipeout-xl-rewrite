@@ -5,15 +5,18 @@
    memory beyond the console's (the glyph page of gpu_gl.c, selected by colour depth 3), and
    PortButtonGlyph rewrites the quad to show one of them:
 
-     keyboard    key caps. The Windows release's art (PICS/HI-RES/HUD2.TGA of the PC data: ESC, ENTER and
-                 the arrows) where it exists, otherwise, and for the keys it has no art for, caps drawn
-                 here in the same style with the name of the key on them.
-     Xbox        A B X Y discs in the colours of the pad's buttons, by position (south is A).
-     Nintendo    B A Y X discs by position (south is B).
+     keyboard    key caps in the style of the Windows release's (grey caps, red legends; ENTER is its
+                 return arrow) and its gold direction arrows.
+     Xbox        A B X Y buttons in the colours of the pad's buttons, by position (south is A).
+     Nintendo    B A Y X buttons by position (south is B).
+
+   They are drawn here at four times the page's resolution with smooth edges (distance fields and a
+   stroke face of capitals and digits), so they stay sharp at any window size.
 
    PlayStation pads, unknown pads and a player who has not touched anything yet keep the console's
    icons: nothing here runs for them. */
 #include <SDL3/SDL.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -35,94 +38,221 @@ enum { FACE_COUNT = 4 };
 enum { SET_XBOX, SET_NINTENDO, SET_COUNT };
 enum { ROW_COUNT = 6 }; /* the controller screen's rows: thrust, fire, view, drop weapon, left and right air brake */
 
-static uint16_t page[GLYPH_PAGE_SIZE * GLYPH_PAGE_SIZE];
 static bool built;
 static Glyph keyIcons[ICON_COUNT];     /* the keyboard's glyph for each console icon */
 static Glyph keyRows[ROW_COUNT];       /* the key of each row of the controller screen */
 static Glyph faceIcons[SET_COUNT][FACE_COUNT];
 static int consoleGlyphs;
 
-/* ---- pixels ---- */
+/* ---- painting ----
 
-#define RGB(r, g, b) ((uint16_t)(((r) >> 3) | (((g) >> 3) << 5) | (((b) >> 3) << 10)))
+   The page is drawn GLYPH_ATLAS_SCALE times finer than its coordinates, in RGBA with the alpha the
+   shapes' coverage (premultiplied), from distance fields: every edge is smooth at any size. A glyph's
+   shapes are given in the page's coordinates, relative to the glyph's corner. */
 
-static void Plot(int x, int y, uint16_t colour)
+typedef struct Colour {
+    float r, g, b, a;
+} Colour;
+
+static uint32_t atlas[GLYPH_ATLAS_SIZE * GLYPH_ATLAS_SIZE];
+
+static Colour Rgb(int r, int g, int b)
 {
-    if (x >= 0 && y >= 0 && x < GLYPH_PAGE_SIZE && y < GLYPH_PAGE_SIZE) {
-        page[y * GLYPH_PAGE_SIZE + x] = colour ? colour : 1; /* 0 is transparent */
+    Colour c = {r / 255.0f, g / 255.0f, b / 255.0f, 1.0f};
+    return c;
+}
+
+static Colour Mix(Colour a, Colour b, float t)
+{
+    Colour c = {a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, a.a + (b.a - a.a) * t};
+    return c;
+}
+
+/* The coverage of a pixel by a shape at signed distance d (in page units; negative inside). */
+static float Coverage(float d)
+{
+    float c = 0.5f - d * GLYPH_ATLAS_SCALE;
+
+    return c < 0 ? 0 : c > 1 ? 1 : c;
+}
+
+/* Paints colour over the page's pixel with the given coverage. */
+static void Over(int ax, int ay, Colour colour, float coverage)
+{
+    uint32_t *p = &atlas[ay * GLYPH_ATLAS_SIZE + ax];
+    float a = colour.a * coverage, r, g, b, da;
+
+    if (a <= 0) {
+        return;
+    }
+    r = (*p & 255) / 255.0f;
+    g = ((*p >> 8) & 255) / 255.0f;
+    b = ((*p >> 16) & 255) / 255.0f;
+    da = (*p >> 24) / 255.0f;
+    r = colour.r * a + r * (1 - a);
+    g = colour.g * a + g * (1 - a);
+    b = colour.b * a + b * (1 - a);
+    da = a + da * (1 - a);
+    *p = (uint32_t)(r * 255 + 0.5f) | (uint32_t)(g * 255 + 0.5f) << 8 | (uint32_t)(b * 255 + 0.5f) << 16 |
+         (uint32_t)(da * 255 + 0.5f) << 24;
+}
+
+static float Length(float x, float y)
+{
+    return SDL_sqrtf(x * x + y * y);
+}
+
+/* Distance to a rounded rectangle centred at (cx, cy), half sizes hw, hh, corner radius r. */
+static float RoundRect(float x, float y, float cx, float cy, float hw, float hh, float r)
+{
+    float qx = SDL_fabsf(x - cx) - hw + r, qy = SDL_fabsf(y - cy) - hh + r;
+
+    return Length(qx > 0 ? qx : 0, qy > 0 ? qy : 0) + SDL_min(SDL_max(qx, qy), 0.0f) - r;
+}
+
+static float Segment(float x, float y, float x0, float y0, float x1, float y1)
+{
+    float dx = x1 - x0, dy = y1 - y0, t = ((x - x0) * dx + (y - y0) * dy) / (dx * dx + dy * dy + 1e-9f);
+
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    return Length(x - x0 - dx * t, y - y0 - dy * t);
+}
+
+/* Distance to an arc of a circle (angles in degrees, y down, from a0 increasing to a1). */
+static float Arc(float x, float y, float cx, float cy, float r, float a0, float a1)
+{
+    float angle = SDL_atan2f(y - cy, x - cx) * 57.29578f;
+    float ex, ey;
+
+    while (angle < a0) {
+        angle += 360;
+    }
+    if (angle <= a1) {
+        return SDL_fabsf(Length(x - cx, y - cy) - r);
+    }
+    ex = cx + r * SDL_cosf(a0 / 57.29578f);
+    ey = cy + r * SDL_sinf(a0 / 57.29578f);
+    {
+        float d0 = Length(x - ex, y - ey);
+        ex = cx + r * SDL_cosf(a1 / 57.29578f);
+        ey = cy + r * SDL_sinf(a1 / 57.29578f);
+        return SDL_min(d0, Length(x - ex, y - ey));
     }
 }
 
-/* ---- the lettering of the caps: a 5x7 face of capitals and digits, one row per string ---- */
+/* ---- the lettering: a stroke face of capitals and digits on a 4 x 6 grid ----
 
-static const struct { char c; const char *rows; } font[] = {
-    {'A', "01110/10001/10001/11111/10001/10001/10001"}, {'B', "11110/10001/10001/11110/10001/10001/11110"},
-    {'C', "01110/10001/10000/10000/10000/10001/01110"}, {'D', "11110/10001/10001/10001/10001/10001/11110"},
-    {'E', "11111/10000/10000/11110/10000/10000/11111"}, {'F', "11111/10000/10000/11110/10000/10000/10000"},
-    {'G', "01110/10001/10000/10111/10001/10001/01111"}, {'H', "10001/10001/10001/11111/10001/10001/10001"},
-    {'I', "01110/00100/00100/00100/00100/00100/01110"}, {'J', "00111/00010/00010/00010/00010/10010/01100"},
-    {'K', "10001/10010/10100/11000/10100/10010/10001"}, {'L', "10000/10000/10000/10000/10000/10000/11111"},
-    {'M', "10001/11011/10101/10101/10001/10001/10001"}, {'N', "10001/11001/10101/10011/10001/10001/10001"},
-    {'O', "01110/10001/10001/10001/10001/10001/01110"}, {'P', "11110/10001/10001/11110/10000/10000/10000"},
-    {'Q', "01110/10001/10001/10001/10101/10010/01101"}, {'R', "11110/10001/10001/11110/10100/10010/10001"},
-    {'S', "01111/10000/10000/01110/00001/00001/11110"}, {'T', "11111/00100/00100/00100/00100/00100/00100"},
-    {'U', "10001/10001/10001/10001/10001/10001/01110"}, {'V', "10001/10001/10001/10001/10001/01010/00100"},
-    {'W', "10001/10001/10001/10101/10101/11011/10001"}, {'X', "10001/10001/01010/00100/01010/10001/10001"},
-    {'Y', "10001/10001/01010/00100/00100/00100/00100"}, {'Z', "11111/00001/00010/00100/01000/10000/11111"},
-    {'0', "01110/10001/10011/10101/11001/10001/01110"}, {'1', "00100/01100/00100/00100/00100/00100/01110"},
-    {'2', "01110/10001/00001/00010/00100/01000/11111"}, {'3', "11110/00001/00001/01110/00001/00001/11110"},
-    {'4', "00010/00110/01010/10010/11111/00010/00010"}, {'5', "11111/10000/11110/00001/00001/10001/01110"},
-    {'6', "00110/01000/10000/11110/10001/10001/01110"}, {'7', "11111/00001/00010/00100/01000/01000/01000"},
-    {'8', "01110/10001/10001/01110/10001/10001/01110"}, {'9', "01110/10001/10001/01111/00001/00010/01100"}};
+   Each character is strokes: "L x0,y0 x1,y1" a line, "A cx,cy,r,a0,a1" an arc; separated by '|'. */
 
-#define LETTER_W 5
-#define LETTER_H 7
+static const struct { char c; const char *strokes; } font[] = {
+    {'A', "L0,6 2,0|L2,0 4,6|L0.7,4 3.3,4"},
+    {'B', "L0,0 0,6|L0,0 2.5,0|A2.5,1.5,1.5,270,450|L0,3 2.6,3|A2.6,4.5,1.5,270,450|L0,6 2.6,6"},
+    {'C', "A2,2,2,180,340|A2,4,2,20,180|L0,2 0,4"},
+    {'D', "L0,0 0,6|L0,0 1.5,0|L0,6 1.5,6|A1.5,2.5,2.5,270,360|L4,2.5 4,3.5|A1.5,3.5,2.5,0,90"},
+    {'E', "L0,0 0,6|L0,0 4,0|L0,3 3,3|L0,6 4,6"},
+    {'F', "L0,0 0,6|L0,0 4,0|L0,3 3,3"},
+    {'G', "A2,2,2,180,340|A2,4,2,0,180|L0,2 0,4|L4,4 4,3.2|L4,3.2 2.3,3.2"},
+    {'H', "L0,0 0,6|L4,0 4,6|L0,3 4,3"},
+    {'I', "L2,0 2,6|L1,0 3,0|L1,6 3,6"},
+    {'J', "L4,0 4,4|A2,4,2,0,180"},
+    {'K', "L0,0 0,6|L4,0 0,3.8|L1.5,2.9 4,6"},
+    {'L', "L0,0 0,6|L0,6 4,6"},
+    {'M', "L0,6 0,0|L0,0 2,3.6|L2,3.6 4,0|L4,0 4,6"},
+    {'N', "L0,6 0,0|L0,0 4,6|L4,6 4,0"},
+    {'O', "A2,2,2,180,360|A2,4,2,0,180|L0,2 0,4|L4,2 4,4"},
+    {'P', "L0,0 0,6|L0,0 2.4,0|A2.4,1.6,1.6,270,450|L0,3.2 2.4,3.2"},
+    {'Q', "A2,2,2,180,360|A2,4,2,0,180|L0,2 0,4|L4,2 4,4|L2.6,4.6 4,6"},
+    {'R', "L0,0 0,6|L0,0 2.4,0|A2.4,1.6,1.6,270,450|L0,3.2 2.4,3.2|L2,3.2 4,6"},
+    {'S', "A2,1.5,1.5,90,340|A2,4.5,1.5,270,520"},
+    {'T', "L0,0 4,0|L2,0 2,6"},
+    {'U', "L0,0 0,4|L4,0 4,4|A2,4,2,0,180"},
+    {'V', "L0,0 2,6|L2,6 4,0"},
+    {'W', "L0,0 1,6|L1,6 2,2.5|L2,2.5 3,6|L3,6 4,0"},
+    {'X', "L0,0 4,6|L4,0 0,6"},
+    {'Y', "L0,0 2,3|L4,0 2,3|L2,3 2,6"},
+    {'Z', "L0,0 4,0|L4,0 0,6|L0,6 4,6"},
+    {'0', "A2,2,2,180,360|A2,4,2,0,180|L0,2 0,4|L4,2 4,4"},
+    {'1', "L0.9,1.1 2,0|L2,0 2,6|L1,6 3,6"},
+    {'2', "A2,2,2,180,360|L4,2 0,6|L0,6 4,6"},
+    {'3', "A2,1.5,1.5,180,450|A2,4.5,1.5,270,540"},
+    {'4', "L3,6 3,0|L3,0 0,4|L0,4 4,4"},
+    {'5', "L4,0 0.5,0|L0.5,0 0.3,2.7|A2,4,2,250,540"},
+    {'6', "A2,4,2,0,360|A4,4,4,180,250"},
+    {'7', "L0,0 4,0|L4,0 1.5,6"},
+    {'8', "A2,1.5,1.5,0,360|A2,4.5,1.5,0,360"},
+    {'9', "A2,2,2,0,360|A0,2,4,0,70"},
+    /* the return key's arrow, as the Windows release draws its ENTER cap */
+    {'\r', "L3.6,0.4 3.6,4|L3.6,4 0.4,4|L0.4,4 1.9,2.5|L0.4,4 1.9,5.5"}};
 
-static const char *LetterRows(char c)
+#define FONT_ADVANCE 5.4f /* grid units from one character to the next */
+
+static const char *Strokes(char c)
 {
     size_t i;
 
-    for (i = 0; i < sizeof(font) / sizeof(font[0]); i++) {
+    for (i = 0; i < SDL_arraysize(font); i++) {
         if (font[i].c == c) {
-            return font[i].rows;
+            return font[i].strokes;
         }
     }
     return NULL;
 }
 
-/* The width of a text in texels at a scale, one scaled column between letters. */
-static int TextWidth(const char *text, int scale)
+/* Distance from (x, y), in grid units, to a character's strokes (their centre lines). */
+static float CharDistance(const char *strokes, float x, float y)
 {
-    int n = (int)strlen(text);
+    float best = 1e9f;
 
-    return n ? n * (LETTER_W + 1) * scale - scale : 0;
-}
+    while (strokes && *strokes) {
+        float v[5];
+        float d = 1e9f;
 
-static void DrawLetter(int x, int y, char c, int scale, uint16_t colour)
-{
-    const char *rows = LetterRows(c);
-    int row, col;
-
-    for (row = 0; rows && row < LETTER_H; row++) {
-        for (col = 0; col < LETTER_W; col++) {
-            if (rows[row * (LETTER_W + 1) + col] == '1') {
-                int i, j;
-
-                for (j = 0; j < scale; j++) {
-                    for (i = 0; i < scale; i++) {
-                        Plot(x + col * scale + i, y + row * scale + j, colour);
-                    }
-                }
-            }
+        if (*strokes == 'L' && SDL_sscanf(strokes + 1, "%f,%f %f,%f", &v[0], &v[1], &v[2], &v[3]) == 4) {
+            d = Segment(x, y, v[0], v[1], v[2], v[3]);
+        } else if (*strokes == 'A' && SDL_sscanf(strokes + 1, "%f,%f,%f,%f,%f", &v[0], &v[1], &v[2], &v[3], &v[4]) == 5) {
+            d = Arc(x, y, v[0], v[1], v[2], v[3], v[4]);
+        }
+        best = SDL_min(best, d);
+        strokes = SDL_strchr(strokes, '|');
+        if (strokes) {
+            strokes++;
         }
     }
+    return best;
 }
 
-static void DrawText(int x, int y, const char *text, int scale, uint16_t colour)
+/* The width of a text, in page units, with letters `height` tall. */
+static float TextWidth(const char *text, float height)
 {
-    for (; *text; text++) {
-        DrawLetter(x, y, *text, scale, colour);
-        x += (LETTER_W + 1) * scale;
+    size_t n = SDL_strlen(text);
+
+    return n ? (n * FONT_ADVANCE - (FONT_ADVANCE - 4)) * height / 6 : 0;
+}
+
+/* Paints a text with letters `height` tall and strokes `weight` thick (both in page units) at
+   (x, y), its top left, in a glyph whose page corner is (gx, gy) and size w x h. */
+static void PaintText(int gx, int gy, int w, int h, float x, float y, const char *text, float height, float weight,
+                      Colour colour)
+{
+    float unit = height / 6;
+    int ax, ay;
+
+    for (ay = gy * GLYPH_ATLAS_SCALE; ay < (gy + h) * GLYPH_ATLAS_SCALE; ay++) {
+        for (ax = gx * GLYPH_ATLAS_SCALE; ax < (gx + w) * GLYPH_ATLAS_SCALE; ax++) {
+            float px = (ax + 0.5f) / GLYPH_ATLAS_SCALE - gx, py = (ay + 0.5f) / GLYPH_ATLAS_SCALE - gy;
+            float d = 1e9f, cx = x;
+            const char *c;
+
+            if (py < y - weight || py > y + height + weight) {
+                continue;
+            }
+            for (c = text; *c; c++, cx += FONT_ADVANCE * unit) {
+                if (px > cx - weight && px < cx + 4 * unit + weight) {
+                    d = SDL_min(d, CharDistance(Strokes(*c), (px - cx) / unit, (py - y) / unit) * unit);
+                }
+            }
+            Over(ax, ay, colour, Coverage(d - weight / 2));
+        }
     }
 }
 
@@ -130,13 +260,13 @@ static void DrawText(int x, int y, const char *text, int scale, uint16_t colour)
 
 static int shelfX, shelfY, shelfH;
 
-/* The next free w x h texels, filled row by row; the right edge stays inside 255 because a quad's
-   UV is a byte and its far edge is one past the last texel. */
+/* The next free w x h units, filled row by row; the right edge stays inside 255 because a quad's
+   UV is a byte and its far edge is one past the last texel. Glyphs keep a unit apart. */
 static bool Place(int w, int h, Glyph *glyph)
 {
     if (shelfX + w > 255) {
         shelfX = 0;
-        shelfY += shelfH + 1;
+        shelfY += shelfH + 2;
         shelfH = 0;
     }
     if (shelfY + h > 255) {
@@ -146,80 +276,9 @@ static bool Place(int w, int h, Glyph *glyph)
     glyph->y = shelfY;
     glyph->w = w;
     glyph->h = h;
-    shelfX += w + 1;
+    shelfX += w + 2;
     if (h > shelfH) {
         shelfH = h;
-    }
-    return true;
-}
-
-/* ---- the PC release's art ---- */
-
-#define ART_WIDTH 768
-#define ART_HEIGHT 256
-
-static uint16_t *art; /* ART_WIDTH x ART_HEIGHT console pixels, 0 transparent; NULL if not found */
-
-static uint8_t *LoadFirst(const char *root, const char *const *names, size_t *size)
-{
-    char path[1024];
-    int i;
-
-    for (i = 0; names[i]; i++) {
-        uint8_t *data;
-
-        SDL_snprintf(path, sizeof(path), "%s/%s", root, names[i]);
-        data = SDL_LoadFile(path, size);
-        if (data) {
-            return data;
-        }
-    }
-    return NULL;
-}
-
-/* PICS/HI-RES/HUD2.TGA: uncompressed 16-bit A1R5G5B5, three 256x256 pages side by side. The rows
-   are in file order (the game's coordinates count them so, whatever the origin bit says). */
-static void LoadArt(void)
-{
-    static const char *const names[] = {"PICS/HI-RES/HUD2.TGA", "pics/hi-res/hud2.tga", "Pics/Hi-Res/Hud2.tga", NULL};
-    size_t size = 0;
-    uint8_t *tga;
-    int x, y;
-
-    if (!portConfig.pcDataPath || !(tga = LoadFirst(portConfig.pcDataPath, names, &size))) {
-        return;
-    }
-    if (size < 18 || tga[1] != 0 || tga[2] != 2 || tga[16] != 16 ||
-        tga[12] + tga[13] * 256 != ART_WIDTH || tga[14] + tga[15] * 256 != ART_HEIGHT ||
-        size < (size_t)18 + tga[0] + (size_t)ART_WIDTH * ART_HEIGHT * 2) {
-        SDL_free(tga);
-        return;
-    }
-    art = malloc(sizeof(uint16_t) * ART_WIDTH * ART_HEIGHT);
-    for (y = 0; y < ART_HEIGHT; y++) {
-        const uint8_t *row = tga + 18 + tga[0] + (size_t)y * ART_WIDTH * 2;
-
-        for (x = 0; x < ART_WIDTH; x++) {
-            unsigned v = row[x * 2] | row[x * 2 + 1] << 8;
-            /* black is the art's transparent colour */
-            art[y * ART_WIDTH + x] = v & 0x7FFF ? (uint16_t)(((v >> 10) & 31) | (v & 31) << 10 | ((v >> 5) & 31) << 5) : 0;
-        }
-    }
-    SDL_free(tga);
-}
-
-/* Copies a rectangle of the art into the page as a glyph; false without the art. */
-static bool Blit(int ax, int ay, int w, int h, Glyph *glyph)
-{
-    int x, y;
-
-    if (!art || !Place(w, h, glyph)) {
-        return false;
-    }
-    for (y = 0; y < h; y++) {
-        for (x = 0; x < w; x++) {
-            page[(glyph->y + y) * GLYPH_PAGE_SIZE + glyph->x + x] = art[(ay + y) * ART_WIDTH + ax + x];
-        }
     }
     return true;
 }
@@ -228,14 +287,14 @@ static bool Blit(int ax, int ay, int w, int h, Glyph *glyph)
 
 #define CAP_HEIGHT 32
 
-/* A key cap showing `text`, in the style of the art: a dark outline, a grey bevelled face and red
-   lettering with a darker shadow. Narrower than the height it is a square cap. */
+/* A key cap showing `text`, in the style of the Windows release's caps: a dark outline, a grey
+   bevelled face and red lettering with a darker shadow. Narrower than the height it is a square cap. */
 static bool MakeCap(const char *text, Glyph *glyph)
 {
-    const int scale = 2;
-    int w = TextWidth(text, scale) + 16, x, y;
-    int tx, ty;
-    const int radius = 7;
+    /* the return key's arrow large; words of three letters and more smaller, to keep the caps compact */
+    const float letter = text[0] == '\r' ? 16.0f : SDL_strlen(text) >= 3 ? 9.0f : 11.0f, weight = SDL_min(letter, 11.0f) * 0.2f;
+    int w = (int)SDL_ceilf(TextWidth(text, letter)) + 14, x, y;
+    float tx, ty;
 
     if (w < CAP_HEIGHT) {
         w = CAP_HEIGHT;
@@ -243,38 +302,23 @@ static bool MakeCap(const char *text, Glyph *glyph)
     if (!Place(w, CAP_HEIGHT, glyph)) {
         return false;
     }
-    for (y = 0; y < CAP_HEIGHT; y++) {
-        for (x = 0; x < w; x++) {
-            /* distance inside the rounded outline: -1 outside, 0 the outline, 1.. inwards */
-            int cx = x < radius ? radius - x : x >= w - radius ? x - (w - 1 - radius) : 0;
-            int cy = y < radius ? radius - y : y >= CAP_HEIGHT - radius ? y - (CAP_HEIGHT - 1 - radius) : 0;
-            int d = SDL_min(SDL_min(x, w - 1 - x), SDL_min(y, CAP_HEIGHT - 1 - y));
-            uint16_t colour;
+    for (y = 0; y < CAP_HEIGHT * GLYPH_ATLAS_SCALE; y++) {
+        for (x = 0; x < w * GLYPH_ATLAS_SCALE; x++) {
+            float px = (x + 0.5f) / GLYPH_ATLAS_SCALE, py = (y + 0.5f) / GLYPH_ATLAS_SCALE;
+            float outer = RoundRect(px, py, w / 2.0f, CAP_HEIGHT / 2.0f, w / 2.0f - 0.5f, CAP_HEIGHT / 2.0f - 0.5f, 7);
+            float face = RoundRect(px, py, w / 2.0f, CAP_HEIGHT / 2.0f - 0.6f, w / 2.0f - 2.6f, CAP_HEIGHT / 2.0f - 3.2f, 5);
+            int ax = glyph->x * GLYPH_ATLAS_SCALE + x, ay = glyph->y * GLYPH_ATLAS_SCALE + y;
+            float t = py / CAP_HEIGHT;
 
-            if (cx && cy) {
-                int r2 = cx * cx + cy * cy;
-
-                if (r2 > radius * radius) {
-                    continue;
-                }
-                d = radius - (int)SDL_sqrtf((float)r2);
-            }
-            if (d <= 0) {
-                colour = RGB(30, 30, 34);
-            } else if (d <= 2) {
-                colour = y * 2 < CAP_HEIGHT ? RGB(96, 98, 98) : RGB(54, 56, 58);
-            } else {
-                int shade = 98 - y * 12 / CAP_HEIGHT;
-
-                colour = RGB(shade, shade + 4, shade + 4);
-            }
-            page[(glyph->y + y) * GLYPH_PAGE_SIZE + glyph->x + x] = colour;
+            Over(ax, ay, Rgb(28, 28, 32), Coverage(outer));
+            Over(ax, ay, Mix(Rgb(122, 124, 128), Rgb(58, 60, 64), t), Coverage(outer + 1.2f)); /* the bevel */
+            Over(ax, ay, Mix(Rgb(112, 116, 120), Rgb(76, 80, 84), t), Coverage(face));         /* the face */
         }
     }
-    tx = glyph->x + (w - TextWidth(text, scale)) / 2;
-    ty = glyph->y + (CAP_HEIGHT - LETTER_H * scale) / 2;
-    DrawText(tx + 1, ty + 1, text, scale, RGB(140, 0, 0));
-    DrawText(tx, ty, text, scale, RGB(204, 28, 12));
+    tx = (w - TextWidth(text, letter)) / 2;
+    ty = (CAP_HEIGHT - letter) / 2 - 0.6f;
+    PaintText(glyph->x, glyph->y, w, CAP_HEIGHT, tx + 0.6f, ty + 0.7f, text, letter, weight, Rgb(110, 6, 0));
+    PaintText(glyph->x, glyph->y, w, CAP_HEIGHT, tx, ty, text, letter, weight, Rgb(222, 34, 18));
     glyph->dx = 0;
     glyph->dy = 0;
     glyph->qw = w / 2;
@@ -282,37 +326,26 @@ static bool MakeCap(const char *text, Glyph *glyph)
     return true;
 }
 
-/* A cap from the art if it has one there, otherwise drawn. */
-static bool KeyCap(int ax, int ay, const char *name, Glyph *glyph)
-{
-    if (ax >= 0 && Blit(ax, ay, 30, 30, glyph)) {
-        glyph->dx = glyph->dy = 0;
-        glyph->qw = glyph->qh = 16;
-        return true;
-    }
-    return MakeCap(name, glyph);
-}
-
-/* An arrow for the direction keys (32 x 16 texels in the art); drawn when there is none. */
-static bool MakeArrow(int ax, bool right, Glyph *glyph)
+/* An arrow for the direction keys, gold as the Windows release's (32 x 16 units). */
+static bool MakeArrow(bool right, Glyph *glyph)
 {
     int x, y;
 
-    if (!Blit(ax, 226, 32, 16, glyph)) {
-        if (!Place(32, 16, glyph)) {
-            return false;
-        }
-        for (y = 0; y < 16; y++) {
-            for (x = 0; x < 32; x++) {
-                int fx = right ? x : 31 - x; /* the arrow points towards larger fx */
-                float above = SDL_fabsf(y - 7.5f);
-                bool head = fx >= 20 && above <= 7.5f * (31 - fx) / 11.0f;
-                bool shaft = fx < 22 && above <= 3.2f;
+    if (!Place(32, 16, glyph)) {
+        return false;
+    }
+    for (y = 0; y < 16 * GLYPH_ATLAS_SCALE; y++) {
+        for (x = 0; x < 32 * GLYPH_ATLAS_SCALE; x++) {
+            float px = (x + 0.5f) / GLYPH_ATLAS_SCALE, py = (y + 0.5f) / GLYPH_ATLAS_SCALE;
+            float fx = right ? px : 32 - px; /* the arrow points towards larger fx */
+            float shaft = RoundRect(fx, py, 11.5f, 8, 9.5f, 3, 0.8f);
+            /* the head: a triangle from (19, 1) and (19, 15) to (31, 8) */
+            float head = SDL_max(19 - fx, (SDL_fabsf(py - 8) * 12 + (fx - 31) * 7) / 13.9f);
+            float shape = SDL_min(shaft, head);
+            int ax = glyph->x * GLYPH_ATLAS_SCALE + x, ay = glyph->y * GLYPH_ATLAS_SCALE + y;
 
-                if (head || shaft) {
-                    page[(glyph->y + y) * GLYPH_PAGE_SIZE + glyph->x + x] = RGB(136, 124, 60);
-                }
-            }
+            Over(ax, ay, Rgb(70, 60, 22), Coverage(shape));
+            Over(ax, ay, Mix(Rgb(214, 196, 104), Rgb(150, 132, 56), py / 16), Coverage(shape + 1.1f));
         }
     }
     /* where the console's arrow icons are: 16x8 at the top of their 16x16 box */
@@ -325,37 +358,31 @@ static bool MakeArrow(int ax, bool right, Glyph *glyph)
 
 /* ---- gamepad face buttons ---- */
 
-/* A dark disc with a letter in the colour of the button. */
-static bool MakeDisc(char letter, uint16_t colour, Glyph *glyph)
+/* A round face button: a dark, slightly domed cap with a thin rim and the letter in its colour. */
+static bool MakeDisc(char letter, Colour colour, Glyph *glyph)
 {
     char name[2] = {letter, 0};
+    const float height = 14, weight = 2.9f;
     int x, y;
 
     if (!Place(32, 32, glyph)) {
         return false;
     }
-    for (y = 0; y < 32; y++) {
-        for (x = 0; x < 32; x++) {
-            float dx = x - 15.5f, dy = y - 15.5f, d = SDL_sqrtf(dx * dx + dy * dy);
-            uint16_t c;
+    for (y = 0; y < 32 * GLYPH_ATLAS_SCALE; y++) {
+        for (x = 0; x < 32 * GLYPH_ATLAS_SCALE; x++) {
+            float px = (x + 0.5f) / GLYPH_ATLAS_SCALE, py = (y + 0.5f) / GLYPH_ATLAS_SCALE;
+            float d = Length(px - 16, py - 16);
+            int ax = glyph->x * GLYPH_ATLAS_SCALE + x, ay = glyph->y * GLYPH_ATLAS_SCALE + y;
+            /* light from above: the dome is brighter at the top, the rim catches it */
+            float light = SDL_clamp(0.5f - (py - 16) / 30.0f, 0.0f, 1.0f);
 
-            if (d > 15.7f) {
-                continue;
-            }
-            if (d > 14.2f) {
-                c = RGB(26, 26, 30);
-            } else if (d > 12.0f) {
-                c = dy < 0 ? RGB(86, 88, 92) : RGB(50, 52, 56);
-            } else {
-                int shade = 44 - y * 16 / 32;
-
-                c = RGB(shade, shade, shade + 4);
-            }
-            page[(glyph->y + y) * GLYPH_PAGE_SIZE + glyph->x + x] = c;
+            Over(ax, ay, Rgb(12, 12, 14), Coverage(d - 15.6f));
+            Over(ax, ay, Mix(Rgb(44, 46, 50), Rgb(112, 116, 122), light), Coverage(d - 14.6f));
+            Over(ax, ay, Mix(Rgb(22, 23, 26), Rgb(58, 60, 66), light * light), Coverage(d - 13.2f));
         }
     }
-    /* bold: each letter pixel is three texels wide */
-    DrawText(glyph->x + 16 - (LETTER_W * 3) / 2, glyph->y + 16 - (LETTER_H * 3) / 2, name, 3, colour);
+    PaintText(glyph->x, glyph->y, 32, 32, 16 - TextWidth(name, height) / 2, 16 - height / 2, name, height, weight,
+              colour);
     glyph->dx = glyph->dy = 0;
     glyph->qw = glyph->qh = 16;
     return true;
@@ -368,20 +395,17 @@ static void Build(void)
     /* the glyph named by (face icon, ...): circle east, cross south, square west, triangle north */
     static const char xboxLetters[FACE_COUNT] = {'B', 'A', 'X', 'Y'};
     static const char nintendoLetters[FACE_COUNT] = {'A', 'B', 'Y', 'X'};
-    static const uint16_t xboxColours[FACE_COUNT] = {RGB(228, 64, 42), RGB(134, 196, 64), RGB(46, 123, 214),
-                                                     RGB(245, 196, 0)};
+    const Colour xboxColours[FACE_COUNT] = {Rgb(236, 64, 52), Rgb(110, 196, 52), Rgb(52, 136, 240), Rgb(248, 196, 20)};
     static const char *const rowKeys[ROW_COUNT] = {"S", "SPACE", "F1", "ALT", "A", "D"};
     int i;
 
     built = true;
-    LoadArt();
-    /* the keys: ENTER and ESC from the art (158,194) and (158,162), the arrows (160,226), (194,226) */
-    KeyCap(art ? 158 : -1, 162, "ESC", &keyIcons[ICON_TRIANGLE]);
-    KeyCap(art ? 158 : -1, 194, "ENTER", &keyIcons[ICON_CROSS]);
+    MakeCap("ESC", &keyIcons[ICON_TRIANGLE]);
+    MakeCap("\r", &keyIcons[ICON_CROSS]);
     MakeCap("SPACE", &keyIcons[ICON_CIRCLE]);
     MakeCap("ALT", &keyIcons[ICON_SQUARE]);
-    MakeArrow(160, false, &keyIcons[ICON_LEFT]);
-    MakeArrow(194, true, &keyIcons[ICON_RIGHT]);
+    MakeArrow(false, &keyIcons[ICON_LEFT]);
+    MakeArrow(true, &keyIcons[ICON_RIGHT]);
     for (i = 0; i < ROW_COUNT; i++) {
         if (!strcmp(rowKeys[i], "SPACE")) {
             keyRows[i] = keyIcons[ICON_CIRCLE];
@@ -393,11 +417,29 @@ static void Build(void)
     }
     for (i = 0; i < FACE_COUNT; i++) {
         MakeDisc(xboxLetters[i], xboxColours[i], &faceIcons[SET_XBOX][i]);
-        MakeDisc(nintendoLetters[i], RGB(236, 236, 236), &faceIcons[SET_NINTENDO][i]);
+        MakeDisc(nintendoLetters[i], Rgb(236, 236, 236), &faceIcons[SET_NINTENDO][i]);
     }
-    free(art);
-    art = NULL;
-    GpuSetGlyphMemory(page);
+    GpuSetGlyphMemory(atlas);
+    {
+        /* tests (WIPEOUT_GLYPH_DUMP=file.ppm): the page over grey */
+        const char *path = SDL_getenv("WIPEOUT_GLYPH_DUMP");
+        FILE *file = path ? fopen(path, "wb") : NULL;
+
+        if (file) {
+            int k;
+
+            fprintf(file, "P6\n%d %d\n255\n", GLYPH_ATLAS_SIZE, GLYPH_ATLAS_SIZE);
+            for (k = 0; k < GLYPH_ATLAS_SIZE * GLYPH_ATLAS_SIZE; k++) {
+                uint32_t v = atlas[k];
+                int a = (int)(v >> 24), c;
+
+                for (c = 0; c < 3; c++) {
+                    fputc((int)((v >> (c * 8)) & 255) + (80 * (255 - a)) / 255, file);
+                }
+            }
+            fclose(file);
+        }
+    }
 }
 
 /* The glyph of the player's device for a console icon, or NULL to keep the console's. */

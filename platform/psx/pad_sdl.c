@@ -15,8 +15,9 @@
 
    Gamepads use the PlayStation layout on the standard gamepad buttons: south/east/west/north
    are Cross/Circle/Square/Triangle, the shoulders L1/R1, the triggers L2/R2, Start and Back
-   Start and Select, the left stick and the d-pad the directional pad. The first pad plugged in
-   takes port 0 (joining the keyboard), the second port 1; unplugging frees the port.
+   Start and Select, the left stick and the d-pad the directional pad. Every gamepad plugged in
+   drives the console's first port, with the keyboard (the game reads no other); in the two-player
+   lobby each player's own controller is assigned (see Route).
 
    Gamepads count only while the game's window has the focus (SDL reports them in the background
    too). Buttons still held when the focus comes back stay quiet until they are released.
@@ -35,7 +36,7 @@
 #include "internal.h"
 #include "pad.h"
 
-#define PORTS 2
+#define GAMEPADS 8 /* gamepads open at once */
 #define NO_ACTION (-1)
 
 typedef struct KeyBinding {
@@ -74,9 +75,9 @@ static bool keyDown[KEY_COUNT];
    entry). A key that pressed nothing before, like S held while the race starts, takes effect. */
 static bool keyHeldOver[KEY_COUNT];
 static PadContext keyContext = PAD_CONTEXT_MENU;
-static SDL_Gamepad *gamepads[PORTS];
-static uint16_t padHeldOver[PORTS]; /* buttons held when the window regained the focus */
-static bool padRegained[PORTS];     /* the focus came back: note the buttons held now */
+static SDL_Gamepad *gamepads[GAMEPADS];
+static uint16_t padHeldOver[GAMEPADS]; /* buttons held when the window regained the focus */
+static bool padRegained[GAMEPADS];     /* the focus came back: note the buttons held now */
 
 /* Two players on one machine (link.c): the devices of the first player (the only one this game reads)
    and of the second (sent over the link), once the lobby has assigned them. */
@@ -84,8 +85,9 @@ static bool padRegained[PORTS];     /* the focus came back: note the buttons hel
 #define DEVICE_KEYBOARD 0
 static int routed;
 static int lastDevice = DEVICE_KEYBOARD; /* the device the player used last */
+static int lastSlot = -1;                /* ... its slot, when it is a gamepad */
 static int firstDevice = DEVICE_NONE, secondDevice = DEVICE_NONE;
-static PadState keyboardState, gamepadState[PORTS];
+static PadState keyboardState, gamepadState[GAMEPADS];
 
 static void Route(void);
 static PadDevice gamepad_device(SDL_Gamepad *g);
@@ -234,7 +236,7 @@ static int GamepadPort(int id)
 {
     int port;
 
-    for (port = 0; port < PORTS; port++) {
+    for (port = 0; port < GAMEPADS; port++) {
         if (gamepads[port] && (int)SDL_GetGamepadID(gamepads[port]) == id) {
             return port;
         }
@@ -250,12 +252,26 @@ static void Route(void)
     int port;
 
     if (!routed) {
-        PsxPadSetSource(0, PAD_SRC_KEYBOARD, &keyboardState, true);
-        for (port = 0; port < PORTS; port++) {
+        /* one player: every gamepad is theirs (the buttons of all; the sticks and triggers of the one used
+           last), as the keyboard is; the console's second port is not read by a one-console game */
+        PadState merged = idle;
+        int any = 0;
+
+        for (port = 0; port < GAMEPADS; port++) {
             if (gamepads[port]) {
-                PsxPadSetSource(port, PAD_SRC_GAMEPAD, &gamepadState[port], true);
+                merged.buttons |= gamepadState[port].buttons;
+                any = 1;
             }
         }
+        if (lastSlot >= 0 && lastSlot < GAMEPADS && gamepads[lastSlot]) {
+            merged.twist = gamepadState[lastSlot].twist;
+            merged.analogI = gamepadState[lastSlot].analogI;
+            merged.analogII = gamepadState[lastSlot].analogII;
+            merged.analogL = gamepadState[lastSlot].analogL;
+        }
+        PsxPadSetSource(0, PAD_SRC_KEYBOARD, &keyboardState, true);
+        PsxPadSetSource(0, PAD_SRC_GAMEPAD, &merged, any);
+        PsxPadSetSource(1, PAD_SRC_GAMEPAD, &idle, false);
         return;
     }
     port = GamepadPort(firstDevice);
@@ -342,7 +358,7 @@ int PortInputDevices(PortInputDevice *out, int max)
         }
         n++;
     }
-    for (port = 0; port < PORTS && n < max; port++) {
+    for (port = 0; port < GAMEPADS && n < max; port++) {
         if (gamepads[port]) {
             out[n].id = (int)SDL_GetGamepadID(gamepads[port]);
             out[n].kind = gamepad_device(gamepads[port]);
@@ -361,16 +377,16 @@ static void open_gamepad(SDL_JoystickID id)
         return; /* tests: only the script's virtual gamepad, never a real one */
     }
 
-    for (port = 0; port < PORTS; port++) {
+    for (port = 0; port < GAMEPADS; port++) {
         if (gamepads[port] && SDL_GetGamepadID(gamepads[port]) == id) {
             return;
         }
     }
-    for (port = 0; port < PORTS; port++) {
+    for (port = 0; port < GAMEPADS; port++) {
         if (!gamepads[port]) {
             gamepads[port] = SDL_OpenGamepad(id);
             if (gamepads[port]) {
-                PortLog("pad: %s on port %d\n", SDL_GetGamepadName(gamepads[port]), port + 1);
+                PortLog("pad: %s (gamepad %d)\n", SDL_GetGamepadName(gamepads[port]), port + 1);
                 update_gamepad(port);
             }
             return;
@@ -382,7 +398,7 @@ static void close_gamepad(SDL_JoystickID id)
 {
     int port;
 
-    for (port = 0; port < PORTS; port++) {
+    for (port = 0; port < GAMEPADS; port++) {
         if (gamepads[port] && SDL_GetGamepadID(gamepads[port]) == id) {
             SDL_CloseGamepad(gamepads[port]);
             gamepads[port] = NULL;
@@ -420,7 +436,7 @@ void PsxPadSdlShutdown(void)
     int port;
     bool opened = false;
 
-    for (port = 0; port < PORTS; port++) {
+    for (port = 0; port < GAMEPADS; port++) {
         if (gamepads[port]) {
             SDL_CloseGamepad(gamepads[port]);
             gamepads[port] = NULL;
@@ -465,10 +481,11 @@ static void note_gamepad(SDL_JoystickID id)
     if (routed && (int)id != firstDevice) {
         return; /* the second player's: not the glyphs of this game */
     }
-    for (port = 0; port < PORTS; port++) {
+    for (port = 0; port < GAMEPADS; port++) {
         if (gamepads[port] && SDL_GetGamepadID(gamepads[port]) == id) {
             PsxPadNoteDevice(gamepad_device(gamepads[port]));
             lastDevice = (int)id;
+            lastSlot = port;
             return;
         }
     }
@@ -500,12 +517,12 @@ void PsxInputEvent(const SDL_Event *event)
         memset(keyDown, 0, sizeof(keyDown));
         memset(keyHeldOver, 0, sizeof(keyHeldOver));
         update_keyboard();
-        for (port = 0; port < PORTS; port++) {
+        for (port = 0; port < GAMEPADS; port++) {
             update_gamepad(port); /* released while away */
         }
         break;
     case SDL_EVENT_WINDOW_FOCUS_GAINED:
-        for (port = 0; port < PORTS; port++) {
+        for (port = 0; port < GAMEPADS; port++) {
             padRegained[port] = gamepads[port] != NULL;
             update_gamepad(port);
         }
@@ -520,7 +537,7 @@ void PsxInputEvent(const SDL_Event *event)
         note_gamepad(event->gbutton.which);
         /* fall through */
     case SDL_EVENT_GAMEPAD_BUTTON_UP:
-        for (port = 0; port < PORTS; port++) {
+        for (port = 0; port < GAMEPADS; port++) {
             if (gamepads[port] && SDL_GetGamepadID(gamepads[port]) == event->gbutton.which) {
                 update_gamepad(port);
             }
@@ -530,7 +547,7 @@ void PsxInputEvent(const SDL_Event *event)
         if (event->gaxis.value > 16384 || event->gaxis.value < -16384) {
             note_gamepad(event->gaxis.which);
         }
-        for (port = 0; port < PORTS; port++) {
+        for (port = 0; port < GAMEPADS; port++) {
             if (gamepads[port] && SDL_GetGamepadID(gamepads[port]) == event->gaxis.which) {
                 update_gamepad(port);
             }

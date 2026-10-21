@@ -9,6 +9,7 @@
                                                           b east, x west, y north, start, back, dpup, ...)
        220 pad axis leftx 30000                          (an axis; triggers 0..32767)
        300 pad detach
+       ("pad2 ..." is a second virtual gamepad, the same way)
        400 focus lost           450 focus gained        (the window loses or regains the input focus) */
 #include <SDL3/SDL.h>
 #include <stdio.h>
@@ -72,6 +73,7 @@ typedef enum { STEP_KEY, STEP_ATTACH, STEP_DETACH, STEP_BUTTON, STEP_AXIS, STEP_
 typedef struct Step {
     uint64_t field;
     StepKind kind;
+    int pad;      /* which virtual gamepad (0 or 1) */
     bool down;
     int code;     /* scancode, button, axis or pad family */
     int value;
@@ -80,8 +82,8 @@ typedef struct Step {
 static Step *steps;
 static int stepCount, stepNext;
 static bool stepsLoaded;
-static SDL_JoystickID virtualId;
-static SDL_Joystick *virtualJoystick;
+static SDL_JoystickID virtualIds[2];
+static SDL_Joystick *virtualJoysticks[2];
 
 static const struct { const char *name; uint16_t vendor, product; } families[] = {
     {"xbox", 0x045E, 0x02EA}, {"ps5", 0x054C, 0x0CE6}, {"switch", 0x057E, 0x2009}, {"generic", 0x1234, 0x5678}};
@@ -117,7 +119,7 @@ static void ParseLine(char *line, int number)
     } else if (!strcmp(verb, "focus") && (!strcmp(rest, "lost") || !strcmp(rest, "gained"))) {
         step.kind = STEP_FOCUS;
         step.down = rest[0] == 'g';
-    } else if (!strcmp(verb, "pad") && (n = (int)strlen(rest), sscanf(rest, "%31s %n", word, &n) >= 1)) {
+    } else if ((!strcmp(verb, "pad") || !strcmp(verb, "pad2")) && (step.pad = verb[3] == '2', 1) && (n = (int)strlen(rest), sscanf(rest, "%31s %n", word, &n) >= 1)) {
         char *tail = rest + n;
 
         if (!strcmp(word, "attach")) {
@@ -194,7 +196,7 @@ static void Run(const Step *step)
         SDL_PushEvent(&event);
         break;
     case STEP_ATTACH:
-        if (!virtualId) {
+        if (!virtualIds[step->pad]) {
             SDL_VirtualJoystickDesc desc;
 
             SDL_INIT_INTERFACE(&desc);
@@ -206,26 +208,26 @@ static void Run(const Step *step)
             desc.name = families[step->code].name;
             desc.button_mask = ~0u;
             desc.axis_mask = ~0u;
-            virtualId = SDL_AttachVirtualJoystick(&desc);
-            virtualJoystick = virtualId ? SDL_OpenJoystick(virtualId) : NULL;
+            virtualIds[step->pad] = SDL_AttachVirtualJoystick(&desc);
+            virtualJoysticks[step->pad] = virtualIds[step->pad] ? SDL_OpenJoystick(virtualIds[step->pad]) : NULL;
         }
         break;
     case STEP_DETACH:
-        if (virtualId) {
-            SDL_CloseJoystick(virtualJoystick);
-            SDL_DetachVirtualJoystick(virtualId);
-            virtualId = 0;
-            virtualJoystick = NULL;
+        if (virtualIds[step->pad]) {
+            SDL_CloseJoystick(virtualJoysticks[step->pad]);
+            SDL_DetachVirtualJoystick(virtualIds[step->pad]);
+            virtualIds[step->pad] = 0;
+            virtualJoysticks[step->pad] = NULL;
         }
         break;
     case STEP_BUTTON:
-        if (virtualJoystick) {
-            SDL_SetJoystickVirtualButton(virtualJoystick, step->code, step->down);
+        if (virtualJoysticks[step->pad]) {
+            SDL_SetJoystickVirtualButton(virtualJoysticks[step->pad], step->code, step->down);
         }
         break;
     case STEP_AXIS:
-        if (virtualJoystick) {
-            SDL_SetJoystickVirtualAxis(virtualJoystick, step->code, (Sint16)step->value);
+        if (virtualJoysticks[step->pad]) {
+            SDL_SetJoystickVirtualAxis(virtualJoysticks[step->pad], step->code, (Sint16)step->value);
         }
         break;
     case STEP_FOCUS:

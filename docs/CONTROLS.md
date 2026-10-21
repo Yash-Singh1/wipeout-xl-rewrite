@@ -26,15 +26,16 @@ The glyph set follows the device the player used last (a key, or a button or sti
 the scripted pad of the lockstep tests does not count). Until something is pressed, and for a
 PlayStation pad and for pads of an unknown make, the console's icons stay exactly as they are.
 
-- **Keyboard**: key caps. The Windows release's art from `PICS/HI-RES/HUD2.TGA` of the PC data
-  (768x256, A1R5G5B5, three 256x256 pages; caps on the first page; rows counted in file order):
-  ESC (158,162) for triangle/BACK, ENTER (158,194) for cross, arrows (160,226) and (194,226) for
-  the left and right arrows. Glyphs with no PC art (circle, square, the action keys) are drawn
-  as caps in the same style with the name of the key on them (SPACE, ALT, S, F1, A, D), and every cap
-  is drawn when the PC data is missing. Cross is ENTER, circle SPACE, square ALT, triangle ESC.
-- **Xbox pads**: A, B, X, Y discs in the pad's colours by position (south A, east B, west X, north Y).
-- **Nintendo pads** (Switch, Joy-Con, GameCube): B, A, Y, X discs by position (south B, east A,
+- **Keyboard**: key caps in the style of the Windows release's (`PICS/HI-RES/HUD2.TGA`): grey caps
+  with red legends, ENTER as its return arrow, gold direction arrows. Cross is ENTER, circle SPACE,
+  square ALT, triangle ESC; the controller screen shows S, F1, A and D the same way.
+- **Xbox pads**: A, B, X, Y buttons with letters in the pad's colours by position (south A, east B,
+  west X, north Y).
+- **Nintendo pads** (Switch, Joy-Con, GameCube): B, A, Y, X buttons by position (south B, east A,
   west Y, north X).
+
+The keyboard and gamepad glyphs are drawn by the port at four times the resolution of their page,
+with smooth edges, and sampled filtered: they stay sharp at any window size.
 - **PlayStation pads and other pads**: the console's icons.
 
 The glyphs live in a 256x256 page of the platform's texture memory beyond the console's video

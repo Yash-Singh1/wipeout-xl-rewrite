@@ -14,12 +14,15 @@
 extern uint16_t psxVram[VRAM_HEIGHT][VRAM_WIDTH];
 void GpuVramChanged(int x, int y, int w, int h);
 
-/* The port's own page of texture memory, beyond the console's video memory: 256x256 15-bit
-   pixels that a textured primitive reads when its texture page says colour depth 3 (the
-   depth the console's GPU leaves reserved; the game never uses it). The button glyphs of the
-   keyboard and of other gamepads live here. The page's coordinates are the primitive's UVs. */
-#define GLYPH_PAGE_SIZE 256
-void GpuSetGlyphMemory(const uint16_t *pixels);
+/* The port's own page of texture memory, beyond the console's video memory, that a textured
+   primitive reads when its texture page says colour depth 3 (the depth the console's GPU leaves
+   reserved; the game never uses it). The button glyphs of the keyboard and of other gamepads
+   live here. The page's coordinates are the primitive's UVs (256x256); its texels are four times
+   finer, with smooth coverage, and are sampled filtered. */
+#define GLYPH_PAGE_SIZE 256   /* the glyph page's texture coordinates (a quad's UV bytes) */
+#define GLYPH_ATLAS_SCALE 4   /* ... and its texels per coordinate */
+#define GLYPH_ATLAS_SIZE (GLYPH_PAGE_SIZE * GLYPH_ATLAS_SCALE)
+void GpuSetGlyphMemory(const uint32_t *rgba); /* RGBA8, premultiplied by the coverage */
 
 /* A vertex: position in the drawing area's pixels (fractional when the GTE
    supplied a precise one), w for perspective-correct texturing (1 when not
