@@ -16,6 +16,7 @@
 #include "../trace.h"
 #include "gpu.h"
 #include "../link.h"
+#include "../settings.h"
 #include "gte.h"
 #include "psyq.h"
 
@@ -775,15 +776,19 @@ static void StateFor(GpuDrawState *draw, int textured, int semi, int raw)
 }
 
 /* The console's GPU skips triangles wider than 1023 or taller than 511
-   pixels (judged on the integer coordinates). */
-static int TooLarge(const int32_t x[3], const int32_t y[3])
+   pixels (judged on the integer coordinates). A track face right beside the
+   camera has a corner far off the screen, so it dropped out for a frame or two
+   and left a hole in front of the ship. The port draws such a triangle when
+   all its corners are projections it knows in 3D (the setting); one with a
+   corner placed in 2D is still skipped. */
+static int Skipped(const GpuVertex *v, const int32_t x[3], const int32_t y[3])
 {
     int i;
 
     for (i = 0; i < 3; i++) {
         int j = (i + 1) % 3;
         if (abs(x[i] - x[j]) > 1023 || abs(y[i] - y[j]) > 511) {
-            return 1;
+            return !portSettings.largePolygons || v[0].w <= 0.0f || v[1].w <= 0.0f || v[2].w <= 0.0f;
         }
     }
     return 0;
@@ -842,13 +847,13 @@ static void Polygon(const uint32_t *w, uint32_t code)
     }
     {
         int32_t tx[3] = {ix[0], ix[1], ix[2]}, ty[3] = {iy[0], iy[1], iy[2]};
-        if (!TooLarge(tx, ty)) {
+        if (!Skipped(v, tx, ty)) {
             GpuTriangles(&draw, v, 3);
         }
     }
     if (quad) {
         int32_t tx[3] = {ix[1], ix[2], ix[3]}, ty[3] = {iy[1], iy[2], iy[3]};
-        if (!TooLarge(tx, ty)) {
+        if (!Skipped(v + 1, tx, ty)) {
             GpuTriangles(&draw, v + 1, 3);
         }
     }

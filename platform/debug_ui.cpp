@@ -222,6 +222,12 @@ static void Console(void)
                 Changed();
             }
             ImGui::TextDisabled("Fixes polygons sorted wrongly, but decals such as sign faces can flicker.");
+            bool large = portSettings.largePolygons != 0;
+            if (ImGui::Checkbox("Draw near polygons the console drops", &large)) {
+                portSettings.largePolygons = large;
+                Changed();
+            }
+            ImGui::TextDisabled("The console skips polygons over 1023x511 pixels: holes in the track close to the camera.");
             ImGui::Separator();
             bool fullscreen = (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) != 0;
             if (ImGui::Checkbox("Full screen (Alt+Enter, F11)", &fullscreen)) {

@@ -46,6 +46,10 @@ void PortFarDraw(TrackCamera *camera, ShipData *ships, Object **shipShapes);
 
 /* For the renderers' far modes (trackdraw.c, objdraw.c). */
 void PortFarProject(const PortView *view, double x, double y, double z, PortFarVertex *out);
+/* A camera-space point in front of the near plane (PORT_FAR_NEAR), wherever it lands on the screen: the
+   packet keeps its position clamped to the GPU's coordinates, the precise projection holds the true one. */
+#define PORT_FAR_NEAR 16.0
+void PortFarProjectCamera(double cx, double cy, double cz, PortFarVertex *out);
 void PortFarDepthBias(double scale); /* the depth of what is projected next is scaled (drawn behind) */
 u_long *PortFarSlot(int entry, double depth);
 char *PortFarAlloc(int bytes);

@@ -223,6 +223,22 @@ void PortFarProject(const PortView *view, double x, double y, double z, PortFarV
                                       GteFade(sqrt(cx * cx + cy * cy + cz * cz)));
 }
 
+void PortFarProjectCamera(double cx, double cy, double cz, PortFarVertex *out)
+{
+    double h = (double)(u_short)GteReadControl(26);
+    int sx, sy;
+
+    out->z = cz;
+    out->x = GteReadControl(24) / 65536.0 + cx * h / cz;
+    out->y = GteReadControl(25) / 65536.0 + cy * h / cz;
+    sx = out->x < -1024.0 ? -1024 : out->x > 1023.0 ? 1023 : (int)floor(out->x);
+    sy = out->y < -1024.0 ? -1024 : out->y > 1023.0 ? 1023 : (int)floor(out->y);
+    out->screen = (sx & 0xFFFF) | (int)((u_int)sy << 16);
+    out->rejected = 0;
+    out->handle = GteRecordProjection((uint32_t)out->screen, (float)out->x, (float)out->y, (float)(cz * depthBias),
+                                      GteFade(sqrt(cx * cx + cy * cy + cz * cz)));
+}
+
 u_long *PortFarSlot(int entry, double depth)
 {
     int bucket;
