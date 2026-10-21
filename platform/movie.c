@@ -21,6 +21,7 @@
 #include <string.h>
 
 #include "platform.h"
+#include "settings.h"
 #include "psx/gpu.h"
 #include "psx/psx_io.h"
 
@@ -155,6 +156,9 @@ void PsxPlayMovie(const char *program)
 
     if (portConfig.linkName) {
         return; /* the second player's game shows no movies */
+    }
+    if (portSettings.skipIntro && file && !strcmp(file, "WXLINTR.MPG")) {
+        return; /* the settings: no intro */
     }
     data = file ? LoadMovie(file, &size) : NULL;
     if (!data) {

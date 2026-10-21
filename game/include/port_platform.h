@@ -31,5 +31,7 @@ void PsxLinkRegion(void *start, size_t bytes);
 /* Whether the port draws the whole track in view (portfar.h): not in the lockstep tests (WIPEOUT_TRACE)
    or with WIPEOUT_FAR_VIEW=0. */
 int PortFarViewEnabled(void);
+/* The distance fade's range in world units; whether it is on (the settings, platform/settings.c). */
+int PortFadeRange(int *nearDistance, int *farDistance);
 
 #endif

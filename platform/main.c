@@ -10,6 +10,7 @@
 #include "psx/gte.h"
 #include "psx/psx_io.h"
 #include "link.h"
+#include "settings.h"
 #include "trace.h"
 
 PortConfig portConfig;
@@ -93,6 +94,16 @@ int main(int argc, char **argv)
         Usage();
         return 1;
     }
+    PortSettingsLoad();
+    if (!portConfig.savePath && portSettings.saveDir[0]) {
+        static char saveDir[1040];
+
+        /* the memory cards' folder from the settings (the file names follow it directly) */
+        SDL_snprintf(saveDir, sizeof(saveDir), "%s%s", portSettings.saveDir,
+                     portSettings.saveDir[strlen(portSettings.saveDir) - 1] == '/' ? "" : "/");
+        SDL_CreateDirectory(saveDir);
+        portConfig.savePath = saveDir;
+    }
     if (!portConfig.savePath) {
         portConfig.savePath = SDL_GetPrefPath("Psygnosis", "WipeoutXL");
     }
@@ -147,15 +158,23 @@ int main(int argc, char **argv)
 
 int PortFarViewEnabled(void)
 {
-    const char *value = SDL_getenv("WIPEOUT_FAR_VIEW");
+    static int mode = -1; /* 2: forced on (tests), 0: off while tracing, 1: the setting */
 
-    if (value && SDL_atoi(value) == 2) {
-        return 1; /* tests: also while tracing (that the game's own results stay the same) */
+    if (mode < 0) {
+        const char *value = SDL_getenv("WIPEOUT_FAR_VIEW");
+
+        /* WIPEOUT_FAR_VIEW=2, tests: also while tracing (that the game's own results stay the same);
+           the lockstep tests compare the console's drawing */
+        mode = value && SDL_atoi(value) == 2 ? 2 : SDL_getenv("WIPEOUT_TRACE") ? 0 : 1;
     }
-    if (SDL_getenv("WIPEOUT_TRACE")) {
-        return 0; /* the lockstep tests compare the console's drawing */
-    }
-    return !value || SDL_atoi(value) != 0;
+    return mode == 2 || (mode == 1 && portSettings.farView);
+}
+
+int PortFadeRange(int *nearDistance, int *farDistance)
+{
+    *nearDistance = portSettings.fadeNear;
+    *farDistance = portSettings.fadeFar;
+    return portSettings.fade;
 }
 
 void PortBackground(int on)

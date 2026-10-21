@@ -474,8 +474,16 @@ static void TraceState(void)
     Event(KIND_STATE, words, 32);
 }
 
+static uint64_t gameFrames;
+
+uint64_t PortGameFrames(void)
+{
+    return gameFrames;
+}
+
 void PortTraceBoundary(uint32_t marker)
 {
+    gameFrames++;
     if (marker == TRACE_CALLBACK_SWAP) {
         callbackSwaps++;
     }

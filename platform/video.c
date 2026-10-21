@@ -4,6 +4,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+#include "debug_ui.h"
 #include "link.h"
 #include "platform.h"
 #include "psx/gpu.h"
@@ -54,6 +55,9 @@ int PortVideoInit(void)
         return 0;
     }
     SDL_GL_MakeCurrent(window, context);
+    if (!portConfig.hidden || SDL_getenv("WIPEOUT_DEBUG_UI")) {
+        DebugUiInit(window, context); /* WIPEOUT_DEBUG_UI: also in a hidden test run */
+    }
     /* The game paces itself to the console's field rate (libetc.c). On
        screen each picture also waits for the display's refresh, so it never
        tears (adaptive where the driver offers it); tests run unthrottled. */
@@ -65,6 +69,7 @@ int PortVideoInit(void)
 
 void PortVideoShutdown(void)
 {
+    DebugUiShutdown();
     if (context) {
         SDL_GL_DestroyContext(context);
     }
@@ -149,6 +154,8 @@ void PortVideoPresent(void)
        framebuffer holds, and the window system composites the window with it, so such pixels showed
        what is behind the window (black holes where ship shadows were). */
     glDisable(GL_SCISSOR_TEST); /* the presenters leave the window's framebuffer bound */
+    DebugUiRender();
+    glDisable(GL_SCISSOR_TEST);
     glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE);
     glClearColor(0, 0, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT);
@@ -186,6 +193,9 @@ int PortPumpEvents(void)
              (event.key.scancode == SDL_SCANCODE_RETURN && (event.key.mod & SDL_KMOD_ALT)))) {
             SDL_SetWindowFullscreen(window, !(SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN));
             continue;
+        }
+        if (DebugUiEvent(&event)) {
+            continue; /* the debug console's (the backtick key) */
         }
         if (portConfig.hidden && (event.type == SDL_EVENT_WINDOW_FOCUS_LOST || event.type == SDL_EVENT_WINDOW_FOCUS_GAINED)) {
             scriptedFocus = event.type == SDL_EVENT_WINDOW_FOCUS_GAINED;

@@ -45,6 +45,15 @@ of the console's seconds (`WIPEOUT_CD_SPEED=1` for the console's drive).
 Alt+Enter or F11 switches while playing. The environment variables
 `WIPEOUT_XL_DISC` and `WIPEOUT_XL_PC_DATA` can stand in for the two paths.
 
+## Debug console
+
+The backtick key (`` ` ``) opens a console over the game: frame rates and a
+frame-rate overlay, the draw distance (the console's or the whole track) and
+its fade, the depth test, skipping the intro movie, full screen, and where
+the settings and the memory cards are. Changes are saved at once to
+`wipeoutxl.ini` in the user's data folder; a new saves folder takes effect at
+the next start. Dear ImGui (`platform/third_party/imgui`, MIT) draws it.
+
 ## Controls
 
 Keyboard (the Windows release's layout):

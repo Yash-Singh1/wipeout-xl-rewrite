@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(wipeoutxl C)
+project(wipeoutxl C CXX)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_EXTENSIONS ON)
@@ -48,14 +48,20 @@ set(PLATFORM_PSX_SOURCES
     platform/psx/gte.c platform/psx/gte_tables.c platform/psx/gpu_gl.c
     platform/psx/libetc.c platform/psx/libgpu.c platform/psx/libgte.c platform/psx/libgte_more.c)
 list(TRANSFORM PLATFORM_PSX_SOURCES PREPEND ${CMAKE_SOURCE_DIR}/)
-set(PLATFORM_SOURCES ${PLATFORM_TOP_SOURCES} ${PLATFORM_PSX_SOURCES})
+# The debug console: Dear ImGui (platform/third_party/imgui, MIT) over SDL3 and OpenGL 3.
+set(IMGUI_DIR ${CMAKE_SOURCE_DIR}/platform/third_party/imgui)
+set(DEBUG_UI_SOURCES ${CMAKE_SOURCE_DIR}/platform/debug_ui.cpp
+    ${IMGUI_DIR}/imgui.cpp ${IMGUI_DIR}/imgui_draw.cpp ${IMGUI_DIR}/imgui_tables.cpp ${IMGUI_DIR}/imgui_widgets.cpp
+    ${IMGUI_DIR}/backends/imgui_impl_sdl3.cpp ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp)
+set(PLATFORM_SOURCES ${PLATFORM_TOP_SOURCES} ${PLATFORM_PSX_SOURCES} ${DEBUG_UI_SOURCES})
 list(SORT PLATFORM_SOURCES)
 find_package(SDL3 CONFIG)
 find_package(ZLIB QUIET)   # optional: compressed lockstep traces (platform/trace.c)
 
 function(port_platform_target name)
     target_include_directories(${name} PRIVATE ${CMAKE_SOURCE_DIR}/platform ${CMAKE_SOURCE_DIR}/platform/psx
-        ${CMAKE_SOURCE_DIR}/game/include)
+        ${CMAKE_SOURCE_DIR}/game/include ${IMGUI_DIR})
+    set_source_files_properties(${DEBUG_UI_SOURCES} PROPERTIES COMPILE_OPTIONS "-std=c++17")
     target_compile_options(${name} PRIVATE -fsigned-char -fno-strict-aliasing)
     target_link_libraries(${name} PRIVATE game psxio m)
     if(GAME_DATA_SOURCES)

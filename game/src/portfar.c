@@ -41,16 +41,17 @@ static struct {
 } objectMarks[MARK_SLOTS];
 static int enabled = -1;
 
+/* Live: the debug console turns it on and off. */
 static int Enabled(void)
 {
-    if (enabled < 0) {
-        enabled = PortFarViewEnabled();
-        if (enabled) {
-            PsxLinkRegion(arena, sizeof(arena));
-            PsxLinkRegion(farTable, sizeof(farTable));
-        }
+    int on = PortFarViewEnabled();
+
+    if (on && enabled < 0) {
+        enabled = 1;
+        PsxLinkRegion(arena, sizeof(arena));
+        PsxLinkRegion(farTable, sizeof(farTable));
     }
-    return enabled;
+    return on;
 }
 
 void PortFarMarkFace(Face *face)
@@ -377,28 +378,11 @@ void PortFarDraw(TrackCamera *camera, ShipData *ships, Object **shipShapes)
     frame++;
 }
 
-/* The distance fade: from WIPEOUT_FADE ("near,far" in world units, or 0 for none), 64000 to 96000 by
-   default; none without the far view (the console's own distance). */
+/* The distance fade: the settings' range (WIPEOUT_FADE "near,far" in world units, or 0 for none),
+   64000 to 96000 by default; none without the far view (the console's own distance). */
 void PortFade(int on)
 {
-    static int read;
-    static double nearDistance = 64000.0, farDistance = 96000.0;
-    static int disabled;
+    int nearDistance, farDistance, fade = PortFadeRange(&nearDistance, &farDistance);
 
-    if (!read) {
-        const char *value = getenv("WIPEOUT_FADE");
-
-        read = 1;
-        if (value) {
-            double a = 0, b = 0;
-
-            if (sscanf(value, "%lf,%lf", &a, &b) == 2 && b > a && a > 0) {
-                nearDistance = a;
-                farDistance = b;
-            } else {
-                disabled = 1;
-            }
-        }
-    }
-    GteSetFade(on && !disabled && Enabled(), nearDistance, farDistance);
+    GteSetFade(on && fade && Enabled(), nearDistance, farDistance);
 }

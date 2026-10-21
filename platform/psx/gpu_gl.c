@@ -19,6 +19,7 @@
 
 #include "gpu.h"
 #include "../platform.h"
+#include "../settings.h"
 
 #define GL_FUNCTIONS(X) \
     X(PFNGLGENBUFFERSPROC, glGenBuffers) \
@@ -618,18 +619,10 @@ void GpuTriangles(const GpuDrawState *given, const GpuVertex *vertices, int coun
         maxY = SDL_max(maxY, vertices[i].y);
     }
     MarkDrawn(minX, minY, maxX, maxY);
-    {
-        static int depthOn = -1;
-
-        if (depthOn < 0) {
-            const char *value = SDL_getenv("WIPEOUT_DEPTH");
-            /* off by default: the game's models put decals (sign faces, screen pictures, the menus' track
-               and medal models) on or close to the surfaces behind them and rely on the drawing order;
-               a depth buffer makes them fight. WIPEOUT_DEPTH=1 turns it on. */
-            depthOn = value && SDL_atoi(value) != 0;
-        }
-        faded.depthTest = depthOn;
-    }
+    /* off by default: the game's models put decals (sign faces, screen pictures, the menus' track and
+       medal models) on or close to the surfaces behind them and rely on the drawing order; a depth
+       buffer makes them fight (the settings, WIPEOUT_DEPTH=1) */
+    faded.depthTest = portSettings.depthTest;
     for (i = 0; i < count; i++) {
         faded.fade |= vertices[i].a < 255;
         if (vertices[i].w <= 0.0f || vertices[i].background) {
