@@ -109,8 +109,15 @@ static void ProjectVertices(Object *object)
 }
 
 /* A polygon is drawn only when none of its vertices was rejected. */
+/* Port: the far view leaves out the primitives the game drew (forceReject), and learns which the game
+   culled as facing away (culled). */
+static int forceReject, culled;
+
 static int AnyRejected(const ProjectedVertex *a, const ProjectedVertex *b, const ProjectedVertex *c, const ProjectedVertex *d)
 {
+    if (forceReject) {
+        return 1;
+    }
     return (a->flag | b->flag | c->flag | (d ? d->flag : 0)) != 0;
 }
 
@@ -187,7 +194,8 @@ static int Culled(DrawKind kind, short primFlag, const ProjectedVertex *a, const
     if (kind != DRAW_FIXED && !(primFlag & SingleSided)) {
         return 0;
     }
-    return FacesAway(a, b, c);
+    culled = FacesAway(a, b, c);
+    return culled;
 }
 
 static void SetRgb(u_char *r, u_char *g, u_char *b, const CVECTOR *colour)
@@ -408,7 +416,7 @@ static char *DrawSprite(DrawKind kind, char *out, u_long *ordering, int roll, co
     int              x, y;
     Texture         *texture;
 
-    if (v->flag) {
+    if (v->flag || forceReject) {
         return out;
     }
     width = (u_int)((int)prim->width * 0xA0);
@@ -469,16 +477,22 @@ static void DrawObject(Object *object, DrawKind kind, int roll, const CVECTOR *c
     u_long *ordering;
     char   *out;
     char   *primitive;
-    int     count;
+    int     count, index = 0;
+    unsigned char *drawnFlags = NULL;
+    const unsigned char *skip = NULL;
 
     if (farView) {
+        int complete;
+
+        /* the primitives the game handled (scenery; a ship model can serve several ships) */
+        skip = kind == DRAW_LIT ? NULL : PortFarObjectDrawn(object, &complete);
         /* the largest packet per primitive, in the far view's own memory */
         out = PortFarAlloc((u_short)object->primitiveCount * (int)sizeof(POLY_GT4));
         if (!out) {
             return;
         }
     } else {
-        PortFarMarkObject(object); /* Port: the far view leaves it to the game this frame */
+        drawnFlags = PortFarObjectPrimitives(object); /* Port: the far view draws what the game did not */
         SetSkeletonTransform(object->skeleton);
         out = nextPrim.ptr;
     }
@@ -488,9 +502,12 @@ static void DrawObject(Object *object, DrawKind kind, int roll, const CVECTOR *c
     ProjectVertices(object);
 
     do {
-        Poly prim;
+        Poly  prim;
+        char *before = out;
 
         prim.ptr = primitive;
+        forceReject = skip && index < (u_short)object->primitiveCount && skip[index];
+        culled = 0;
         switch ((u_short)prim.prim->type) {
         case TypeGT3:
             if (kind == DRAW_LIT) {
@@ -543,8 +560,13 @@ static void DrawObject(Object *object, DrawKind kind, int roll, const CVECTOR *c
         default:
             goto finished;
         }
+        if (drawnFlags && index < (u_short)object->primitiveCount) {
+            drawnFlags[index] = out != before || culled;
+        }
+        index++;
     } while (--count > 0);
 finished:
+    forceReject = 0;
     if (farView) {
         PortFarRelease(out);
         return;

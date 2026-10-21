@@ -30,9 +30,14 @@ static uint32_t frame = 1;
 static uint32_t *faceMarks;      /* the frame each track face was last drawn by the game */
 static int      faceMarkCount;
 static uint32_t shipMarks[15];
+/* The objects the game drew this frame, and which of their primitives it handled (drew, or culled as
+   facing away): the GTE rejects every polygon with a vertex deeper than 32767 (IR3 saturates) while the
+   game draws objects to 38200, so objects in between are "drawn" with nothing on screen. */
 static struct {
-    Object  *object;
-    uint32_t frame;
+    Object        *object;
+    uint32_t       frame;
+    unsigned char *drawn;
+    int            count, capacity;
 } objectMarks[MARK_SLOTS];
 static int enabled = -1;
 
@@ -80,36 +85,60 @@ static int ObjectSlot(Object *object)
     return (int)((key >> 4) ^ (key >> 13)) & (MARK_SLOTS - 1);
 }
 
-void PortFarMarkObject(Object *object)
-{
-    int slot, probe;
-
-    if (!Enabled()) {
-        return;
-    }
-    slot = ObjectSlot(object);
-    for (probe = 0; probe < MARK_SLOTS; probe++, slot = (slot + 1) & (MARK_SLOTS - 1)) {
-        if (objectMarks[slot].frame != frame || objectMarks[slot].object == object) {
-            objectMarks[slot].object = object;
-            objectMarks[slot].frame = frame;
-            return;
-        }
-    }
-}
-
-static int ObjectMarked(Object *object)
+/* The mark slot of an object this frame (created when `create`), or -1. */
+static int MarkSlot(Object *object, int create)
 {
     int slot = ObjectSlot(object), probe;
 
     for (probe = 0; probe < MARK_SLOTS; probe++, slot = (slot + 1) & (MARK_SLOTS - 1)) {
         if (objectMarks[slot].frame != frame) {
-            return 0;
+            if (!create) {
+                return -1;
+            }
+            objectMarks[slot].object = object;
+            objectMarks[slot].frame = frame;
+            objectMarks[slot].count = 0;
+            return slot;
         }
         if (objectMarks[slot].object == object) {
-            return 1;
+            return slot;
         }
     }
-    return 0;
+    return -1;
+}
+
+unsigned char *PortFarObjectPrimitives(Object *object)
+{
+    int slot, count = (u_short)object->primitiveCount;
+
+    if (!Enabled() || (slot = MarkSlot(object, 1)) < 0) {
+        return NULL;
+    }
+    if (objectMarks[slot].capacity < count) {
+        objectMarks[slot].drawn = realloc(objectMarks[slot].drawn, (size_t)count);
+        objectMarks[slot].capacity = count;
+    }
+    memset(objectMarks[slot].drawn, 0, (size_t)count);
+    objectMarks[slot].count = count;
+    return objectMarks[slot].drawn;
+}
+
+const unsigned char *PortFarObjectDrawn(Object *object, int *complete)
+{
+    int slot = MarkSlot(object, 0), i;
+
+    *complete = 0;
+    if (slot < 0) {
+        return NULL;
+    }
+    *complete = 1;
+    for (i = 0; i < objectMarks[slot].count; i++) {
+        if (!objectMarks[slot].drawn[i]) {
+            *complete = 0;
+            break;
+        }
+    }
+    return objectMarks[slot].drawn;
 }
 
 void PortFarMarkShip(int ship)
@@ -158,6 +187,13 @@ static void SkeletonView(const Skeleton *skeleton, PortView *out)
     Compose(out, &skeleton->relative, out);
 }
 
+static double depthBias = 1.0;
+
+void PortFarDepthBias(double scale)
+{
+    depthBias = scale;
+}
+
 void PortFarProject(const PortView *view, double x, double y, double z, PortFarVertex *out)
 {
     double h = (double)(u_short)GteReadControl(26);
@@ -182,7 +218,7 @@ void PortFarProject(const PortView *view, double x, double y, double z, PortFarV
     sy = (int)floor(out->y);
     out->screen = (sx & 0xFFFF) | (int)((u_int)sy << 16);
     out->rejected = 0;
-    out->handle = GteRecordProjection((uint32_t)out->screen, (float)out->x, (float)out->y, (float)cz,
+    out->handle = GteRecordProjection((uint32_t)out->screen, (float)out->x, (float)out->y, (float)(cz * depthBias),
                                       GteFade(sqrt(cx * cx + cy * cy + cz * cz)));
 }
 
@@ -269,8 +305,13 @@ static void DrawFarScenery(void)
     for (object = trackObjects[0]; object; object = object->next) {
         PortView view;
 
-        if (ObjectMarked(object)) {
-            continue;
+        {
+            int complete;
+
+            PortFarObjectDrawn(object, &complete);
+            if (complete) {
+                continue; /* the game drew all of it */
+            }
         }
         SkeletonView(object->skeleton, &view);
         if (MaybeVisible(view.t, (double)object->extent)) {

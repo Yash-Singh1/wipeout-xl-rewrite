@@ -181,7 +181,6 @@ static POLY_FT4 *DrawGridQuad(POLY_FT4 *poly, u_long *ordering, Face *face, Tile
     GteWriteData(19, p3->depth);
     GteExecute(GTE_AVSZ4);
     AddPrim(ordering + GteReadData(7), poly);
-    PortFarMarkFace(face); /* Port: the far view draws the faces the game did not */
     return poly + 1;
 }
 
@@ -252,6 +251,7 @@ void AsmTrackMed(TrackSection *firstSection, Skeleton *camera, short medCount)
                     poly = DrawGridQuad(poly, ordering, face, tile + 2, &grid[3], &grid[4], &grid[6], &grid[7]);
                     poly = DrawGridQuad(poly, ordering, face, tile + 3, &grid[4], &grid[5], &grid[7], &grid[8]);
                     medTileCount += 4;
+                    PortFarMarkFace(face); /* Port: whole; the far view draws faces the game left (partly) out */
                 } else {
                     static const int quad[4][4] = { { 0, 1, 3, 4 }, { 1, 2, 4, 5 }, { 3, 4, 6, 7 }, { 4, 5, 7, 8 } };
 
@@ -388,7 +388,6 @@ static void DrawPartialCell(GridPoint *cell[4], Tile *tile, Face *face, u_long *
         GteWriteData(19, d->depth);
         GteExecute(GTE_AVSZ4);
         AddPrim(ordering + GteReadData(7), poly);
-        PortFarMarkFace(face); /* Port */
         nextPrim.ptr = (char *)(poly + 1);
     }
 }
@@ -448,6 +447,9 @@ void AsmTrackHi(TrackSection *firstSection, Skeleton *camera, AutoMeshData *auto
                 allRejected &= rejected;
                 anyRejected |= rejected;
             }
+            if (!anyRejected) {
+                PortFarMarkFace(face); /* Port: whole; the far view draws faces the game left (partly) out */
+            }
             if (!allRejected) {
                 tile = &FaceSurface(face)->high[0];
                 for (row = 0; row < 4; row++) {
@@ -486,6 +488,9 @@ void PortTrackFar(TrackSection *section, const PortView *view)
     int   faceCount = (u_short)section->faceCount;
     int   n, k;
 
+    /* a face the game drew in part is drawn whole here, a hair deeper, so that the game's cells cover it */
+    PortFarDepthBias(1.002);
+
     for (n = 0; n < faceCount; n++, face++) {
         PortFarVertex corner[4];
         POLY_FT4     *poly;
@@ -511,7 +516,7 @@ void PortTrackFar(TrackSection *section, const PortView *view)
         }
         poly = (POLY_FT4 *)PortFarAlloc(sizeof(POLY_FT4));
         if (!poly) {
-            return;
+            break;
         }
         SetPolyFT4(poly);
         /* the corners as AsmTrackLo stores them: RTPT's vertices 0, 1, 2 go to x1, x0, x2 */
@@ -532,4 +537,5 @@ void PortTrackFar(TrackSection *section, const PortView *view)
         /* AsmTrackLo's slot: the depth of the last corner of RTPT (vertex 2), a quarter per entry */
         AddPrim(PortFarSlot((int)corner[2].z >> 2, corner[2].z), poly);
     }
+    PortFarDepthBias(1.0);
 }

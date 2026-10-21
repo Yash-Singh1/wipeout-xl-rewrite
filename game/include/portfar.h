@@ -35,7 +35,10 @@ void PortFade(int on);
 /* The game marks what it drew this frame. */
 void PortFarMarkFace(Face *face);     /* a track face the game drew (some of) */
 int PortFarFaceDrawn(Face *face);
-void PortFarMarkObject(Object *object);
+/* The game draws an object: the flags of its primitives, to be set for each it handles (NULL: no far
+   view). The far view draws the rest (PortFarObjectDrawn: NULL when the game did not draw it). */
+unsigned char *PortFarObjectPrimitives(Object *object);
+const unsigned char *PortFarObjectDrawn(Object *object, int *complete);
 void PortFarMarkShip(int ship);
 
 /* The pass, after the game's scenery (racectrl.c). */
@@ -43,6 +46,7 @@ void PortFarDraw(TrackCamera *camera, ShipData *ships, Object **shipShapes);
 
 /* For the renderers' far modes (trackdraw.c, objdraw.c). */
 void PortFarProject(const PortView *view, double x, double y, double z, PortFarVertex *out);
+void PortFarDepthBias(double scale); /* the depth of what is projected next is scaled (drawn behind) */
 u_long *PortFarSlot(int entry, double depth);
 char *PortFarAlloc(int bytes);
 void PortFarRelease(char *end); /* the memory from end on, of the last PortFarAlloc, is not used */
