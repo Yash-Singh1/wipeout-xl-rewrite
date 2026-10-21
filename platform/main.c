@@ -106,7 +106,11 @@ int main(int argc, char **argv)
         /* the second player's game is part of the first's window: no Dock icon, never the focus */
         SDL_SetHint(SDL_HINT_MAC_BACKGROUND_APP, "1");
     }
-    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD | SDL_INIT_EVENTS)) {
+    /* WIPEOUT_NO_GAMEPAD: the controllers are not touched at all (only a test script's virtual pads start
+       them, pad_sdl.c), so the game starts with the keyboard even when the system's controller service
+       hangs every program that asks it */
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS |
+                  (SDL_getenv("WIPEOUT_NO_GAMEPAD") && !SDL_getenv("WIPEOUT_KEYS") ? 0 : SDL_INIT_GAMEPAD))) {
         SDL_Log("SDL: %s", SDL_GetError());
         return 1;
     }
