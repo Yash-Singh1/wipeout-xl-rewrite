@@ -23,8 +23,9 @@ extern "C" {
 static SDL_Window *window;
 static bool ready, open;
 static char saveDirEdit[1024];
-static bool showFrames; // F9 brings the Frames tab up
+static bool showFrames; // Tab brings the Frames tab up
 static int pickX = -1, pickY = -1; // the frame viewer's pixel
+static int testHoverX = -1, testHoverY = -1; // tests: where the pointer is taken to be over the picture
 
 // the rates, over the last half second
 static uint64_t rateStart, presents, swapsAtStart;
@@ -77,6 +78,11 @@ extern "C" void DebugUiShowFrames(void)
     if (pick) {
         SDL_sscanf(pick, "%d,%d", &pickX, &pickY);
     }
+    // and WIPEOUT_FRAMECAP_HOVER=x,y shows the magnifier at a pixel
+    const char *hover = SDL_getenv("WIPEOUT_FRAMECAP_HOVER");
+    if (hover) {
+        SDL_sscanf(hover, "%d,%d", &testHoverX, &testHoverY);
+    }
 }
 
 extern "C" int DebugUiOpen(void)
@@ -93,7 +99,7 @@ extern "C" int DebugUiEvent(const SDL_Event *event)
         open = !open;
         return 1;
     }
-    if (event->type == SDL_EVENT_KEY_DOWN && event->key.scancode == SDL_SCANCODE_F9 && !event->key.repeat) {
+    if (event->type == SDL_EVENT_KEY_DOWN && event->key.scancode == SDL_SCANCODE_TAB && !event->key.repeat) {
         // the frame recorder: freezes the game and saves the last seconds of drawing, or resumes
         FrameCapToggleFreeze();
         if (FrameCapFrozen()) {
@@ -173,6 +179,21 @@ static void FpsOverlay(void)
 static int frameShown = -1, frameUploaded = -1;
 static GLuint frameTexture;
 static int pickHit = -1;
+
+// The recorded picture, its pixels sharp (the backend samples linearly unless told otherwise).
+static void PixelImage(ImVec2 size, ImVec2 uv0, ImVec2 uv1)
+{
+    ImGuiPlatformIO &io = ImGui::GetPlatformIO();
+    ImDrawList *draw = ImGui::GetWindowDrawList();
+
+    if (io.DrawCallback_SetSamplerNearest) {
+        draw->AddCallback(io.DrawCallback_SetSamplerNearest, nullptr);
+    }
+    ImGui::Image((ImTextureID)(intptr_t)frameTexture, size, uv0, uv1);
+    if (io.DrawCallback_SetSamplerLinear) {
+        draw->AddCallback(io.DrawCallback_SetSamplerLinear, nullptr);
+    }
+}
 static FrameCapHit hits[256];
 static int hitCount;
 
@@ -242,11 +263,11 @@ static void FramesTab(void)
         Changed();
     }
     if (!FrameCapFrozen()) {
-        ImGui::TextWrapped("F9 freezes the game and saves the recorded frames; here you can then step back through "
+        ImGui::TextWrapped("Tab freezes the game and saves the recorded frames; here you can then step back through "
                            "them and click a pixel to see every primitive drawn there.");
         frameShown = -1;
     } else {
-        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Frozen. F9 resumes the game.");
+        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Frozen. Tab resumes the game.");
     }
     if (FrameCapSavedDir()) {
         ImGui::TextWrapped("Saved to %s", FrameCapSavedDir());
@@ -301,12 +322,40 @@ static void FramesTab(void)
     // the picture as large as fits, at most twice the console's size
     float zoom = SDL_clamp((ImGui::GetMainViewport()->WorkSize.y * 0.92f - 470 * ui) / 240.0f, 1.0f, 2.0f * ui);
     ImVec2 origin = ImGui::GetCursorScreenPos();
-    ImGui::Image((ImTextureID)(intptr_t)frameTexture, ImVec2(320 * zoom, 240 * zoom));
-    if (ImGui::IsItemClicked()) {
+    PixelImage(ImVec2(320 * zoom, 240 * zoom), ImVec2(0, 0), ImVec2(1, 1));
+    bool hovered = ImGui::IsItemHovered();
+    if (hovered || testHoverX >= 0) {
         ImVec2 m = ImGui::GetMousePos();
-        pickX = SDL_clamp((int)((m.x - origin.x) / zoom), 0, 319);
-        pickY = SDL_clamp((int)((m.y - origin.y) / zoom), 0, 239);
-        Pick(frameShown);
+        int x = hovered ? SDL_clamp((int)((m.x - origin.x) / zoom), 0, 319) : SDL_clamp(testHoverX, 0, 319);
+        int y = hovered ? SDL_clamp((int)((m.y - origin.y) / zoom), 0, 239) : SDL_clamp(testHoverY, 0, 239);
+
+        if (ImGui::IsItemClicked()) {
+            pickX = x;
+            pickY = y;
+            Pick(frameShown);
+        }
+        // the magnifier: the pixels about the pointer, ten times over, the one under it outlined
+        const int span = 17;
+        const float cell = 10.0f * ui;
+        int left = SDL_clamp(x - span / 2, 0, 320 - span), top = SDL_clamp(y - span / 2, 0, 240 - span);
+        if (!hovered) {
+            ImGui::SetNextWindowPos(ImVec2(origin.x + (x + 2) * zoom, origin.y + (y + 2) * zoom));
+        }
+        ImGui::BeginTooltip();
+        ImVec2 corner = ImGui::GetCursorScreenPos();
+        PixelImage(ImVec2(span * cell, span * cell), ImVec2(left / 320.0f, top / 240.0f),
+                   ImVec2((left + span) / 320.0f, (top + span) / 240.0f));
+        ImVec2 a(corner.x + (x - left) * cell, corner.y + (y - top) * cell);
+        ImGui::GetWindowDrawList()->AddRect(ImVec2(a.x - 1, a.y - 1), ImVec2(a.x + cell + 1, a.y + cell + 1),
+                                            IM_COL32(0, 0, 0, 255), 0.0f, 0, 3.0f);
+        ImGui::GetWindowDrawList()->AddRect(a, ImVec2(a.x + cell, a.y + cell), IM_COL32(255, 0, 255, 255), 0.0f, 0, 1.5f);
+        if (f->picture && f->shown) {
+            const uint8_t *rgb = &f->picture[(y * 320 + x) * 4];
+            ImGui::Text("pixel %d, %d   colour %d, %d, %d", x, y, rgb[0], rgb[1], rgb[2]);
+        } else {
+            ImGui::Text("pixel %d, %d", x, y);
+        }
+        ImGui::EndTooltip();
     }
     ImDrawList *draw = ImGui::GetWindowDrawList();
     draw->PushClipRect(origin, ImVec2(origin.x + 320 * zoom, origin.y + 240 * zoom), true);

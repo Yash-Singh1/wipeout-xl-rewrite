@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reads a frame recording saved by the frame recorder (F9 in the game, platform/psx/framecap.h).
+"""Reads a frame recording saved by the frame recorder (Tab in the game, platform/psx/framecap.h).
 
   framecap.py DIR                      the frames: game frame, primitives, shown or not
   framecap.py DIR pixel FRAME X Y      every primitive at picture pixel X, Y of FRAME, topmost last, and

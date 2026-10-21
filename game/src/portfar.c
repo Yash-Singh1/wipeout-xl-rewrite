@@ -22,10 +22,14 @@ extern int        raceType;
 #define FAR_STEP     32.0                    /* depth units per far bucket */
 #define ARENA_BYTES  (6 << 20)               /* primitives per screen */
 #define MARK_SLOTS   1024                    /* objects marked per frame */
+#define NEAR_BYTES   (256 << 10)             /* PortNearAlloc's, per screen */
 
 static u_long   farTable[2][FAR_BUCKETS];
 static char     arena[2][ARENA_BYTES];
 static int      arenaUsed;
+static char     nearArena[2][NEAR_BYTES];
+static int      nearUsed[2];
+static uint32_t nearFrame[2];
 static uint32_t frame = 1;
 static uint32_t *faceMarks;      /* the frame each track face was last drawn by the game */
 static int      faceMarkCount;
@@ -50,6 +54,7 @@ static int Enabled(void)
         enabled = 1;
         PsxLinkRegion(arena, sizeof(arena));
         PsxLinkRegion(farTable, sizeof(farTable));
+        PsxLinkRegion(nearArena, sizeof(nearArena));
     }
     return on;
 }
@@ -246,8 +251,10 @@ u_long *PortFarSlot(int entry, double depth)
     if (entry >= 0 && entry < FAR_ENTRY) {
         return OT[CurrentScreen] + entry;
     }
-    bucket = (int)((depth - FAR_START) / FAR_STEP);
-    bucket = bucket < 0 ? 0 : bucket >= FAR_BUCKETS ? FAR_BUCKETS - 1 : bucket;
+    /* bucket 0 is the table's tail, which PortFarDraw links back into the game's table (AddPrims rewrites
+       its link): whatever was put there would be cut off */
+    bucket = 1 + (int)((depth - FAR_START) / FAR_STEP);
+    bucket = bucket < 1 ? 1 : bucket >= FAR_BUCKETS ? FAR_BUCKETS - 1 : bucket;
     return farTable[CurrentScreen] + bucket;
 }
 
@@ -260,6 +267,27 @@ char *PortFarAlloc(int bytes)
     }
     p = arena[CurrentScreen] + arenaUsed;
     arenaUsed += bytes;
+    return p;
+}
+
+/* Apart from the far view's arena: the game draws before PortFarDraw, which starts that afresh. */
+char *PortNearAlloc(int bytes)
+{
+    int   screen = CurrentScreen & 1;
+    char *p;
+
+    if (!Enabled()) {
+        return NULL;
+    }
+    if (nearFrame[screen] != frame) {
+        nearFrame[screen] = frame;
+        nearUsed[screen] = 0;
+    }
+    if (nearUsed[screen] + bytes > NEAR_BYTES) {
+        return NULL;
+    }
+    p = nearArena[screen] + nearUsed[screen];
+    nearUsed[screen] += bytes;
     return p;
 }
 

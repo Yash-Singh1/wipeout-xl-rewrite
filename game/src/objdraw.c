@@ -491,6 +491,191 @@ static char *DrawSprite(DrawKind kind, char *out, u_long *ordering, int roll, co
     return out + sizeof(POLY_FT4);
 }
 
+/* Port: a polygon of the scenery that the game leaves out for a vertex too near the camera, behind it, or
+   beyond the GPU's coordinates: a wall the camera passes close by vanished, the black background showing
+   through. Its part in front of the near plane is drawn as gouraud triangles (the corners' colours, all one
+   in a flat polygon), as trackdraw.c's DrawNearFace does for the track: the corners the game projected at
+   their precise positions, those it rejected and the cut ones at their true ones. Returns whether it drew. */
+static void CameraSpace(const SVECTOR *v, double out[3])
+{
+    /* RTPS's sums (gte.c's Rtp) */
+    int32_t r[9] = {
+        (short)GteReadControl(0), (short)(GteReadControl(0) >> 16), (short)GteReadControl(1),
+        (short)(GteReadControl(1) >> 16), (short)GteReadControl(2), (short)(GteReadControl(2) >> 16),
+        (short)GteReadControl(3), (short)(GteReadControl(3) >> 16), (short)GteReadControl(4)
+    };
+    int i;
+
+    for (i = 0; i < 3; i++) {
+        int64_t mac = (int64_t)GteReadControl(5 + i) * 4096 + (int64_t)r[3 * i] * v->vx + (int64_t)r[3 * i + 1] * v->vy +
+                      (int64_t)r[3 * i + 2] * v->vz;
+
+        out[i] = (double)mac / 4096.0;
+    }
+}
+
+typedef struct NearCorner {
+    double   c[8];   /* camera x, y, z, u, v, r, g, b */
+    int      vertex; /* the object's vertex, or -1 for a cut */
+} NearCorner;
+
+static void SetNearCorner(short *x, short *y, u_char *rgb, const NearCorner *corner, const ProjectedVertex *vertex)
+{
+    if (corner->vertex >= 0 && !vertex->flag) {
+        PutScreenXY(x, y, vertex); /* as the game's polygons beside it have it */
+    } else {
+        PortFarVertex point;
+
+        PortFarProjectCamera(corner->c[0], corner->c[1], corner->c[2], &point);
+        StoreScreenXY(x, y, point.screen);
+        GteBindPrecise(x, point.handle);
+    }
+    rgb[0] = (u_char)(corner->c[5] + 0.5);
+    rgb[1] = (u_char)(corner->c[6] + 0.5);
+    rgb[2] = (u_char)(corner->c[7] + 0.5);
+}
+
+static int DrawNearPrimitive(Object *object, int index, u_long *ordering, Poly prim)
+{
+    const short   *coords;
+    const char    *uv = NULL; /* u0, v0, u1, v1... */
+    const CVECTOR *colours;
+    short          flag = prim.f3->flag; /* each primitive begins with its type and flags */
+    short          tsb = 0, cba = 0;
+    int            count, gouraud = 0, rejected = 0, i, k, n = 0, slot;
+    NearCorner     corner[4], clipped[8];
+    double         sum = 0.0, h = (double)(u_short)GteReadControl(26);
+    char          *start, *out;
+    const double  *a, *b, *c;
+
+    switch ((u_short)prim.prim->type) {
+    case TypeFT3:
+        coords = prim.ft3->coords, count = 3, uv = &prim.ft3->u0, colours = &prim.ft3->colour;
+        tsb = prim.ft3->tsb, cba = prim.ft3->cba;
+        break;
+    case TypeGT3: /* the plain renderer draws it flat, in its first colour */
+        coords = prim.gt3->coords, count = 3, uv = &prim.gt3->u0, colours = prim.gt3->colour;
+        tsb = prim.gt3->tsb, cba = prim.gt3->cba;
+        break;
+    case TypeFT4:
+        coords = prim.ft4->coords, count = 4, uv = &prim.ft4->u0, colours = &prim.ft4->colour;
+        tsb = prim.ft4->tsb, cba = prim.ft4->cba;
+        break;
+    case TypeGT4:
+        coords = prim.gt4->coords, count = 4, uv = &prim.gt4->u0, colours = prim.gt4->colour;
+        tsb = prim.gt4->tsb, cba = prim.gt4->cba;
+        break;
+    case TypeG3: coords = prim.g3->coords, count = 3, colours = prim.g3->colour, gouraud = 1; break;
+    case TypeG4: coords = prim.g4->coords, count = 4, colours = prim.g4->colour, gouraud = 1; break;
+    case TypeF3: coords = prim.f3->coords, count = 3, colours = &prim.f3->colour; break;
+    case TypeF4: coords = prim.f4->coords, count = 4, colours = &prim.f4->colour; break;
+    default: return 0;
+    }
+    for (i = 0; i < count; i++) {
+        if ((u_short)coords[i] >= MAX_OBJECT_VERTICES || (u_short)coords[i] >= (u_short)object->vertexCount) {
+            return 0;
+        }
+        rejected |= projected[coords[i]].flag;
+    }
+    if (!rejected) {
+        return 0; /* facing away */
+    }
+    /* the outline (a quad's vertices go 0, 1, 3, 2) */
+    for (i = 0; i < count; i++) {
+        int j = count == 4 && i >= 2 ? 5 - i : i;
+        const CVECTOR *colour = &colours[gouraud ? j : 0];
+
+        CameraSpace(&object->vertices[coords[j]], corner[i].c);
+        if (corner[i].c[2] > 32767.0) {
+            return 0; /* too far: the far view's (portfar.h) */
+        }
+        corner[i].vertex = coords[j];
+        corner[i].c[3] = uv ? (u_char)uv[2 * j] : 0;
+        corner[i].c[4] = uv ? (u_char)uv[2 * j + 1] : 0;
+        corner[i].c[5] = colour->r;
+        corner[i].c[6] = colour->g;
+        corner[i].c[7] = colour->b;
+    }
+    /* the facing test of vertices 0, 1 and 2 in camera space: the sign of their screen winding, at any depth */
+    a = corner[0].c, b = corner[1].c, c = corner[count == 4 ? 3 : 2].c;
+    if ((flag & SingleSided) &&
+        a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0]) <= 0) {
+        return 0;
+    }
+    for (i = 0; i < count; i++) {
+        const NearCorner *p = &corner[i], *q = &corner[(i + 1) % count];
+        int pIn = p->c[2] >= PORT_FAR_NEAR, qIn = q->c[2] >= PORT_FAR_NEAR;
+
+        if (pIn) {
+            clipped[n++] = *p;
+        }
+        if (pIn != qIn) {
+            double t = (PORT_FAR_NEAR - p->c[2]) / (q->c[2] - p->c[2]);
+
+            for (k = 0; k < 8; k++) {
+                clipped[n].c[k] = p->c[k] + (q->c[k] - p->c[k]) * t;
+            }
+            clipped[n].c[2] = PORT_FAR_NEAR;
+            clipped[n++].vertex = -1;
+        }
+    }
+    if (n < 3) {
+        return 0; /* behind the camera */
+    }
+    for (i = 0, k = 0; i < n; i++) {
+        double x = clipped[i].c[0] * h / clipped[i].c[2], y = clipped[i].c[1] * h / clipped[i].c[2];
+
+        k |= (x < 200.0) | (x > -200.0) << 1 | (y < 160.0) << 2 | (y > -160.0) << 3; /* a generous screen */
+        sum += clipped[i].c[2];
+    }
+    if (k != 15) {
+        return 0; /* wholly off one side */
+    }
+    /* DepthSlot's: AVSZ3/AVSZ4 of the average depth, in the game's table */
+    sum *= (double)count / n;
+    slot = (int)(((long long)GteReadControl(count == 4 ? 30 : 29) * (long long)sum) >> 12);
+    slot = slot < 0 ? 0 : slot > 0x1FFD ? 0x1FFD : slot;
+    start = out = PortNearAlloc((n - 2) * (int)sizeof(POLY_GT3));
+    if (!out) {
+        return 0;
+    }
+    for (i = 1; i + 1 < n; i++) {
+        const NearCorner *p0 = &clipped[0], *p1 = &clipped[i], *p2 = &clipped[i + 1];
+        const ProjectedVertex *v0 = &projected[p0->vertex < 0 ? 0 : p0->vertex];
+        const ProjectedVertex *v1 = &projected[p1->vertex < 0 ? 0 : p1->vertex];
+        const ProjectedVertex *v2 = &projected[p2->vertex < 0 ? 0 : p2->vertex];
+
+        if (uv) {
+            POLY_GT3 *poly = (POLY_GT3 *)out;
+
+            SetPolyGT3(poly);
+            SetNearCorner(&poly->x0, &poly->y0, &poly->r0, p0, v0);
+            SetNearCorner(&poly->x1, &poly->y1, &poly->r1, p1, v1);
+            SetNearCorner(&poly->x2, &poly->y2, &poly->r2, p2, v2);
+            poly->u0 = (u_char)(p0->c[3] + 0.5); poly->v0 = (u_char)(p0->c[4] + 0.5);
+            poly->u1 = (u_char)(p1->c[3] + 0.5); poly->v1 = (u_char)(p1->c[4] + 0.5);
+            poly->u2 = (u_char)(p2->c[3] + 0.5); poly->v2 = (u_char)(p2->c[4] + 0.5);
+            poly->tpage = (u_short)tsb;
+            poly->clut = (u_short)cba;
+            poly->code = PolyCode(DRAW_PLAIN, 0x34, flag);
+            AddPrim(ordering + slot, poly);
+            out += sizeof(POLY_GT3);
+        } else {
+            POLY_G3 *poly = (POLY_G3 *)out;
+
+            SetPolyG3(poly);
+            SetNearCorner(&poly->x0, &poly->y0, &poly->r0, p0, v0);
+            SetNearCorner(&poly->x1, &poly->y1, &poly->r1, p1, v1);
+            SetNearCorner(&poly->x2, &poly->y2, &poly->r2, p2, v2);
+            poly->code = PolyCode(DRAW_PLAIN, 0x30, flag);
+            AddPrim(ordering + slot, poly);
+            out += sizeof(POLY_G3);
+        }
+    }
+    PortTagPrims(start, out, "near object", object->name, index); /* the frame recorder */
+    return 1;
+}
+
 static void DrawObject(Object *object, DrawKind kind, int roll, const CVECTOR *colour, int fixedSlot)
 {
     u_long *ordering;
@@ -580,7 +765,8 @@ static void DrawObject(Object *object, DrawKind kind, int roll, const CVECTOR *c
             goto finished;
         }
         if (drawnFlags && index < (u_short)object->primitiveCount) {
-            drawnFlags[index] = out != before || (culled && CulledForCertain(culledVertex[0], culledVertex[1], culledVertex[2]));
+            drawnFlags[index] = out != before || (culled && CulledForCertain(culledVertex[0], culledVertex[1], culledVertex[2])) ||
+                                (!culled && kind == DRAW_PLAIN && DrawNearPrimitive(object, index, ordering, prim));
         }
         PortTagPrims(before, out, farView ? "far object" : "object", object->name, index); /* Port: the frame recorder */
         index++;

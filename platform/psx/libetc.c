@@ -85,7 +85,7 @@ static void Field(void)
         }
     }
     {
-        /* tests: WIPEOUT_FRAMECAP_FREEZE_AT=n freezes as F9 does at picture n */
+        /* tests: WIPEOUT_FRAMECAP_FREEZE_AT=n freezes as Tab does at picture n */
         static int freezeAt = -1;
 
         if (freezeAt < 0) {
@@ -97,7 +97,7 @@ static void Field(void)
             DebugUiShowFrames();
         }
     }
-    /* F9 (the frame recorder): the game waits here while the window and the debug console go on */
+    /* Tab (the frame recorder): the game waits here while the window and the debug console go on */
     while (FrameCapFrozen()) {
         PsxShowDisplay();
         if (!PortPumpEvents()) {

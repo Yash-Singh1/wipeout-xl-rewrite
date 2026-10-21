@@ -54,6 +54,9 @@ void PortFarDepthBias(double scale); /* the depth of what is projected next is s
 u_long *PortFarSlot(int entry, double depth);
 char *PortFarAlloc(int bytes);
 void PortFarRelease(char *end); /* the memory from end on, of the last PortFarAlloc, is not used */
+/* Memory for primitives the port adds to the game's own drawing (objdraw.c), this frame: NULL when full or
+   the far view is off. */
+char *PortNearAlloc(int bytes);
 void PortTrackFar(TrackSection *section, const PortView *view);
 void PortDrawObjectFar(Object *object, const PortView *view, const CVECTOR *colour);
 
