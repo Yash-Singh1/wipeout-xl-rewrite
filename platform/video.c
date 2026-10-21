@@ -95,6 +95,18 @@ static void Capture(void)
     PortDrawableSize(&width, &height);
     pixels = SDL_malloc((size_t)width * height * 3);
     glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, pixels);
+    if (SDL_getenv("WIPEOUT_ALPHA_CHECK")) {
+        /* tests: pixels the window would show see-through */
+        unsigned char *rgba = SDL_malloc((size_t)width * height * 4);
+        long low = 0, k;
+
+        glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+        for (k = 0; k < (long)width * height; k++) {
+            low += rgba[k * 4 + 3] < 255;
+        }
+        PortLog("alpha: frame %d has %ld see-through pixels\n", shown, low);
+        SDL_free(rgba);
+    }
     SDL_snprintf(path, sizeof(path), "%s/frame_%06d.ppm", portConfig.captureDir, shown);
     file = fopen(path, "wb");
     if (file) {
@@ -133,6 +145,14 @@ void PortDumpVram(void)
 
 void PortVideoPresent(void)
 {
+    /* The picture is opaque: blending (the subtractive modes, the fade) also changes the alpha the
+       framebuffer holds, and the window system composites the window with it, so such pixels showed
+       what is behind the window (black holes where ship shadows were). */
+    glDisable(GL_SCISSOR_TEST); /* the presenters leave the window's framebuffer bound */
+    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE);
+    glClearColor(0, 0, 0, 1);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     Capture();
     SDL_GL_SwapWindow(window);
 }
