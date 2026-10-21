@@ -64,6 +64,7 @@ typedef struct CdDrive {
     CdState afterSeek;
     bool motor;
     bool muted;
+    bool silent;             /* the port's second player: the music is the first player's game's */
     uint8_t mode;
     uint8_t mix[4];          /* L->L, L->R, R->R, R->L; 0x80 is unity */
     int32_t pos;             /* sector under the head */

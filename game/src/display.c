@@ -162,6 +162,7 @@ void Swap(void)
     CurrentScreen = nextScreen;
     PutDrawEnv(draw);
     PutDispEnv(doubleBuffer[CurrentScreen].disp);
+    PsxHudTables(OT[(CurrentScreen + 1) & 1], OT2[(CurrentScreen + 1) & 1] + 0x63F); /* Port: the HUD of a split window */
     DrawOTag(OT[(CurrentScreen + 1) & 1] + 0x1FFF);
     if (activateOT2 != 0) {
         DrawOTag(OT2[(CurrentScreen + 1) & 1] + 0x63F);

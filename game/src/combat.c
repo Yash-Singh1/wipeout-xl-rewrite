@@ -1,4 +1,5 @@
 #include "functions.h"
+#include "portlink.h" /* Port: two players on one machine */
 #include "include_asm_g8.h"
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
@@ -413,6 +414,9 @@ int doSerialTransfer(u_char *send, u_char *recv, int count)
 {
     int   delay;
 
+    if (PortLinkActive()) {
+        return PortLinkTransfer(send, recv, count); /* Port: the link between the two players' games (portlink.c) */
+    }
     if (gameType == 0) {
         EnterCriticalSection();
         _comb_control(1, 1, 3);

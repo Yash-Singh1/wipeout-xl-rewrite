@@ -1,4 +1,5 @@
 #include "functions.h"
+#include "portlink.h" /* Port: two players on one machine */
 #include "pad.h"
 #include "../../platform/controls.h" /* Port: button names for the device in use */
 #include "ayrace.h"
@@ -274,7 +275,7 @@ music_done:
                         attractLoopFlag = 0;
                         break;
                     }
-                    if (titleFrames >= 0xB && (GetMenuKey(6) << 0x10) != 0) {
+                    if (titleFrames >= 0xB && ((GetMenuKey(6) << 0x10) != 0 || PortLinkRole() == PORT_LINK_SLAVE)) { /* Port: the second player's game goes straight on */
                         PlayNote(9, 0xFF, 0xF, 0xF, 0x100);
                         frame = 0;
                         do {

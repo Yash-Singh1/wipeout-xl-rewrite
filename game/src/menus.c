@@ -1,4 +1,5 @@
 #include "functions.h"
+#include "portlink.h" /* Port: two players on one machine */
 #include "menus.h"
 #include "hiscores.h"
 #include "card.h"
@@ -522,6 +523,7 @@ int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMem
         raceType = 4;
         break;
     }
+    PortLinkMenusStart(); /* Port: the two-player modes start at the lobby (portlink.c) */
     SetShake(0);
     InitMenuBox(&work.menus);
     InitScreenBox(&work.menuPolys);
@@ -615,7 +617,7 @@ int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMem
         heading -= steps * 15;
         Swap();
         if (menuEditor) goto serial;
-        if ((GetMenuKey(5) && !screenCount && currMenu != 19) || (currMenu == 19 && ((linked && linkState == 5) || linkTimedOut == 1))) {
+        if (((GetMenuKey(5) || PortLinkMenuSelect(screenCount)) && !screenCount && currMenu != 19) || (currMenu == 19 && ((linked && linkState == 5) || linkTimedOut == 1))) { /* Port: the linked players' way through the menus (portlink.c) */
             if (linkTimedOut) {
                 raceType = 0;
                 linkTimedOut = 0;
@@ -642,6 +644,7 @@ int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMem
                 savedMainSelection = menu[0].selection;
             } else if (menu[currMenu].numOptions && prevMenu != 10 && (unsigned short)(prevMenu - 22) >= 2 && prevMenu != 12 && (unsigned short)(prevMenu - 17) >= 2) {
                 CopyGameData(gameData, &work.selection, 1, (KeyConfig *)&savedKeyConfig, &work.cardState);
+                PortLinkMenuSelected(currMenu); /* Port */
                 currMenu = menu[currMenu].options[menu[currMenu].selection].nextMenu;
                 CopyGameData(gameData, &work.selection, 0, (KeyConfig *)&savedKeyConfig, &work.cardState);
                 errorCount = 0;
@@ -657,6 +660,7 @@ int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMem
                 goto entered;
             } else if (currMenu != 10 && prevMenu != 10 && currMenu != 23 && prevMenu != 23 && currMenu != 22 && prevMenu != 22 && currMenu != 12 && prevMenu != 12 && currMenu != 17 && prevMenu != 17 && currMenu != 18 && prevMenu != 18) {
                 CopyGameData(gameData, &work.selection, 1, (KeyConfig *)&savedKeyConfig, &work.cardState);
+                PortLinkMenuSelected(currMenu); /* Port */
                 currMenu = menu[currMenu].nextMenu;
                 CopyGameData(gameData, &work.selection, 0, (KeyConfig *)&savedKeyConfig, &work.cardState);
                 InitSlider();
@@ -679,11 +683,12 @@ cancel:
                 if ((unsigned short)(linkState - 3) < 2) goto noCancel;
                 raceType = 0;
                 killLink();
+                PortLobbyLeave(); /* Port: out of the lobby: the second player's game closes */
             }
             if (menu[currMenu].prevMenu != 999 && currMenu != 10 && prevMenu != 10 && currMenu != 23 && prevMenu != 23 && currMenu != 22 && prevMenu != 22 && currMenu != 12 && prevMenu != 12) {
                 PlayNote(49, 255, 15, 15, 256);
                 CopyGameData(gameData, &work.selection, 0, (KeyConfig *)&savedKeyConfig, &work.cardState);
-                currMenu = menu[currMenu].prevMenu;
+                { int from = currMenu; currMenu = menu[currMenu].prevMenu; PortLinkMenuCancelled(from, currMenu); } /* Port */
                 errorCount = 0;
                 InitMenuDisplay(currMenu == 4 ? 110 : 150, 0);
                 InitSlider();
@@ -4707,7 +4712,7 @@ void MenuFunction(void *gameData, void *polys, void *keyConfig, void *selection,
         DispHiScores(gameData, selection, 6);
         break;
     case 19:
-        EstablishLink(); /* Port: the two arguments the console passed are never read */
+        PortLinkScreen(gameData, selection); /* Port: the lobby (portlink.c); the console's cable link was EstablishLink() */
         break;
     }
 }

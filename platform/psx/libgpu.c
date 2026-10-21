@@ -15,6 +15,7 @@
 
 #include "../trace.h"
 #include "gpu.h"
+#include "../link.h"
 #include "gte.h"
 #include "psyq.h"
 
@@ -388,6 +389,8 @@ DRAWENV *PutDrawEnv(DRAWENV *env)
    address 0 (kernel RAM); here it reads zeros. */
 static DISPENV nullDispEnv;
 
+static void HandOverSplit(void);
+
 DISPENV *PutDispEnv(DISPENV *env)
 {
     DISPENV *given = env;
@@ -400,6 +403,9 @@ DISPENV *PutDispEnv(DISPENV *env)
     state.displayY = env->disp.y;
     state.displayW = env->disp.w;
     state.displayH = env->disp.h;
+    if (PortLinkRole() == LINK_SLAVE && PortLinkSplit()) {
+        HandOverSplit(); /* the second player's game shows what it drew last (no fields pass in it) */
+    }
     return given;
 }
 
@@ -475,9 +481,52 @@ static int HoldReleased(void)
     return 0;
 }
 
+/* Two players on one machine (link.c): during a linked race each game shows the band of console rows
+   SPLIT_TOP .. SPLIT_TOP + SPLIT_ROWS of its picture (the full width, half the height), the first in the
+   upper half of the window and the second, which hands its band over, in the lower half. Each game's
+   HUD (the last entry of its ordering table and the second table) is drawn at half size about the
+   centre, so that it fits in the band. */
+#define SPLIT_TOP 60
+#define SPLIT_ROWS 120
+static int drawnSinceRead;
+
+/* The second player's game: the band of the picture on display goes to the first player's game, at
+   each switch of the display (its Swap waits for no fields: the link paces it). */
+static void HandOverSplit(void)
+{
+    if (drawnSinceRead && state.displayEnabled) {
+        int w, h;
+        uint8_t *pixels = GpuReadArea(state.displayX, state.displayY + SPLIT_TOP, 320, SPLIT_ROWS, &w, &h);
+
+        PortLinkPutFrame(pixels, w, h);
+        drawnSinceRead = 0;
+    }
+}
+
+static void ShowSplit(void)
+{
+    if (PortLinkRole() == LINK_SLAVE) {
+        return;
+    }
+    {
+        static unsigned shownSequence;
+        unsigned sequence = 0;
+        int w = 0, h = 0;
+        const uint8_t *lower = PortLinkGetFrame(&w, &h, &sequence);
+
+        GpuPresentSplit(state.displayX, state.displayY + SPLIT_TOP, 320, SPLIT_ROWS, lower, w, h,
+                        sequence != shownSequence);
+        shownSequence = sequence;
+    }
+}
+
 void PsxShowDisplay(void)
 {
     GpuFlush();
+    if (PortLinkSplit()) {
+        ShowSplit();
+        return;
+    }
     if (holdPicture) {
         if (!HoldReleased()) {
             return;
@@ -663,7 +712,10 @@ static void Vertex(GpuVertex *v, uint32_t xy, const GtePrecise *precise)
    depth of every vertex; when one is missing (a point the game placed in 2D)
    the whole primitive is drawn affine, as the console draws it, so that the
    two triangles of a quad agree. */
-static void Vertices(GpuVertex *v, const uint32_t *const *words, int count)
+static void HudPoint(GpuVertex *v);
+static int hudActive;
+
+static unsigned Vertices(GpuVertex *v, const uint32_t *const *words, int count)
 {
     GtePrecise precise[GTE_RESOLVE_MAX];
     uint32_t xy[GTE_RESOLVE_MAX];
@@ -683,6 +735,12 @@ static void Vertices(GpuVertex *v, const uint32_t *const *words, int count)
     for (i = 0; i < count && !depth; i++) {
         v[i].w = 0.0f;
     }
+    if (hudActive && !mask) {
+        for (i = 0; i < count; i++) {
+            HudPoint(&v[i]); /* the HUD of a split window */
+        }
+    }
+    return mask;
 }
 
 static void Colour(GpuVertex *v, uint32_t word)
@@ -867,6 +925,9 @@ static void Rectangle(const uint32_t *w, uint32_t code)
         v[k].y = (float)(y + state.offsetY + ((k & 2) ? height : 0));
         v[k].u = (float)((uv & 0xFF) + ((k & 1) ? width : 0));
         v[k].v = (float)(((uv >> 8) & 0xFF) + ((k & 2) ? height : 0));
+        if (hudActive) {
+            HudPoint(&v[k]);
+        }
     }
     GpuTriangles(&draw, v, 3);
     GpuTriangles(&draw, v + 1, 3);
@@ -1000,8 +1061,28 @@ static void ReadPendingTables(void)
     pendingCount = 0;
 }
 
+static u_long *hudEntry, *hudTable;
+
+void PsxHudTables(u_long *lastEntry, u_long *secondTable)
+{
+    hudEntry = lastEntry;
+    hudTable = secondTable;
+}
+
+/* A HUD vertex, halved about the centre of the picture (the band of a split window). */
+static void HudPoint(GpuVertex *v)
+{
+    float ox = (float)state.offsetX, oy = (float)state.offsetY;
+
+    v->x = ox + 160.0f + (v->x - ox - 160.0f) * 0.5f;
+    v->y = oy + 120.0f + (v->y - oy - 120.0f) * 0.5f;
+}
+
 void DrawOTag(u_long *p)
 {
+    u_long *node;
+    int tracing = PortTracing() && pendingCount < PENDING_TABLES;
+
     if (holdPicture && holdAreaCount < HOLD_AREAS) {
         holdAreas[holdAreaCount].left = state.areaLeft;
         holdAreas[holdAreaCount].top = state.areaTop;
@@ -1009,8 +1090,21 @@ void DrawOTag(u_long *p)
         holdAreas[holdAreaCount].bottom = state.areaBottom;
         holdAreaCount++;
     }
-    u_long *node;
-    int tracing = PortTracing() && pendingCount < PENDING_TABLES;
+    drawnSinceRead = 1;
+    if (PortLinkSplit() && !tracing) {
+        hudActive = p == hudTable;
+        for (node = p; node; node = NodeAfter(node)) {
+            if (node == hudEntry) {
+                hudActive = 1;
+            }
+            if (*node >> 24) {
+                Submit((const uint32_t *)(node + 1), (int)(*node >> 24));
+            }
+        }
+        hudActive = 0;
+        GteFrameDrawn();
+        return;
+    }
 
     if (tracing) {
         pending[pendingCount].table = p;

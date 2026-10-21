@@ -52,6 +52,11 @@ void GpuLine(const GpuDrawState *state, const GpuVertex *a, const GpuVertex *b);
 void GpuFill(int x, int y, int w, int h, uint8_t r, uint8_t g, uint8_t b);
 /* Shows the given rectangle of video memory. */
 void GpuPresent(int x, int y, int w, int h);
+/* Two players on one machine (link.c): the area (x, y, w, h) of video memory in the upper half of the
+   window and another picture (RGBA, rows from the bottom; lowerNew: changed since the last call) in the
+   lower half; and an area read back at the framebuffer's scale (RGBA, rows from the bottom). */
+void GpuPresentSplit(int x, int y, int w, int h, const uint8_t *lower, int lowerW, int lowerH, int lowerNew);
+uint8_t *GpuReadArea(int x, int y, int w, int h, int *outW, int *outH);
 /* Brings psxVram up to date with what was drawn into the rectangle (before
    the CPU reads or copies it). */
 void GpuReadBack(int x, int y, int w, int h);

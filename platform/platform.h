@@ -16,6 +16,8 @@ typedef struct PortConfig {
     const char *captureDir;  /* tests: save shown frames as PPM */
     int captureEvery;
     int captureFrom;         /* the first shown frame saved */
+    const char *executable;  /* argv[0]: the second player's game is started from it */
+    const char *linkName;    /* the second player's game: the shared memory of the link (link.c) */
 } PortConfig;
 extern PortConfig portConfig;
 
@@ -34,6 +36,9 @@ int PortPumpEvents(void);
    as CD reads): the clock advances, the game's vblank callback runs, the
    display is shown and events are pumped. */
 void PsxVBlank(void);
+/* The fields that have passed by the wall clock, without waiting: while the second player's game waits
+   for the first's over the link (link.c), as the console's vertical blanks go on during a transfer. */
+void PsxPassFields(void);
 uint64_t PsxFieldCount(void);
 uint64_t PsxScanlines(void);  /* since power-on */
 

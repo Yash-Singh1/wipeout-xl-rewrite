@@ -17,6 +17,10 @@ extern unsigned char PsxScratchpad[1024];
    is not meant to see. */
 void PsxHoldPicture(void);
 
+/* The HUD's place in the ordering tables Swap draws next: the last entry of the first and the start of
+   the second (drawn at half size in a split window, platform/link.c). */
+void PsxHudTables(u_long *lastEntry, u_long *secondTable);
+
 /* A buffer of packets that gets link numbers of its own (libgpu numbers every packet address it links;
    a large buffer whose packets move from frame to frame would use up its table). */
 void PsxLinkRegion(void *start, size_t bytes);

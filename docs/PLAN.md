@@ -71,6 +71,26 @@ The game calls the PsyQ libraries:
 - **libcard:** memory card saves become files.
 - **Intro movies:** the same videos from the PC release's MPEG files.
 
+## Two players on one machine
+
+The link-cable modes (ARCADE LINK, ONE ON ONE) ran on two consoles, each racing
+its own ship and exchanging a packet every frame (`doSerialTransfer`). The port
+keeps that design: the game in the window starts a second copy of itself for the
+second player (`platform/link.c`, `--link-slave`), and the two exchange their
+packets through shared memory in step, as over the cable. The game's own link
+code runs as it did. In place of the link screen (menu 19) the first player's
+game shows the lobby (`game/src/portlobby.c`); `game/src/portlink.c` drives the
+second player's game through its menus (it starts on the link screen and presses
+START once linked) and takes the first player from the lobby to the class and
+track and the race.
+
+The first player's game reads every controller: the first player's alone drives
+it, the second player's goes over the link. During a linked race each game shows
+the middle band of its picture (rows 60-179, the full width) with its HUD drawn
+at half size about the centre; the second game hands its band over through the
+shared memory and the first shows it in the lower half of the window. The second
+game plays no CD music and keeps a scratch memory card.
+
 ## Verification
 
 - **Lockstep against the console** (`tools/trace/`, `docs/LOCKSTEP.md`): the

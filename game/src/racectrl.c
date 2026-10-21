@@ -1,5 +1,6 @@
 #include "include_asm_g8.h"
 #include "functions.h"
+#include "portlink.h" /* Port: two players on one machine */
 #include "hud.h"
 #include "ayrace.h"
 #include "hiscores.h"
@@ -317,6 +318,7 @@ void race(ConfigData *gameData, int context, int scene)
         else {
             goto checkRapier;
 quit:
+            PortLinkRaceView(0); /* Port: the window is whole again (portlink.c) */
             QuitGame();
             return;
 checkRapier:
@@ -325,6 +327,7 @@ checkRapier:
     }
     one=1;
     trackNameScroll=480;gameData->raceInfo=0;medalDisplay=0;
+    PortLinkRaceView(1); /* Port: a linked race splits the window between the two players (portlink.c) */
 restart:
     Restart(&locals.resetData);InitRaceData(&pauseState);
     if(context!=one) attractDelayFrames=0;

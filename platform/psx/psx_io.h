@@ -26,6 +26,7 @@ typedef struct PsxIoConfig {
     double cdSpeed;         /* CD mechanics speed-up over the console's drive; 0 or 1 = as is */
     const char *padScript;  /* scripted pad input file (see pad.c); NULL for live input */
     const char *wavPath;    /* write the mixed audio here (fixed-step runs) */
+    int noCdAudio;          /* the disc's audio tracks are not heard (the second player's game) */
 } PsxIoConfig;
 
 /* Returns 1 on success; on failure fills error (when non-NULL). */

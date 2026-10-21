@@ -30,6 +30,7 @@
 
 #include <string.h>
 
+#include "../link.h"
 #include "../platform.h"
 #include "internal.h"
 #include "pad.h"
@@ -77,6 +78,20 @@ static SDL_Gamepad *gamepads[PORTS];
 static uint16_t padHeldOver[PORTS]; /* buttons held when the window regained the focus */
 static bool padRegained[PORTS];     /* the focus came back: note the buttons held now */
 
+/* Two players on one machine (link.c): the devices of the first player (the only one this game reads)
+   and of the second (sent over the link), once the lobby has assigned them. */
+#define DEVICE_NONE (-1)
+#define DEVICE_KEYBOARD 0
+static int routed;
+static int lastDevice = DEVICE_KEYBOARD; /* the device the player used last */
+static int firstDevice = DEVICE_NONE, secondDevice = DEVICE_NONE;
+static PadState keyboardState, gamepadState[PORTS];
+
+static void Route(void);
+static PadDevice gamepad_device(SDL_Gamepad *g);
+static void SendSecondPlayer(void);
+static void ReceiveSecondPlayer(void);
+
 static uint16_t key_buttons(size_t i, PadContext context)
 {
     const KeyBinding *k = &keyBindings[i];
@@ -112,7 +127,8 @@ static void update_keyboard(void)
         if (held & PAD_R2) st.buttons |= PAD_R1;         /* the digital right shoulder */
         st.twist = (held & PAD_LEFT) ? ((held & PAD_RIGHT) ? 0x80 : 0x00) : (held & PAD_RIGHT) ? 0xFF : 0x80;
     }
-    PsxPadSetSource(0, PAD_SRC_KEYBOARD, &st, true);
+    keyboardState = st;
+    Route();
 }
 
 /* Once a field, before the buffers are filled: the game may have switched between the menus and
@@ -133,7 +149,14 @@ void PsxPadSdlField(void)
         PortLog("pad: keyboard in %s (thrust is button %04X)\n", context == PAD_CONTEXT_RACE ? "the race" : "the menus",
                 PsxPadActionButton(PAD_ACTION_THRUST));
     }
+    if (PortLinkRole() == LINK_SLAVE) {
+        ReceiveSecondPlayer();
+        return;
+    }
     update_keyboard();
+    if (routed && secondDevice != DEVICE_NONE) {
+        SendSecondPlayer();
+    }
 }
 
 static void update_gamepad(int port)
@@ -145,11 +168,13 @@ static void update_gamepad(int port)
     memset(&st, 0, sizeof(st));
     st.twist = 0x80;
     if (!g) {
+        gamepadState[port] = st;
         PsxPadSetSource(port, PAD_SRC_GAMEPAD, &st, false);
         return;
     }
     if (!PortWindowFocused()) {
-        PsxPadSetSource(port, PAD_SRC_GAMEPAD, &st, true);
+        gamepadState[port] = st;
+        Route();
         return;
     }
 #define BUTTON(sdl, bit) if (SDL_GetGamepadButton(g, sdl)) st.buttons |= (bit)
@@ -201,7 +226,131 @@ static void update_gamepad(int port)
         if (held & PAD_LEFT) st.twist = 0x00;
         if (held & PAD_RIGHT) st.twist = 0xFF;
     }
-    PsxPadSetSource(port, PAD_SRC_GAMEPAD, &st, true);
+    gamepadState[port] = st;
+    Route();
+}
+
+static int GamepadPort(int id)
+{
+    int port;
+
+    for (port = 0; port < PORTS; port++) {
+        if (gamepads[port] && (int)SDL_GetGamepadID(gamepads[port]) == id) {
+            return port;
+        }
+    }
+    return -1;
+}
+
+/* The ports' sources: the keyboard on port 0 and each gamepad on its own port; with the devices
+   assigned, the first player's device alone on port 0 and the second player's sent over the link. */
+static void Route(void)
+{
+    static const PadState idle = {0, 0x80, 0, 0, 0};
+    int port;
+
+    if (!routed) {
+        PsxPadSetSource(0, PAD_SRC_KEYBOARD, &keyboardState, true);
+        for (port = 0; port < PORTS; port++) {
+            if (gamepads[port]) {
+                PsxPadSetSource(port, PAD_SRC_GAMEPAD, &gamepadState[port], true);
+            }
+        }
+        return;
+    }
+    port = GamepadPort(firstDevice);
+    PsxPadSetSource(0, PAD_SRC_KEYBOARD, firstDevice == DEVICE_KEYBOARD ? &keyboardState : &idle, true);
+    PsxPadSetSource(0, PAD_SRC_GAMEPAD, port >= 0 ? &gamepadState[port] : &idle, port >= 0);
+    PsxPadSetSource(1, PAD_SRC_GAMEPAD, &idle, false);
+}
+
+/* The second player's controller, for the link (once a field). */
+static void SendSecondPlayer(void)
+{
+    LinkInput input;
+    size_t i;
+    int port;
+
+    memset(&input, 0, sizeof(input));
+    input.pad.twist = 0x80;
+    if (secondDevice == DEVICE_KEYBOARD) {
+        input.keyboard = 1;
+        input.device = PAD_DEVICE_KEYBOARD;
+        for (i = 0; i < KEY_COUNT && i < 32; i++) {
+            if (keyDown[i]) {
+                input.keys |= 1u << i;
+            }
+        }
+    } else if ((port = GamepadPort(secondDevice)) >= 0) {
+        input.device = gamepad_device(gamepads[port]);
+        input.pad = gamepadState[port];
+    }
+    PortLinkSetInput(&input);
+}
+
+/* The second player's game: its controller is the one the first player's game sends. */
+static void ReceiveSecondPlayer(void)
+{
+    static PadDevice shown = PAD_DEVICE_NONE;
+    static const PadState idle = {0, 0x80, 0, 0, 0};
+    LinkInput input;
+    size_t i;
+
+    if (!PortLinkGetInput(&input)) {
+        return;
+    }
+    if (input.device != PAD_DEVICE_NONE && input.device != (int)shown) {
+        shown = (PadDevice)input.device;
+        PsxPadNoteDevice(shown);
+    }
+    for (i = 0; i < KEY_COUNT && i < 32; i++) {
+        keyDown[i] = input.keyboard && ((input.keys >> i) & 1);
+        if (!keyDown[i]) {
+            keyHeldOver[i] = false;
+        }
+    }
+    update_keyboard();
+    PsxPadSetSource(0, PAD_SRC_GAMEPAD, input.keyboard ? &idle : &input.pad, !input.keyboard);
+}
+
+int PortInputLastDevice(void)
+{
+    return lastDevice;
+}
+
+void PortInputAssign(int first, int second)
+{
+    firstDevice = first;
+    secondDevice = second;
+    routed = first != DEVICE_NONE || second != DEVICE_NONE;
+    Route();
+}
+
+int PortInputDevices(PortInputDevice *out, int max)
+{
+    int n = 0, port;
+    size_t i;
+
+    if (n < max) {
+        out[n].id = DEVICE_KEYBOARD;
+        out[n].kind = PAD_DEVICE_KEYBOARD;
+        out[n].buttons = 0;
+        for (i = 0; i < KEY_COUNT; i++) {
+            if (keyDown[i] && PortWindowFocused()) {
+                out[n].buttons |= key_buttons(i, PAD_CONTEXT_MENU);
+            }
+        }
+        n++;
+    }
+    for (port = 0; port < PORTS && n < max; port++) {
+        if (gamepads[port]) {
+            out[n].id = (int)SDL_GetGamepadID(gamepads[port]);
+            out[n].kind = gamepad_device(gamepads[port]);
+            out[n].buttons = gamepadState[port].buttons;
+            n++;
+        }
+    }
+    return n;
 }
 
 static void open_gamepad(SDL_JoystickID id)
@@ -249,6 +398,9 @@ void PsxPadSdlInit(void)
     int count = 0, i;
 
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+    if (PortLinkRole() == LINK_SLAVE) {
+        return; /* the second player's game: its controller comes over the link */
+    }
     if (SDL_getenv("WIPEOUT_NO_GAMEPAD")) {
         return; /* tests: no gamepad is opened unless a script attaches one (WIPEOUT_KEYS) */
     }
@@ -310,9 +462,13 @@ static void note_gamepad(SDL_JoystickID id)
     if (!PortWindowFocused()) {
         return;
     }
+    if (routed && (int)id != firstDevice) {
+        return; /* the second player's: not the glyphs of this game */
+    }
     for (port = 0; port < PORTS; port++) {
         if (gamepads[port] && SDL_GetGamepadID(gamepads[port]) == id) {
             PsxPadNoteDevice(gamepad_device(gamepads[port]));
+            lastDevice = (int)id;
             return;
         }
     }
@@ -332,8 +488,9 @@ void PsxInputEvent(const SDL_Event *event)
                 keyDown[i] = event->key.down;
                 if (!event->key.down) {
                     keyHeldOver[i] = false;
-                } else if (!event->key.repeat) {
+                } else if (!event->key.repeat && (!routed || firstDevice == DEVICE_KEYBOARD)) {
                     PsxPadNoteDevice(PAD_DEVICE_KEYBOARD);
+                    lastDevice = DEVICE_KEYBOARD;
                 }
             }
         }

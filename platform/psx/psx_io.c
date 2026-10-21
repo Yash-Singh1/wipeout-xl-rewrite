@@ -209,6 +209,7 @@ int PsxIoInit(const PsxIoConfig *config, char *error, int errorSize)
     }
     SpuReset(g_io.spu);
     CdDriveInit(&g_io.cd, g_io.disc, config->cdSpeed);
+    g_io.cd.silent = config->noCdAudio != 0;
     g_io.fixedStep = config->fixedStep != 0;
     snprintf(g_io.savePath, sizeof(g_io.savePath), "%s", config->savePath ? config->savePath : ".");
     if (config->wavPath) {

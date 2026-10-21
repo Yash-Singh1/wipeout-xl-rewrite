@@ -8,6 +8,7 @@
 
 #include "platform.h"
 #include "psx/psx_io.h"
+#include "link.h"
 #include "trace.h"
 
 PortConfig portConfig;
@@ -34,6 +35,21 @@ int main(int argc, char **argv)
     const char *value;
     int i, w, h;
 
+    for (i = 1; i < argc; i++) {
+        if (!strcmp(argv[i], "--link-slave")) {
+            /* the second player's game: the first's test settings are not for it */
+            static const char *const testSettings[] = {
+                "WIPEOUT_KEYS", "WIPEOUT_CAPTURE_DIR", "WIPEOUT_FRAMES", "WIPEOUT_TRACE", "WIPEOUT_PADS",
+                "WIPEOUT_VCOUNTS", "WIPEOUT_WRITES", "WIPEOUT_LOADS", "WIPEOUT_VRAM_DUMP",
+                "WIPEOUT_SAVE_DIR", "WIPEOUT_FIXED_STEP", "WIPEOUT_HIDDEN"};
+            size_t k;
+
+            for (k = 0; k < SDL_arraysize(testSettings); k++) {
+                SDL_UnsetEnvironmentVariable(SDL_GetEnvironment(), testSettings[k]);
+            }
+        }
+    }
+
     portConfig.discPath = SDL_getenv("WIPEOUT_XL_DISC");
     portConfig.pcDataPath = SDL_getenv("WIPEOUT_XL_PC_DATA");
     portConfig.windowWidth = 1280;
@@ -48,6 +64,8 @@ int main(int argc, char **argv)
     portConfig.captureEvery = value ? SDL_atoi(value) : 1;
     value = SDL_getenv("WIPEOUT_CAPTURE_FROM");
     portConfig.captureFrom = value ? SDL_atoi(value) : 0;
+    portConfig.executable = argv[0];
+    portConfig.savePath = SDL_getenv("WIPEOUT_SAVE_DIR");
     for (i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--disc") && i + 1 < argc) {
             portConfig.discPath = argv[++i];
@@ -59,6 +77,12 @@ int main(int argc, char **argv)
             i++;
         } else if (!strcmp(argv[i], "--fullscreen")) {
             portConfig.fullscreen = 1;
+        } else if (!strcmp(argv[i], "--link-slave") && i + 1 < argc) {
+            /* the second player's game, started by the first's (link.c): no window, no music */
+            portConfig.linkName = argv[++i];
+            portConfig.hidden = 1;
+        } else if (!strcmp(argv[i], "--save-dir") && i + 1 < argc) {
+            portConfig.savePath = argv[++i];
         } else {
             Usage();
             return 1;
@@ -68,12 +92,18 @@ int main(int argc, char **argv)
         Usage();
         return 1;
     }
-    portConfig.savePath = SDL_getenv("WIPEOUT_SAVE_DIR");
     if (!portConfig.savePath) {
         portConfig.savePath = SDL_GetPrefPath("Psygnosis", "WipeoutXL");
     }
+    if (portConfig.linkName && !PortLinkSlaveInit(portConfig.linkName)) {
+        return 1;
+    }
     if (portConfig.muted) {
         SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "dummy");
+    }
+    if (portConfig.linkName) {
+        /* the second player's game is part of the first's window: no Dock icon, never the focus */
+        SDL_SetHint(SDL_HINT_MAC_BACKGROUND_APP, "1");
     }
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD | SDL_INIT_EVENTS)) {
         SDL_Log("SDL: %s", SDL_GetError());
@@ -91,6 +121,7 @@ int main(int argc, char **argv)
         io.savePath = portConfig.savePath;
         io.fixedStep = portConfig.fixedStep;
         io.muted = portConfig.muted;
+        io.noCdAudio = portConfig.linkName != NULL;
         value = SDL_getenv("WIPEOUT_CD_SPEED");
         /* data reads as fast as the disc image allows (the console's drive: WIPEOUT_CD_SPEED=1) */
         io.cdSpeed = value ? SDL_atof(value) : 1000.0;
@@ -102,6 +133,7 @@ int main(int argc, char **argv)
         atexit(PsxIoShutdown);
     }
     PortTraceInit();
+    atexit(PortLinkShutdown);
     PsxMain();
     PortVideoShutdown();
     SDL_Quit();

@@ -60,6 +60,18 @@ Xbox pads, B/A/Y/X for Nintendo pads, the console's symbols for PlayStation
 pads. The in-game controller screen rebinds the race controls for both.
 [docs/CONTROLS.md](docs/CONTROLS.md) has the details.
 
+## Two players
+
+ONE ON ONE and ARCADE LINK (RACE TYPE on the main menu) were the console's
+link-cable modes; here they are two players on one machine, the window split
+top and bottom. The lobby shows the first player's controller and ship on the
+left; the second player presses START (or ENTER on the keyboard) on another
+controller to join on the right. Each chooses a team with left and right and
+confirms with their accept button; when both are ready, the first player
+chooses the class and track and the race starts. The second player runs a
+second copy of the game behind the scenes, linked to the first as the two
+consoles were by the cable.
+
 ## Saves
 
 The game saves to memory cards, as on the console. Card 1 is

@@ -57,7 +57,8 @@ static void Pace(void)
     }
 }
 
-void PsxVBlank(void)
+/* One field passes. */
+static void Field(void)
 {
     lines = (lines / LINES_PER_FIELD + 1) * LINES_PER_FIELD;
     fields++;
@@ -69,10 +70,31 @@ void PsxVBlank(void)
     if (!PortPumpEvents()) {
         exit(0);
     }
+}
+
+void PsxVBlank(void)
+{
+    Field();
     Pace();
     if (portConfig.frameLimit && fields >= (uint64_t)portConfig.frameLimit) {
         PortDumpVram();
         exit(0);
+    }
+}
+
+void PsxPassFields(void)
+{
+    uint64_t now;
+
+    if (portConfig.fixedStep) {
+        return;
+    }
+    if (!startTicks) {
+        startTicks = SDL_GetTicksNS();
+    }
+    now = SDL_GetTicksNS();
+    while (startTicks + (uint64_t)((fields + 1) * FIELD_SECONDS * 1e9) <= now) {
+        Field();
     }
 }
 

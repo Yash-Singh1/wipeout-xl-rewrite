@@ -753,6 +753,84 @@ void GpuPresent(int x, int y, int w, int h)
 }
 
 /* A movie frame: drawn straight to the window through a texture of its own. */
+/* The largest rectangle of aspect aw:ah inside (x, y, w, h), centred. */
+static void Fit(int x, int y, int w, int h, int aw, int ah, int *ox, int *oy, int *ow, int *oh)
+{
+    *ow = w;
+    *oh = w * ah / aw;
+    if (*oh > h) {
+        *oh = h;
+        *ow = h * aw / ah;
+    }
+    *ox = x + (w - *ow) / 2;
+    *oy = y + (h - *oh) / 2;
+}
+
+uint8_t *GpuReadArea(int x, int y, int w, int h, int *outW, int *outH)
+{
+    static uint8_t *pixels;
+    static size_t size;
+    size_t need = (size_t)w * scale * h * scale * 4;
+
+    Flush();
+    if (need > size) {
+        pixels = realloc(pixels, need);
+        size = need;
+    }
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
+    glPixelStorei(GL_PACK_ALIGNMENT, 4);
+    glReadPixels(x * scale, y * scale, w * scale, h * scale, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    *outW = w * scale;
+    *outH = h * scale;
+    return pixels;
+}
+
+void GpuPresentSplit(int x, int y, int w, int h, const uint8_t *lower, int lowerW, int lowerH, int lowerNew)
+{
+    static GLuint texture, readFramebuffer;
+    static int textureW, textureH;
+    int width, height, ox, oy, ow, oh;
+
+    Flush();
+    PortDrawableSize(&width, &height);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    glDisable(GL_SCISSOR_TEST);
+    glViewport(0, 0, width, height);
+    glClearColor(0, 0, 0, 1);
+    glClear(GL_COLOR_BUFFER_BIT);
+    /* the upper half: this game's band (OpenGL's rows go up: the upper half is from height / 2) */
+    Fit(0, height - height / 2, width, height / 2, w, h, &ox, &oy, &ow, &oh);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
+    glBlitFramebuffer(x * scale, y * scale, (x + w) * scale, (y + h) * scale, ox, oy + oh, ox + ow, oy,
+                      GL_COLOR_BUFFER_BIT, GL_LINEAR);
+    /* the lower half: the other game's band, as it read it (rows from the bottom) */
+    if (lower && lowerW > 0 && lowerH > 0) {
+        if (!texture) {
+            glGenTextures(1, &texture);
+            glGenFramebuffers(1, &readFramebuffer);
+        }
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+        if (lowerW != textureW || lowerH != textureH) {
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, lowerW, lowerH, 0, GL_RGBA, GL_UNSIGNED_BYTE, lower);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            textureW = lowerW;
+            textureH = lowerH;
+        } else if (lowerNew) {
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, lowerW, lowerH, GL_RGBA, GL_UNSIGNED_BYTE, lower);
+        }
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
+        Fit(0, 0, width, height / 2, w, h, &ox, &oy, &ow, &oh);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, readFramebuffer);
+        glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
+        glBlitFramebuffer(0, 0, lowerW, lowerH, ox, oy + oh, ox + ow, oy, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    PortVideoPresent();
+}
+
 void GpuShowImage(const uint8_t *rgb, int width, int height)
 {
     static GLuint texture, readFramebuffer;

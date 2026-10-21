@@ -153,6 +153,9 @@ void PsxPlayMovie(const char *program)
     double rate;
     int shown = 0;
 
+    if (portConfig.linkName) {
+        return; /* the second player's game shows no movies */
+    }
     data = file ? LoadMovie(file, &size) : NULL;
     if (!data) {
         PortLog("movie %s: no MPEG file (pass --pc-data); skipped\n", program);

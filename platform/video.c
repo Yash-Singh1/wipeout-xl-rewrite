@@ -4,6 +4,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+#include "link.h"
 #include "platform.h"
 #include "psx/gpu.h"
 #include "psx/psx_io.h"
@@ -152,6 +153,9 @@ int PortPumpEvents(void)
     SDL_Event event;
 
     PortInputScript(PsxFieldCount());
+    if (PortLinkRole() == LINK_SLAVE && PortLinkQuitRequested()) {
+        return 0; /* the first player's game closed the second's */
+    }
     while (SDL_PollEvent(&event)) {
         if (event.type == SDL_EVENT_QUIT) {
             return 0;

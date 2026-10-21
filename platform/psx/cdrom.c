@@ -437,7 +437,7 @@ static void play_sample(CdDrive *cd, int16_t out[2])
         track = DiscTrackAt(cd->disc, cd->pos);
         cd->sector = track && track->audio ? DiscRawSector(cd->disc, cd->pos) : NULL;
     }
-    if (cd->sector && !cd->muted) {
+    if (cd->sector && !cd->muted && !cd->silent) {
         const uint8_t *p = cd->sector + cd->phase * 4;
         int32_t l = (int16_t)(p[0] | p[1] << 8);
         int32_t r = (int16_t)(p[2] | p[3] << 8);
