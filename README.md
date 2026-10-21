@@ -35,9 +35,9 @@ computes changes (`WIPEOUT_FAR_VIEW=0` brings back the console's view).
 Far away, from 64000 to 96000 units, everything fades smoothly into the sky,
 as in wipeout-rewrite (`WIPEOUT_FADE=near,far` sets the distances,
 `WIPEOUT_FADE=0` draws without a fade).
-3D geometry is also depth tested per pixel, where the console only sorted
-whole polygons: nothing pokes through what is in front of it any more
-(`WIPEOUT_DEPTH=0` draws in the console's order alone). The
+Polygons are drawn in the console's order, as the game sorts them;
+`WIPEOUT_DEPTH=1` adds a per-pixel depth test (fewer sorting errors between
+models, but decals such as sign faces then flicker against their boards). The
 disc is read as fast as the image allows, so loading takes a moment instead
 of the console's seconds (`WIPEOUT_CD_SPEED=1` for the console's drive).
 

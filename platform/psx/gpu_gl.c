@@ -623,7 +623,10 @@ void GpuTriangles(const GpuDrawState *given, const GpuVertex *vertices, int coun
 
         if (depthOn < 0) {
             const char *value = SDL_getenv("WIPEOUT_DEPTH");
-            depthOn = !value || SDL_atoi(value) != 0;
+            /* off by default: the game's models put decals (sign faces, screen pictures, the menus' track
+               and medal models) on or close to the surfaces behind them and rely on the drawing order;
+               a depth buffer makes them fight. WIPEOUT_DEPTH=1 turns it on. */
+            depthOn = value && SDL_atoi(value) != 0;
         }
         faded.depthTest = depthOn;
     }
