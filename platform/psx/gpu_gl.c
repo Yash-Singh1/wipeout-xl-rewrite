@@ -877,6 +877,40 @@ uint8_t *GpuReadArea(int x, int y, int w, int h, int *outW, int *outH)
     return pixels;
 }
 
+/* The frame recorder (framecap.c): an area of video memory as shown, scaled to outW x outH, RGBA, top row
+   first. */
+uint8_t *GpuReadPicture(int x, int y, int w, int h, int outW, int outH)
+{
+    static GLuint small, smallTexture;
+    static int smallW, smallH;
+    static uint8_t *pixels;
+
+    Flush();
+    if (!small || smallW != outW || smallH != outH) {
+        if (!small) {
+            glGenFramebuffers(1, &small);
+            glGenTextures(1, &smallTexture);
+        }
+        glBindTexture(GL_TEXTURE_2D, smallTexture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, outW, outH, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        glBindFramebuffer(GL_FRAMEBUFFER, small);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, smallTexture, 0);
+        smallW = outW;
+        smallH = outH;
+        pixels = realloc(pixels, (size_t)outW * outH * 4);
+    }
+    glDisable(GL_SCISSOR_TEST);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, small);
+    glBlitFramebuffer(x * scale, y * scale, (x + w) * scale, (y + h) * scale, 0, 0, outW, outH, GL_COLOR_BUFFER_BIT,
+                      GL_LINEAR);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, small);
+    glPixelStorei(GL_PACK_ALIGNMENT, 4);
+    glReadPixels(0, 0, outW, outH, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    return pixels; /* video memory's rows go up the framebuffer: the first row read is the picture's top */
+}
+
 void GpuPresentSplit(int x, int y, int w, int h, const uint8_t *lower, int lowerW, int lowerH, int lowerNew)
 {
     static GLuint texture, readFramebuffer;

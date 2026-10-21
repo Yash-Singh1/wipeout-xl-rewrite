@@ -35,7 +35,7 @@ static void Usage(void)
 int main(int argc, char **argv)
 {
     const char *value;
-    int i, w, h;
+    int i, w, h, recordReplay = 0;
 
     for (i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--link-slave")) {
@@ -66,6 +66,8 @@ int main(int argc, char **argv)
     portConfig.captureEvery = value ? SDL_atoi(value) : 1;
     value = SDL_getenv("WIPEOUT_CAPTURE_FROM");
     portConfig.captureFrom = value ? SDL_atoi(value) : 0;
+    value = SDL_getenv("WIPEOUT_CAPTURE_TO");
+    portConfig.captureTo = value ? SDL_atoi(value) : 0;
     portConfig.executable = argv[0];
     portConfig.savePath = SDL_getenv("WIPEOUT_SAVE_DIR");
     for (i = 1; i < argc; i++) {
@@ -83,6 +85,8 @@ int main(int argc, char **argv)
             /* the second player's game, started by the first's (link.c): no window, no music */
             portConfig.linkName = argv[++i];
             portConfig.hidden = 1;
+        } else if (!strcmp(argv[i], "--record")) {
+            recordReplay = 1;
         } else if (!strcmp(argv[i], "--save-dir") && i + 1 < argc) {
             portConfig.savePath = argv[++i];
         } else {
@@ -149,6 +153,24 @@ int main(int argc, char **argv)
         atexit(PsxIoShutdown);
     }
     PortTraceInit();
+    if (recordReplay || (portSettings.recordReplays && !portConfig.hidden)) {
+        /* a replay of this session: <data folder>/replays/<date and time>/ */
+        char dir[1200];
+        char *base = SDL_GetPrefPath("Psygnosis", "WipeoutXL");
+        SDL_Time now;
+        SDL_DateTime t;
+
+        SDL_GetCurrentTime(&now);
+        SDL_TimeToDateTime(now, &t, true);
+        SDL_snprintf(dir, sizeof(dir), "%sreplays", base ? base : "./");
+        SDL_CreateDirectory(dir);
+        SDL_snprintf(dir, sizeof(dir), "%sreplays/%04d-%02d-%02d_%02d-%02d-%02d", base ? base : "./", t.year, t.month,
+                     t.day, t.hour, t.minute, t.second);
+        if (PortRecordStart(dir, portConfig.savePath, PortSettingsPath())) {
+            fprintf(stderr, "recording a replay to %s\n", dir);
+        }
+        SDL_free(base);
+    }
     atexit(PortLinkShutdown);
     PsxMain();
     PortVideoShutdown();

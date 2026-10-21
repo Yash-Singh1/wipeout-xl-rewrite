@@ -34,4 +34,8 @@ int PortFarViewEnabled(void);
 /* The distance fade's range in world units; whether it is on (the settings, platform/settings.c). */
 int PortFadeRange(int *nearDistance, int *farDistance);
 
+/* The frame recorder (platform/psx/framecap.h): the packets from start to end were built by `what` (an
+   object's name, or NULL) for its item `index`. */
+void PortTagPrims(const void *start, const void *end, const char *what, const char *name, int index);
+
 #endif

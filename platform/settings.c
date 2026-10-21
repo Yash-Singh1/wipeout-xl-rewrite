@@ -7,7 +7,7 @@
 #include "platform.h"
 #include "settings.h"
 
-PortSettings portSettings = {0, 1, 1, 64000, 96000, 0, 1, 0, ""};
+PortSettings portSettings = {0, 1, 1, 64000, 96000, 0, 1, 0, 1, 0, ""};
 
 static char path[1024];
 static char defaultSaveDir[1024];
@@ -42,6 +42,10 @@ static void Set(const char *key, const char *value)
         portSettings.largePolygons = number != 0;
     } else if (!strcmp(key, "skip_intro")) {
         portSettings.skipIntro = number != 0;
+    } else if (!strcmp(key, "record_frames")) {
+        portSettings.recordFrames = number != 0;
+    } else if (!strcmp(key, "record_replays")) {
+        portSettings.recordReplays = number != 0;
     } else if (!strcmp(key, "save_dir")) {
         SDL_strlcpy(portSettings.saveDir, value, sizeof(portSettings.saveDir));
     }
@@ -121,9 +125,11 @@ int PortSettingsSave(void)
     fprintf(file,
             "# Wipeout XL settings (the backtick key opens the debug console that changes them)\n"
             "show_fps = %d\nfar_view = %d\nfade = %d\nfade_near = %d\nfade_far = %d\ndepth_test = %d\n"
-            "large_polygons = %d\nskip_intro = %d\nsave_dir = %s\n",
+            "large_polygons = %d\nskip_intro = %d\nrecord_frames = %d\nrecord_replays = %d\nsave_dir = %s\n",
             portSettings.showFps, portSettings.farView, portSettings.fade, portSettings.fadeNear, portSettings.fadeFar,
-            portSettings.depthTest, portSettings.largePolygons, portSettings.skipIntro, portSettings.saveDir);
+            portSettings.depthTest, portSettings.largePolygons, portSettings.skipIntro, portSettings.recordFrames,
+            portSettings.recordReplays,
+            portSettings.saveDir);
     fclose(file);
     return 1;
 }

@@ -14,6 +14,7 @@
 #include <string.h>
 
 #include "../trace.h"
+#include "framecap.h"
 #include "gpu.h"
 #include "../link.h"
 #include "../settings.h"
@@ -535,6 +536,7 @@ void PsxShowDisplay(void)
         holdPicture = 0;
     }
     if (state.displayEnabled && state.displayW > 0 && state.displayH > 0) {
+        FrameCapShown(state.displayX, state.displayY, state.displayW, state.displayH > 256 ? 480 : 240);
         GpuPresent(state.displayX, state.displayY, state.displayW, state.displayH > 256 ? 480 : 240);
     } else {
         GpuPresent(-1, -1, 0, 0);
@@ -586,6 +588,7 @@ int LoadImage(RECT *rect, u_long *p)
     }
     GpuVramChanged(rect->x, rect->y, rect->w, rect->h);
     GpuWriteFramebuffer(rect->x, rect->y, rect->w, rect->h);
+    FrameCapVramChanged();
     return 0;
 }
 
@@ -629,6 +632,7 @@ int MoveImage(RECT *rect, int x, int y)
     }
     GpuVramChanged(x, y, rect->w, rect->h);
     GpuMoveFramebuffer(rect->x, rect->y, rect->w, rect->h, x, y);
+    FrameCapVramChanged();
     return 0;
 }
 
@@ -794,6 +798,39 @@ static int Skipped(const GpuVertex *v, const int32_t x[3], const int32_t y[3])
     return 0;
 }
 
+/* The frame recorder's copy of a primitive as drawn (framecap.h); w: its words after the tag. */
+static void Record(int kind, uint32_t code, int count, const int32_t *ix, const int32_t *iy, const GpuVertex *v,
+                   const GpuDrawState *draw, int flags, const uint32_t *w, uint32_t page, uint32_t clut)
+{
+    FrameCapPrim *p = FrameCapAdd();
+    int i, r;
+
+    if (!p) {
+        return;
+    }
+    p->kind = (uint8_t)kind;
+    p->code = (uint8_t)code;
+    p->count = (uint8_t)count;
+    p->tpage = (uint16_t)page;
+    p->clut = (uint16_t)clut;
+    for (i = 0; i < count; i++) {
+        p->ix[i] = (int16_t)(ix ? ix[i] : 0);
+        p->iy[i] = (int16_t)(iy ? iy[i] : 0);
+        p->v[i] = v[i];
+    }
+    if (draw) {
+        p->draw = *draw;
+    }
+    p->address = (uint64_t)(uintptr_t)(w - 1);
+    for (r = 0; r < regionCount; r++) {
+        if ((const char *)w >= regions[r].start && (const char *)w < regions[r].start + regions[r].bytes) {
+            flags |= FRAMECAP_FAR;
+        }
+    }
+    p->flags = (uint8_t)flags;
+    FrameCapTagRecord(p);
+}
+
 static void Polygon(const uint32_t *w, uint32_t code)
 {
     int gouraud = (code & 0x10) != 0, quad = (code & 0x08) != 0, textured = (code & 0x04) != 0;
@@ -804,6 +841,7 @@ static void Polygon(const uint32_t *w, uint32_t code)
     const uint32_t *xys[4];
     uint32_t clut = 0, page = 0;
     GpuDrawState draw;
+    int skip0, skip1 = 1, flags;
 
     memset(v, 0, sizeof(v));
     for (i = 0; i < count; i++) {
@@ -827,7 +865,7 @@ static void Polygon(const uint32_t *w, uint32_t code)
             /* untextured colours are used as they are */
         }
     }
-    Vertices(v, xys, count);
+    flags = Vertices(v, xys, count) == (1u << count) - 1 && v[0].w > 0.0f ? FRAMECAP_PRECISE : 0;
     if (textured) {
         /* A textured polygon's page also becomes the GPU's current page. */
         SetTexpage(page);
@@ -847,15 +885,19 @@ static void Polygon(const uint32_t *w, uint32_t code)
     }
     {
         int32_t tx[3] = {ix[0], ix[1], ix[2]}, ty[3] = {iy[0], iy[1], iy[2]};
-        if (!Skipped(v, tx, ty)) {
-            GpuTriangles(&draw, v, 3);
-        }
+        skip0 = Skipped(v, tx, ty);
     }
     if (quad) {
         int32_t tx[3] = {ix[1], ix[2], ix[3]}, ty[3] = {iy[1], iy[2], iy[3]};
-        if (!Skipped(v + 1, tx, ty)) {
-            GpuTriangles(&draw, v + 1, 3);
-        }
+        skip1 = Skipped(v + 1, tx, ty);
+    }
+    Record(FRAMECAP_POLYGON, code, count, ix, iy, v, &draw,
+           flags | (skip0 ? FRAMECAP_SKIP0 : 0) | (quad && skip1 ? FRAMECAP_SKIP1 : 0), w, page, clut);
+    if (!skip0) {
+        GpuTriangles(&draw, v, 3);
+    }
+    if (quad && !skip1) {
+        GpuTriangles(&draw, v + 1, 3);
     }
 }
 
@@ -892,6 +934,10 @@ static void Line(const uint32_t *w, uint32_t code, int words)
         {
             const uint32_t *word = &w[k++];
             Vertices(&b, &word, 1);
+        }
+        {
+            GpuVertex segment[2] = {a, b};
+            Record(FRAMECAP_LINE, code, 2, NULL, NULL, segment, &draw, 0, w, 0, 0);
         }
         GpuLine(&draw, &a, &b);
         a = b;
@@ -936,6 +982,7 @@ static void Rectangle(const uint32_t *w, uint32_t code)
             HudPoint(&v[k]);
         }
     }
+    Record(FRAMECAP_RECTANGLE, code, 4, NULL, NULL, v, &draw, 0, w, state.texpage, uv >> 16);
     GpuTriangles(&draw, v, 3);
     GpuTriangles(&draw, v + 1, 3);
 }
@@ -956,6 +1003,17 @@ static void Packet(const uint32_t *w, int words)
     } else if (code == 0x02) {
         int x = (int)(w[1] & 0x3F0), y = (int)((w[1] >> 16) & 0x1FF);
         int width = (int)(((w[2] & 0x3FF) + 0xF) & ~0xF), height = (int)((w[2] >> 16) & 0x1FF);
+        GpuVertex corners[2];
+
+        memset(corners, 0, sizeof(corners));
+        corners[0].x = (float)x;
+        corners[0].y = (float)y;
+        corners[1].x = (float)(x + width);
+        corners[1].y = (float)(y + height);
+        corners[0].r = (uint8_t)w[0];
+        corners[0].g = (uint8_t)(w[0] >> 8);
+        corners[0].b = (uint8_t)(w[0] >> 16);
+        Record(FRAMECAP_FILL, code, 2, NULL, NULL, corners, NULL, 0, w, 0, 0);
         GpuFill(x, y, width, height, (uint8_t)w[0], (uint8_t)(w[0] >> 8), (uint8_t)(w[0] >> 16));
     } else if (code >= 0xE1 && code <= 0xE6) {
         int i;
@@ -1098,6 +1156,8 @@ void DrawOTag(u_long *p)
         holdAreaCount++;
     }
     GpuClearDepth(state.areaLeft, state.areaTop, state.areaRight - state.areaLeft + 1, state.areaBottom - state.areaTop + 1);
+    FrameCapTable(state.offsetX, state.offsetY, state.areaLeft, state.areaTop, state.areaRight - state.areaLeft + 1,
+                  state.areaBottom - state.areaTop + 1);
     drawnSinceRead = 1;
     if (PortLinkSplit() && !tracing) {
         hudActive = p == hudTable;

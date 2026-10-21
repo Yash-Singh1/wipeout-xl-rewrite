@@ -17,6 +17,8 @@ typedef struct PortSettings {
     int depthTest;        /* the per-pixel depth test */
     int largePolygons;    /* near polygons the console's GPU drops for their size are drawn */
     int skipIntro;        /* no intro movie at start-up */
+    int recordFrames;     /* the frame recorder keeps the last seconds of drawing (F9, psx/framecap.h) */
+    int recordReplays;    /* every session is recorded as a replay (trace.c, --record) */
     char saveDir[1024];   /* memory cards ("" = the user's data folder); takes effect at the next start */
 } PortSettings;
 

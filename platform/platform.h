@@ -16,6 +16,7 @@ typedef struct PortConfig {
     const char *captureDir;  /* tests: save shown frames as PPM */
     int captureEvery;
     int captureFrom;         /* the first shown frame saved */
+    int captureTo;           /* ... and the last (0: no end) */
     const char *executable;  /* argv[0]: the second player's game is started from it */
     const char *linkName;    /* the second player's game: the shared memory of the link (link.c) */
 } PortConfig;
@@ -53,5 +54,7 @@ int PortFarViewEnabled(void);
 
 /* Diagnostics */
 void PortLog(const char *format, ...);
+/* The pictures presented so far (video.c). */
+int PortShownFrames(void);
 
 #endif

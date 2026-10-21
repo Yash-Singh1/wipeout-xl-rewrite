@@ -46,7 +46,8 @@ add_subdirectory(platform/psx psxio)
 file(GLOB PLATFORM_TOP_SOURCES ${CMAKE_SOURCE_DIR}/platform/*.c)
 set(PLATFORM_PSX_SOURCES
     platform/psx/gte.c platform/psx/gte_tables.c platform/psx/gpu_gl.c
-    platform/psx/libetc.c platform/psx/libgpu.c platform/psx/libgte.c platform/psx/libgte_more.c)
+    platform/psx/libetc.c platform/psx/libgpu.c platform/psx/libgte.c platform/psx/libgte_more.c
+    platform/psx/framecap.c)
 list(TRANSFORM PLATFORM_PSX_SOURCES PREPEND ${CMAKE_SOURCE_DIR}/)
 # The debug console: Dear ImGui (platform/third_party/imgui, MIT) over SDL3 and OpenGL 3.
 set(IMGUI_DIR ${CMAKE_SOURCE_DIR}/platform/third_party/imgui)

@@ -166,12 +166,94 @@ static void ApplyScript(unsigned char *packet)
     packet[3] = (unsigned char)(~buttons >> 8);
 }
 
+/* ---- replay recording (--record): what makes a session repeat exactly ----
+
+   pads.txt (the buttons at each fixed pad read, when they change), vcounts.txt (every scanline counter
+   read: the frame timing and the random seeds), loads.txt (the loading screens' lengths), and copies of
+   the memory card and the settings at the start. tools/replay.sh plays the folder back. */
+static FILE *recordPads, *recordVcounts, *recordLoads;
+static int recordedButtons = -1;
+static char recordDir[1024];
+
+static void RecordClose(void)
+{
+    if (recordPads) fclose(recordPads);
+    if (recordVcounts) fclose(recordVcounts);
+    if (recordLoads) fclose(recordLoads);
+    recordPads = recordVcounts = recordLoads = NULL;
+}
+
+const char *PortRecordDir(void)
+{
+    return recordDir[0] ? recordDir : NULL;
+}
+
+int PortRecordStart(const char *dir, const char *saveDir, const char *settingsPath)
+{
+    char path[1100];
+    size_t size;
+    void *data;
+
+    SDL_CreateDirectory(dir);
+    SDL_strlcpy(recordDir, dir, sizeof(recordDir));
+    SDL_snprintf(path, sizeof(path), "%s/pads.txt", dir);
+    recordPads = fopen(path, "w");
+    SDL_snprintf(path, sizeof(path), "%s/vcounts.txt", dir);
+    recordVcounts = fopen(path, "w");
+    SDL_snprintf(path, sizeof(path), "%s/loads.txt", dir);
+    recordLoads = fopen(path, "w");
+    if (!recordPads || !recordVcounts || !recordLoads) {
+        RecordClose();
+        recordDir[0] = 0;
+        return 0;
+    }
+    /* the starting state: the memory card and the settings */
+    SDL_snprintf(path, sizeof(path), "%smemcard0.mcr", saveDir ? saveDir : "");
+    if ((data = SDL_LoadFile(path, &size))) {
+        SDL_snprintf(path, sizeof(path), "%s/memcard0.mcr", dir);
+        SDL_SaveFile(path, data, size);
+        SDL_free(data);
+    }
+    if (settingsPath && (data = SDL_LoadFile(settingsPath, &size))) {
+        SDL_snprintf(path, sizeof(path), "%s/wipeoutxl.ini", dir);
+        SDL_SaveFile(path, data, size);
+        SDL_free(data);
+    }
+    atexit(RecordClose);
+    return 1;
+}
+
+void PortRecordVcount(int value)
+{
+    if (recordVcounts) {
+        fprintf(recordVcounts, "%d\n", value);
+    }
+}
+
+static void RecordPad(const unsigned char *packet)
+{
+    int buttons;
+
+    if (!recordPads) {
+        return;
+    }
+    buttons = (uint16_t)~(packet[2] | packet[3] << 8);
+    if (packet[1] != 0x41 && packet[1] != 0x23) {
+        buttons = 0; /* nothing connected */
+    }
+    if (buttons != recordedButtons) {
+        fprintf(recordPads, "%u %04x\n", padReads, buttons);
+        recordedButtons = buttons;
+    }
+}
+
 /* buildFixedPad: the read the script counts. */
 void PortScriptFixedPad(unsigned char *packet)
 {
     if (padSteps) {
         ApplyScript(packet);
     }
+    RecordPad(packet);
     TracePad(0, packet);
     padReads++;
 }
@@ -356,6 +438,10 @@ void PortLoadingEnds(void)
     int guard = 0;
 
     PortLog("loading: %u swaps, ends at field %llu\n", callbackSwaps - loadStart, (unsigned long long)PsxFieldCount());
+    if (recordLoads) {
+        fprintf(recordLoads, "%u\n", callbackSwaps - loadStart);
+        fflush(recordLoads);
+    }
     if (loadNext >= loadCount) {
         return;
     }

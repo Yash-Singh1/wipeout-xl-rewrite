@@ -515,6 +515,7 @@ frame:
     }
     if(playCredits) {ClearOTagR(OT[CurrentScreen],8192);ClearOTagR(OT2[CurrentScreen],1600);}
     AddPrim(OT[CurrentScreen]+8191,locals.clearPolys[CurrentScreen]);
+    PortTagPrims(locals.clearPolys[CurrentScreen],locals.clearPolys[CurrentScreen]+1,"screen clear",NULL,CurrentScreen); /* Port: the frame recorder */
     if(gameType!=one) advance=menuSendFlags;else advance=menuRecvFlags;
     cardNum-=advance*30;heading-=advance*15;
     Swap();firstTimeIn=0;UpdateNotes(0);

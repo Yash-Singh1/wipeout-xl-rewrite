@@ -10,6 +10,10 @@
 #define TRACE_CALLBACK_SWAP 0x800686E8u
 
 void PortTraceInit(void);
+/* --record: a replay of the session (trace.c) */
+int PortRecordStart(const char *dir, const char *saveDir, const char *settingsPath);
+const char *PortRecordDir(void);
+void PortRecordVcount(int value);
 int PortTracing(void);
 /* One drawing packet or video memory transfer, as the GPU receives it. */
 void PortTraceGp0(const uint32_t *words, int count);

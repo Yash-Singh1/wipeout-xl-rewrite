@@ -14,6 +14,8 @@
 #include <stdlib.h>
 
 #include "../platform.h"
+#include "framecap.h"
+#include "../debug_ui.h"
 #include "psx_io.h"
 #include "../trace.h"
 #include "psyq.h"
@@ -69,6 +71,39 @@ static void Field(void)
     PsxShowDisplay();
     if (!PortPumpEvents()) {
         exit(0);
+    }
+    {
+        /* tests: WIPEOUT_FRAMECAP_SAVE_AT=n saves the frame recorder's frames at picture n */
+        static int saveAt = -1;
+
+        if (saveAt < 0) {
+            const char *value = SDL_getenv("WIPEOUT_FRAMECAP_SAVE_AT");
+            saveAt = value ? SDL_atoi(value) : 0;
+        }
+        if (saveAt > 0 && PortShownFrames() == saveAt) {
+            FrameCapSave();
+        }
+    }
+    {
+        /* tests: WIPEOUT_FRAMECAP_FREEZE_AT=n freezes as F9 does at picture n */
+        static int freezeAt = -1;
+
+        if (freezeAt < 0) {
+            const char *value = SDL_getenv("WIPEOUT_FRAMECAP_FREEZE_AT");
+            freezeAt = value ? SDL_atoi(value) : 0;
+        }
+        if (freezeAt > 0 && PortShownFrames() == freezeAt) {
+            FrameCapToggleFreeze();
+            DebugUiShowFrames();
+        }
+    }
+    /* F9 (the frame recorder): the game waits here while the window and the debug console go on */
+    while (FrameCapFrozen()) {
+        PsxShowDisplay();
+        if (!PortPumpEvents()) {
+            exit(0);
+        }
+        SDL_Delay(16);
     }
 }
 
@@ -173,6 +208,7 @@ int GsGetVcount(void)
     int value = ReadVcount();
 
     PortTraceReturn(0x80082090u, (uint32_t)value);
+    PortRecordVcount(value);
     return value;
 }
 

@@ -124,6 +124,7 @@ void AsmTrackLo(TrackSection *firstSection, Skeleton *camera, short loCount)
             poly->b0 = face->blue;
             AddPrim((u_long *)((char *)ordering + (depth & 0xFFFC)), poly);
             PortFarMarkFace(face); /* Port: the far view draws the faces the game did not */
+            PortTagPrims(poly, poly + 1, "track lo face", NULL, (int)(face - track->faces)); /* Port: the frame recorder */
             poly++;
             loTileCount++;
         next_face:
@@ -183,6 +184,7 @@ static POLY_FT4 *DrawGridQuad(POLY_FT4 *poly, u_long *ordering, Face *face, Tile
     GteWriteData(19, p3->depth);
     GteExecute(GTE_AVSZ4);
     AddPrim(ordering + GteReadData(7), poly);
+    PortTagPrims(poly, poly + 1, "track face", NULL, (int)(face - track->faces)); /* Port: the frame recorder */
     return poly + 1;
 }
 
@@ -391,6 +393,7 @@ static void DrawPartialCell(GridPoint *cell[4], Tile *tile, Face *face, u_long *
         GteExecute(GTE_AVSZ4);
         AddPrim(ordering + GteReadData(7), poly);
         nextPrim.ptr = (char *)(poly + 1);
+        PortTagPrims(poly, poly + 1, "track cell", NULL, (int)(face - track->faces)); /* Port: the frame recorder */
     }
 }
 
@@ -563,6 +566,7 @@ static void DrawNearFace(Face *face, const PortView *view, u_short tpage, u_shor
         poly->b0 = face->blue;
         /* behind whatever the game drew of the face, and nearer things */
         AddPrim(PortFarSlot((int)deepest >> 2, deepest), poly);
+        PortTagPrims(poly, poly + 1, "near fill face", NULL, (int)(face - track->faces));
     }
 }
 
@@ -629,6 +633,7 @@ void PortTrackFar(TrackSection *section, const PortView *view)
         poly->b0 = face->blue;
         /* AsmTrackLo's slot: the depth of the last corner of RTPT (vertex 2), a quarter per entry */
         AddPrim(PortFarSlot((int)corner[2].z >> 2, corner[2].z), poly);
+        PortTagPrims(poly, poly + 1, "far track face", NULL, (int)(face - track->faces));
     }
     PortFarDepthBias(1.0);
 }

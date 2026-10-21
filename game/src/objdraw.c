@@ -112,6 +112,7 @@ static void ProjectVertices(Object *object)
 /* Port: the far view leaves out the primitives the game drew (forceReject), and learns which the game
    culled as facing away (culled). */
 static int forceReject, culled;
+static const ProjectedVertex *culledVertex[3]; /* Port: the culled polygon's first three vertices */
 
 static int AnyRejected(const ProjectedVertex *a, const ProjectedVertex *b, const ProjectedVertex *c, const ProjectedVertex *d)
 {
@@ -195,7 +196,25 @@ static int Culled(DrawKind kind, short primFlag, const ProjectedVertex *a, const
         return 0;
     }
     culled = FacesAway(a, b, c);
+    culledVertex[0] = a;
+    culledVertex[1] = b;
+    culledVertex[2] = c;
     return culled;
+}
+
+/* Port: whether a polygon the game culled faces away for certain. The game judges on the screen positions
+   rounded to whole pixels; a far polygon a few pixels across, seen nearly edge on, can come out facing away
+   in one frame and not in the next. Such a polygon is left to the far view (portfar.h), which judges on the
+   precise positions: a black speck of background flickered where it was missing. */
+static int CulledForCertain(const ProjectedVertex *a, const ProjectedVertex *b, const ProjectedVertex *c)
+{
+    GtePrecise p[3];
+
+    if (farView || !GtePreciseOf(projectedHandle[a - projected], &p[0]) ||
+        !GtePreciseOf(projectedHandle[b - projected], &p[1]) || !GtePreciseOf(projectedHandle[c - projected], &p[2])) {
+        return 1;
+    }
+    return (p[1].x - p[0].x) * (p[2].y - p[0].y) - (p[1].y - p[0].y) * (p[2].x - p[0].x) <= 0;
 }
 
 static void SetRgb(u_char *r, u_char *g, u_char *b, const CVECTOR *colour)
@@ -561,8 +580,9 @@ static void DrawObject(Object *object, DrawKind kind, int roll, const CVECTOR *c
             goto finished;
         }
         if (drawnFlags && index < (u_short)object->primitiveCount) {
-            drawnFlags[index] = out != before || culled;
+            drawnFlags[index] = out != before || (culled && CulledForCertain(culledVertex[0], culledVertex[1], culledVertex[2]));
         }
+        PortTagPrims(before, out, farView ? "far object" : "object", object->name, index); /* Port: the frame recorder */
         index++;
     } while (--count > 0);
 finished:

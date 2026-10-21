@@ -83,9 +83,15 @@ void PortDrawableSize(int *width, int *height)
     SDL_GetWindowSizeInPixels(window, width, height);
 }
 
+static int shown;
+
+int PortShownFrames(void)
+{
+    return shown;
+}
+
 static void Capture(void)
 {
-    static int shown;
     int width, height;
     unsigned char *pixels;
     char path[1024];
@@ -94,6 +100,7 @@ static void Capture(void)
 
     shown++;
     if (!portConfig.captureDir || portConfig.captureEvery <= 0 || shown < portConfig.captureFrom ||
+        (portConfig.captureTo && shown > portConfig.captureTo) ||
         shown % portConfig.captureEvery) {
         return;
     }

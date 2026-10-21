@@ -387,6 +387,7 @@ void DrawEnvMap(Object *object, void *unused, SVECTOR *normals, int xOffsetIn, i
     F4 *primitiveCursor; F4 *triangleNext;
     SVECTOR *vertices;
     s32 pad[4];
+    char *start = nextPrim.ptr; /* Port: the frame recorder */
 
     ws.savedX = xOffsetIn;
     ws.eye.vx = 0; ws.eye.vy = 0; ws.eye.vz = 4096;
@@ -664,6 +665,7 @@ triAdvanceCached:
     }
 envDone:
     medalDisplay = 1;
+    PortTagPrims(start, nextPrim.ptr, "env map", object->name, 0);
 }
 
 
