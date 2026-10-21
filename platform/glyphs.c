@@ -293,7 +293,8 @@ static bool MakeCap(const char *text, Glyph *glyph)
 {
     /* the return key's arrow large; words of three letters and more smaller, to keep the caps compact */
     const float letter = text[0] == '\r' ? 16.0f : SDL_strlen(text) >= 3 ? 9.0f : 11.0f, weight = SDL_min(letter, 11.0f) * 0.2f;
-    int w = (int)SDL_ceilf(TextWidth(text, letter)) + 14, x, y;
+    /* square, as the console's icon and the Windows release's caps, unless the legend needs more */
+    int w = (int)SDL_ceilf(TextWidth(text, letter)) + 8, x, y;
     float tx, ty;
 
     if (w < CAP_HEIGHT) {
