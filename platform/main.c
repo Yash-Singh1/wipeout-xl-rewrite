@@ -22,7 +22,7 @@ static void Usage(void)
             "  --disc     your Wipeout XL (USA) PlayStation disc image (.cue with its .bin tracks)\n"
             "  --pc-data  optional: the Wipeout XL PC CD, for its intro movies and keyboard art\n"
             "environment: WIPEOUT_XL_DISC, WIPEOUT_XL_PC_DATA; tests: WIPEOUT_MUTE, WIPEOUT_HIDDEN,\n"
-            "  WIPEOUT_FIXED_STEP, WIPEOUT_FRAMES, WIPEOUT_CAPTURE_DIR, WIPEOUT_CAPTURE_EVERY,\n"
+            "  WIPEOUT_FIXED_STEP, WIPEOUT_FRAMES, WIPEOUT_CAPTURE_DIR, WIPEOUT_CAPTURE_EVERY, WIPEOUT_CAPTURE_FROM,\n"
             "  WIPEOUT_TRACE (trace file), WIPEOUT_PADS (pad script), WIPEOUT_VCOUNTS (counter reads),\n"
             "  WIPEOUT_CD_SPEED (disc speed-up), WIPEOUT_SAVE_DIR (memory cards; default: the user's data folder),\n"
             "  WIPEOUT_KEYS (scripted keys and gamepad), WIPEOUT_VRAM_DUMP (video memory picture at the end of a run)\n");
@@ -45,6 +45,8 @@ int main(int argc, char **argv)
     portConfig.captureDir = SDL_getenv("WIPEOUT_CAPTURE_DIR");
     value = SDL_getenv("WIPEOUT_CAPTURE_EVERY");
     portConfig.captureEvery = value ? SDL_atoi(value) : 1;
+    value = SDL_getenv("WIPEOUT_CAPTURE_FROM");
+    portConfig.captureFrom = value ? SDL_atoi(value) : 0;
     for (i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--disc") && i + 1 < argc) {
             portConfig.discPath = argv[++i];

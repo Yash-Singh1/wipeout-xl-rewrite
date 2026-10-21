@@ -15,6 +15,7 @@ typedef struct PortConfig {
     int frameLimit;          /* tests: stop after this many video fields (0 = no limit) */
     const char *captureDir;  /* tests: save shown frames as PPM */
     int captureEvery;
+    int captureFrom;         /* the first shown frame saved */
 } PortConfig;
 extern PortConfig portConfig;
 

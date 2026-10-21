@@ -87,7 +87,8 @@ static void Capture(void)
     int y;
 
     shown++;
-    if (!portConfig.captureDir || portConfig.captureEvery <= 0 || shown % portConfig.captureEvery) {
+    if (!portConfig.captureDir || portConfig.captureEvery <= 0 || shown < portConfig.captureFrom ||
+        shown % portConfig.captureEvery) {
         return;
     }
     PortDrawableSize(&width, &height);

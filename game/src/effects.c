@@ -53,6 +53,7 @@ extern int droidBlinkTick;
 extern TrackSection *startDroidSection;
 #include "functions.h"
 #include "include_asm_g8.h"
+#include "../../platform/psx/gte.h" /* Port: precise positions for the shadow's grid */
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
 extern u_char   pitCycleFlag;
@@ -1728,6 +1729,15 @@ void DrawShadow(void *shapes, ShipData *ships, Shadow *shadow)
             y[23]=(y[22]+y[24])>>1;
             x[18]=(x[17]+x[19])>>1;
             y[18]=(y[17]+y[19])>>1;
+            {
+                /* Port: the grid was halved on whole pixels; the renderer places it between the corners' exact positions */
+                uint32_t corners[4];
+                corners[0]=(u_short)screen[0].vx|(uint32_t)(u_short)screen[0].vy<<16;
+                corners[1]=(u_short)screen[1].vx|(uint32_t)(u_short)screen[1].vy<<16;
+                corners[2]=(u_short)screen[2].vx|(uint32_t)(u_short)screen[2].vy<<16;
+                corners[3]=(u_short)screen[3].vx|(uint32_t)(u_short)screen[3].vy<<16;
+                GteRecordGrid(corners,x,y,5);
+            }
             depth[0]-=175;
             if(depth[0]<0) depth[0]=0;
             depth[1]=depth[0]-20;

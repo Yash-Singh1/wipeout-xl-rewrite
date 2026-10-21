@@ -29,15 +29,26 @@ int GteTable16(unsigned int address);
 
 /* Full-precision projections of this frame. Every RTPS/RTPT stores the exact
    screen position (before the hardware's rounding to whole pixels) and the
-   view depth of each vertex, keyed by the integer screen position the game
-   received. The renderer looks a primitive's vertices up here; a miss means
-   the vertex did not come from a projection (2D) and is drawn as given. */
+   view depth of each vertex, under the integer screen position the game
+   received. The renderer resolves a primitive's vertices here together (see
+   gte.c); a vertex not found did not come from a projection (2D arithmetic)
+   and is drawn as given. */
 typedef struct GtePrecise {
     float x, y;  /* screen position, in the game's 320x240 units */
     float z;     /* view-space depth (for perspective-correct texturing) */
 } GtePrecise;
 
-int GteLookupPrecise(int x, int y, GtePrecise *precise);
+#define GTE_RESOLVE_MAX 4
+/* The vertices xy[0..count-1] (GPU packet words) of one primitive: fills
+   out[i] for each vertex found and returns the mask of those. */
+unsigned GteResolvePrecise(const uint32_t *xy, int count, GtePrecise *out);
+/* A size x size grid of points the game placed on screen by halving between
+   four projected corners (corner[]: the packet words of grid points 0,
+   size-1, size*(size-1) and size*size-1; x[], y[]: the grid row by row, as
+   the game computed it). Records each point at the matching place between
+   the corners' precise positions, without a depth (drawn affine, as the
+   console draws it). */
+void GteRecordGrid(const uint32_t corner[4], const int *x, const int *y, int size);
 void GteClearPrecise(void);
 /* libgpu has drawn a frame's ordering table: the next projection starts a
    new frame's cache. */

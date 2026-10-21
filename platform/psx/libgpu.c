@@ -564,19 +564,38 @@ void SetDumpFnt(int id)
 
 /* ---- drawing packets ---- */
 
-static void Vertex(GpuVertex *v, uint32_t xy)
+/* A vertex at packet position xy, from its projection when it was found. */
+static void Vertex(GpuVertex *v, uint32_t xy, const GtePrecise *precise)
 {
     int x = (int32_t)(xy << 21) >> 21, y = (int32_t)(xy << 5) >> 21;
-    GtePrecise precise;
 
-    if (GteLookupPrecise((int16_t)(xy & 0xFFFF), (int16_t)(xy >> 16), &precise)) {
-        v->x = precise.x + (float)state.offsetX;
-        v->y = precise.y + (float)state.offsetY;
-        v->w = precise.z;
+    if (precise) {
+        v->x = precise->x + (float)state.offsetX;
+        v->y = precise->y + (float)state.offsetY;
+        v->w = precise->z;
     } else {
         v->x = (float)(x + state.offsetX);
         v->y = (float)(y + state.offsetY);
         v->w = 0.0f; /* no depth: affine */
+    }
+}
+
+/* The vertices of one primitive. Perspective-correct texturing needs the
+   depth of every vertex; when one is missing (a point the game placed in 2D)
+   the whole primitive is drawn affine, as the console draws it, so that the
+   two triangles of a quad agree. */
+static void Vertices(GpuVertex *v, const uint32_t *xy, int count)
+{
+    GtePrecise precise[GTE_RESOLVE_MAX];
+    unsigned mask = GteResolvePrecise(xy, count, precise);
+    int i, depth = mask == (1u << count) - 1;
+
+    for (i = 0; i < count; i++) {
+        Vertex(&v[i], xy[i], (mask >> i) & 1 ? &precise[i] : NULL);
+        depth &= v[i].w > 0.0f;
+    }
+    for (i = 0; i < count && !depth; i++) {
+        v[i].w = 0.0f;
     }
 }
 
@@ -631,7 +650,7 @@ static void Polygon(const uint32_t *w, uint32_t code)
     int count = quad ? 4 : 3, i, k = 0;
     GpuVertex v[4];
     int32_t ix[4], iy[4];
-    uint32_t clut = 0, page = 0;
+    uint32_t xys[4], clut = 0, page = 0;
     GpuDrawState draw;
 
     memset(v, 0, sizeof(v));
@@ -639,7 +658,7 @@ static void Polygon(const uint32_t *w, uint32_t code)
         uint32_t colour = (i == 0 || gouraud) ? w[k++] : w[0];
         uint32_t xy = w[k++];
         Colour(&v[i], colour);
-        Vertex(&v[i], xy);
+        xys[i] = xy;
         ix[i] = (int32_t)(xy << 21) >> 21;
         iy[i] = (int32_t)(xy << 5) >> 21;
         if (textured) {
@@ -656,6 +675,7 @@ static void Polygon(const uint32_t *w, uint32_t code)
             /* untextured colours are used as they are */
         }
     }
+    Vertices(v, xys, count);
     if (textured) {
         /* A textured polygon's page also becomes the GPU's current page. */
         SetTexpage(page);
@@ -697,7 +717,7 @@ static void Line(const uint32_t *w, uint32_t code, int words)
     StateFor(&draw, 0, semi, 0);
     memset(&a, 0, sizeof(a));
     Colour(&a, w[k++]);
-    Vertex(&a, w[k++]);
+    Vertices(&a, &w[k++], 1);
     for (;;) {
         uint32_t colour = a.r | (a.g << 8) | ((uint32_t)a.b << 16);
         if (k >= words) {
@@ -714,7 +734,7 @@ static void Line(const uint32_t *w, uint32_t code, int words)
         }
         memset(&b, 0, sizeof(b));
         Colour(&b, colour);
-        Vertex(&b, w[k++]);
+        Vertices(&b, &w[k++], 1);
         GpuLine(&draw, &a, &b);
         a = b;
         if (!poly) {

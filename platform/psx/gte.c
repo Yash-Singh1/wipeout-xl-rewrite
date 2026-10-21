@@ -194,20 +194,39 @@ static uint32_t Divide(uint32_t h, uint32_t sz3)
     return result > 0x1FFFF ? 0x1FFFF : (uint32_t)result;
 }
 
-/* ---- the precise vertex cache ---- */
+/* ---- the precise vertex cache ----
 
-#define PRECISE_SLOTS 16384
+   Every projection of the frame is kept, in order, under the integer screen
+   position the game received. Different points can round to the same pixel
+   (a ship's corner in front of a track vertex), so one position may hold
+   several projections; a primitive's vertices are resolved together, taking
+   for each the projection made closest in time to the projections of the
+   others: the game projects the points of a face or a model together and
+   builds its primitives from them. A position that came from 2D arithmetic
+   rather than a projection finds nothing, or only a projection made far from
+   the primitive's others, and is drawn as given. */
+
+#define PRECISE_SLOTS 16384   /* hash of screen positions */
+#define PRECISE_RECORDS 16384 /* projections of one frame */
+#define PRECISE_CANDIDATES 4  /* projections considered per vertex */
+#define PRECISE_SPREAD 1024   /* projections apart that still make one primitive */
 
 typedef struct PreciseSlot {
-    uint32_t key;    /* SXY as the game received it, plus 1 (0 = empty) */
-    uint32_t frame;
-    GtePrecise value;
+    uint32_t key;    /* SXY as the game received it, plus 1 */
+    uint32_t frame;  /* the frame the slot belongs to (others are empty) */
+    int32_t latest;  /* the last record with this key */
 } PreciseSlot;
 
-static PreciseSlot precise[PRECISE_SLOTS];
-static uint32_t preciseFrame = 2;
-static int clearPending; /* the frame was handed to the GPU: the next record starts a new frame */
+typedef struct PreciseRecord {
+    GtePrecise value;
+    int32_t previous; /* the record before it with the same key, or -1 */
+} PreciseRecord;
 
+static PreciseSlot slots[PRECISE_SLOTS];
+static PreciseRecord records[PRECISE_RECORDS];
+static int recordCount;
+static uint32_t preciseFrame = 1;
+static int clearPending; /* the frame was handed to the GPU: the next record starts a new frame */
 
 static uint32_t Hash(uint32_t key)
 {
@@ -217,46 +236,181 @@ static uint32_t Hash(uint32_t key)
     return key & (PRECISE_SLOTS - 1);
 }
 
+static PreciseSlot *FindSlot(uint32_t key, int create)
+{
+    uint32_t slot = Hash(key), probe;
+
+    for (probe = 0; probe < 64; probe++) {
+        PreciseSlot *entry = &slots[(slot + probe) & (PRECISE_SLOTS - 1)];
+        if (entry->frame != preciseFrame) {
+            if (!create) {
+                return NULL;
+            }
+            entry->key = key;
+            entry->frame = preciseFrame;
+            entry->latest = -1;
+            return entry;
+        }
+        if (entry->key == key) {
+            return entry;
+        }
+    }
+    return NULL;
+}
+
 static void RecordPrecise(uint32_t sxy, float x, float y, float z)
 {
-    uint32_t key = sxy + 1, slot = Hash(key), probe;
+    PreciseSlot *slot;
+    PreciseRecord *record;
 
     if (clearPending) {
         clearPending = 0;
         GteClearPrecise();
     }
-    for (probe = 0; probe < 64; probe++) {
-        PreciseSlot *entry = &precise[(slot + probe) & (PRECISE_SLOTS - 1)];
-        if (entry->frame != preciseFrame || entry->key == key) {
-            entry->key = key;
-            entry->frame = preciseFrame;
-            entry->value.x = x;
-            entry->value.y = y;
-            entry->value.z = z;
-            return;
-        }
+    if (recordCount == PRECISE_RECORDS || !(slot = FindSlot(sxy + 1, 1))) {
+        return;
     }
+    record = &records[recordCount];
+    record->value.x = x;
+    record->value.y = y;
+    record->value.z = z;
+    record->previous = slot->latest;
+    slot->latest = recordCount++;
 }
 
-int GteLookupPrecise(int x, int y, GtePrecise *out)
+/* The records under a screen position, the latest first. */
+static int Candidates(uint32_t xy, int32_t out[PRECISE_CANDIDATES])
 {
-    uint32_t key = ((uint32_t)(uint16_t)x | ((uint32_t)(uint16_t)y << 16)) + 1;
-    uint32_t slot = Hash(key), probe;
-    uint32_t frame = preciseFrame;
+    PreciseSlot *slot = FindSlot(xy + 1, 0);
+    int32_t index = slot ? slot->latest : -1;
+    int n = 0;
 
-    for (probe = 0; probe < 64; probe++) {
-        PreciseSlot *entry = &precise[(slot + probe) & (PRECISE_SLOTS - 1)];
-        if (entry->frame != frame) {
-            return 0;
-        }
-        if (entry->key == key) {
-            *out = entry->value;
-            return 1;
-        }
+    while (index >= 0 && n < PRECISE_CANDIDATES) {
+        out[n++] = index;
+        index = records[index].previous;
     }
-    return 0;
+    return n;
 }
 
+static int32_t Distance(int32_t a, int32_t b)
+{
+    return a > b ? a - b : b - a;
+}
+
+unsigned GteResolvePrecise(const uint32_t *xy, int count, GtePrecise *out)
+{
+    int32_t candidates[GTE_RESOLVE_MAX][PRECISE_CANDIDATES], chosen[GTE_RESOLVE_MAX];
+    int found[GTE_RESOLVE_MAX], i, j, anchors = 0, any = 0;
+    int32_t sorted[GTE_RESOLVE_MAX], middle;
+    unsigned mask = 0;
+
+    for (i = 0; i < count; i++) {
+        found[i] = Candidates(xy[i], candidates[i]);
+        chosen[i] = found[i] ? candidates[i][0] : -1;
+        anchors += found[i] == 1;
+        any |= found[i] > 1;
+    }
+    if (any) {
+        if (anchors) {
+            /* each ambiguous vertex: the projection nearest to an unambiguous one */
+            for (i = 0; i < count; i++) {
+                int32_t best = -1, bestDistance = 0x7FFFFFFF;
+                int k;
+                if (found[i] < 2) {
+                    continue;
+                }
+                for (k = 0; k < found[i]; k++) {
+                    for (j = 0; j < count; j++) {
+                        if (found[j] == 1 && Distance(candidates[i][k], chosen[j]) < bestDistance) {
+                            bestDistance = Distance(candidates[i][k], chosen[j]);
+                            best = candidates[i][k];
+                        }
+                    }
+                }
+                chosen[i] = best;
+            }
+        } else {
+            /* none unambiguous: around each candidate of the first ambiguous
+               vertex, the nearest of the others; the tightest group wins */
+            int first = 0, k, bestSpread = 0x7FFFFFFF;
+            int32_t group[GTE_RESOLVE_MAX];
+
+            while (found[first] < 2) {
+                first++;
+            }
+            for (k = 0; k < found[first]; k++) {
+                int32_t low = candidates[first][k], high = low;
+                for (i = 0; i < count; i++) {
+                    int32_t best = -1;
+                    int m;
+                    for (m = 0; m < found[i]; m++) {
+                        if (best < 0 || Distance(candidates[i][m], candidates[first][k]) <
+                                            Distance(best, candidates[first][k])) {
+                            best = candidates[i][m];
+                        }
+                    }
+                    group[i] = best;
+                    if (best >= 0) {
+                        low = best < low ? best : low;
+                        high = best > high ? best : high;
+                    }
+                }
+                if (high - low < bestSpread) {
+                    bestSpread = high - low;
+                    memcpy(chosen, group, sizeof(group));
+                }
+            }
+        }
+    }
+
+    /* a projection far from the primitive's others is a stranger at the same pixel */
+    j = 0;
+    for (i = 0; i < count; i++) {
+        if (chosen[i] >= 0) {
+            int k = j++;
+            while (k > 0 && sorted[k - 1] > chosen[i]) {
+                sorted[k] = sorted[k - 1];
+                k--;
+            }
+            sorted[k] = chosen[i];
+        }
+    }
+    if (!j) {
+        return 0;
+    }
+    middle = sorted[(j - 1) / 2];
+    for (i = 0; i < count; i++) {
+        if (chosen[i] >= 0 && (j == 1 || Distance(chosen[i], middle) <= PRECISE_SPREAD)) {
+            out[i] = records[chosen[i]].value;
+            mask |= 1u << i;
+        }
+    }
+    return mask;
+}
+
+void GteRecordGrid(const uint32_t corner[4], const int *x, const int *y, int size)
+{
+    GtePrecise c[4];
+    int row, column;
+
+    if (size < 2 || GteResolvePrecise(corner, 4, c) != 15) {
+        return;
+    }
+    for (row = 0; row < size; row++) {
+        for (column = 0; column < size; column++) {
+            float u = (float)column / (float)(size - 1), v = (float)row / (float)(size - 1);
+            int i = row * size + column;
+
+            if ((row == 0 || row == size - 1) && (column == 0 || column == size - 1)) {
+                continue; /* the corners are projections already */
+            }
+            RecordPrecise((uint32_t)(uint16_t)x[i] | (uint32_t)(uint16_t)y[i] << 16,
+                          (1 - u) * (1 - v) * c[0].x + u * (1 - v) * c[1].x + (1 - u) * v * c[2].x + u * v * c[3].x,
+                          (1 - u) * (1 - v) * c[0].y + u * (1 - v) * c[1].y + (1 - u) * v * c[2].y + u * v * c[3].y,
+                          0.0f);
+        }
+    }
+}
 
 void GteFrameDrawn(void)
 {
@@ -265,10 +419,11 @@ void GteFrameDrawn(void)
 
 void GteClearPrecise(void)
 {
+    recordCount = 0;
     preciseFrame++;
     if (preciseFrame == 0xFFFFFFFFu) {
-        memset(precise, 0, sizeof(precise));
-        preciseFrame = 2;
+        memset(slots, 0, sizeof(slots));
+        preciseFrame = 1;
     }
 }
 

@@ -38,9 +38,14 @@ The game calls the PsyQ libraries:
 `platform/` implements those calls:
 - **libgte:** exact integer results, as the console produces them, since the
   game logic uses them. Every projection also keeps a full-precision
-  (float) copy of the vertex, keyed by its screen position for the frame. The
-  renderer uses it in place of the integer one, so geometry doesn't snap to
-  pixels or wobble, and texturing is perspective-correct.
+  (float) copy of the vertex, kept in order under its screen position for
+  the frame. The renderer uses it in place of the integer one, so geometry
+  doesn't snap to pixels or wobble, and texturing is perspective-correct.
+  Points of different models can round to the same pixel (a ship in front
+  of the track), so a primitive's vertices are resolved together, each
+  from the projection made nearest in time to the others. A primitive with
+  a vertex the game placed in 2D is drawn affine, as on the console; the
+  ship shadow's halved grid is placed between its corners' exact positions.
 - **libgpu:** the primitives and ordering tables the game builds are drawn in
   ordering-table order with OpenGL, at the window's resolution:
   - flat, Gouraud and textured polygons, sprites, tiles, lines;
