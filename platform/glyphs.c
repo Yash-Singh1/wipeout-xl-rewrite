@@ -315,10 +315,11 @@ static bool MakeArrow(int ax, bool right, Glyph *glyph)
             }
         }
     }
-    glyph->dx = -4;
-    glyph->dy = 2;
-    glyph->qw = 24;
-    glyph->qh = 12;
+    /* where the console's arrow icons are: 16x8 at the top of their 16x16 box */
+    glyph->dx = 0;
+    glyph->dy = 0;
+    glyph->qw = 16;
+    glyph->qh = 8;
     return true;
 }
 
