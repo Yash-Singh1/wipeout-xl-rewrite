@@ -136,6 +136,17 @@ void PortVideoPresent(void)
     SDL_GL_SwapWindow(window);
 }
 
+/* The hidden test window never has the focus: it counts as focused unless its script says otherwise. */
+static int scriptedFocus = 1;
+
+int PortWindowFocused(void)
+{
+    if (portConfig.hidden) {
+        return scriptedFocus;
+    }
+    return window && (SDL_GetWindowFlags(window) & SDL_WINDOW_INPUT_FOCUS);
+}
+
 int PortPumpEvents(void)
 {
     SDL_Event event;
@@ -151,6 +162,9 @@ int PortPumpEvents(void)
              (event.key.scancode == SDL_SCANCODE_RETURN && (event.key.mod & SDL_KMOD_ALT)))) {
             SDL_SetWindowFullscreen(window, !(SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN));
             continue;
+        }
+        if (portConfig.hidden && (event.type == SDL_EVENT_WINDOW_FOCUS_LOST || event.type == SDL_EVENT_WINDOW_FOCUS_GAINED)) {
+            scriptedFocus = event.type == SDL_EVENT_WINDOW_FOCUS_GAINED;
         }
         PsxInputEvent(&event);
     }

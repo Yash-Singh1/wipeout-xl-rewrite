@@ -25,6 +25,8 @@ void PortVideoShutdown(void);
 void PortVideoPresent(void);
 void PortDumpVram(void);
 void PortDrawableSize(int *width, int *height);
+/* Whether the window has the input focus (always, for the hidden test window). */
+int PortWindowFocused(void);
 /* Pumps window and input events; returns 0 when the user closed the window. */
 int PortPumpEvents(void);
 

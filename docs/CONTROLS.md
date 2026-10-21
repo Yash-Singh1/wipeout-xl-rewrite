@@ -102,6 +102,10 @@ bindings (`InitPadSettings`):
 Analog sticks feed the NegCon path (axes 0x8FF0-0x8FF2) only when the player
 picks the analog controller type.
 
+Gamepads count only while the game's window has the input focus: SDL reports them
+in the background too, so a pad used in another program does nothing here. Buttons
+still held when the window gets the focus back stay quiet until they are released.
+
 ## Testing the controls
 
 `WIPEOUT_KEYS=file` plays scripted keys and a virtual gamepad into SDL's event queue (see the head of
@@ -111,6 +115,9 @@ picks the analog controller type.
     655 up Return
     300 pad attach xbox      # xbox, ps5, switch or generic
     700 pad down a           # a is the south button; start, dpdown, ...
+    800 focus lost           # the window loses (or, "focus gained", regains) the focus
+
+With `WIPEOUT_NO_GAMEPAD` set (the tests) real gamepads are never opened, only the script's.
 
 `WIPEOUT_VRAM_DUMP=file.ppm` writes video memory at the end of a run (`WIPEOUT_FRAMES`).
 `tools/controls/shots.sh` captures the title, main menu, controller screen, pause menu and the results

@@ -18,6 +18,9 @@
    Start and Select, the left stick and the d-pad the directional pad. The first pad plugged in
    takes port 0 (joining the keyboard), the second port 1; unplugging frees the port.
 
+   Gamepads count only while the game's window has the focus (SDL reports them in the background
+   too). Buttons still held when the focus comes back stay quiet until they are released.
+
    The last device used (a key, or a button or stick of a gamepad) is told to the pad (see
    PsxPadNoteDevice) for the button glyphs the game shows.
 
@@ -27,6 +30,7 @@
 
 #include <string.h>
 
+#include "../platform.h"
 #include "internal.h"
 #include "pad.h"
 
@@ -70,6 +74,8 @@ static bool keyDown[KEY_COUNT];
 static bool keyHeldOver[KEY_COUNT];
 static PadContext keyContext = PAD_CONTEXT_MENU;
 static SDL_Gamepad *gamepads[PORTS];
+static uint16_t padHeldOver[PORTS]; /* buttons held when the window regained the focus */
+static bool padRegained[PORTS];     /* the focus came back: note the buttons held now */
 
 static uint16_t key_buttons(size_t i, PadContext context)
 {
@@ -142,6 +148,10 @@ static void update_gamepad(int port)
         PsxPadSetSource(port, PAD_SRC_GAMEPAD, &st, false);
         return;
     }
+    if (!PortWindowFocused()) {
+        PsxPadSetSource(port, PAD_SRC_GAMEPAD, &st, true);
+        return;
+    }
 #define BUTTON(sdl, bit) if (SDL_GetGamepadButton(g, sdl)) st.buttons |= (bit)
     BUTTON(SDL_GAMEPAD_BUTTON_SOUTH, PAD_CROSS);
     BUTTON(SDL_GAMEPAD_BUTTON_EAST, PAD_CIRCLE);
@@ -164,6 +174,18 @@ static void update_gamepad(int port)
     rt = SDL_GetGamepadAxis(g, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER);
     if (lt > 8192) st.buttons |= PAD_L2;
     if (rt > 8192) st.buttons |= PAD_R2;
+    if (PsxPadGetType(port) != PAD_NEGCON) {
+        if (x < -16384) st.buttons |= PAD_LEFT;
+        if (x > 16384) st.buttons |= PAD_RIGHT;
+        if (y < -16384) st.buttons |= PAD_UP;
+        if (y > 16384) st.buttons |= PAD_DOWN;
+    }
+    if (padRegained[port]) {
+        padRegained[port] = false;
+        padHeldOver[port] = st.buttons;
+    }
+    padHeldOver[port] &= st.buttons;
+    st.buttons &= (uint16_t)~padHeldOver[port];
     if (PsxPadGetType(port) == PAD_NEGCON) {
         /* the stick twists; the right trigger and south button are button I, west button II,
            the left trigger the analogue left shoulder, east button B, north button A */
@@ -178,11 +200,6 @@ static void update_gamepad(int port)
         if (held & PAD_R2) st.buttons |= PAD_R1;
         if (held & PAD_LEFT) st.twist = 0x00;
         if (held & PAD_RIGHT) st.twist = 0xFF;
-    } else {
-        if (x < -16384) st.buttons |= PAD_LEFT;
-        if (x > 16384) st.buttons |= PAD_RIGHT;
-        if (y < -16384) st.buttons |= PAD_UP;
-        if (y > 16384) st.buttons |= PAD_DOWN;
     }
     PsxPadSetSource(port, PAD_SRC_GAMEPAD, &st, true);
 }
@@ -190,6 +207,10 @@ static void update_gamepad(int port)
 static void open_gamepad(SDL_JoystickID id)
 {
     int port;
+
+    if (SDL_getenv("WIPEOUT_NO_GAMEPAD") && !SDL_IsJoystickVirtual(id)) {
+        return; /* tests: only the script's virtual gamepad, never a real one */
+    }
 
     for (port = 0; port < PORTS; port++) {
         if (gamepads[port] && SDL_GetGamepadID(gamepads[port]) == id) {
@@ -286,6 +307,9 @@ static void note_gamepad(SDL_JoystickID id)
 {
     int port;
 
+    if (!PortWindowFocused()) {
+        return;
+    }
     for (port = 0; port < PORTS; port++) {
         if (gamepads[port] && SDL_GetGamepadID(gamepads[port]) == id) {
             PsxPadNoteDevice(gamepad_device(gamepads[port]));
@@ -319,6 +343,15 @@ void PsxInputEvent(const SDL_Event *event)
         memset(keyDown, 0, sizeof(keyDown));
         memset(keyHeldOver, 0, sizeof(keyHeldOver));
         update_keyboard();
+        for (port = 0; port < PORTS; port++) {
+            update_gamepad(port); /* released while away */
+        }
+        break;
+    case SDL_EVENT_WINDOW_FOCUS_GAINED:
+        for (port = 0; port < PORTS; port++) {
+            padRegained[port] = gamepads[port] != NULL;
+            update_gamepad(port);
+        }
         break;
     case SDL_EVENT_GAMEPAD_ADDED:
         open_gamepad(event->gdevice.which);

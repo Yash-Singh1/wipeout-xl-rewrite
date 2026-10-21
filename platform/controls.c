@@ -8,7 +8,8 @@
        210 pad down a           215 pad up a            (an SDL gamepad button: a is the south one, then
                                                           b east, x west, y north, start, back, dpup, ...)
        220 pad axis leftx 30000                          (an axis; triggers 0..32767)
-       300 pad detach */
+       300 pad detach
+       400 focus lost           450 focus gained        (the window loses or regains the input focus) */
 #include <SDL3/SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -66,7 +67,7 @@ char *PortButtonLabel(PortButton button, char *console)
 
 /* ---- scripted input ---- */
 
-typedef enum { STEP_KEY, STEP_ATTACH, STEP_DETACH, STEP_BUTTON, STEP_AXIS } StepKind;
+typedef enum { STEP_KEY, STEP_ATTACH, STEP_DETACH, STEP_BUTTON, STEP_AXIS, STEP_FOCUS } StepKind;
 
 typedef struct Step {
     uint64_t field;
@@ -113,6 +114,9 @@ static void ParseLine(char *line, int number)
             fprintf(stderr, "keys: line %d: no key called \"%s\"\n", number, rest);
             return;
         }
+    } else if (!strcmp(verb, "focus") && (!strcmp(rest, "lost") || !strcmp(rest, "gained"))) {
+        step.kind = STEP_FOCUS;
+        step.down = rest[0] == 'g';
     } else if (!strcmp(verb, "pad") && (n = (int)strlen(rest), sscanf(rest, "%31s %n", word, &n) >= 1)) {
         char *tail = rest + n;
 
@@ -223,6 +227,10 @@ static void Run(const Step *step)
         if (virtualJoystick) {
             SDL_SetJoystickVirtualAxis(virtualJoystick, step->code, (Sint16)step->value);
         }
+        break;
+    case STEP_FOCUS:
+        event.type = step->down ? SDL_EVENT_WINDOW_FOCUS_GAINED : SDL_EVENT_WINDOW_FOCUS_LOST;
+        SDL_PushEvent(&event);
         break;
     }
 }
