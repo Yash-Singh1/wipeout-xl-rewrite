@@ -49,4 +49,8 @@ void PsxInputEvent(const union SDL_Event *event);
 typedef int (*PsxExecHook)(void *block);
 void PsxSetExecHook(PsxExecHook hook);
 
+/* The disc image (disc.h), for the movie player; NULL before PsxIoInit. */
+struct Disc;
+const struct Disc *PsxIoDisc(void);
+
 #endif

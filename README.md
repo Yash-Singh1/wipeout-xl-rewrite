@@ -11,9 +11,8 @@ real game.
 ## What you need
 
 - Your copy of the PlayStation disc as a `.cue` with its `.bin` tracks
-  (Wipeout XL USA). The music plays from the disc's audio tracks.
-- Optional: the Windows release's CD. Its `MPEG` folder gives the intro and
-  ending movies.
+  (Wipeout XL USA). The music plays from the disc's audio tracks, the intro
+  and ending movies from its movie files.
 - To build: CMake, a C compiler, SDL3 (and zlib for the test traces).
 
 ## Build
@@ -26,7 +25,7 @@ ninja -C build
 ## Play
 
 ```sh
-build/wipeoutxl --disc "path/to/Wipeout XL (USA).cue" --pc-data path/to/pc-cd
+build/wipeoutxl --disc "path/to/Wipeout XL (USA).cue"
 ```
 
 The whole track is drawn, as far as the camera sees, where the console let
@@ -43,7 +42,7 @@ of the console's seconds (`WIPEOUT_CD_SPEED=1` for the console's drive).
 
 `--window 1920x1440` sets the window size, `--fullscreen` starts full screen;
 Alt+Enter or F11 switches while playing. The environment variables
-`WIPEOUT_XL_DISC` and `WIPEOUT_XL_PC_DATA` can stand in for the two paths.
+The environment variable `WIPEOUT_XL_DISC` can stand in for the disc's path.
 
 ## Debug console
 

@@ -69,7 +69,8 @@ The game calls the PsyQ libraries:
   image (cue/bin).
 - **libpad:** keyboard and gamepads, as a PlayStation pad.
 - **libcard:** memory card saves become files.
-- **Intro movies:** the same videos from the PC release's MPEG files.
+- **Intro movies:** the disc's own movie files (MAKE.AV, XTRO1-4.AV), decoded as the console's
+  player and its MDEC do, with their XA sound.
 
 ## Two players on one machine
 

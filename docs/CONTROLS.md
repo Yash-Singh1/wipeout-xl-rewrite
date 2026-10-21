@@ -26,16 +26,19 @@ The glyph set follows the device the player used last (a key, or a button or sti
 the scripted pad of the lockstep tests does not count). Until something is pressed, and for a
 PlayStation pad and for pads of an unknown make, the console's icons stay exactly as they are.
 
-- **Keyboard**: key caps in the style of the Windows release's (`PICS/HI-RES/HUD2.TGA`): grey caps
-  with red legends, ENTER as its return arrow, gold direction arrows. Cross is ENTER, circle SPACE,
-  square ALT, triangle ESC; the controller screen shows S, F1, A and D the same way.
+- **Keyboard**: the Windows release's key caps and gold direction arrows, from its
+  `PICS/HI-RES/HUD2.TGA` (`platform/keyglyphs.c`, made by `tools/gen_keyglyphs.py`). Cross is ENTER,
+  triangle ESC and the arrows are the arrows, texel for texel as that release draws them. The release
+  has no other caps: circle (SPACE), square (ALT) and the controller screen's S, F1, A and D are caps
+  made of the same pieces (the cap's face, letters drawn as its ESC legend's, E, S and C its own).
 - **Xbox pads**: A, B, X, Y buttons with letters in the pad's colours by position (south A, east B,
   west X, north Y).
 - **Nintendo pads** (Switch, Joy-Con, GameCube): B, A, Y, X buttons by position (south B, east A,
   west Y, north X).
 
-The keyboard and gamepad glyphs are drawn by the port at four times the resolution of their page,
-with smooth edges, and sampled filtered: they stay sharp at any window size.
+The key caps are drawn at the Windows release's size (half their texels in console pixels). The
+gamepad glyphs are drawn by the port at four times the resolution of their page, with smooth edges,
+and sampled filtered: they stay sharp at any window size.
 - **PlayStation pads and other pads**: the console's icons.
 
 The glyphs live in a 256x256 page of the platform's texture memory beyond the console's video

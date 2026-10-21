@@ -101,8 +101,9 @@ sector every 1/150 s (double speed) or 1/75 s; CD-DA plays at 75 sectors a secon
 - A data read preempts CD-DA (the head goes to track 1; the game's polling then starts music).
 - CD audio goes to the SPU's CD input; the drive's volume matrix (CdMix) is applied before it,
   the SPU's CD volume and the master volume after (checked sample for sample in `test_music`).
-- XA audio is not read by the game (only mode 5 and 0x80 are used) and is not implemented; the
-  movie programs are replaced by the platform's MPEG player.
+- XA audio is not read by the game (only mode 5 and 0x80 are used) and is not implemented in the
+  drive; the movie programs are replaced by the platform's player (platform/movie.c), which reads
+  the movie files' sectors, video and XA sound, from the image itself.
 - Not modelled: the drive's report mode, CdReadyCallback/CdSyncCallback (unused by the game),
   mechanical transients (GetlocP during a seek reports the old position until the seek ends).
   The retail recording shows GetlocP leading the audio by up to one sector; here it is exact.

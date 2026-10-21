@@ -190,6 +190,11 @@ void PsxSetExecHook(PsxExecHook hook)
     g_io.exec = hook;
 }
 
+const struct Disc *PsxIoDisc(void)
+{
+    return g_io.disc;
+}
+
 /* ---- start and stop -------------------------------------------------------------------- */
 
 int PsxIoInit(const PsxIoConfig *config, char *error, int errorSize)

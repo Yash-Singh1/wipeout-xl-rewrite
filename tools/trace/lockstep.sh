@@ -7,7 +7,7 @@
 # pad script, scripted writes, loading-screen lengths and scanline-counter reads, and writes its trace to OUTPUT_DIR
 # (default /tmp/wipeoutxl-lockstep/NAME). Environment: WIPEOUT_BIN (the
 # executable, default build/wipeoutxl), WIPEOUT_XL_DISC (the PS1 disc .cue),
-# WIPEOUT_XL_PC_DATA, LOCKSTEP_FRAMES (frames to compare).
+# LOCKSTEP_FRAMES (frames to compare).
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)

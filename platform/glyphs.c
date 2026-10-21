@@ -5,13 +5,14 @@
    memory beyond the console's (the glyph page of gpu_gl.c, selected by colour depth 3), and
    PortButtonGlyph rewrites the quad to show one of them:
 
-     keyboard    key caps in the style of the Windows release's (grey caps, red legends; ENTER is its
-                 return arrow) and its gold direction arrows.
+     keyboard    the Windows release's key caps and gold direction arrows (keyglyphs.c, from its HUD2
+                 art: ESC, ENTER and the arrows as it draws them, the other keys' caps made of the same
+                 pieces), at the size it draws them.
      Xbox        A B X Y buttons in the colours of the pad's buttons, by position (south is A).
      Nintendo    B A Y X buttons by position (south is B).
 
-   They are drawn here at four times the page's resolution with smooth edges (distance fields and a
-   stroke face of capitals and digits), so they stay sharp at any window size.
+   The gamepad buttons are drawn here at four times the page's resolution with smooth edges (distance
+   fields and a stroke face of their letters), so they stay sharp at any window size.
 
    PlayStation pads, unknown pads and a player who has not touched anything yet keep the console's
    icons: nothing here runs for them. */
@@ -21,6 +22,7 @@
 #include <string.h>
 
 #include "controls.h"
+#include "keyglyphs.h"
 #include "platform.h"
 #include "psx/gpu.h"
 #include "psx/pad.h"
@@ -102,14 +104,6 @@ static float Length(float x, float y)
     return SDL_sqrtf(x * x + y * y);
 }
 
-/* Distance to a rounded rectangle centred at (cx, cy), half sizes hw, hh, corner radius r. */
-static float RoundRect(float x, float y, float cx, float cy, float hw, float hh, float r)
-{
-    float qx = SDL_fabsf(x - cx) - hw + r, qy = SDL_fabsf(y - cy) - hh + r;
-
-    return Length(qx > 0 ? qx : 0, qy > 0 ? qy : 0) + SDL_min(SDL_max(qx, qy), 0.0f) - r;
-}
-
 static float Segment(float x, float y, float x0, float y0, float x1, float y1)
 {
     float dx = x1 - x0, dy = y1 - y0, t = ((x - x0) * dx + (y - y0) * dy) / (dx * dx + dy * dy + 1e-9f);
@@ -140,49 +134,15 @@ static float Arc(float x, float y, float cx, float cy, float r, float a0, float 
     }
 }
 
-/* ---- the lettering: a stroke face of capitals and digits on a 4 x 6 grid ----
+/* ---- the lettering: a stroke face of the gamepad buttons' letters on a 4 x 6 grid ----
 
    Each character is strokes: "L x0,y0 x1,y1" a line, "A cx,cy,r,a0,a1" an arc; separated by '|'. */
 
 static const struct { char c; const char *strokes; } font[] = {
     {'A', "L0,6 2,0|L2,0 4,6|L0.7,4 3.3,4"},
     {'B', "L0,0 0,6|L0,0 2.5,0|A2.5,1.5,1.5,270,450|L0,3 2.6,3|A2.6,4.5,1.5,270,450|L0,6 2.6,6"},
-    {'C', "A2,2,2,180,340|A2,4,2,20,180|L0,2 0,4"},
-    {'D', "L0,0 0,6|L0,0 1.5,0|L0,6 1.5,6|A1.5,2.5,2.5,270,360|L4,2.5 4,3.5|A1.5,3.5,2.5,0,90"},
-    {'E', "L0,0 0,6|L0,0 4,0|L0,3 3,3|L0,6 4,6"},
-    {'F', "L0,0 0,6|L0,0 4,0|L0,3 3,3"},
-    {'G', "A2,2,2,180,340|A2,4,2,0,180|L0,2 0,4|L4,4 4,3.2|L4,3.2 2.3,3.2"},
-    {'H', "L0,0 0,6|L4,0 4,6|L0,3 4,3"},
-    {'I', "L2,0 2,6|L1,0 3,0|L1,6 3,6"},
-    {'J', "L4,0 4,4|A2,4,2,0,180"},
-    {'K', "L0,0 0,6|L4,0 0,3.8|L1.5,2.9 4,6"},
-    {'L', "L0,0 0,6|L0,6 4,6"},
-    {'M', "L0,6 0,0|L0,0 2,3.6|L2,3.6 4,0|L4,0 4,6"},
-    {'N', "L0,6 0,0|L0,0 4,6|L4,6 4,0"},
-    {'O', "A2,2,2,180,360|A2,4,2,0,180|L0,2 0,4|L4,2 4,4"},
-    {'P', "L0,0 0,6|L0,0 2.4,0|A2.4,1.6,1.6,270,450|L0,3.2 2.4,3.2"},
-    {'Q', "A2,2,2,180,360|A2,4,2,0,180|L0,2 0,4|L4,2 4,4|L2.6,4.6 4,6"},
-    {'R', "L0,0 0,6|L0,0 2.4,0|A2.4,1.6,1.6,270,450|L0,3.2 2.4,3.2|L2,3.2 4,6"},
-    {'S', "A2,1.5,1.5,90,340|A2,4.5,1.5,270,520"},
-    {'T', "L0,0 4,0|L2,0 2,6"},
-    {'U', "L0,0 0,4|L4,0 4,4|A2,4,2,0,180"},
-    {'V', "L0,0 2,6|L2,6 4,0"},
-    {'W', "L0,0 1,6|L1,6 2,2.5|L2,2.5 3,6|L3,6 4,0"},
     {'X', "L0,0 4,6|L4,0 0,6"},
-    {'Y', "L0,0 2,3|L4,0 2,3|L2,3 2,6"},
-    {'Z', "L0,0 4,0|L4,0 0,6|L0,6 4,6"},
-    {'0', "A2,2,2,180,360|A2,4,2,0,180|L0,2 0,4|L4,2 4,4"},
-    {'1', "L0.9,1.1 2,0|L2,0 2,6|L1,6 3,6"},
-    {'2', "A2,2,2,180,360|L4,2 0,6|L0,6 4,6"},
-    {'3', "A2,1.5,1.5,180,450|A2,4.5,1.5,270,540"},
-    {'4', "L3,6 3,0|L3,0 0,4|L0,4 4,4"},
-    {'5', "L4,0 0.5,0|L0.5,0 0.3,2.7|A2,4,2,250,540"},
-    {'6', "A2,4,2,0,360|A4,4,4,180,250"},
-    {'7', "L0,0 4,0|L4,0 1.5,6"},
-    {'8', "A2,1.5,1.5,0,360|A2,4.5,1.5,0,360"},
-    {'9', "A2,2,2,0,360|A0,2,4,0,70"},
-    /* the return key's arrow, as the Windows release draws its ENTER cap */
-    {'\r', "L3.6,0.4 3.6,4|L3.6,4 0.4,4|L0.4,4 1.9,2.5|L0.4,4 1.9,5.5"}};
+    {'Y', "L0,0 2,3|L4,0 2,3|L2,3 2,6"}};
 
 #define FONT_ADVANCE 5.4f /* grid units from one character to the next */
 
@@ -283,77 +243,28 @@ static bool Place(int w, int h, Glyph *glyph)
     return true;
 }
 
-/* ---- key caps ---- */
+/* ---- the keyboard ---- */
 
-#define CAP_HEIGHT 32
-
-/* A key cap showing `text`, in the style of the Windows release's caps: a dark outline, a grey
-   bevelled face and red lettering with a darker shadow. Narrower than the height it is a square cap. */
-static bool MakeCap(const char *text, Glyph *glyph)
-{
-    /* the return key's arrow large; words of three letters and more smaller, to keep the caps compact */
-    const float letter = text[0] == '\r' ? 16.0f : SDL_strlen(text) >= 3 ? 9.0f : 11.0f, weight = SDL_min(letter, 11.0f) * 0.2f;
-    /* square, as the console's icon and the Windows release's caps, unless the legend needs more */
-    int w = (int)SDL_ceilf(TextWidth(text, letter)) + 8, x, y;
-    float tx, ty;
-
-    if (w < CAP_HEIGHT) {
-        w = CAP_HEIGHT;
-    }
-    if (!Place(w, CAP_HEIGHT, glyph)) {
-        return false;
-    }
-    for (y = 0; y < CAP_HEIGHT * GLYPH_ATLAS_SCALE; y++) {
-        for (x = 0; x < w * GLYPH_ATLAS_SCALE; x++) {
-            float px = (x + 0.5f) / GLYPH_ATLAS_SCALE, py = (y + 0.5f) / GLYPH_ATLAS_SCALE;
-            float outer = RoundRect(px, py, w / 2.0f, CAP_HEIGHT / 2.0f, w / 2.0f - 0.5f, CAP_HEIGHT / 2.0f - 0.5f, 7);
-            float face = RoundRect(px, py, w / 2.0f, CAP_HEIGHT / 2.0f - 0.6f, w / 2.0f - 2.6f, CAP_HEIGHT / 2.0f - 3.2f, 5);
-            int ax = glyph->x * GLYPH_ATLAS_SCALE + x, ay = glyph->y * GLYPH_ATLAS_SCALE + y;
-            float t = py / CAP_HEIGHT;
-
-            Over(ax, ay, Rgb(28, 28, 32), Coverage(outer));
-            Over(ax, ay, Mix(Rgb(122, 124, 128), Rgb(58, 60, 64), t), Coverage(outer + 1.2f)); /* the bevel */
-            Over(ax, ay, Mix(Rgb(112, 116, 120), Rgb(76, 80, 84), t), Coverage(face));         /* the face */
-        }
-    }
-    tx = (w - TextWidth(text, letter)) / 2;
-    ty = (CAP_HEIGHT - letter) / 2 - 0.6f;
-    PaintText(glyph->x, glyph->y, w, CAP_HEIGHT, tx + 0.6f, ty + 0.7f, text, letter, weight, Rgb(110, 6, 0));
-    PaintText(glyph->x, glyph->y, w, CAP_HEIGHT, tx, ty, text, letter, weight, Rgb(222, 34, 18));
-    glyph->dx = 0;
-    glyph->dy = 0;
-    glyph->qw = w / 2;
-    glyph->qh = CAP_HEIGHT / 2;
-    return true;
-}
-
-/* An arrow for the direction keys, gold as the Windows release's (32 x 16 units). */
-static bool MakeArrow(bool right, Glyph *glyph)
+/* One of the Windows release's keyboard glyphs, texel for texel (each texel GLYPH_ATLAS_SCALE pixels
+   of the page), drawn as that release draws it: half its texels in console pixels, from the top left
+   of the icon's box. */
+static bool CopyKeyArt(const KeyArt *art, Glyph *glyph)
 {
     int x, y;
 
-    if (!Place(32, 16, glyph)) {
+    if (!Place(art->width, art->height, glyph)) {
         return false;
     }
-    for (y = 0; y < 16 * GLYPH_ATLAS_SCALE; y++) {
-        for (x = 0; x < 32 * GLYPH_ATLAS_SCALE; x++) {
-            float px = (x + 0.5f) / GLYPH_ATLAS_SCALE, py = (y + 0.5f) / GLYPH_ATLAS_SCALE;
-            float fx = right ? px : 32 - px; /* the arrow points towards larger fx */
-            float shaft = RoundRect(fx, py, 11.5f, 8, 9.5f, 3, 0.8f);
-            /* the head: a triangle from (19, 1) and (19, 15) to (31, 8) */
-            float head = SDL_max(19 - fx, (SDL_fabsf(py - 8) * 12 + (fx - 31) * 7) / 13.9f);
-            float shape = SDL_min(shaft, head);
-            int ax = glyph->x * GLYPH_ATLAS_SCALE + x, ay = glyph->y * GLYPH_ATLAS_SCALE + y;
-
-            Over(ax, ay, Rgb(70, 60, 22), Coverage(shape));
-            Over(ax, ay, Mix(Rgb(214, 196, 104), Rgb(150, 132, 56), py / 16), Coverage(shape + 1.1f));
+    for (y = 0; y < art->height * GLYPH_ATLAS_SCALE; y++) {
+        for (x = 0; x < art->width * GLYPH_ATLAS_SCALE; x++) {
+            atlas[(glyph->y * GLYPH_ATLAS_SCALE + y) * GLYPH_ATLAS_SIZE + glyph->x * GLYPH_ATLAS_SCALE + x] =
+                art->pixels[(y / GLYPH_ATLAS_SCALE) * art->width + x / GLYPH_ATLAS_SCALE];
         }
     }
-    /* where the console's arrow icons are: 16x8 at the top of their 16x16 box */
     glyph->dx = 0;
     glyph->dy = 0;
-    glyph->qw = 16;
-    glyph->qh = 8;
+    glyph->qw = art->width / 2;
+    glyph->qh = art->height / 2;
     return true;
 }
 
@@ -397,23 +308,23 @@ static void Build(void)
     static const char xboxLetters[FACE_COUNT] = {'B', 'A', 'X', 'Y'};
     static const char nintendoLetters[FACE_COUNT] = {'A', 'B', 'Y', 'X'};
     const Colour xboxColours[FACE_COUNT] = {Rgb(236, 64, 52), Rgb(110, 196, 52), Rgb(52, 136, 240), Rgb(248, 196, 20)};
-    static const char *const rowKeys[ROW_COUNT] = {"S", "SPACE", "F1", "ALT", "A", "D"};
+    static const int rowKeys[ROW_COUNT] = {KEY_ART_S, KEY_ART_SPACE, KEY_ART_F1, KEY_ART_ALT, KEY_ART_A, KEY_ART_D};
     int i;
 
     built = true;
-    MakeCap("ESC", &keyIcons[ICON_TRIANGLE]);
-    MakeCap("\r", &keyIcons[ICON_CROSS]);
-    MakeCap("SPACE", &keyIcons[ICON_CIRCLE]);
-    MakeCap("ALT", &keyIcons[ICON_SQUARE]);
-    MakeArrow(false, &keyIcons[ICON_LEFT]);
-    MakeArrow(true, &keyIcons[ICON_RIGHT]);
+    CopyKeyArt(&keyArt[KEY_ART_ESC], &keyIcons[ICON_TRIANGLE]);
+    CopyKeyArt(&keyArt[KEY_ART_ENTER], &keyIcons[ICON_CROSS]);
+    CopyKeyArt(&keyArt[KEY_ART_SPACE], &keyIcons[ICON_CIRCLE]);
+    CopyKeyArt(&keyArt[KEY_ART_ALT], &keyIcons[ICON_SQUARE]);
+    CopyKeyArt(&keyArt[KEY_ART_LEFT], &keyIcons[ICON_LEFT]);
+    CopyKeyArt(&keyArt[KEY_ART_RIGHT], &keyIcons[ICON_RIGHT]);
     for (i = 0; i < ROW_COUNT; i++) {
-        if (!strcmp(rowKeys[i], "SPACE")) {
+        if (rowKeys[i] == KEY_ART_SPACE) {
             keyRows[i] = keyIcons[ICON_CIRCLE];
-        } else if (!strcmp(rowKeys[i], "ALT")) {
+        } else if (rowKeys[i] == KEY_ART_ALT) {
             keyRows[i] = keyIcons[ICON_SQUARE];
         } else {
-            MakeCap(rowKeys[i], &keyRows[i]);
+            CopyKeyArt(&keyArt[rowKeys[i]], &keyRows[i]);
         }
     }
     for (i = 0; i < FACE_COUNT; i++) {

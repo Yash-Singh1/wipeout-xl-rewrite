@@ -21,15 +21,15 @@ int PsxMain(void);
 static void Usage(void)
 {
     fprintf(stderr,
-            "usage: wipeoutxl [--disc FILE.cue] [--pc-data DIR] [--window WxH] [--fullscreen]\n"
+            "usage: wipeoutxl [--disc FILE.cue] [--window WxH] [--fullscreen]\n"
             "  --disc     your Wipeout XL (USA) PlayStation disc image (.cue with its .bin tracks)\n"
-            "  --pc-data  optional: the Wipeout XL PC CD, for its intro movies and keyboard art\n"
-            "environment: WIPEOUT_XL_DISC, WIPEOUT_XL_PC_DATA; tests: WIPEOUT_MUTE, WIPEOUT_HIDDEN,\n"
+            "environment: WIPEOUT_XL_DISC; tests: WIPEOUT_MUTE, WIPEOUT_HIDDEN,\n"
             "  WIPEOUT_FIXED_STEP, WIPEOUT_FRAMES, WIPEOUT_CAPTURE_DIR, WIPEOUT_CAPTURE_EVERY, WIPEOUT_CAPTURE_FROM,\n"
             "  WIPEOUT_TRACE (trace file), WIPEOUT_PADS (pad script), WIPEOUT_VCOUNTS (counter reads),\n"
             "  WIPEOUT_CD_SPEED (drive speed-up; 1 = the console's, default 1000), WIPEOUT_SAVE_DIR (memory cards; default: the user's data folder),\n"
             "  WIPEOUT_KEYS (scripted keys and gamepad), WIPEOUT_VRAM_DUMP (video memory picture at the end of a run),\n"
-            "  WIPEOUT_FAR_VIEW (0: the console's draw distance; 2: the whole track even while tracing)\n");
+            "  WIPEOUT_FAR_VIEW (0: the console's draw distance; 2: the whole track even while tracing),\n"
+            "  WIPEOUT_MOVIES (play the movies in fixed-step runs too)\n");
 }
 
 int main(int argc, char **argv)
@@ -53,7 +53,6 @@ int main(int argc, char **argv)
     }
 
     portConfig.discPath = SDL_getenv("WIPEOUT_XL_DISC");
-    portConfig.pcDataPath = SDL_getenv("WIPEOUT_XL_PC_DATA");
     portConfig.windowWidth = 1280;
     portConfig.windowHeight = 960;
     portConfig.muted = SDL_getenv("WIPEOUT_MUTE") != NULL;
@@ -73,8 +72,6 @@ int main(int argc, char **argv)
     for (i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--disc") && i + 1 < argc) {
             portConfig.discPath = argv[++i];
-        } else if (!strcmp(argv[i], "--pc-data") && i + 1 < argc) {
-            portConfig.pcDataPath = argv[++i];
         } else if (!strcmp(argv[i], "--window") && i + 1 < argc && SDL_sscanf(argv[i + 1], "%dx%d", &w, &h) == 2) {
             portConfig.windowWidth = w;
             portConfig.windowHeight = h;

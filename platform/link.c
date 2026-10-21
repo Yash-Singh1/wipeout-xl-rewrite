@@ -166,10 +166,6 @@ int PortLinkStartSlave(int windowWidth, int windowHeight)
     args[n++] = portConfig.executable;
     args[n++] = "--disc";
     args[n++] = portConfig.discPath;
-    if (portConfig.pcDataPath) {
-        args[n++] = "--pc-data";
-        args[n++] = portConfig.pcDataPath;
-    }
     args[n++] = "--window";
     args[n++] = window;
     args[n++] = "--link-slave";

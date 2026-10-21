@@ -8,7 +8,7 @@
 # the results ("bad luck", then replay or menu). Keys and the virtual gamepad go through WIPEOUT_KEYS
 # (platform/controls.c), so they take the path real input does; the destroyed ship of the results
 # comes from a scripted write (platform/trace.c). Environment: WIPEOUT_BIN (default build/wipeoutxl),
-# WIPEOUT_XL_DISC (the PS1 disc .cue), WIPEOUT_XL_PC_DATA (for the keyboard art, optional).
+# WIPEOUT_XL_DISC (the PS1 disc .cue).
 # The timings are video fields at a 8x disc speed; they hold for the retail disc.
 set -eu
 
@@ -22,19 +22,6 @@ bin=${WIPEOUT_BIN:-$root/build/wipeoutxl}
 mkdir -p "$out"
 work=$(mktemp -d "${TMPDIR:-/tmp}/controls-shots.XXXXXX")
 trap 'rm -rf "$work"' EXIT
-
-# only the keyboard art is read from the PC data: without the movies the timings stay the same
-pcdata=
-if [ -n "${WIPEOUT_XL_PC_DATA:-}" ]; then
-    for f in PICS/HI-RES/HUD2.TGA pics/hi-res/hud2.tga; do
-        if [ -f "$WIPEOUT_XL_PC_DATA/$f" ]; then
-            mkdir -p "$work/pcdata/$(dirname "$f")"
-            ln -s "$WIPEOUT_XL_PC_DATA/$f" "$work/pcdata/$f"
-            pcdata=$work/pcdata
-            break
-        fi
-    done
-fi
 
 # the player's ship (ShipData.combatAttr, byte 184 of the 64-bit layout) is destroyed at the 1500th pad read:
 # the race ends with the results screens
@@ -66,7 +53,7 @@ run() { # part frames every
     WIPEOUT_HIDDEN=1 WIPEOUT_MUTE=1 WIPEOUT_FIXED_STEP=1 WIPEOUT_FRAMES=$2 WIPEOUT_CD_SPEED=8 \
     WIPEOUT_NO_GAMEPAD=1 WIPEOUT_KEYS="$work/keys.txt" WIPEOUT_WRITES="$work/writes.txt" \
     WIPEOUT_CAPTURE_DIR="$work/frames" WIPEOUT_CAPTURE_EVERY=100 \
-        "$bin" --disc "$WIPEOUT_XL_DISC" --window 640x480 ${pcdata:+--pc-data "$pcdata"} > "$work/log.txt" 2>&1
+        "$bin" --disc "$WIPEOUT_XL_DISC" --window 640x480 > "$work/log.txt" 2>&1
 }
 shot() { # field name
     sips -s format png "$work/frames/frame_$(printf %06d "$1").ppm" --out "$out/$device-$2.png" > /dev/null
