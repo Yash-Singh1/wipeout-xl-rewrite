@@ -14,6 +14,7 @@
 #include "trackasm.h"
 #include "drawasm.h"
 #include "portfar.h"
+#include "../../platform/psx/gte.h" /* Port: precise projections bound to the packets */
 
 extern short       CurrentScreen;
 extern TrackData  *track;
@@ -91,6 +92,7 @@ void AsmTrackLo(TrackSection *firstSection, Skeleton *camera, short loCount)
             }
             GteExecute(GTE_RTPS);
             StoreScreenXY(&poly->x3, &poly->y3, GteReadData(14));
+            GteBindPrecise(&poly->x3, GtePreciseHandle(14));
             if ((u_int)GteReadControl(31) & GTE_REJECT) {
                 goto next_face;
             }
@@ -103,6 +105,9 @@ void AsmTrackLo(TrackSection *firstSection, Skeleton *camera, short loCount)
             StoreScreenXY(&poly->x1, &poly->y1, GteReadData(12));
             StoreScreenXY(&poly->x0, &poly->y0, GteReadData(13));
             StoreScreenXY(&poly->x2, &poly->y2, GteReadData(14));
+            GteBindPrecise(&poly->x1, GtePreciseHandle(12));
+            GteBindPrecise(&poly->x0, GtePreciseHandle(13));
+            GteBindPrecise(&poly->x2, GtePreciseHandle(14));
             depth = GteReadData(19);
             if ((u_int)GteReadControl(31) & GTE_REJECT) {
                 goto next_face;
@@ -137,6 +142,7 @@ typedef struct GridPoint {
     short   sx, sy;
     u_short depth;
     u_short flag;
+    uint32_t handle; /* Port: the precise projection (gte.h) */
 } GridPoint;
 
 /* Projects a grid point through the GTE: fills in its screen position, depth and the flag bits that matter
@@ -147,6 +153,7 @@ static int ProjectGridPoint(GridPoint *point)
     GteWriteData(1, point->z);
     GteExecute(GTE_RTPS);
     StoreScreenXY(&point->sx, &point->sy, GteReadData(14));
+    point->handle = GtePreciseHandle(14);
     point->depth = (u_short)GteReadData(19);
     point->flag = (u_short)(((u_int)GteReadControl(31) >> 12) & 0x466);
     return point->flag != 0;
@@ -160,6 +167,10 @@ static POLY_FT4 *DrawGridQuad(POLY_FT4 *poly, u_long *ordering, Face *face, Tile
     poly->x1 = p1->sx; poly->y1 = p1->sy;
     poly->x2 = p2->sx; poly->y2 = p2->sy;
     poly->x3 = p3->sx; poly->y3 = p3->sy;
+    GteBindPrecise(&poly->x0, p0->handle);
+    GteBindPrecise(&poly->x1, p1->handle);
+    GteBindPrecise(&poly->x2, p2->handle);
+    GteBindPrecise(&poly->x3, p3->handle);
     SetQuadTile(poly, tile);
     poly->r0 = face->red;
     poly->g0 = face->green;
@@ -358,6 +369,10 @@ static void DrawPartialCell(GridPoint *cell[4], Tile *tile, Face *face, u_long *
         poly->x1 = b->sx; poly->y1 = b->sy;
         poly->x2 = c->sx; poly->y2 = c->sy;
         poly->x3 = d->sx; poly->y3 = d->sy;
+        GteBindPrecise(&poly->x0, a->handle);
+        GteBindPrecise(&poly->x1, b->handle);
+        GteBindPrecise(&poly->x2, c->handle);
+        GteBindPrecise(&poly->x3, d->handle);
         poly->u0 = (u_char)uv[gridQuad[i][0]]; poly->v0 = (u_char)(uv[gridQuad[i][0]] >> 8);
         poly->u1 = (u_char)uv[gridQuad[i][1]]; poly->v1 = (u_char)(uv[gridQuad[i][1]] >> 8);
         poly->u2 = (u_char)uv[gridQuad[i][2]]; poly->v2 = (u_char)(uv[gridQuad[i][2]] >> 8);
@@ -500,6 +515,10 @@ void PortTrackFar(TrackSection *section, const PortView *view)
         StoreScreenXY(&poly->x0, &poly->y0, corner[1].screen);
         StoreScreenXY(&poly->x2, &poly->y2, corner[2].screen);
         StoreScreenXY(&poly->x3, &poly->y3, corner[3].screen);
+        GteBindPrecise(&poly->x1, corner[0].handle);
+        GteBindPrecise(&poly->x0, corner[1].handle);
+        GteBindPrecise(&poly->x2, corner[2].handle);
+        GteBindPrecise(&poly->x3, corner[3].handle);
         SetQuadTile(poly, &FaceSurface(face)->low[0]);
         poly->tpage = tileSurfaces[(u_char)face->texture][0].low[0].tsb;
         poly->clut = tileSurfaces[(u_char)face->texture][0].low[0].cba;

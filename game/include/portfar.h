@@ -26,6 +26,7 @@ typedef struct PortFarVertex {
     double z;
     double x, y;
     int    rejected;
+    unsigned int handle; /* the precise projection (gte.h) */
 } PortFarVertex;
 
 /* The game marks what it drew this frame. */

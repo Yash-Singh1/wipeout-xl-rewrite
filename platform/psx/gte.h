@@ -41,17 +41,31 @@ typedef struct GtePrecise {
 #define GTE_RESOLVE_MAX 4
 /* The vertices xy[0..count-1] (GPU packet words) of one primitive: fills
    out[i] for each vertex found and returns the mask of those. */
-unsigned GteResolvePrecise(const uint32_t *xy, int count, GtePrecise *out);
+unsigned GteResolvePrecise(const uint32_t *xy, const void *const *addresses, int count, GtePrecise *out);
+
+/* Exact links. Each projection has a handle (0: none was recorded); GtePreciseHandle gives the handle
+   of the projection in SXY0, SXY1 or SXY2 (registers 12-14, 15 for SXY2). A renderer that writes a
+   projection's screen position into a packet binds the packet's xy word to the handle; the vertex is
+   then drawn from that projection (while the word still holds its position), whatever else rounds to
+   the same pixel. addresses[] of GteResolvePrecise: the xy words of the packet, or NULL. */
+uint32_t GtePreciseHandle(int reg);
+void GteBindPrecise(const void *address, uint32_t handle);
+int GtePreciseOf(uint32_t handle, GtePrecise *out);
+/* The handle bound to an address that still holds the screen position xy (libgte's projections bind the
+   words they store to), or 0. */
+uint32_t GteBoundHandle(const void *address, uint32_t xy);
 /* A projection made outside the GTE (the port's far view): packet word sxy,
    precise screen position and depth. */
-void GteRecordProjection(uint32_t sxy, float x, float y, float z);
+uint32_t GteRecordProjection(uint32_t sxy, float x, float y, float z);
 /* A size x size grid of points the game placed on screen by halving between
-   four projected corners (corner[]: the packet words of grid points 0,
-   size-1, size*(size-1) and size*size-1; x[], y[]: the grid row by row, as
-   the game computed it). Records each point at the matching place between
-   the corners' precise positions, without a depth (drawn affine, as the
-   console draws it). */
-void GteRecordGrid(const uint32_t corner[4], const int *x, const int *y, int size);
+   four projected corners (corner[]: the screen positions of grid points 0,
+   size-1, size*(size-1) and size*size-1, cornerAddress[]: where the projection
+   stored them; x[], y[]: the grid row by row, as the game computed it).
+   Records each point at the matching place between the corners' precise
+   positions, without a depth (drawn affine, as the console draws it), and
+   gives each point's handle (0 where there is none). */
+void GteRecordGrid(const uint32_t corner[4], const void *const cornerAddress[4], const int *x, const int *y, int size,
+                   uint32_t *handles);
 void GteClearPrecise(void);
 /* libgpu has drawn a frame's ordering table: the next projection starts a
    new frame's cache. */

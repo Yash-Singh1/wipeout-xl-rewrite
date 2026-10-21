@@ -41,11 +41,13 @@ The game calls the PsyQ libraries:
   (float) copy of the vertex, kept in order under its screen position for
   the frame. The renderer uses it in place of the integer one, so geometry
   doesn't snap to pixels or wobble, and texturing is perspective-correct.
-  Points of different models can round to the same pixel (a ship in front
-  of the track), so a primitive's vertices are resolved together, each
-  from the projection made nearest in time to the others. A primitive with
-  a vertex the game placed in 2D is drawn affine, as on the console; the
-  ship shadow's halved grid is placed between its corners' exact positions.
+  Points can round to the same pixel (a ship in front of the track, the
+  vertices of a small menu model), so the renderers that build packets from
+  projections (objects, track, the menu's environment-mapped ships, the
+  ship shadow) bind each packet vertex to the projection it came from; the
+  rest are looked up by screen position, a primitive's vertices together,
+  each from the projection made nearest in time to the others. A primitive
+  with a vertex the game placed in 2D is drawn affine, as on the console.
 - **The whole track in view** (`game/src/portfar.c`): after the game has drawn
   the race, a pass of the port's own adds the track sections, scenery and
   ships the console left out for its budget, projected in full precision and

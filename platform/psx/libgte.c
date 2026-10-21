@@ -94,6 +94,7 @@ int RotTransPers(SVECTOR *v0, int *sxy, int *p, int *flag)
     GteWriteData(1, Word(v0, 4));
     GteExecute(0x4A180001); /* rtps */
     *sxy = GteReadData(14);
+    GteBindPrecise(sxy, GtePreciseHandle(14));
     *p = GteReadData(8);
     *flag = GteReadControl(31);
     return GteReadData(19) >> 2;
@@ -111,6 +112,9 @@ int RotTransPers3(SVECTOR *v0, SVECTOR *v1, SVECTOR *v2, int *sxy0, int *sxy1, i
     *sxy0 = GteReadData(12);
     *sxy1 = GteReadData(13);
     *sxy2 = GteReadData(14);
+    GteBindPrecise(sxy0, GtePreciseHandle(12));
+    GteBindPrecise(sxy1, GtePreciseHandle(13));
+    GteBindPrecise(sxy2, GtePreciseHandle(14));
     *p = GteReadData(8);
     *flag = GteReadControl(31);
     return GteReadData(19) >> 2;
@@ -126,6 +130,7 @@ void RotTransPersN(SVECTOR *v0, DVECTOR *sxy, u_short *sz, u_short *flag, int n)
         v0++;
         n--;
         StoreWord(sxy, 0, GteReadData(14));
+        GteBindPrecise(sxy, GtePreciseHandle(14));
         *sz = (u_short)GteReadData(19);
         *flag = (u_short)((uint32_t)GteReadControl(31) >> 12);
         sxy++;

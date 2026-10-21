@@ -1,4 +1,5 @@
 #include "functions.h"
+#include "../../platform/psx/gte.h" /* Port: precise projections */
 
 /* Port: scratchpad storage (see port_platform.h) */
 unsigned char PsxScratchpad[1024] __attribute__((aligned(8)));
@@ -361,6 +362,21 @@ typedef struct EnvMapWork {
     F4 *volatile nextPrimitive;
 } EnvMapWork;
 
+/* Port: a packet vertex the game scaled about the screen from a projected one (DrawEnvMap): bound to the
+   projection's precise position scaled the same way, so the scaled model does not snap to whole pixels. */
+static void BindScaled(short *x, const DVECTOR *source, int scale, int xOffset, int yOffset)
+{
+    GtePrecise precise;
+    uint32_t handle = GteBoundHandle(source, (u_short)source->vx | (uint32_t)(u_short)source->vy << 16);
+
+    if (handle && GtePreciseOf(handle, &precise)) {
+        uint32_t key = (u_short)x[0] | (uint32_t)(u_short)x[1] << 16;
+
+        GteBindPrecise(x, GteRecordProjection(key, precise.x * scale / 256.0f + xOffset,
+                                              precise.y * scale / 256.0f + yOffset, precise.z));
+    }
+}
+
 void DrawEnvMap(Object *object, void *unused, SVECTOR *normals, int xOffsetIn, int yOffset, int scale)
 {
     EnvMapWork ws;
@@ -499,6 +515,12 @@ envLoop:
                 { POLY_FT4 *packet = (POLY_FT4 *)nextPrim.ptr; *(volatile short *)&packet->y0 = ((packet->y0 * scale) >> 8) + yOffset; }
                 { POLY_FT4 *packet = (POLY_FT4 *)nextPrim.ptr; *(volatile short *)&packet->y1 = ((packet->y1 * scale) >> 8) + yOffset; }
                 { POLY_FT4 *packet = (POLY_FT4 *)nextPrim.ptr; *(volatile short *)&packet->y2 = ((packet->y2 * scale) >> 8) + yOffset; }
+                {
+                    POLY_FT4 *packet = (POLY_FT4 *)nextPrim.ptr;
+                    BindScaled(&packet->x0, &screen[triangle0], scale, ws.savedX, yOffset);
+                    BindScaled(&packet->x1, &screen[triangle1], scale, ws.savedX, yOffset);
+                    BindScaled(&packet->x2, &screen[v3], scale, ws.savedX, yOffset);
+                }
                 z = AverageZ3(ws.depth[triangle0], ws.depth[triangle1], ws.depth[v3]);
                 AddPrim(OT2[CurrentScreen] + z % 1600, nextPrim.ptr);
                 nextPrim.ptr += 32;
@@ -621,6 +643,13 @@ triAdvanceCached:
                     *(volatile short *)&((POLY_FT4 *)nextPrim.ptr)->y1 = ((((POLY_FT4 *)nextPrim.ptr)->y1 * scale) >> 8) + yOffset;
                     *(volatile short *)&((POLY_FT4 *)nextPrim.ptr)->y2 = ((((POLY_FT4 *)nextPrim.ptr)->y2 * scale) >> 8) + yOffset;
                     *(volatile short *)&((POLY_FT4 *)nextPrim.ptr)->y3 = ((((POLY_FT4 *)nextPrim.ptr)->y3 * scale) >> 8) + yOffset;
+                    {
+                        POLY_FT4 *packet = (POLY_FT4 *)nextPrim.ptr;
+                        BindScaled(&packet->x0, &screen[quad0], scale, ws.savedX, yOffset);
+                        BindScaled(&packet->x1, &screen[quad1], scale, ws.savedX, yOffset);
+                        BindScaled(&packet->x2, &screen[v3], scale, ws.savedX, yOffset);
+                        BindScaled(&packet->x3, &screen[quad3], scale, ws.savedX, yOffset);
+                    }
                     z = AverageZ4(ws.depth[quad0], ws.depth[quad1], ws.depth[v3], ws.depth[quad3]);
                     AddPrim(OT2[CurrentScreen] + z % 1600, nextPrim.ptr);
                     nextPrim.ptr += 40;

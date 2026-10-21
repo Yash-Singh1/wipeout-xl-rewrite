@@ -46,6 +46,8 @@ enum {
 #define FLAG_ERROR_MASK 0x7F87E000u
 
 static uint32_t flag;
+/* The handles of the precise projections in SXY0..SXY2 (gte.h), moved along with them. */
+static uint32_t sxyHandle[3];
 
 static int16_t Low16(int32_t value)
 {
@@ -143,6 +145,9 @@ static void PushSxy(int32_t x, int32_t y)
     gte.data[SXY0] = gte.data[SXY1];
     gte.data[SXY1] = gte.data[SXY2];
     gte.data[SXY2] = (int32_t)((uint32_t)(uint16_t)x | ((uint32_t)(uint16_t)y << 16));
+    sxyHandle[0] = sxyHandle[1];
+    sxyHandle[1] = sxyHandle[2];
+    sxyHandle[2] = 0;
 }
 
 static void SetOtz(int64_t value)
@@ -219,8 +224,24 @@ typedef struct PreciseSlot {
 
 typedef struct PreciseRecord {
     GtePrecise value;
+    uint32_t key;     /* the screen position it is kept under */
     int32_t previous; /* the record before it with the same key, or -1 */
 } PreciseRecord;
+
+/* A projection's handle: its record and the frame it belongs to (0: none). */
+#define HANDLE_INDEX_BITS 17
+#define HANDLE_INDEX_MASK ((1u << HANDLE_INDEX_BITS) - 1)
+
+/* Exact links: the renderers that build packets from projections bind each packet vertex (the
+   address of its xy word) to the projection it came from, for this frame. */
+#define BINDING_SLOTS 262144
+typedef struct Binding {
+    const void *address;
+    uint32_t frame;
+    uint32_t handle;
+} Binding;
+static Binding bindings[BINDING_SLOTS];
+
 
 static PreciseSlot slots[PRECISE_SLOTS];
 static PreciseRecord records[PRECISE_RECORDS];
@@ -258,7 +279,7 @@ static PreciseSlot *FindSlot(uint32_t key, int create)
     return NULL;
 }
 
-static void RecordPrecise(uint32_t sxy, float x, float y, float z)
+static uint32_t RecordPrecise(uint32_t sxy, float x, float y, float z)
 {
     PreciseSlot *slot;
     PreciseRecord *record;
@@ -267,15 +288,99 @@ static void RecordPrecise(uint32_t sxy, float x, float y, float z)
         clearPending = 0;
         GteClearPrecise();
     }
-    if (recordCount == PRECISE_RECORDS || !(slot = FindSlot(sxy + 1, 1))) {
-        return;
+    if (recordCount >= PRECISE_RECORDS - 1 || !(slot = FindSlot(sxy + 1, 1))) {
+        return 0;
     }
     record = &records[recordCount];
     record->value.x = x;
     record->value.y = y;
     record->value.z = z;
+    record->key = sxy;
     record->previous = slot->latest;
     slot->latest = recordCount++;
+    return (uint32_t)recordCount | (preciseFrame << HANDLE_INDEX_BITS);
+}
+
+/* The record of a handle of this frame, or -1. */
+static int32_t HandleRecord(uint32_t handle)
+{
+    uint32_t index = handle & HANDLE_INDEX_MASK;
+
+    if (!index || (handle >> HANDLE_INDEX_BITS) != (preciseFrame & (0xFFFFFFFFu >> HANDLE_INDEX_BITS)) ||
+        index > (uint32_t)recordCount) {
+        return -1;
+    }
+    return (int32_t)index - 1;
+}
+
+static uint32_t BindingSlot(const void *address)
+{
+    uint64_t v = (uint64_t)(uintptr_t)address;
+
+    v ^= v >> 29;
+    v *= 0xBF58476D1CE4E5B9ull;
+    v ^= v >> 32;
+    return (uint32_t)v & (BINDING_SLOTS - 1);
+}
+
+void GteBindPrecise(const void *address, uint32_t handle)
+{
+    uint32_t slot = BindingSlot(address), probe;
+
+    for (probe = 0; probe < 64; probe++) {
+        Binding *b = &bindings[(slot + probe) & (BINDING_SLOTS - 1)];
+        if (!handle && b->frame != preciseFrame) {
+            return; /* nothing to undo */
+        }
+        if (b->frame != preciseFrame || b->address == address) {
+            b->address = address;
+            b->frame = preciseFrame;
+            b->handle = handle;
+            return;
+        }
+    }
+}
+
+/* The projection a packet vertex was bound to this frame, if its word still holds that projection's
+   screen position. */
+static int32_t BoundRecord(const void *address, uint32_t xy)
+{
+    uint32_t slot = BindingSlot(address), probe;
+
+    for (probe = 0; probe < 64; probe++) {
+        Binding *b = &bindings[(slot + probe) & (BINDING_SLOTS - 1)];
+        if (b->frame != preciseFrame) {
+            return -1;
+        }
+        if (b->address == address) {
+            int32_t record = HandleRecord(b->handle);
+            return record >= 0 && records[record].key == xy ? record : -1;
+        }
+    }
+    return -1;
+}
+
+uint32_t GteBoundHandle(const void *address, uint32_t xy)
+{
+    int32_t record = BoundRecord(address, xy);
+
+    return record >= 0 ? (uint32_t)(record + 1) | (preciseFrame << HANDLE_INDEX_BITS) : 0;
+}
+
+uint32_t GtePreciseHandle(int reg)
+{
+    return reg >= 12 && reg <= 14 ? sxyHandle[reg - 12] : reg == 15 ? sxyHandle[2] : 0;
+}
+
+int GtePreciseOf(uint32_t handle, GtePrecise *out)
+{
+    int32_t record = HandleRecord(handle);
+
+    if (record < 0) {
+        return 0;
+    }
+    *out = records[record].value;
+    return 1;
 }
 
 /* The records under a screen position, the latest first. */
@@ -297,14 +402,25 @@ static int32_t Distance(int32_t a, int32_t b)
     return a > b ? a - b : b - a;
 }
 
-unsigned GteResolvePrecise(const uint32_t *xy, int count, GtePrecise *out)
+unsigned GteResolvePrecise(const uint32_t *xy, const void *const *addresses, int count, GtePrecise *out)
 {
     int32_t candidates[GTE_RESOLVE_MAX][PRECISE_CANDIDATES], chosen[GTE_RESOLVE_MAX];
-    int found[GTE_RESOLVE_MAX], i, j, anchors = 0, any = 0;
+    int found[GTE_RESOLVE_MAX], i, j, anchors = 0, any = 0, bound = 0;
     int32_t sorted[GTE_RESOLVE_MAX], middle;
     unsigned mask = 0;
 
     for (i = 0; i < count; i++) {
+        int32_t record = addresses ? BoundRecord(addresses[i], xy[i]) : -1;
+
+        if (record >= 0) {
+            /* bound by the renderer that built the packet: exact */
+            found[i] = 1;
+            candidates[i][0] = record;
+            chosen[i] = record;
+            anchors++;
+            bound++;
+            continue;
+        }
         found[i] = Candidates(xy[i], candidates[i]);
         chosen[i] = found[i] ? candidates[i][0] : -1;
         anchors += found[i] == 1;
@@ -378,6 +494,9 @@ unsigned GteResolvePrecise(const uint32_t *xy, int count, GtePrecise *out)
     if (!j) {
         return 0;
     }
+    if (!bound && j < count) {
+        return 0; /* only some corners of an unbound primitive match: by chance (a 2D shape) */
+    }
     middle = sorted[(j - 1) / 2];
     for (i = 0; i < count; i++) {
         if (chosen[i] >= 0 && (j == 1 || Distance(chosen[i], middle) <= PRECISE_SPREAD)) {
@@ -388,28 +507,36 @@ unsigned GteResolvePrecise(const uint32_t *xy, int count, GtePrecise *out)
     return mask;
 }
 
-void GteRecordProjection(uint32_t sxy, float x, float y, float z)
+uint32_t GteRecordProjection(uint32_t sxy, float x, float y, float z)
 {
-    RecordPrecise(sxy, x, y, z);
+    return RecordPrecise(sxy, x, y, z);
 }
 
-void GteRecordGrid(const uint32_t corner[4], const int *x, const int *y, int size)
+void GteRecordGrid(const uint32_t corner[4], const void *const cornerAddress[4], const int *x, const int *y, int size,
+                   uint32_t *handles)
 {
     GtePrecise c[4];
-    int row, column;
+    int row, column, i;
 
-    if (size < 2 || GteResolvePrecise(corner, 4, c) != 15) {
+    for (i = 0; i < size * size; i++) {
+        handles[i] = 0;
+    }
+    if (size < 2 || GteResolvePrecise(corner, cornerAddress, 4, c) != 15) {
         return;
     }
+    handles[0] = GteBoundHandle(cornerAddress[0], corner[0]);
+    handles[size - 1] = GteBoundHandle(cornerAddress[1], corner[1]);
+    handles[size * (size - 1)] = GteBoundHandle(cornerAddress[2], corner[2]);
+    handles[size * size - 1] = GteBoundHandle(cornerAddress[3], corner[3]);
     for (row = 0; row < size; row++) {
         for (column = 0; column < size; column++) {
             float u = (float)column / (float)(size - 1), v = (float)row / (float)(size - 1);
-            int i = row * size + column;
+            i = row * size + column;
 
             if ((row == 0 || row == size - 1) && (column == 0 || column == size - 1)) {
                 continue; /* the corners are projections already */
             }
-            RecordPrecise((uint32_t)(uint16_t)x[i] | (uint32_t)(uint16_t)y[i] << 16,
+            handles[i] = RecordPrecise((uint32_t)(uint16_t)x[i] | (uint32_t)(uint16_t)y[i] << 16,
                           (1 - u) * (1 - v) * c[0].x + u * (1 - v) * c[1].x + (1 - u) * v * c[2].x + u * v * c[3].x,
                           (1 - u) * (1 - v) * c[0].y + u * (1 - v) * c[1].y + (1 - u) * v * c[2].y + u * v * c[3].y,
                           0.0f);
@@ -483,7 +610,7 @@ static void Rtp(int v, int last, int sf)
             float px = (float)(c[OFX] / 65536.0 + x * h / z);
             float py = (float)(c[OFY] / 65536.0 + y * h / z);
             if (px > -1024.0f && px < 1024.0f && py > -1024.0f && py < 1024.0f) {
-                RecordPrecise((uint32_t)gte.data[SXY2], px, py, (float)z);
+                sxyHandle[2] = RecordPrecise((uint32_t)gte.data[SXY2], px, py, (float)z);
             }
         }
     }
@@ -651,6 +778,13 @@ void GteWriteData(int reg, int32_t value)
         gte.data[SXY0] = gte.data[SXY1];
         gte.data[SXY1] = gte.data[SXY2];
         gte.data[SXY2] = value;
+        sxyHandle[0] = sxyHandle[1];
+        sxyHandle[1] = sxyHandle[2];
+        sxyHandle[2] = 0;
+        break;
+    case SXY0: case SXY1: case SXY2:
+        gte.data[reg] = value;
+        sxyHandle[reg - SXY0] = 0;
         break;
     case IRGB:
         gte.data[IR1] = (value & 0x1F) << 7;

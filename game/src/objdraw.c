@@ -44,6 +44,15 @@ static ProjectedVertex projected[MAX_OBJECT_VERTICES];
 static const PortView *farView;
 static double farX[MAX_OBJECT_VERTICES], farY[MAX_OBJECT_VERTICES], farZ[MAX_OBJECT_VERTICES];
 
+/* Port: the precise projection of each vertex (gte.h), bound to the packet vertices made from it. */
+static uint32_t projectedHandle[MAX_OBJECT_VERTICES];
+
+static void PutScreenXY(short *x, short *y, const ProjectedVertex *v)
+{
+    StoreScreenXY(x, y, v->screen);
+    GteBindPrecise(x, projectedHandle[v - projected]);
+}
+
 typedef enum DrawKind {
     DRAW_PLAIN,
     DRAW_LIT,
@@ -74,6 +83,7 @@ static void ProjectVertices(Object *object)
             projected[i].screen = v.screen;
             projected[i].depth = (u_short)(v.z < 0 ? 0 : v.z > 65535 ? 65535 : v.z);
             projected[i].flag = (u_short)(v.rejected || count > MAX_OBJECT_VERTICES);
+            projectedHandle[i] = v.handle;
             farX[i] = v.x;
             farY[i] = v.y;
             farZ[i] = v.z;
@@ -90,6 +100,9 @@ static void ProjectVertices(Object *object)
         out->depth = (u_short)GteReadData(19);
         out->flag = (u_short)(((u_int)GteReadControl(31) >> 12) & 0x466);
         out->screen = GteReadData(14);
+        if (out - projected < MAX_OBJECT_VERTICES) {
+            projectedHandle[out - projected] = GtePreciseHandle(14);
+        }
         vertex++;
         out++;
     } while (--count > 0);
@@ -195,9 +208,9 @@ static char *DrawTexturedTriangle(DrawKind kind, char *out, u_long *ordering, in
     if (AnyRejected(v0, v1, v2, 0) || Culled(kind, prim->flag, v0, v1, v2)) {
         return out;
     }
-    StoreScreenXY(&poly->x0, &poly->y0, v0->screen);
-    StoreScreenXY(&poly->x1, &poly->y1, v1->screen);
-    StoreScreenXY(&poly->x2, &poly->y2, v2->screen);
+    PutScreenXY(&poly->x0, &poly->y0, v0);
+    PutScreenXY(&poly->x1, &poly->y1, v1);
+    PutScreenXY(&poly->x2, &poly->y2, v2);
     ((u_char *)poly)[3] = 7;
     poly->code = PolyCode(kind, 0x24, prim->flag);
     poly->clut = prim->cba;
@@ -220,10 +233,10 @@ static char *DrawTexturedQuad(DrawKind kind, char *out, u_long *ordering, int fi
     if (AnyRejected(v0, v1, v2, v3) || Culled(kind, prim->flag, v0, v1, v2)) {
         return out;
     }
-    StoreScreenXY(&poly->x0, &poly->y0, v0->screen);
-    StoreScreenXY(&poly->x1, &poly->y1, v1->screen);
-    StoreScreenXY(&poly->x2, &poly->y2, v2->screen);
-    StoreScreenXY(&poly->x3, &poly->y3, v3->screen);
+    PutScreenXY(&poly->x0, &poly->y0, v0);
+    PutScreenXY(&poly->x1, &poly->y1, v1);
+    PutScreenXY(&poly->x2, &poly->y2, v2);
+    PutScreenXY(&poly->x3, &poly->y3, v3);
     ((u_char *)poly)[3] = 9;
     poly->code = PolyCode(kind, 0x2C, prim->flag);
     poly->clut = prim->cba;
@@ -246,9 +259,9 @@ static char *DrawGouraudTexturedTriangle(DrawKind kind, char *out, u_long *order
     if (AnyRejected(v0, v1, v2, 0) || Culled(kind, prim->flag, v0, v1, v2)) {
         return out;
     }
-    StoreScreenXY(&poly->x0, &poly->y0, v0->screen);
-    StoreScreenXY(&poly->x1, &poly->y1, v1->screen);
-    StoreScreenXY(&poly->x2, &poly->y2, v2->screen);
+    PutScreenXY(&poly->x0, &poly->y0, v0);
+    PutScreenXY(&poly->x1, &poly->y1, v1);
+    PutScreenXY(&poly->x2, &poly->y2, v2);
     ((u_char *)poly)[3] = 9;
     poly->code = PolyCode(kind, 0x34, prim->flag);
     poly->clut = prim->cba;
@@ -272,10 +285,10 @@ static char *DrawGouraudTexturedQuad(DrawKind kind, char *out, u_long *ordering,
     if (AnyRejected(v0, v1, v2, v3) || Culled(kind, prim->flag, v0, v1, v2)) {
         return out;
     }
-    StoreScreenXY(&poly->x0, &poly->y0, v0->screen);
-    StoreScreenXY(&poly->x1, &poly->y1, v1->screen);
-    StoreScreenXY(&poly->x2, &poly->y2, v2->screen);
-    StoreScreenXY(&poly->x3, &poly->y3, v3->screen);
+    PutScreenXY(&poly->x0, &poly->y0, v0);
+    PutScreenXY(&poly->x1, &poly->y1, v1);
+    PutScreenXY(&poly->x2, &poly->y2, v2);
+    PutScreenXY(&poly->x3, &poly->y3, v3);
     ((u_char *)poly)[3] = 12;
     poly->code = PolyCode(kind, 0x3C, prim->flag);
     poly->clut = prim->cba;
@@ -301,9 +314,9 @@ static char *DrawGouraudTriangle(DrawKind kind, char *out, u_long *ordering, int
     if (AnyRejected(v0, v1, v2, 0) || Culled(kind, prim->flag, v0, v1, v2)) {
         return out;
     }
-    StoreScreenXY(&poly->x0, &poly->y0, v0->screen);
-    StoreScreenXY(&poly->x1, &poly->y1, v1->screen);
-    StoreScreenXY(&poly->x2, &poly->y2, v2->screen);
+    PutScreenXY(&poly->x0, &poly->y0, v0);
+    PutScreenXY(&poly->x1, &poly->y1, v1);
+    PutScreenXY(&poly->x2, &poly->y2, v2);
     ((u_char *)poly)[3] = 6;
     poly->code = PolyCode(kind, 0x30, prim->flag);
     SetRgb(&poly->r0, &poly->g0, &poly->b0, &prim->colour[0]);
@@ -322,10 +335,10 @@ static char *DrawGouraudQuad(DrawKind kind, char *out, u_long *ordering, int fix
     if (AnyRejected(v0, v1, v2, v3) || Culled(kind, prim->flag, v0, v1, v2)) {
         return out;
     }
-    StoreScreenXY(&poly->x0, &poly->y0, v0->screen);
-    StoreScreenXY(&poly->x1, &poly->y1, v1->screen);
-    StoreScreenXY(&poly->x2, &poly->y2, v2->screen);
-    StoreScreenXY(&poly->x3, &poly->y3, v3->screen);
+    PutScreenXY(&poly->x0, &poly->y0, v0);
+    PutScreenXY(&poly->x1, &poly->y1, v1);
+    PutScreenXY(&poly->x2, &poly->y2, v2);
+    PutScreenXY(&poly->x3, &poly->y3, v3);
     ((u_char *)poly)[3] = 8;
     poly->code = PolyCode(kind, 0x38, prim->flag);
     SetRgb(&poly->r0, &poly->g0, &poly->b0, &prim->colour[0]);
@@ -345,9 +358,9 @@ static char *DrawFlatTriangle(DrawKind kind, char *out, u_long *ordering, int fi
     if (AnyRejected(v0, v1, v2, 0) || Culled(kind, prim->flag, v0, v1, v2)) {
         return out;
     }
-    StoreScreenXY(&poly->x0, &poly->y0, v0->screen);
-    StoreScreenXY(&poly->x1, &poly->y1, v1->screen);
-    StoreScreenXY(&poly->x2, &poly->y2, v2->screen);
+    PutScreenXY(&poly->x0, &poly->y0, v0);
+    PutScreenXY(&poly->x1, &poly->y1, v1);
+    PutScreenXY(&poly->x2, &poly->y2, v2);
     ((u_char *)poly)[3] = 4;
     poly->code = PolyCode(kind, 0x20, prim->flag);
     SetRgb(&poly->r0, &poly->g0, &poly->b0, &prim->colour);
@@ -364,10 +377,10 @@ static char *DrawFlatQuad(DrawKind kind, char *out, u_long *ordering, int fixedS
     if (AnyRejected(v0, v1, v2, v3) || Culled(kind, prim->flag, v0, v1, v2)) {
         return out;
     }
-    StoreScreenXY(&poly->x0, &poly->y0, v0->screen);
-    StoreScreenXY(&poly->x1, &poly->y1, v1->screen);
-    StoreScreenXY(&poly->x2, &poly->y2, v2->screen);
-    StoreScreenXY(&poly->x3, &poly->y3, v3->screen);
+    PutScreenXY(&poly->x0, &poly->y0, v0);
+    PutScreenXY(&poly->x1, &poly->y1, v1);
+    PutScreenXY(&poly->x2, &poly->y2, v2);
+    PutScreenXY(&poly->x3, &poly->y3, v3);
     ((u_char *)poly)[3] = 5;
     poly->code = PolyCode(kind, 0x28, prim->flag);
     SetRgb(&poly->r0, &poly->g0, &poly->b0, &prim->colour);

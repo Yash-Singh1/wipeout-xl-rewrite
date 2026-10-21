@@ -162,6 +162,7 @@ void PortFarProject(const PortView *view, double x, double y, double z, PortFarV
     out->z = cz;
     out->rejected = 1;
     out->screen = 0;
+    out->handle = 0;
     if (cz < h * 0.5 || cz < 1.0) {
         return; /* the GTE's divide overflow: too near */
     }
@@ -174,7 +175,7 @@ void PortFarProject(const PortView *view, double x, double y, double z, PortFarV
     sy = (int)floor(out->y);
     out->screen = (sx & 0xFFFF) | (int)((u_int)sy << 16);
     out->rejected = 0;
-    GteRecordProjection((uint32_t)out->screen, (float)out->x, (float)out->y, (float)cz);
+    out->handle = GteRecordProjection((uint32_t)out->screen, (float)out->x, (float)out->y, (float)cz);
 }
 
 u_long *PortFarSlot(int entry, double depth)

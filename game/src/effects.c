@@ -1622,6 +1622,7 @@ void DrawShadow(void *shapes, ShipData *ships, Shadow *shadow)
     POLY_FT4 *poly;
     ShipData *ship;
     Shadow *shadowEntry;
+    uint32_t gridHandles[25]; /* Port: the precise positions of the grid points (gte.h) */
     cameraPtr->camPos->super->update=1;
     SetSkeletonTransform(cameraPtr->camPos->super);
     for(i=0;i<15;i++) {
@@ -1732,11 +1733,13 @@ void DrawShadow(void *shapes, ShipData *ships, Shadow *shadow)
             {
                 /* Port: the grid was halved on whole pixels; the renderer places it between the corners' exact positions */
                 uint32_t corners[4];
+                const void *cornerAddress[4];
                 corners[0]=(u_short)screen[0].vx|(uint32_t)(u_short)screen[0].vy<<16;
                 corners[1]=(u_short)screen[1].vx|(uint32_t)(u_short)screen[1].vy<<16;
                 corners[2]=(u_short)screen[2].vx|(uint32_t)(u_short)screen[2].vy<<16;
                 corners[3]=(u_short)screen[3].vx|(uint32_t)(u_short)screen[3].vy<<16;
-                GteRecordGrid(corners,x,y,5);
+                cornerAddress[0]=&screen[0];cornerAddress[1]=&screen[1];cornerAddress[2]=&screen[2];cornerAddress[3]=&screen[3];
+                GteRecordGrid(corners,cornerAddress,x,y,5,gridHandles);
             }
             depth[0]-=175;
             if(depth[0]<0) depth[0]=0;
@@ -1763,6 +1766,8 @@ void DrawShadow(void *shapes, ShipData *ships, Shadow *shadow)
                     poly->x1=x[grid+1];poly->y1=y[grid+1];
                     poly->x2=x[grid+5];poly->y2=y[grid+5];
                     poly->x3=x[grid+6];poly->y3=y[grid+6];
+                    GteBindPrecise(&poly->x0,gridHandles[grid]);GteBindPrecise(&poly->x1,gridHandles[grid+1]); /* Port: precise positions */
+                    GteBindPrecise(&poly->x2,gridHandles[grid+5]);GteBindPrecise(&poly->x3,gridHandles[grid+6]);
                     if(row==0) AddPrim(OT[CurrentScreen]+depth[0],&shadowQuads->quad[col][CurrentScreen]);
                     else if(row==1) AddPrim(OT[CurrentScreen]+depth[1],&shadowQuads->quad[4+col][CurrentScreen]);
                     else AddPrim(OT[CurrentScreen]+depth[2],poly);
