@@ -12,4 +12,12 @@ void PsxPlayMovie(const char *fileName);
    (screen coordinates at +0, depths at +0x200, clip flags at +0x300).  Defined in game/src/object.c. */
 extern unsigned char PsxScratchpad[1024];
 
+/* A buffer of packets that gets link numbers of its own (libgpu numbers every packet address it links;
+   a large buffer whose packets move from frame to frame would use up its table). */
+void PsxLinkRegion(void *start, size_t bytes);
+
+/* Whether the port draws the whole track in view (portfar.h): not in the lockstep tests (WIPEOUT_TRACE)
+   or with WIPEOUT_FAR_VIEW=0. */
+int PortFarViewEnabled(void);
+
 #endif

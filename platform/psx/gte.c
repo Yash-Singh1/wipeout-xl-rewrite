@@ -206,9 +206,9 @@ static uint32_t Divide(uint32_t h, uint32_t sz3)
    rather than a projection finds nothing, or only a projection made far from
    the primitive's others, and is drawn as given. */
 
-#define PRECISE_SLOTS 16384   /* hash of screen positions */
-#define PRECISE_RECORDS 16384 /* projections of one frame */
-#define PRECISE_CANDIDATES 4  /* projections considered per vertex */
+#define PRECISE_SLOTS 262144  /* hash of screen positions */
+#define PRECISE_RECORDS 131072 /* projections of one frame */
+#define PRECISE_CANDIDATES 16 /* projections considered per vertex */
 #define PRECISE_SPREAD 1024   /* projections apart that still make one primitive */
 
 typedef struct PreciseSlot {
@@ -386,6 +386,11 @@ unsigned GteResolvePrecise(const uint32_t *xy, int count, GtePrecise *out)
         }
     }
     return mask;
+}
+
+void GteRecordProjection(uint32_t sxy, float x, float y, float z)
+{
+    RecordPrecise(sxy, x, y, z);
 }
 
 void GteRecordGrid(const uint32_t corner[4], const int *x, const int *y, int size)

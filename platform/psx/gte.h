@@ -42,6 +42,9 @@ typedef struct GtePrecise {
 /* The vertices xy[0..count-1] (GPU packet words) of one primitive: fills
    out[i] for each vertex found and returns the mask of those. */
 unsigned GteResolvePrecise(const uint32_t *xy, int count, GtePrecise *out);
+/* A projection made outside the GTE (the port's far view): packet word sxy,
+   precise screen position and depth. */
+void GteRecordProjection(uint32_t sxy, float x, float y, float z);
 /* A size x size grid of points the game placed on screen by halving between
    four projected corners (corner[]: the packet words of grid points 0,
    size-1, size*(size-1) and size*size-1; x[], y[]: the grid row by row, as

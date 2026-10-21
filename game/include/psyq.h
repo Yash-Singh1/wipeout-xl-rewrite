@@ -363,6 +363,7 @@ int  GteReadControl(int reg);
 
 /* libgpu, continued */
 void AddPrim(u_long *ot, void *p);
+void AddPrims(u_long *ot, void *p0, void *p1);
 void SetLineF2(LINE_F2 *p);
 void SetLineG2(LINE_G2 *p);
 void SetBlockFill(BLK_FILL *p);

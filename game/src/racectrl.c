@@ -10,6 +10,7 @@
 #include "trackasm.h"
 #include "control.h"
 #include "track.h"
+#include "portfar.h" /* Port: the far view */
 #include "dynam.h"
 #include "pad.h"
 #include "../../platform/controls.h" /* Port: keyboard and gamepad glyphs and contexts */
@@ -398,6 +399,7 @@ frame:
     DrawShadow(shipShapeTable,shipIndex,shadowData);
     DrawShips(shipIndex,shipShapeTable,ownShip,raceCamera,pauseState.selection);
     if(!medalDisplay) DrawLandscape(&shipIndex[ownShip],&raceCamera);
+    if(!medalDisplay) PortFarDraw(&raceCamera,shipIndex,shipShapeTable); /* Port: the rest of the track in view (portfar.h) */
     prmObjects[(short)locals.skyIndex]->skeleton->update=one;
     savedUpperY=raceCamera.camPos->super->relative.t[1];
     if(gameData->actTrackNum==17) {

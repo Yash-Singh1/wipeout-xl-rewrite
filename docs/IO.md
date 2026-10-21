@@ -15,8 +15,9 @@ against them exactly as against the console.
     PsxVBlank()                       provided by libetc.c; the libraries call it while waiting
 
 `PsxIoConfig`: `discPath` (.cue), `savePath` (card images), `fixedStep`, `muted` (SDL's dummy
-driver is chosen by the caller, as now), `noDevice`, `cdSpeed` (1 = the console's drive speed;
-loading a level takes as long as on the console, set 4 to load four times faster), `padScript`
+driver is chosen by the caller, as now), `noDevice`, `cdSpeed` (1 = the console's drive speed:
+loading a level takes as long as on the console; the game runs with 1000, WIPEOUT_CD_SPEED, so data
+arrives as fast as the image is read and only the game's own fades remain), `padScript`
 (scripted input), `wavPath` (fixed-step: write the mix to a WAV).
 
 The BIOS file calls are `PsyqOpen/Close/Read/Write/Rename` (the names psyq.h maps `open`... to),

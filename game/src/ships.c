@@ -1,5 +1,6 @@
 #include "functions.h"
 #include "ships.h"
+#include "portfar.h" /* Port: the far view */
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
 extern int           proximity;
@@ -120,6 +121,7 @@ void DrawShips(ShipData *shipIndex, Object **shipShapes, int camShip, TrackCamer
                     diff = diff - numTrackSections;
                     }
                 if ((u_short)(diff + 39) < 79) {
+                    PortFarMarkShip(i); /* Port: drawn here, not by the far view */
                     shipIndex[i].combatAttr = attr2 & ~0x80;
                     face = track->faces + shipIndex[i].nearTrkSect->faceStart;
                     do {

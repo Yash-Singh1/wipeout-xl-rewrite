@@ -29,6 +29,12 @@ ninja -C build
 build/wipeoutxl --disc "path/to/Wipeout XL (USA).cue" --pc-data path/to/pc-cd
 ```
 
+The whole track is drawn, as far as the camera sees, where the console let
+scenery, track and other ships pop in at a fixed distance; nothing the game
+computes changes (`WIPEOUT_FAR_VIEW=0` brings back the console's view). The
+disc is read as fast as the image allows, so loading takes a moment instead
+of the console's seconds (`WIPEOUT_CD_SPEED=1` for the console's drive).
+
 `--window 1920x1440` sets the window size, `--fullscreen` starts full screen;
 Alt+Enter or F11 switches while playing. The environment variables
 `WIPEOUT_XL_DISC` and `WIPEOUT_XL_PC_DATA` can stand in for the two paths.

@@ -13,6 +13,7 @@
 #include "track.h"
 #include "trackasm.h"
 #include "drawasm.h"
+#include "portfar.h"
 
 extern short       CurrentScreen;
 extern TrackData  *track;
@@ -120,6 +121,7 @@ void AsmTrackLo(TrackSection *firstSection, Skeleton *camera, short loCount)
         next_face:
             face++;
         } while (--faceCount > 0);
+        PortFarMarkSection(section); /* Port: the far view draws the sections the game did not */
         section++;
     } while (--loCount > 0);
 }
@@ -253,6 +255,7 @@ void AsmTrackMed(TrackSection *firstSection, Skeleton *camera, short medCount)
             }
             face++;
         } while (--faceCount > 0);
+        PortFarMarkSection(section); /* Port: the far view draws the sections the game did not */
         section++;
     } while (--medCount > 0);
 }
@@ -451,7 +454,59 @@ void AsmTrackHi(TrackSection *firstSection, Skeleton *camera, AutoMeshData *auto
             }
             face++;
         } while (--faceCount > 0);
+        PortFarMarkSection(section); /* Port: the far view draws the sections the game did not */
         section++;
     } while (--hiCount > 0);
     hiTileCount = (short)count;
+}
+
+
+/* Port: a section beyond the game's view lists, in the low detail of AsmTrackLo, projected in full precision
+   (portfar.h). Faces with a corner too near or beyond the GPU's coordinates are left out, as the GTE's flags
+   leave them out of AsmTrackLo; so are faces wholly off screen. */
+void PortTrackFar(TrackSection *section, const PortView *view)
+{
+    Face *face = track->faces + (u_short)section->faceStart;
+    int   faceCount = (u_short)section->faceCount;
+    int   n, k;
+
+    for (n = 0; n < faceCount; n++, face++) {
+        PortFarVertex corner[4];
+        POLY_FT4     *poly;
+        int           left = 0, right = 0, above = 0, below = 0;
+
+        for (k = 0; k < 4; k++) {
+            VECTOR *vertex = &track->vertices[face->vertex[k]];
+
+            PortFarProject(view, vertex->vx, vertex->vy, vertex->vz, &corner[k]);
+            if (corner[k].rejected) {
+                break;
+            }
+            left += corner[k].x < 0;
+            right += corner[k].x > 320;
+            above += corner[k].y < 0;
+            below += corner[k].y > 240;
+        }
+        if (k < 4 || left == 4 || right == 4 || above == 4 || below == 4) {
+            continue;
+        }
+        poly = (POLY_FT4 *)PortFarAlloc(sizeof(POLY_FT4));
+        if (!poly) {
+            return;
+        }
+        SetPolyFT4(poly);
+        /* the corners as AsmTrackLo stores them: RTPT's vertices 0, 1, 2 go to x1, x0, x2 */
+        StoreScreenXY(&poly->x1, &poly->y1, corner[0].screen);
+        StoreScreenXY(&poly->x0, &poly->y0, corner[1].screen);
+        StoreScreenXY(&poly->x2, &poly->y2, corner[2].screen);
+        StoreScreenXY(&poly->x3, &poly->y3, corner[3].screen);
+        SetQuadTile(poly, &FaceSurface(face)->low[0]);
+        poly->tpage = tileSurfaces[(u_char)face->texture][0].low[0].tsb;
+        poly->clut = tileSurfaces[(u_char)face->texture][0].low[0].cba;
+        poly->r0 = face->red;
+        poly->g0 = face->green;
+        poly->b0 = face->blue;
+        /* AsmTrackLo's slot: the depth of the last corner of RTPT (vertex 2), a quarter per entry */
+        AddPrim(PortFarSlot((int)corner[2].z >> 2, corner[2].z), poly);
+    }
 }

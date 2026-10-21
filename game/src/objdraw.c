@@ -20,6 +20,7 @@
 #include "functions.h"
 #include "drawasm.h"
 #include "../../platform/psx/gte.h"
+#include "portfar.h"
 
 extern short   CurrentScreen;
 extern u_long *OT[2];
@@ -37,6 +38,11 @@ typedef struct ProjectedVertex {
    and in a 3584-byte area of RAM (448 vertices) beyond. */
 #define MAX_OBJECT_VERTICES 448
 static ProjectedVertex projected[MAX_OBJECT_VERTICES];
+
+/* Port: the far view (portfar.h) draws objects through these routines with its own projection: the view,
+   and each vertex's precise screen position and depth. */
+static const PortView *farView;
+static double farX[MAX_OBJECT_VERTICES], farY[MAX_OBJECT_VERTICES], farZ[MAX_OBJECT_VERTICES];
 
 typedef enum DrawKind {
     DRAW_PLAIN,
@@ -57,6 +63,23 @@ static void ProjectVertices(Object *object)
     SVECTOR         *vertex = object->vertices;
     ProjectedVertex *out = projected;
     int              count = (u_short)object->vertexCount;
+
+    if (farView) {
+        int i;
+
+        for (i = 0; i < count && i < MAX_OBJECT_VERTICES; i++) {
+            PortFarVertex v;
+
+            PortFarProject(farView, vertex[i].vx, vertex[i].vy, vertex[i].vz, &v);
+            projected[i].screen = v.screen;
+            projected[i].depth = (u_short)(v.z < 0 ? 0 : v.z > 65535 ? 65535 : v.z);
+            projected[i].flag = (u_short)(v.rejected || count > MAX_OBJECT_VERTICES);
+            farX[i] = v.x;
+            farY[i] = v.y;
+            farZ[i] = v.z;
+        }
+        return;
+    }
 
     /* Port: the console also jumped out when "all vertices rejected", but tested the wrong register
        (the flag bits are masked with 0x466, so a bit-0 test never fires) and so never left early. */
@@ -81,6 +104,11 @@ static int AnyRejected(const ProjectedVertex *a, const ProjectedVertex *b, const
 /* The facing test: the winding of the first three vertices on screen. */
 static int FacesAway(const ProjectedVertex *a, const ProjectedVertex *b, const ProjectedVertex *c)
 {
+    if (farView) {
+        int i = (int)(a - projected), j = (int)(b - projected), k = (int)(c - projected);
+
+        return (farX[j] - farX[i]) * (farY[k] - farY[i]) - (farY[j] - farY[i]) * (farX[k] - farX[i]) <= 0;
+    }
     GteWriteData(12, a->screen);
     GteWriteData(13, b->screen);
     GteWriteData(14, c->screen);
@@ -96,6 +124,17 @@ static u_long *DepthSlot(DrawKind kind, u_long *ordering, int fixedSlot,
 
     if (kind == DRAW_FIXED) {
         return ordering + fixedSlot;
+    }
+    if (farView) {
+        /* AVSZ3/AVSZ4 on the unsaturated depths */
+        double sum = farZ[a - projected] + farZ[b - projected] + farZ[c - projected] + (d ? farZ[d - projected] : 0);
+        int    zsf = GteReadControl(d ? 30 : 29);
+
+        slot = (int)(((long long)zsf * (long long)sum) >> 12);
+        if (kind == DRAW_LIT) {
+            slot = slot < LIT_DEPTH_BIAS ? 0 : slot - LIT_DEPTH_BIAS;
+        }
+        return PortFarSlot(slot, sum / (d ? 4 : 3));
     }
     if (d) {
         GteWriteData(16, a->depth);
@@ -349,7 +388,7 @@ static char *DrawSprite(DrawKind kind, char *out, u_long *ordering, int roll, co
 {
     ProjectedVertex *v = &projected[prim->coord];
     POLY_FT4        *poly = (POLY_FT4 *)out;
-    u_int            depth = v->depth;
+    u_int            depth = farView ? (u_int)(farZ[v - projected] > 0 ? farZ[v - projected] : 0) : v->depth;
     u_int            width, height;
     int              halfWidth, cosA, sinA, cosB, sinB;
     int              dx1, dy1, dx2, dy2;
@@ -404,6 +443,10 @@ static char *DrawSprite(DrawKind kind, char *out, u_long *ordering, int roll, co
            length byte was cleared and the GPU skipped it: sprites are never drawn in lit objects. */
         ((u_char *)poly)[3] = 0;
     }
+    if (farView) {
+        AddPrim(PortFarSlot((int)(depth >> 2), (double)depth), poly);
+        return out + sizeof(POLY_FT4);
+    }
     AddPrim((u_long *)((char *)ordering + (v->depth & 0xFFFC)), poly);
     return out + sizeof(POLY_FT4);
 }
@@ -415,8 +458,17 @@ static void DrawObject(Object *object, DrawKind kind, int roll, const CVECTOR *c
     char   *primitive;
     int     count;
 
-    SetSkeletonTransform(object->skeleton);
-    out = nextPrim.ptr;
+    if (farView) {
+        /* the largest packet per primitive, in the far view's own memory */
+        out = PortFarAlloc((u_short)object->primitiveCount * (int)sizeof(POLY_GT4));
+        if (!out) {
+            return;
+        }
+    } else {
+        PortFarMarkObject(object); /* Port: the far view leaves it to the game this frame */
+        SetSkeletonTransform(object->skeleton);
+        out = nextPrim.ptr;
+    }
     primitive = (char *)object->primitives;
     count = (u_short)object->primitiveCount;
     ordering = OT[CurrentScreen];
@@ -480,6 +532,10 @@ static void DrawObject(Object *object, DrawKind kind, int roll, const CVECTOR *c
         }
     } while (--count > 0);
 finished:
+    if (farView) {
+        PortFarRelease(out);
+        return;
+    }
     nextPrim.ptr = out;
 }
 
@@ -496,4 +552,12 @@ void AsmDrawObjectLit(Object *object, Skeleton *camera, int roll, CVECTOR *colou
 void AsmDrawObjectFixed(Object *object, Skeleton *camera, int slot)
 {
     DrawObject(object, DRAW_FIXED, 0, 0, slot);
+}
+
+/* Port: an object in the far view (portfar.h): the plain renderer, or the lit one with `colour`. */
+void PortDrawObjectFar(Object *object, const PortView *view, const CVECTOR *colour)
+{
+    farView = view;
+    DrawObject(object, colour ? DRAW_LIT : DRAW_PLAIN, 0, colour, 0);
+    farView = NULL;
 }

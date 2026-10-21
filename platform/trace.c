@@ -347,6 +347,7 @@ static void LoadLoads(const char *path)
 void PortLoadingStarts(void)
 {
     loadStart = callbackSwaps;
+    PortLog("loading: starts at field %llu\n", (unsigned long long)PsxFieldCount());
 }
 
 void PortLoadingEnds(void)
@@ -354,6 +355,7 @@ void PortLoadingEnds(void)
     uint32_t target;
     int guard = 0;
 
+    PortLog("loading: %u swaps, ends at field %llu\n", callbackSwaps - loadStart, (unsigned long long)PsxFieldCount());
     if (loadNext >= loadCount) {
         return;
     }

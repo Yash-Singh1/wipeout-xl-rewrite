@@ -30,7 +30,7 @@ mkdir -p "$out/save"
 
 autopilot=$(python3 -c 'import json,sys; s=json.load(open(sys.argv[1])); print(s.get("autopilot_until", "all") if s.get("autopilot", True) else "")' "$recording/scenario.json")
 
-WIPEOUT_HIDDEN=1 WIPEOUT_MUTE=1 WIPEOUT_FIXED_STEP=1 \
+WIPEOUT_HIDDEN=1 WIPEOUT_MUTE=1 WIPEOUT_FIXED_STEP=1 WIPEOUT_CD_SPEED=1 \
 WIPEOUT_AUTOPILOT=$autopilot \
 WIPEOUT_SAVE_DIR="$out/save/" \
 WIPEOUT_FRAMES="$fields" \

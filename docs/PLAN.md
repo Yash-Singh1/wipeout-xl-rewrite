@@ -46,6 +46,13 @@ The game calls the PsyQ libraries:
   from the projection made nearest in time to the others. A primitive with
   a vertex the game placed in 2D is drawn affine, as on the console; the
   ship shadow's halved grid is placed between its corners' exact positions.
+- **The whole track in view** (`game/src/portfar.c`): after the game has drawn
+  the race, a pass of the port's own adds the track sections, scenery and
+  ships the console left out for its budget, projected in full precision and
+  linked at the ordering-table slot the game would give them (beyond its
+  range, into a table drawn right after the sky). The game marks what it drew;
+  nothing it computes changes (checked by tracing a race both ways). Off in
+  the lockstep tests.
 - **libgpu:** the primitives and ordering tables the game builds are drawn in
   ordering-table order with OpenGL, at the window's resolution:
   - flat, Gouraud and textured polygons, sprites, tiles, lines;

@@ -24,8 +24,9 @@ static void Usage(void)
             "environment: WIPEOUT_XL_DISC, WIPEOUT_XL_PC_DATA; tests: WIPEOUT_MUTE, WIPEOUT_HIDDEN,\n"
             "  WIPEOUT_FIXED_STEP, WIPEOUT_FRAMES, WIPEOUT_CAPTURE_DIR, WIPEOUT_CAPTURE_EVERY, WIPEOUT_CAPTURE_FROM,\n"
             "  WIPEOUT_TRACE (trace file), WIPEOUT_PADS (pad script), WIPEOUT_VCOUNTS (counter reads),\n"
-            "  WIPEOUT_CD_SPEED (disc speed-up), WIPEOUT_SAVE_DIR (memory cards; default: the user's data folder),\n"
-            "  WIPEOUT_KEYS (scripted keys and gamepad), WIPEOUT_VRAM_DUMP (video memory picture at the end of a run)\n");
+            "  WIPEOUT_CD_SPEED (drive speed-up; 1 = the console's, default 1000), WIPEOUT_SAVE_DIR (memory cards; default: the user's data folder),\n"
+            "  WIPEOUT_KEYS (scripted keys and gamepad), WIPEOUT_VRAM_DUMP (video memory picture at the end of a run),\n"
+            "  WIPEOUT_FAR_VIEW (0: the console's draw distance; 2: the whole track even while tracing)\n");
 }
 
 int main(int argc, char **argv)
@@ -91,7 +92,8 @@ int main(int argc, char **argv)
         io.fixedStep = portConfig.fixedStep;
         io.muted = portConfig.muted;
         value = SDL_getenv("WIPEOUT_CD_SPEED");
-        io.cdSpeed = value ? SDL_atof(value) : 0.0;
+        /* data reads as fast as the disc image allows (the console's drive: WIPEOUT_CD_SPEED=1) */
+        io.cdSpeed = value ? SDL_atof(value) : 1000.0;
         if (!PsxIoInit(&io, error, sizeof(error))) {
             SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Wipeout XL", error, NULL);
             fprintf(stderr, "%s\n", error);
@@ -104,4 +106,17 @@ int main(int argc, char **argv)
     PortVideoShutdown();
     SDL_Quit();
     return 0;
+}
+
+int PortFarViewEnabled(void)
+{
+    const char *value = SDL_getenv("WIPEOUT_FAR_VIEW");
+
+    if (value && SDL_atoi(value) == 2) {
+        return 1; /* tests: also while tracing (that the game's own results stay the same) */
+    }
+    if (SDL_getenv("WIPEOUT_TRACE")) {
+        return 0; /* the lockstep tests compare the console's drawing */
+    }
+    return !value || SDL_atoi(value) != 0;
 }

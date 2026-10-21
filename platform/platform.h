@@ -43,6 +43,9 @@ void PsxShowDisplay(void);
 /* controls.c: scripted key and gamepad events (WIPEOUT_KEYS), fed to SDL's queue each field */
 void PortInputScript(uint64_t field);
 
+/* main.c: whether the whole track is drawn (game/include/portfar.h) */
+int PortFarViewEnabled(void);
+
 /* Diagnostics */
 void PortLog(const char *format, ...);
 

@@ -40,9 +40,39 @@ static uint32_t HashPointer(const void *pointer)
     return (uint32_t)v & (LINK_SLOTS - 1);
 }
 
+/* Buffers of packets with a range of link numbers of their own, one per word (PsxLinkRegion). */
+#define REGION_FIRST 0x200000u
+static struct {
+    char *start;
+    size_t bytes;
+    uint32_t first;
+} regions[8];
+static int regionCount;
+static uint32_t regionNext = REGION_FIRST;
+
+void PsxLinkRegion(void *start, size_t bytes)
+{
+    if (regionCount == (int)(sizeof(regions) / sizeof(regions[0])) || regionNext + bytes / 4 >= LINK_END) {
+        fprintf(stderr, "libgpu: no link numbers left for a packet buffer\n");
+        abort();
+    }
+    regions[regionCount].start = start;
+    regions[regionCount].bytes = bytes;
+    regions[regionCount].first = regionNext;
+    regionNext += (uint32_t)(bytes / 4);
+    regionCount++;
+}
+
 static uint32_t LinkId(void *pointer)
 {
     uint32_t slot = HashPointer(pointer);
+    int r;
+
+    for (r = 0; r < regionCount; r++) {
+        if ((char *)pointer >= regions[r].start && (char *)pointer < regions[r].start + regions[r].bytes) {
+            return regions[r].first + (uint32_t)(((char *)pointer - regions[r].start) / 4);
+        }
+    }
 
     if (!linkKeys) {
         linkKeys = calloc(LINK_SLOTS, sizeof(*linkKeys));
@@ -69,6 +99,13 @@ static uint32_t LinkId(void *pointer)
 
 static void *LinkPointer(uint32_t id)
 {
+    int r;
+
+    for (r = 0; r < regionCount && id >= REGION_FIRST; r++) {
+        if (id >= regions[r].first && id < regions[r].first + regions[r].bytes / 4) {
+            return regions[r].start + (size_t)(id - regions[r].first) * 4;
+        }
+    }
     if (id == 0 || id >= linkCount) {
         fprintf(stderr, "libgpu: broken ordering-table link %06x\n", id);
         abort();
@@ -82,6 +119,15 @@ void AddPrim(u_long *ot, void *primitive)
 
     *p = (*p & 0xFF000000u) | (*ot & 0x00FFFFFFu);
     *ot = (*ot & 0xFF000000u) | (LinkId(p) & 0x00FFFFFFu);
+}
+
+/* A chain of packets, first to last already linked, into one entry. */
+void AddPrims(u_long *ot, void *first, void *last)
+{
+    u_long *tail = last;
+
+    *tail = (*tail & 0xFF000000u) | (*ot & 0x00FFFFFFu);
+    *ot = (*ot & 0xFF000000u) | (LinkId(first) & 0x00FFFFFFu);
 }
 
 /* The ordering-table DMA: each entry links to the one before it, the first
@@ -852,7 +898,7 @@ static struct {
 } pending[PENDING_TABLES];
 static int pendingCount;
 
-#define SEEN_SLOTS (1 << 16)
+#define SEEN_SLOTS (1 << 18)
 static u_long *seen[SEEN_SLOTS];
 
 static int Seen(u_long *node)
@@ -901,7 +947,7 @@ static void ReadPendingTables(void)
         PortTraceEvent(TRACE_LATE_TABLE, &first, 1);
         RecordLateFrom(pending[i].table);
         for (j = 0; j < pending[i].count; j += 2) {
-            RecordLateFrom(linkPointers[pending[i].nodes[j]]);
+            RecordLateFrom(LinkPointer(pending[i].nodes[j]));
         }
     }
     pendingCount = 0;
