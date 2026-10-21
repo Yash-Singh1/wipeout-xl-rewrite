@@ -702,6 +702,7 @@ static void Vertex(GpuVertex *v, uint32_t xy, const GtePrecise *precise)
         v->y = precise->y + (float)state.offsetY;
         v->w = precise->z;
         v->a = (uint8_t)(precise->fade * 255.0f + 0.5f);
+        v->background = (uint8_t)precise->background;
     } else {
         v->x = (float)(x + state.offsetX);
         v->y = (float)(y + state.offsetY);
@@ -1091,6 +1092,7 @@ void DrawOTag(u_long *p)
         holdAreas[holdAreaCount].bottom = state.areaBottom;
         holdAreaCount++;
     }
+    GpuClearDepth(state.areaLeft, state.areaTop, state.areaRight - state.areaLeft + 1, state.areaBottom - state.areaTop + 1);
     drawnSinceRead = 1;
     if (PortLinkSplit() && !tracing) {
         hudActive = p == hudTable;

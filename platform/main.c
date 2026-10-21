@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "platform.h"
+#include "psx/gte.h"
 #include "psx/psx_io.h"
 #include "link.h"
 #include "trace.h"
@@ -151,4 +152,9 @@ int PortFarViewEnabled(void)
         return 0; /* the lockstep tests compare the console's drawing */
     }
     return !value || SDL_atoi(value) != 0;
+}
+
+void PortBackground(int on)
+{
+    GteSetBackground(on);
 }

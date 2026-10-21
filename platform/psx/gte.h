@@ -37,6 +37,7 @@ typedef struct GtePrecise {
     float x, y;  /* screen position, in the game's 320x240 units */
     float z;     /* view-space depth (for perspective-correct texturing) */
     float fade;  /* the port's distance fade: 1 opaque .. 0 gone */
+    int background; /* projected while GteSetBackground was on (the sky): drawn behind everything */
 } GtePrecise;
 
 #define GTE_RESOLVE_MAX 4
@@ -74,6 +75,7 @@ void GteFrameDrawn(void);
 /* The port's distance fade (as wipeout-rewrite's): while on, projections between nearDistance and
    farDistance from the camera fade out smoothly (GtePrecise.fade), and beyond it are gone. */
 void GteSetFade(int on, double nearDistance, double farDistance);
+void GteSetBackground(int on);
 float GteFade(double distance);
 /* When false, no precise positions are recorded (the original look). */
 extern int gtePrecision;

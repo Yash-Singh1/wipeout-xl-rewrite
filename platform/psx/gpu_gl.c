@@ -53,7 +53,11 @@
     X(PFNGLBLENDEQUATIONPROC, glBlendEquation) \
     X(PFNGLBLENDCOLORPROC, glBlendColor) \
     X(PFNGLACTIVETEXTUREPROC, glActiveTexture) \
-    X(PFNGLGENERATEMIPMAPPROC, glGenerateMipmap)
+    X(PFNGLGENERATEMIPMAPPROC, glGenerateMipmap) \
+    X(PFNGLGENRENDERBUFFERSPROC, glGenRenderbuffers) \
+    X(PFNGLBINDRENDERBUFFERPROC, glBindRenderbuffer) \
+    X(PFNGLRENDERBUFFERSTORAGEPROC, glRenderbufferStorage) \
+    X(PFNGLFRAMEBUFFERRENDERBUFFERPROC, glFramebufferRenderbuffer)
 
 #define DECLARE_GL(type, name) static type p_##name;
 GL_FUNCTIONS(DECLARE_GL)
@@ -90,6 +94,10 @@ GL_FUNCTIONS(DECLARE_GL)
 #define glBlendColor p_glBlendColor
 #define glActiveTexture p_glActiveTexture
 #define glGenerateMipmap p_glGenerateMipmap
+#define glGenRenderbuffers p_glGenRenderbuffers
+#define glBindRenderbuffer p_glBindRenderbuffer
+#define glRenderbufferStorage p_glRenderbufferStorage
+#define glFramebufferRenderbuffer p_glFramebufferRenderbuffer
 
 #ifndef GL_R16UI
 #define GL_R16UI 0x8234
@@ -150,7 +158,7 @@ static const char *vertexSource =
     "void main() {\n"
     "    float w = position.z > 0.0 ? position.z : 1.0;\n"
     "    vec2 ndc = vec2(position.x / target.x * 2.0 - 1.0, position.y / target.y * 2.0 - 1.0);\n"
-    "    gl_Position = vec4(ndc * w, 0.0, w);\n"
+    "    gl_Position = vec4(ndc * w, position.z > 0.0 ? w - 2.0 : 0.0, w);\n"
     "    vColour = colour;\n"
     "    vTexel = vec3(texel, 1.0);\n"
     "    vTexelAffine = texel;\n"
@@ -317,13 +325,24 @@ int GpuInit(void)
     glGenFramebuffers(1, &framebuffer);
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colour, 0);
+    {
+        /* the depth buffer the console did not have: 3D geometry is depth tested per pixel */
+        GLuint depth;
+
+        glGenRenderbuffers(1, &depth);
+        glBindRenderbuffer(GL_RENDERBUFFER, depth);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT32F, VRAM_WIDTH * scale, VRAM_HEIGHT * scale);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depth);
+    }
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         SDL_Log("framebuffer incomplete");
         return 0;
     }
     glViewport(0, 0, VRAM_WIDTH * scale, VRAM_HEIGHT * scale);
     glClearColor(0, 0, 0, 1);
-    glClear(GL_COLOR_BUFFER_BIT);
+    glClearDepth(1.0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glDepthFunc(GL_LEQUAL);
     initialised = 1;
     return 1;
 }
@@ -448,6 +467,13 @@ static void DrawBatch(int pass)
     const GpuDrawState *s = &batchState;
 
     glUniform4i(uniformMode, s->textured, s->raw, pass, s->depth);
+    if (s->depthTest) {
+        glEnable(GL_DEPTH_TEST);
+        /* semi-transparent texels, faded and see-through primitives test but do not hide what is behind */
+        glDepthMask(s->depthTest == 1 && !s->fade && (pass == 1 || s->semi < 0) ? GL_TRUE : GL_FALSE);
+    } else {
+        glDisable(GL_DEPTH_TEST);
+    }
     glUniform1f(uniformAlphaScale, s->fade && s->semi == 0 && pass != 1 ? 0.5f : 1.0f);
     if (s->fade && (pass == 1 || s->semi < 0)) {
         SetBlend(5);
@@ -592,8 +618,20 @@ void GpuTriangles(const GpuDrawState *given, const GpuVertex *vertices, int coun
         maxY = SDL_max(maxY, vertices[i].y);
     }
     MarkDrawn(minX, minY, maxX, maxY);
+    {
+        static int depthOn = -1;
+
+        if (depthOn < 0) {
+            const char *value = SDL_getenv("WIPEOUT_DEPTH");
+            depthOn = !value || SDL_atoi(value) != 0;
+        }
+        faded.depthTest = depthOn;
+    }
     for (i = 0; i < count; i++) {
         faded.fade |= vertices[i].a < 255;
+        if (vertices[i].w <= 0.0f || vertices[i].background) {
+            faded.depthTest = 0;
+        }
     }
 
     for (i = 0; i < count; i++) {
@@ -641,6 +679,17 @@ void GpuLine(const GpuDrawState *state, const GpuVertex *a, const GpuVertex *b)
     q[0].w = q[1].w = q[2].w = q[3].w = 0.0f;
     GpuTriangles(state, q, 3);
     GpuTriangles(state, q + 1, 3);
+}
+
+void GpuClearDepth(int x, int y, int w, int h)
+{
+    Flush();
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    glEnable(GL_SCISSOR_TEST);
+    glScissor(x * scale, y * scale, w * scale, h * scale);
+    glDepthMask(GL_TRUE);
+    glClear(GL_DEPTH_BUFFER_BIT);
+    glDisable(GL_SCISSOR_TEST);
 }
 
 void GpuFill(int x, int y, int w, int h, uint8_t r, uint8_t g, uint8_t b)

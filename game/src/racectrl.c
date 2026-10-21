@@ -414,8 +414,10 @@ frame:
         }
         if(pauseState.selection==-1 && (unsigned int)(raceCamera.section->secNo-303)>=26) skycyc=(skycyc+96)&4095;
     }
-    PortFade(0); /* Port: the sky is not faded with distance */
+    PortFade(0); /* Port: the sky is not faded with distance, nor depth tested: it is behind everything */
+    PortBackground(1);
     AsmDrawObjectFixed(prmObjects[(short)locals.skyIndex],raceCamera.camPos,8191);
+    PortBackground(0);
     PortFade(1);
     raceCamera.camPos->super->relative.t[1]=savedUpperY;
     if(prevCameraUpdate!=CameraUpdate) {UnsetParticles(particleSlots);prevCameraUpdate=CameraUpdate;}
