@@ -2,6 +2,7 @@
    behaviour (results, saturation and flags exactly as the console computes
    them), for the instructions the PsyQ library routines the game calls use:
    RTPS, RTPT, MVMVA, AVSZ3, AVSZ4, NCLIP, SQR, OP, and the LZCS/LZCR count. */
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,6 +11,31 @@
 
 Gte gte;
 int gtePrecision = 1;
+static int fadeOn;
+static double fadeNear = 64000.0, fadeFar = 96000.0;
+
+void GteSetFade(int on, double nearDistance, double farDistance)
+{
+    fadeOn = on;
+    if (farDistance > nearDistance) {
+        fadeNear = nearDistance;
+        fadeFar = farDistance;
+    }
+}
+
+float GteFade(double distance)
+{
+    double t;
+
+    if (!fadeOn || distance <= fadeNear) {
+        return 1.0f;
+    }
+    if (distance >= fadeFar) {
+        return 0.0f;
+    }
+    t = (distance - fadeNear) / (fadeFar - fadeNear);
+    return (float)(1.0 - t * t * (3.0 - 2.0 * t));
+}
 
 /* Data registers */
 enum {
@@ -295,6 +321,7 @@ static uint32_t RecordPrecise(uint32_t sxy, float x, float y, float z)
     record->value.x = x;
     record->value.y = y;
     record->value.z = z;
+    record->value.fade = 1.0f;
     record->key = sxy;
     record->previous = slot->latest;
     slot->latest = recordCount++;
@@ -507,9 +534,14 @@ unsigned GteResolvePrecise(const uint32_t *xy, const void *const *addresses, int
     return mask;
 }
 
-uint32_t GteRecordProjection(uint32_t sxy, float x, float y, float z)
+uint32_t GteRecordProjection(uint32_t sxy, float x, float y, float z, float fade)
 {
-    return RecordPrecise(sxy, x, y, z);
+    uint32_t handle = RecordPrecise(sxy, x, y, z);
+
+    if (handle) {
+        records[(handle & HANDLE_INDEX_MASK) - 1].value.fade = fade;
+    }
+    return handle;
 }
 
 void GteRecordGrid(const uint32_t corner[4], const void *const cornerAddress[4], const int *x, const int *y, int size,
@@ -611,6 +643,9 @@ static void Rtp(int v, int last, int sf)
             float py = (float)(c[OFY] / 65536.0 + y * h / z);
             if (px > -1024.0f && px < 1024.0f && py > -1024.0f && py < 1024.0f) {
                 sxyHandle[2] = RecordPrecise((uint32_t)gte.data[SXY2], px, py, (float)z);
+                if (fadeOn && sxyHandle[2]) {
+                    records[(sxyHandle[2] & HANDLE_INDEX_MASK) - 1].value.fade = GteFade(sqrt(x * x + y * y + z * z));
+                }
             }
         }
     }

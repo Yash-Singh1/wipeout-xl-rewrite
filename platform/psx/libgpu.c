@@ -701,6 +701,7 @@ static void Vertex(GpuVertex *v, uint32_t xy, const GtePrecise *precise)
         v->x = precise->x + (float)state.offsetX;
         v->y = precise->y + (float)state.offsetY;
         v->w = precise->z;
+        v->a = (uint8_t)(precise->fade * 255.0f + 0.5f);
     } else {
         v->x = (float)(x + state.offsetX);
         v->y = (float)(y + state.offsetY);

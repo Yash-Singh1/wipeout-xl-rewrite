@@ -36,6 +36,7 @@ int GteTable16(unsigned int address);
 typedef struct GtePrecise {
     float x, y;  /* screen position, in the game's 320x240 units */
     float z;     /* view-space depth (for perspective-correct texturing) */
+    float fade;  /* the port's distance fade: 1 opaque .. 0 gone */
 } GtePrecise;
 
 #define GTE_RESOLVE_MAX 4
@@ -56,7 +57,7 @@ int GtePreciseOf(uint32_t handle, GtePrecise *out);
 uint32_t GteBoundHandle(const void *address, uint32_t xy);
 /* A projection made outside the GTE (the port's far view): packet word sxy,
    precise screen position and depth. */
-uint32_t GteRecordProjection(uint32_t sxy, float x, float y, float z);
+uint32_t GteRecordProjection(uint32_t sxy, float x, float y, float z, float fade);
 /* A size x size grid of points the game placed on screen by halving between
    four projected corners (corner[]: the screen positions of grid points 0,
    size-1, size*(size-1) and size*size-1, cornerAddress[]: where the projection
@@ -70,6 +71,10 @@ void GteClearPrecise(void);
 /* libgpu has drawn a frame's ordering table: the next projection starts a
    new frame's cache. */
 void GteFrameDrawn(void);
+/* The port's distance fade (as wipeout-rewrite's): while on, projections between nearDistance and
+   farDistance from the camera fade out smoothly (GtePrecise.fade), and beyond it are gone. */
+void GteSetFade(int on, double nearDistance, double farDistance);
+float GteFade(double distance);
 /* When false, no precise positions are recorded (the original look). */
 extern int gtePrecision;
 

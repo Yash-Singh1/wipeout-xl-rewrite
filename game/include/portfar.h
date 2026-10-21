@@ -29,6 +29,9 @@ typedef struct PortFarVertex {
     unsigned int handle; /* the precise projection (gte.h) */
 } PortFarVertex;
 
+/* The distance fade (as wipeout-rewrite's), on during a race's 3D drawing. */
+void PortFade(int on);
+
 /* The game marks what it drew this frame. */
 void PortFarMarkSection(TrackSection *section);
 void PortFarMarkObject(Object *object);

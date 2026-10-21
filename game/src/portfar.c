@@ -175,7 +175,8 @@ void PortFarProject(const PortView *view, double x, double y, double z, PortFarV
     sy = (int)floor(out->y);
     out->screen = (sx & 0xFFFF) | (int)((u_int)sy << 16);
     out->rejected = 0;
-    out->handle = GteRecordProjection((uint32_t)out->screen, (float)out->x, (float)out->y, (float)cz);
+    out->handle = GteRecordProjection((uint32_t)out->screen, (float)out->x, (float)out->y, (float)cz,
+                                      GteFade(sqrt(cx * cx + cy * cy + cz * cz)));
 }
 
 u_long *PortFarSlot(int entry, double depth)
@@ -212,6 +213,9 @@ void PortFarRelease(char *end)
 /* Whether a sphere about camera-space centre c might be on screen. */
 static int MaybeVisible(const double c[3], double radius)
 {
+    if (GteFade(sqrt(c[0] * c[0] + c[1] * c[1] + c[2] * c[2]) - radius) <= 0.0f) {
+        return 0; /* faded out entirely */
+    }
     double h = (double)(u_short)GteReadControl(26);
     double z = c[2] + radius;
 
@@ -326,4 +330,30 @@ void PortFarDraw(TrackCamera *camera, ShipData *ships, Object **shipShapes)
     DrawFarShips(ships, shipShapes);
     AddPrims(OT[CurrentScreen] + FAR_ENTRY, farTable[CurrentScreen] + FAR_BUCKETS - 1, farTable[CurrentScreen]);
     frame++;
+}
+
+/* The distance fade: from WIPEOUT_FADE ("near,far" in world units, or 0 for none), 64000 to 96000 by
+   default; none without the far view (the console's own distance). */
+void PortFade(int on)
+{
+    static int read;
+    static double nearDistance = 64000.0, farDistance = 96000.0;
+    static int disabled;
+
+    if (!read) {
+        const char *value = getenv("WIPEOUT_FADE");
+
+        read = 1;
+        if (value) {
+            double a = 0, b = 0;
+
+            if (sscanf(value, "%lf,%lf", &a, &b) == 2 && b > a && a > 0) {
+                nearDistance = a;
+                farDistance = b;
+            } else {
+                disabled = 1;
+            }
+        }
+    }
+    GteSetFade(on && !disabled && Enabled(), nearDistance, farDistance);
 }

@@ -42,6 +42,7 @@
     X(PFNGLUSEPROGRAMPROC, glUseProgram) \
     X(PFNGLGETUNIFORMLOCATIONPROC, glGetUniformLocation) \
     X(PFNGLUNIFORM1IPROC, glUniform1i) \
+    X(PFNGLUNIFORM1FPROC, glUniform1f) \
     X(PFNGLUNIFORM2FPROC, glUniform2f) \
     X(PFNGLUNIFORM4IPROC, glUniform4i) \
     X(PFNGLGENFRAMEBUFFERSPROC, glGenFramebuffers) \
@@ -77,6 +78,7 @@ GL_FUNCTIONS(DECLARE_GL)
 #define glUseProgram p_glUseProgram
 #define glGetUniformLocation p_glGetUniformLocation
 #define glUniform1i p_glUniform1i
+#define glUniform1f p_glUniform1f
 #define glUniform2f p_glUniform2f
 #define glUniform4i p_glUniform4i
 #define glGenFramebuffers p_glGenFramebuffers
@@ -118,6 +120,7 @@ static GLuint framebuffer, colour;   /* all of video memory, scaled */
 static GLuint vramTexture;           /* the CPU copy, R16UI */
 static GLuint glyphTexture;          /* the glyph page (GpuSetGlyphMemory): RGBA, premultiplied, filtered */
 static GLuint program, vertexArray, vertexBuffer;
+static GLint uniformAlphaScale;
 static GLint uniformVram, uniformGlyphs, uniformTexture, uniformClut, uniformWindow, uniformMode, uniformTarget;
 static int vramDirty = 1;
 static int dirtyLeft, dirtyTop, dirtyRight, dirtyBottom;
@@ -128,7 +131,7 @@ static int initialised;
 #define BATCH_VERTICES 8192
 typedef struct BatchVertex {
     float x, y, w;
-    float r, g, b;
+    float r, g, b, a;
     float u, v;
 } BatchVertex;
 static BatchVertex batch[BATCH_VERTICES];
@@ -138,10 +141,10 @@ static GpuDrawState batchState;
 static const char *vertexSource =
     "#version 330 core\n"
     "in vec3 position;\n"
-    "in vec3 colour;\n"
+    "in vec4 colour;\n"
     "in vec2 texel;\n"
     "uniform vec2 target;\n"           /* framebuffer size in video-memory pixels */
-    "out vec3 vColour;\n"
+    "out vec4 vColour;\n"
     "out vec3 vTexel;\n"               /* texel * w, w (perspective) */
     "noperspective out vec2 vTexelAffine;\n"
     "void main() {\n"
@@ -157,7 +160,8 @@ static const char *vertexSource =
    texturePage: page x, page y; clut: x, y; window: mask x, mask y, offset x, offset y */
 static const char *fragmentSource =
     "#version 330 core\n"
-    "in vec3 vColour;\n"
+    "in vec4 vColour;\n"
+    "uniform float alphaScale;\n"
     "in vec3 vTexel;\n"
     "noperspective in vec2 vTexelAffine;\n"
     "uniform usampler2D vram;\n"
@@ -169,10 +173,11 @@ static const char *fragmentSource =
     "out vec4 fragment;\n"
     "uint Fetch(ivec2 p) { return texelFetch(vram, ivec2(p.x & 1023, p.y & 511), 0).r; }\n"
     "void main() {\n"
-    "    vec3 c = vColour;\n"
+    "    vec3 c = vColour.rgb;\n"
+    "    float fade = vColour.a;\n"
     "    if (mode.x == 0) {\n"
     "        if (mode.z == 1) discard;\n"
-    "        fragment = vec4(c, 1.0);\n"
+    "        fragment = vec4(c * fade, fade * alphaScale);\n"
     "        return;\n"
     "    }\n"
     "    vec2 t = vTexel.xy;\n"
@@ -206,7 +211,7 @@ static const char *fragmentSource =
     "    if (mode.y == 0) {\n"
     "        t8 = min(t8 * c * (255.0 / 128.0), vec3(1.0));\n"
     "    }\n"
-    "    fragment = vec4(t8, 1.0);\n"
+    "    fragment = vec4(t8 * fade, fade * alphaScale);\n"
     "}\n";
 
 static GLuint Compile(GLenum type, const char *source)
@@ -269,6 +274,7 @@ int GpuInit(void)
     uniformVram = glGetUniformLocation(program, "vram");
     uniformGlyphs = glGetUniformLocation(program, "glyphs");
     uniformTexture = glGetUniformLocation(program, "texturePage");
+    uniformAlphaScale = glGetUniformLocation(program, "alphaScale");
     uniformClut = glGetUniformLocation(program, "clut");
     uniformWindow = glGetUniformLocation(program, "window");
     uniformMode = glGetUniformLocation(program, "mode");
@@ -281,7 +287,7 @@ int GpuInit(void)
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(BatchVertex), (void *)offsetof(BatchVertex, x));
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(BatchVertex), (void *)offsetof(BatchVertex, r));
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(BatchVertex), (void *)offsetof(BatchVertex, r));
     glEnableVertexAttribArray(2);
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(BatchVertex), (void *)offsetof(BatchVertex, u));
 
@@ -415,6 +421,17 @@ static void SetBlend(int semi)
         glBlendColor(0, 0, 0, 0.25f);
         glBlendFunc(GL_CONSTANT_ALPHA, GL_ONE);
         break;
+    case 5: /* faded with distance (premultiplied): over what is behind */
+        glEnable(GL_BLEND);
+        glBlendEquation(GL_FUNC_ADD);
+        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+        break;
+    case 6: /* B/2 + F/2 faded: F*a/2 + B*(1 - a/2) */
+        glEnable(GL_BLEND);
+        glBlendEquation(GL_FUNC_ADD);
+        glBlendColor(0, 0, 0, 0.5f);
+        glBlendFunc(GL_CONSTANT_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        break;
     case 4: /* the platform's glyphs: their coverage, premultiplied */
         glEnable(GL_BLEND);
         glBlendEquation(GL_FUNC_ADD);
@@ -431,7 +448,12 @@ static void DrawBatch(int pass)
     const GpuDrawState *s = &batchState;
 
     glUniform4i(uniformMode, s->textured, s->raw, pass, s->depth);
-    if (pass == 1) {
+    glUniform1f(uniformAlphaScale, s->fade && s->semi == 0 && pass != 1 ? 0.5f : 1.0f);
+    if (s->fade && (pass == 1 || s->semi < 0)) {
+        SetBlend(5);
+    } else if (s->fade && s->semi == 0) {
+        SetBlend(6);
+    } else if (pass == 1) {
         SetBlend(-1);
     } else if (s->textured && s->depth == 3 && s->semi < 0) {
         SetBlend(4);
@@ -515,6 +537,7 @@ static void Add(const GpuVertex *v)
     out->r = v->r / 255.0f;
     out->g = v->g / 255.0f;
     out->b = v->b / 255.0f;
+    out->a = v->a / 255.0f;
     out->u = v->u;
     out->v = v->v;
 }
@@ -554,8 +577,10 @@ static void ClearDrawn(int x, int y, int w, int h)
     }
 }
 
-void GpuTriangles(const GpuDrawState *state, const GpuVertex *vertices, int count)
+void GpuTriangles(const GpuDrawState *given, const GpuVertex *vertices, int count)
 {
+    GpuDrawState faded = *given;
+    const GpuDrawState *state = &faded;
     int i;
     int perspective = 1;
     float minX = vertices[0].x, minY = vertices[0].y, maxX = minX, maxY = minY;
@@ -567,6 +592,9 @@ void GpuTriangles(const GpuDrawState *state, const GpuVertex *vertices, int coun
         maxY = SDL_max(maxY, vertices[i].y);
     }
     MarkDrawn(minX, minY, maxX, maxY);
+    for (i = 0; i < count; i++) {
+        faded.fade |= vertices[i].a < 255;
+    }
 
     for (i = 0; i < count; i++) {
         if (vertices[i].w <= 0.0f) {

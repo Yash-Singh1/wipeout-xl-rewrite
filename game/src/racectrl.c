@@ -319,6 +319,7 @@ void race(ConfigData *gameData, int context, int scene)
             goto checkRapier;
 quit:
             PortLinkRaceView(0); /* Port: the window is whole again (portlink.c) */
+            PortFade(0);
             QuitGame();
             return;
 checkRapier:
@@ -337,6 +338,7 @@ frame:
     PortRaceControls((shipIndex[ownShip].attr&RACING) && pauseState.selection==-1,keyDef); /* Port: the keyboard steers the ship only while racing */
     if(raceType==one) RecordKeypresses(shipIndex);
     UpdateCheatSequence(0);ClearOTagR(OT[CurrentScreen],8192);ClearOTagR(OT2[CurrentScreen],1600);
+    PortFade(1); /* Port: distant geometry fades out (portfar.c) */
     buttonCount=0;quadIndex=CurrentScreen*300;shipClassIndex=gameData->shipClass;clipLevel=gameData->trackNum;
     SetInGameCDTrack(&locals.cdTrack,&locals.cdPosition,gameData,&locals.cdMode);
     if(gameType!=2) doSerialGame(gameData,shipIndex);
@@ -412,7 +414,9 @@ frame:
         }
         if(pauseState.selection==-1 && (unsigned int)(raceCamera.section->secNo-303)>=26) skycyc=(skycyc+96)&4095;
     }
+    PortFade(0); /* Port: the sky is not faded with distance */
     AsmDrawObjectFixed(prmObjects[(short)locals.skyIndex],raceCamera.camPos,8191);
+    PortFade(1);
     raceCamera.camPos->super->relative.t[1]=savedUpperY;
     if(prevCameraUpdate!=CameraUpdate) {UnsetParticles(particleSlots);prevCameraUpdate=CameraUpdate;}
     AsmDrawParticles(particleSlots,raceCamera.camPos,pauseState.selection+1);DrawExplode();

@@ -31,7 +31,10 @@ build/wipeoutxl --disc "path/to/Wipeout XL (USA).cue" --pc-data path/to/pc-cd
 
 The whole track is drawn, as far as the camera sees, where the console let
 scenery, track and other ships pop in at a fixed distance; nothing the game
-computes changes (`WIPEOUT_FAR_VIEW=0` brings back the console's view). The
+computes changes (`WIPEOUT_FAR_VIEW=0` brings back the console's view).
+Far away, from 64000 to 96000 units, everything fades smoothly into the sky,
+as in wipeout-rewrite (`WIPEOUT_FADE=near,far` sets the distances,
+`WIPEOUT_FADE=0` draws without a fade). The
 disc is read as fast as the image allows, so loading takes a moment instead
 of the console's seconds (`WIPEOUT_CD_SPEED=1` for the console's drive).
 

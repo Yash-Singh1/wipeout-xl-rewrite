@@ -373,7 +373,7 @@ static void BindScaled(short *x, const DVECTOR *source, int scale, int xOffset, 
         uint32_t key = (u_short)x[0] | (uint32_t)(u_short)x[1] << 16;
 
         GteBindPrecise(x, GteRecordProjection(key, precise.x * scale / 256.0f + xOffset,
-                                              precise.y * scale / 256.0f + yOffset, precise.z));
+                                              precise.y * scale / 256.0f + yOffset, precise.z, precise.fade));
     }
 }
 
