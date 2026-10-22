@@ -184,12 +184,14 @@ static void Line(char *buffer, const char *a, const char *b, const char *c)
     sprintf(buffer, "%s%s%s", a, b, c);
 }
 
-/* The layout, in the menu box: the content between rows 84 and 178, the status strip from 182. */
+/* The layout, in the menu box: each player's half between rows 84 and 178 (the same rows whatever the
+   player is doing, so nothing jumps), and one line across the status strip for both. */
 #define HEADING_Y 88
-#define DEVICE_Y  100
-#define TEAM_Y    146
-#define HINT_Y    158
-#define STATUS_Y  168
+#define DEVICE_Y  98
+#define TEAM_Y    134
+#define HINT_Y    146
+#define STATUS_Y  156
+#define HINT2_Y   166
 #define STRIP_Y   186
 
 static void DrawPlayer(const LobbyPlayer *player, int index, int centre, int shipX)
@@ -198,23 +200,36 @@ static void DrawPlayer(const LobbyPlayer *player, int index, int centre, int shi
 
     CentreText2((unsigned char *)(index ? "PLAYER TWO" : "PLAYER ONE"), centre, HEADING_Y, 8, 0);
     PrintCX(DeviceName(player->kind), centre, DEVICE_Y);
-    DrawTeamShips(shipX, -150, 1150, heading, 0, shipShapeTable[highResTable[TeamShip(player->team)]]);
+    /* the team's ship, turning, small enough to stay in its half */
+    DrawTeamShips(shipX, -254, 1800, heading, 0, shipShapeTable[highResTable[TeamShip(player->team)]]);
     CentreText2((unsigned char *)TeamName(player->team), centre, TEAM_Y, 8, 1);
     if (player->ready) {
-        if (blink % 30 < 20) {
-            CentreText2((unsigned char *)"READY", centre, STATUS_Y, 8, 0);
-        }
+        CentreText2((unsigned char *)"READY", centre, STATUS_Y - 2, 8, 0);
         Line(text, BackName(player->kind), " TO CHANGE", "");
-        PrintCX((u_char *)text, centre, STRIP_Y);
+        PrintCX((u_char *)text, centre, HINT2_Y);
     } else {
         PrintCX((u_char *)"LEFT OR RIGHT FOR TEAM", centre, HINT_Y);
         Line(text, "PRESS ", AcceptName(player->kind), " WHEN READY");
         PrintCX((u_char *)text, centre, STATUS_Y);
         if (index) {
             Line(text, BackName(player->kind), " TO LEAVE", "");
-            PrintCX((u_char *)text, centre, STRIP_Y);
+            PrintCX((u_char *)text, centre, HINT2_Y);
         }
     }
+}
+
+/* The empty half: how the second player joins. */
+static void DrawJoin(int centre, int keyboardFree)
+{
+    CentreText2((unsigned char *)"PLAYER TWO", centre, HEADING_Y, 8, 0);
+    if (blink % 60 < 45) {
+        CentreText2((unsigned char *)"PRESS START", centre, 114, 8, 1);
+    }
+    PrintCX((u_char *)"ON ANOTHER CONTROLLER", centre, 128);
+    if (keyboardFree) {
+        PrintCX((u_char *)"OR ENTER ON THE KEYBOARD", centre, 138);
+    }
+    PrintCX((u_char *)"TO JOIN", centre, keyboardFree ? 148 : 138);
 }
 
 /* The line between the halves. */
@@ -307,23 +322,32 @@ int PortLobby(ConfigData *gameData, MenuSelection *selection)
     }
 
     DrawDivider();
-    DrawPlayer(&players[0], 0, 84, -410);
+    DrawPlayer(&players[0], 0, 84, -655);
     if (players[1].device != DEVICE_NONE) {
-        DrawPlayer(&players[1], 1, 236, 410);
-    } else if (blink % 40 < 28) {
-        CentreText2((unsigned char *)"PRESS START", 236, 104, 8, 1);
-        CentreText2((unsigned char *)"OR ENTER", 236, 116, 8, 1);
-        CentreText2((unsigned char *)"TO CONNECT", 236, 128, 8, 1);
-        CentreText2((unsigned char *)"PLAYER TWO", 236, 140, 8, 0);
+        DrawPlayer(&players[1], 1, 236, 655);
+    } else {
+        DrawJoin(236, players[0].device != DEVICE_KEYBOARD);
     }
 
-    if (players[0].ready && players[1].device != DEVICE_NONE && players[1].ready) {
-        if (state == PORT_LINK_SLAVE_WAITING) {
-            selection->ship = (char)TeamShip(players[0].team);
-            PortLinkGo(TeamShip(players[1].team));
-            return 1;
+    /* the strip: what the lobby waits for */
+    if (state == PORT_LINK_SLAVE_OTHER_BUILD) {
+        if (blink % 60 < 45) {
+            PrintCX((u_char *)"THE GAME WAS UPDATED: RESTART IT FOR TWO PLAYERS", 160, STRIP_Y);
         }
-        PrintCX((u_char *)"CONNECTING", 160, STRIP_Y);
+    } else if (players[1].device == DEVICE_NONE) {
+        PrintCX((u_char *)"WAITING FOR PLAYER TWO TO JOIN", 160, STRIP_Y);
+    } else if (!players[0].ready || !players[1].ready) {
+        PrintCX((u_char *)"WHEN BOTH ARE READY PLAYER ONE CHOOSES THE TRACK", 160, STRIP_Y);
+    } else if (state == PORT_LINK_SLAVE_WAITING) {
+        selection->ship = (char)TeamShip(players[0].team);
+        PortLinkGo(TeamShip(players[1].team));
+        return 1;
+    } else {
+        static const char *const dots[4] = {"", ".", "..", "..."};
+        char text[48];
+
+        Line(text, "CONNECTING", dots[blink / 15 % 4], "");
+        PrintCX((u_char *)text, 160, STRIP_Y);
     }
     return 0;
 }

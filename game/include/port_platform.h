@@ -42,6 +42,10 @@ int PortFarViewEnabled(void);
 int PortScreenMargin(void);
 void PortWideScene(void);
 void PortWideBackdrop(const void *packet);
+/* A packet the game places at a projected point of the scene but links into the ordering table's front entry,
+   where the HUD is (the other player's sign over a near ship, the missile lock's boxes): widescreen's and the
+   split window's HUD handling leave it where the scene puts it. */
+void PortSceneSprite(const void *packet);
 /* The distance fade's range in world units; whether it is on (the settings, platform/settings.c). */
 int PortFadeRange(int *nearDistance, int *farDistance);
 

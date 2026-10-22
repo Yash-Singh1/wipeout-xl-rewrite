@@ -120,6 +120,11 @@ void PortVideoShutdown(void)
     }
 }
 
+void PortWindowSize(int *width, int *height)
+{
+    SDL_GetWindowSize(window, width, height);
+}
+
 void PortDrawableSize(int *width, int *height)
 {
     SDL_GetWindowSizeInPixels(window, width, height);

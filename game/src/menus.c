@@ -4826,7 +4826,13 @@ void AddTextBits(ConfigData *gameData)
         __builtin_memcpy(menuLabel, msgTimeTrialMode, 16);
         break;
     case 19:
-        __builtin_memcpy(menuLabel, msgLink, 8);
+        /* Port: the lobby says which of the two-player races it is for (the console's link screen said LINK UP twice) */
+        if (raceType == 2) {
+            __builtin_memcpy(menuLabel, msgArcadeLink, 12);
+        } else {
+            __builtin_memcpy(menuLabel, msgOneOnOne, 11);
+        }
+        break;
 
     default:
         break;

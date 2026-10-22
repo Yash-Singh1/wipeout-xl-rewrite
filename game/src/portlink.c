@@ -19,9 +19,9 @@ extern s16    linkState;
 extern int    raceType;
 extern int    ownShip;
 
-/* The first player's way through the menus once linked: LINK_TO_CLASS, select CLASS AND TRACK on the
-   main menu; LINK_CHOOSING, in the class and track menus; LINK_TO_START, a track was chosen: START. */
-enum { LINK_OFF, LINK_TO_CLASS, LINK_CHOOSING, LINK_TO_START, LINK_STARTED };
+/* The first player's way through the menus once linked: LINK_CHOOSING, in the class and track menus (the
+   lobby leads straight there); LINK_TO_START, a track was chosen: START on the main menu. */
+enum { LINK_OFF, LINK_CHOOSING, LINK_TO_START, LINK_STARTED };
 static int stage;
 
 int PortLinkActive(void)
@@ -53,7 +53,9 @@ void PortLinkScreen(ConfigData *gameData, MenuSelection *selection)
         gameType = 0;
         linkState = 5;
         linked = 1;
-        stage = LINK_TO_CLASS;
+        /* straight on to the class and track (one change of screen, not two through the main menu) */
+        menu[19].nextMenu = 2;
+        stage = LINK_CHOOSING;
     }
 }
 
@@ -77,13 +79,6 @@ int PortLinkMenuSelect(int screenCount)
         return 0;
     }
     switch (stage) {
-    case LINK_TO_CLASS:
-        if (currMenu == 0) {
-            menu[0].selection = 2; /* CLASS AND TRACK */
-            stage = LINK_CHOOSING;
-            return 1;
-        }
-        return 0;
     case LINK_TO_START:
         if (currMenu == 0) {
             menu[0].selection = 3; /* START */

@@ -87,10 +87,22 @@ track and the race.
 
 The first player's game reads every controller: the first player's alone drives
 it, the second player's goes over the link. During a linked race each game shows
-the middle band of its picture (rows 60-179, the full width) with its HUD drawn
-at half size about the centre; the second game hands its band over through the
-shared memory and the first shows it in the lower half of the window. The second
-game plays no CD music and keeps a scratch memory card.
+the middle band of its picture (rows 60-179, the full width, with widescreen the
+wide picture's sides too) with its HUD drawn at half size, its elements at the
+band's edges; the second game draws as wide as the first says, hands its band
+over through the shared memory at the size of the window's lower half, and the
+first shows it there. The second game plays no CD music and keeps a scratch
+memory card; it hurries through its start-up (legal screens, loading) unseen, so
+it is waiting at the link screen by the time both players are ready, and macOS's
+App Nap is kept off for it.
+
+A transfer waits for the other game as long as that game is alive (a heartbeat
+each field): one game may finish loading a track well before the other, and the
+waiting first player's window keeps answering. The link breaks only when the
+other game has exited, has stopped for 8 seconds, or has not answered for 30.
+The second game is started from the program's file; if that file was replaced
+since the first game started (a rebuild), the two would not be the same game,
+so the second refuses to link and the lobby asks for a restart.
 
 ## Verification
 

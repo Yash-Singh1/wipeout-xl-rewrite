@@ -92,6 +92,8 @@ int GpuShownMargin(int x, int w);
 /* The picture at (x, y, w, h) of video memory, with `margin` columns beyond each side (GpuShownMargin), as
    outW x outH RGBA, top row first (the frame recorder's). */
 uint8_t *GpuReadPicture(int x, int y, int w, int h, int margin, int outW, int outH);
+/* The second player's game handed its picture over (the split window) instead of showing it. */
+void GpuPictureHandedOver(void);
 /* A menu's backdrop was built this frame (PortWideBackdrop in libgpu): the menu is shown wide. */
 void GpuWideMenu(void);
 /* The primitives that follow are (1) or are not (0) a menu's backdrop, which widescreen enlarges to fill the

@@ -20,6 +20,7 @@
 #include "../debug_ui.h"
 #include "psx_io.h"
 #include "../trace.h"
+#include "../link.h"
 #include "psyq.h"
 
 #define LINES_PER_FIELD 262
@@ -41,10 +42,18 @@ uint64_t PsxScanlines(void)
     return lines;
 }
 
+static int hurry; /* the second player's game starts up unseen: no waiting for the fields (link.c) */
+static uint64_t paceField; /* the field the real-time pacing counts from (after such a start-up) */
+
 static void Pace(void)
 {
     uint64_t now, due;
 
+    if (hurry) {
+        startTicks = 0; /* the real-time fields start again from where the hurry ends */
+        paceField = fields;
+        return;
+    }
     if (portConfig.fixedStep) {
         int k, n = PsxInterpolationTest();
 
@@ -56,7 +65,7 @@ static void Pace(void)
     if (!startTicks) {
         startTicks = SDL_GetTicksNS();
     }
-    due = startTicks + (uint64_t)(fields * FIELD_SECONDS * 1e9);
+    due = startTicks + (uint64_t)((fields - paceField) * FIELD_SECONDS * 1e9);
     now = SDL_GetTicksNS();
     PortSwapInterval(portSettings.frameRate == FRAME_RATE_CONSOLE || portSettings.frameRate == FRAME_RATE_VSYNC ||
                      !PsxInterpolationOn());
@@ -93,6 +102,7 @@ static void Field(void)
 {
     lines = (lines / LINES_PER_FIELD + 1) * LINES_PER_FIELD;
     fields++;
+    hurry = PortLinkField();
     PsxIoField(fields);
     if (vblankCallback) {
         vblankCallback();
@@ -182,7 +192,7 @@ void PsxPassFields(void)
         startTicks = SDL_GetTicksNS();
     }
     now = SDL_GetTicksNS();
-    while (startTicks + (uint64_t)((fields + 1) * FIELD_SECONDS * 1e9) <= now) {
+    while (startTicks + (uint64_t)((fields + 1 - paceField) * FIELD_SECONDS * 1e9) <= now) {
         Field();
     }
 }

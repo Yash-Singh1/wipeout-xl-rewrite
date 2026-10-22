@@ -113,7 +113,7 @@ function(port_platform_target name)
     if(EMSCRIPTEN)
         # WebGL 2 through Emscripten's OpenGL ES 3
     elseif(APPLE)
-        target_link_libraries(${name} PRIVATE "-framework OpenGL")
+        target_link_libraries(${name} PRIVATE "-framework OpenGL" objc) # objc: App Nap off for the link (link.c)
     elseif(WIN32)
         target_link_libraries(${name} PRIVATE opengl32)
         # one .exe, no MinGW runtime DLLs beside it, no console window; the test traces look the

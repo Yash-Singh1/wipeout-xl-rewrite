@@ -35,13 +35,18 @@
 #define SDL_DestroyProcess(process) ((void)(process))
 #endif
 
-#define LINK_MAGIC 0x574C4B31u /* WLK1 */
+#define LINK_MAGIC 0x574C4B32u /* WLK2 */
 #define PACKET_BYTES 128
-#define TRANSFER_TIMEOUT_MS 5000
+/* A transfer waits for the other game as long as that game is alive and going on (its heartbeat): a
+   track takes a while to load, and the two need not finish together. The link is broken when the other
+   game has exited, has stopped (no heartbeat for LINK_STALLED_MS) or has not answered for LINK_UNANSWERED_MS. */
+#define LINK_STALLED_MS 8000
+#define LINK_UNANSWERED_MS 30000
 
 typedef struct LinkShared {
     uint32_t magic;
-    atomic_uint heartbeat[2];       /* bumped by each side every field */
+    int64_t build[2];               /* the master's program file: its time and size (the slave must be the same) */
+    atomic_uint heartbeat[2];       /* bumped by each side every field, and while it waits for the other */
     atomic_uint sequence[2];        /* transfers each side has made */
     uint8_t packet[2][2][PACKET_BYTES];
     atomic_int slaveState;          /* LINK_SLAVE_* */
@@ -49,6 +54,7 @@ typedef struct LinkShared {
     atomic_int secondShip;          /* the second player's ship */
     atomic_int quit;                /* master: the slave is to exit */
     atomic_int split;               /* master: both are racing, the window is split */
+    atomic_int bandMargin, bandWidth, bandHeight; /* master: the lower half (widescreen margin, pixels) */
     LinkInput input;                /* the second player's controller, written by the master */
     atomic_uint inputSequence;
     atomic_uint frameSequence;      /* the slave's pictures (three buffers) */
@@ -60,6 +66,7 @@ static LinkShared *shared;
 static int role = LINK_NONE;
 static char name[64];
 static SDL_Process *slave;
+static int64_t build[2]; /* this program's file as it was when it started (PortLinkNoteProgram) */
 #ifdef _WIN32
 static HANDLE mapping;
 #endif
@@ -127,6 +134,45 @@ int PortLinkRole(void)
     return role;
 }
 
+/* At start-up: the program's file as it is now. The second player's game is started from the same file,
+   which may have been replaced (rebuilt) since; a different game on the other end could not keep in
+   step, so it refuses to link (LINK_SLAVE_OTHER_BUILD). */
+void PortLinkNoteProgram(const char *path)
+{
+    SDL_PathInfo info;
+
+    if (path && SDL_GetPathInfo(path, &info)) {
+        build[0] = info.modify_time;
+        build[1] = (int64_t)info.size;
+    }
+}
+
+#ifdef __APPLE__
+#include <objc/message.h>
+#include <objc/runtime.h>
+/* macOS slows down programs it considers in the background (App Nap: their timers late by up to seconds),
+   as the second player's game, which has no window, always is; the link must keep both games in step. */
+static void KeepAwake(void)
+{
+    static void *activity;
+    void *info, *reason;
+
+    if (activity) {
+        return;
+    }
+    info = ((void *(*)(void *, SEL))objc_msgSend)((void *)objc_getClass("NSProcessInfo"), sel_registerName("processInfo"));
+    reason = ((void *(*)(void *, SEL, const char *))objc_msgSend)((void *)objc_getClass("NSString"),
+                                                                  sel_registerName("stringWithUTF8String:"),
+                                                                  "two players: the link keeps both games in step");
+    /* NSActivityUserInitiated | NSActivityLatencyCritical */
+    activity = ((void *(*)(void *, SEL, unsigned long long, void *))objc_msgSend)(
+        info, sel_registerName("beginActivityWithOptions:reason:"), 0x00FFFFFFULL | 0xFF00000000ULL, reason);
+    ((void *(*)(void *, SEL))objc_msgSend)(activity, sel_registerName("retain"));
+}
+#else
+static void KeepAwake(void) {}
+#endif
+
 int PortLinkSlaveInit(const char *sharedName)
 {
     SDL_strlcpy(name, sharedName, sizeof(name));
@@ -136,7 +182,14 @@ int PortLinkSlaveInit(const char *sharedName)
         return 0;
     }
     role = LINK_SLAVE;
+    if (shared->build[0] != build[0] || shared->build[1] != build[1]) {
+        /* not the program the first player's game runs: it was rebuilt or replaced since that started */
+        fprintf(stderr, "link: this is not the program the first player's game runs (it was replaced since)\n");
+        atomic_store(&shared->slaveState, LINK_SLAVE_OTHER_BUILD);
+        return 0;
+    }
     atomic_store(&shared->slaveState, LINK_SLAVE_BOOTING);
+    KeepAwake();
     return 1;
 }
 
@@ -159,9 +212,15 @@ int PortLinkStartSlave(int windowWidth, int windowHeight)
         shared = MapShared(1);
         if (!shared) {
             role = LINK_NONE;
-            PortLog("link: no shared memory for the second player\n");
+            fprintf(stderr, "link: no shared memory for the second player\n");
             return 0;
         }
+        shared->build[0] = build[0];
+        shared->build[1] = build[1];
+        KeepAwake();
+    }
+    if (atomic_load(&shared->slaveState) == LINK_SLAVE_OTHER_BUILD) {
+        return 0; /* the program was replaced: no use starting it again until this one restarts */
     }
     atomic_store(&shared->quit, 0);
     atomic_store(&shared->go, 0);
@@ -185,7 +244,7 @@ int PortLinkStartSlave(int windowWidth, int windowHeight)
     args[n] = NULL;
     slave = SDL_CreateProcess(args, false);
     if (!slave) {
-        PortLog("link: cannot start the second player's game: %s\n", SDL_GetError());
+        fprintf(stderr, "link: cannot start the second player's game: %s\n", SDL_GetError());
         return 0;
     }
     return 1;
@@ -210,7 +269,9 @@ void PortLinkStopSlave(void)
     }
     SDL_DestroyProcess(slave);
     slave = NULL;
-    atomic_store(&shared->slaveState, LINK_SLAVE_NONE);
+    if (atomic_load(&shared->slaveState) != LINK_SLAVE_OTHER_BUILD) {
+        atomic_store(&shared->slaveState, LINK_SLAVE_NONE);
+    }
     atomic_store(&shared->split, 0);
 }
 
@@ -228,10 +289,12 @@ int PortLinkSlaveState(void)
         return LINK_SLAVE_NONE;
     }
     if (role == LINK_MASTER && slave && SDL_WaitProcess(slave, false, NULL)) {
-        /* it has exited */
+        /* it has exited (having said why, when it was another build) */
         SDL_DestroyProcess(slave);
         slave = NULL;
-        atomic_store(&shared->slaveState, LINK_SLAVE_NONE);
+        if (atomic_load(&shared->slaveState) != LINK_SLAVE_OTHER_BUILD) {
+            atomic_store(&shared->slaveState, LINK_SLAVE_NONE);
+        }
     }
     return atomic_load(&shared->slaveState);
 }
@@ -279,13 +342,26 @@ int PortLinkQuitRequested(void)
     return shared && role == LINK_SLAVE && atomic_load(&shared->quit);
 }
 
+/* Each field (libetc.c): this game is alive. The second player's game hurries through its start-up (the
+   legal screens, the loading) to the link screen, where it is wanted; it is not seen meanwhile. */
+int PortLinkField(void)
+{
+    if (!shared) {
+        return 0;
+    }
+    atomic_fetch_add(&shared->heartbeat[role == LINK_MASTER ? 0 : 1], 1);
+    return role == LINK_SLAVE && atomic_load(&shared->slaveState) == LINK_SLAVE_BOOTING;
+}
+
 /* One packet each way, in step: each side's n-th transfer meets the other's n-th. Two slots per
-   side, as a side can be one transfer ahead of the other's reading. */
+   side, as a side can be one transfer ahead of the other's reading. While it waits, the first player's
+   game keeps its window answering and fields pass in the second player's (as the console's vertical
+   blanks went on during a transfer). */
 int PortLinkTransfer(const uint8_t *send, uint8_t *recv, int count)
 {
     int me = role == LINK_MASTER ? 0 : 1, other = 1 - me;
-    unsigned n;
-    uint64_t start;
+    unsigned n, beat;
+    uint64_t start, beatAt, pumped;
 
     if (!shared || count > PACKET_BYTES) {
         return 1;
@@ -293,19 +369,46 @@ int PortLinkTransfer(const uint8_t *send, uint8_t *recv, int count)
     n = atomic_load(&shared->sequence[me]) + 1;
     memcpy(shared->packet[me][n & 1], send, (size_t)count);
     atomic_store(&shared->sequence[me], n);
-    start = SDL_GetTicks();
+    start = beatAt = pumped = SDL_GetTicks();
+    beat = atomic_load(&shared->heartbeat[other]);
     if (role == LINK_SLAVE) {
         PsxPassFields();
     }
     while (atomic_load(&shared->sequence[other]) < n) {
+        uint64_t now = SDL_GetTicks();
+        const char *broken = NULL;
+
         if (role == LINK_SLAVE) {
             PsxPassFields();
+        } else if (now - pumped >= 50) {
+            pumped = now;
+            atomic_fetch_add(&shared->heartbeat[me], 1);
+            if (!PortPumpEvents()) {
+                exit(0); /* the window was closed */
+            }
         }
-        if (atomic_load(&shared->quit) || SDL_GetTicks() - start > TRANSFER_TIMEOUT_MS ||
-            (role == LINK_MASTER && PortLinkSlaveState() == LINK_SLAVE_NONE)) {
-            return 1; /* the other side is gone: the game reports a broken link */
+        if (atomic_load(&shared->heartbeat[other]) != beat) {
+            beat = atomic_load(&shared->heartbeat[other]);
+            beatAt = now;
         }
-        SDL_DelayNS(50000);
+        if (atomic_load(&shared->quit) || PortLinkQuitRequested()) {
+            broken = "the first player's game closed the link";
+        } else if (role == LINK_MASTER && PortLinkSlaveState() == LINK_SLAVE_NONE) {
+            broken = "the second player's game has exited";
+        } else if (now - beatAt > LINK_STALLED_MS) {
+            broken = "the other game has stopped";
+        } else if (now - start > LINK_UNANSWERED_MS) {
+            broken = "the other game no longer answers";
+        }
+        if (broken) {
+            fprintf(stderr, "link: broken at transfer %u: %s\n", n, broken);
+            return 1; /* the game reports a broken link */
+        }
+        SDL_DelayNS(100000);
+    }
+    if (SDL_GetTicks() - start > 100) {
+        PortLog("link: %s waited %llu ms for transfer %u\n", role == LINK_MASTER ? "first" : "second",
+                (unsigned long long)(SDL_GetTicks() - start), n);
     }
     memcpy(recv, shared->packet[other][n & 1], (size_t)count);
     return 0;
@@ -344,6 +447,26 @@ int PortLinkSplit(void)
     return shared && atomic_load(&shared->split);
 }
 
+void PortLinkSetBand(int margin, int width, int height)
+{
+    if (shared) {
+        atomic_store(&shared->bandMargin, margin);
+        atomic_store(&shared->bandWidth, width);
+        atomic_store(&shared->bandHeight, height);
+    }
+}
+
+int PortLinkBand(int *margin, int *width, int *height)
+{
+    if (!shared || atomic_load(&shared->bandWidth) <= 0 || atomic_load(&shared->bandHeight) <= 0) {
+        return 0;
+    }
+    *margin = atomic_load(&shared->bandMargin);
+    *width = atomic_load(&shared->bandWidth);
+    *height = atomic_load(&shared->bandHeight);
+    return 1;
+}
+
 void PortLinkPutFrame(const uint8_t *pixels, int width, int height)
 {
     unsigned next;
@@ -380,7 +503,7 @@ void PortLinkRestart(void)
     int width, height;
 
     PortLinkStopSlave();
-    PortDrawableSize(&width, &height);
+    PortWindowSize(&width, &height); /* in the window system's points, as --window takes it */
     PortLinkStartSlave(width, height);
 }
 

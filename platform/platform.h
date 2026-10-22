@@ -34,7 +34,8 @@ void PortVideoPresent(void);
 void PortVideoBetweenFrames(void); /* before a picture between the game's frames (the web paces them) */
 void PortSwapInterval(int vsync); /* whether pictures wait for the display's refresh */
 void PortDumpVram(void);
-void PortDrawableSize(int *width, int *height);
+void PortDrawableSize(int *width, int *height); /* in pixels */
+void PortWindowSize(int *width, int *height);   /* in the window system's points (--window) */
 /* Whether the window has the input focus (always, for the hidden test window). */
 int PortWindowFocused(void);
 /* Pumps window and input events; returns 0 when the user closed the window. */

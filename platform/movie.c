@@ -463,6 +463,7 @@ void PsxPlayMovie(const char *program)
     }
 
     previous = PsxPadButtons(0);
+    PortLog("movie %s at field %d\n", movies[movie].file, (int)PsxFieldCount());
     start = SDL_GetTicksNS();
     while (shown < frameCount) {
         uint16_t buttons, pressed;

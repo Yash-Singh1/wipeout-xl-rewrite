@@ -533,9 +533,10 @@ static int HoldReleased(void)
 
 /* Two players on one machine (link.c): during a linked race each game shows the band of console rows
    SPLIT_TOP .. SPLIT_TOP + SPLIT_ROWS of its picture (the full width, half the height), the first in the
-   upper half of the window and the second, which hands its band over, in the lower half. Each game's
-   HUD (the last entry of its ordering table and the second table) is drawn at half size about the
-   centre, so that it fits in the band. */
+   upper half of the window and the second, which hands its band over, in the lower half. With widescreen
+   the band has the wide picture's sides, and fills the half of a wide window. Each game's HUD (the last
+   entry of its ordering table and the second table) is drawn at half size, its elements at the band's
+   edges and corners (DrawAnchored), so that it fits in the band. */
 #define SPLIT_TOP 60
 #define SPLIT_ROWS 120
 static int drawnSinceRead;
@@ -544,11 +545,29 @@ static int drawnSinceRead;
    each switch of the display (its Swap waits for no fields: the link paces it). */
 static void HandOverSplit(void)
 {
-    if (drawnSinceRead && state.displayEnabled) {
-        int w, h;
-        uint8_t *pixels = GpuReadArea(state.displayX, state.displayY + SPLIT_TOP, 320, SPLIT_ROWS, &w, &h);
+    int margin, halfW, halfH;
 
+    if (drawnSinceRead && state.displayEnabled && PortLinkBand(&margin, &halfW, &halfH)) {
+        /* at the size the first player's game shows it: the half's height, the band's shape */
+        int across = 320 + 2 * GpuShownMargin(state.displayX, 320);
+        int h = halfH, w = (int)((int64_t)h * across / SPLIT_ROWS);
+        uint8_t *pixels;
+
+        if (w > halfW) {
+            w = halfW;
+            h = (int)((int64_t)w * SPLIT_ROWS / across);
+        }
+        while ((size_t)w * h * 4 > LINK_FRAME_BYTES) {
+            w = w * 3 / 4;
+            h = h * 3 / 4;
+        }
+        if (w <= 0 || h <= 0) {
+            return;
+        }
+        pixels = GpuReadPicture(state.displayX, state.displayY + SPLIT_TOP, 320, SPLIT_ROWS,
+                                GpuShownMargin(state.displayX, 320), w, h);
         PortLinkPutFrame(pixels, w, h);
+        GpuPictureHandedOver();
         drawnSinceRead = 0;
     }
 }
@@ -1266,12 +1285,44 @@ static int PacketBounds(const uint32_t *w, int words, int box[4])
    HUD's packets (from hudEntry on, or all of hudTable) are taken apart into elements, runs of packets that
    touch (the letters of a text, the parts of the speedometer), and an element wholly in the left or the right
    part of the console's picture goes to that edge; what reaches the middle (centred messages, the weapon icon,
-   the pause menu) stays where the game put it. */
+   the pause menu) stays where the game put it. A split window's band (half): the HUD at half size about the
+   picture's centre, and the elements at the sides as far again, to the band's edges. */
 #define ANCHOR_GAP 10    /* packets this close side by side are one element */
 #define ANCHOR_LEFT 140  /* an element ending left of this goes to the left edge */
 #define ANCHOR_RIGHT 180 /* ... beginning right of this to the right edge */
 
-static void DrawAnchored(u_long *p, int margin)
+/* The packets PortSceneSprite named (a few static primitives of the game's, so the set stays small). */
+#define SCENE_SPRITES 96
+static const void *sceneSprites[SCENE_SPRITES];
+static int sceneSpriteCount;
+
+void PortSceneSprite(const void *packet)
+{
+    int i;
+
+    for (i = 0; i < sceneSpriteCount; i++) {
+        if (sceneSprites[i] == packet) {
+            return;
+        }
+    }
+    if (sceneSpriteCount < SCENE_SPRITES) {
+        sceneSprites[sceneSpriteCount++] = packet;
+    }
+}
+
+static int SceneSprite(const u_long *node)
+{
+    int i;
+
+    for (i = 0; i < sceneSpriteCount; i++) {
+        if (sceneSprites[i] == (const void *)node) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void DrawAnchored(u_long *p, int margin, int half)
 {
     static u_long **hud;
     static int capacity;
@@ -1285,7 +1336,7 @@ static void DrawAnchored(u_long *p, int margin)
         if (!(*node >> 24)) {
             continue;
         }
-        if (!inHud) {
+        if (!inHud || SceneSprite(node)) {
             Submit((const uint32_t *)(node + 1), (int)(*node >> 24));
             continue;
         }
@@ -1318,10 +1369,19 @@ static void DrawAnchored(u_long *p, int margin)
             }
         }
         shift = !have ? 0 : group[2] <= ANCHOR_LEFT ? -margin : group[0] >= ANCHOR_RIGHT ? margin : 0;
+        if (half && shift) {
+            /* drawn at half size (HudPoint halves the shift too): the half-size element, which would be a quarter of
+               the way in, goes out to the band's edge */
+            shift = 2 * (shift + (shift < 0 ? -80 : 80));
+        } else if (half && have && (group[2] <= ANCHOR_LEFT || group[0] >= ANCHOR_RIGHT)) {
+            shift = group[2] <= ANCHOR_LEFT ? -160 : 160; /* no sides (4:3): the band's edges */
+        }
         hudShift = (float)shift;
+        hudActive = half;
         for (i = first; i < last; i++) {
             Submit((const uint32_t *)(hud[i] + 1), (int)(*hud[i] >> 24));
         }
+        hudActive = 0;
         hudShift = 0.0f;
         first = last > first ? last : first + 1;
     }
@@ -1394,7 +1454,7 @@ static void DrawTableAgain(u_long *p)
     u_long *node;
 
     if (PortScreenMargin() && GpuRaceWide()) {
-        DrawAnchored(p, PortScreenMargin());
+        DrawAnchored(p, PortScreenMargin(), 0);
         return;
     }
     for (node = PacketFrom(p); node; node = PacketFrom(NodeAfter(node))) {
@@ -1475,21 +1535,12 @@ void DrawOTag(u_long *p)
                   state.areaBottom - state.areaTop + 1);
     drawnSinceRead = 1;
     if (PortLinkSplit() && !tracing) {
-        hudActive = p == hudTable;
-        for (node = p; node; node = NodeAfter(node)) {
-            if (node == hudEntry) {
-                hudActive = 1;
-            }
-            if (*node >> 24) {
-                Submit((const uint32_t *)(node + 1), (int)(*node >> 24));
-            }
-        }
-        hudActive = 0;
+        DrawAnchored(p, PortScreenMargin(), 1);
         GteFrameDrawn();
         return;
     }
     if (PortScreenMargin() && GpuRaceWide() && !tracing) {
-        DrawAnchored(p, PortScreenMargin());
+        DrawAnchored(p, PortScreenMargin(), 0);
         GteFrameDrawn();
         return;
     }

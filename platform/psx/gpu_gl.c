@@ -525,8 +525,12 @@ static int WantedMargin(void)
 {
     int width, height, margin;
 
-    if (!portSettings.widescreen || (picturesWithoutScene > 1 && picturesWithoutMenu > 1) || PortLinkSplit()) {
-        return 0; /* (a split window shows each player's picture as the console's) */
+    if (PortLinkRole() == LINK_SLAVE) {
+        /* the second player's game draws its half of the split window as wide as the first player's game */
+        return PortLinkSplit() && PortLinkBand(&margin, &width, &height) ? SDL_clamp(margin, 0, MAX_WIDE_MARGIN) : 0;
+    }
+    if (!portSettings.widescreen || (picturesWithoutScene > 1 && picturesWithoutMenu > 1)) {
+        return 0;
     }
     PortDrawableSize(&width, &height);
     if (height <= 0) {
@@ -1059,6 +1063,7 @@ void GpuMoveFramebuffer(int x, int y, int w, int h, int toX, int toY)
 /* Video memory row 0 is drawn at the bottom of the framebuffer (OpenGL
    counts rows upward), so the displayed area is flipped when shown. */
 static void Present(int x, int y, int w, int h, int interpolated);
+static void AfterPicture(void);
 
 void GpuPresent(int x, int y, int w, int h)
 {
@@ -1107,8 +1112,19 @@ static void Present(int x, int y, int w, int h, int interpolated)
     }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     PortVideoPresent();
-    /* after a new picture: the window's shape, the setting or the end of a race may ask for another margin (a
-       picture shown again, as each field shows one, or while the frame recorder holds the game, changes nothing) */
+    AfterPicture();
+}
+
+/* The second player's game handed its picture over instead of showing it (libgpu.c): as after a picture. */
+void GpuPictureHandedOver(void)
+{
+    AfterPicture();
+}
+
+/* After a new picture: the window's shape, the setting or the end of a race may ask for another margin (a
+   picture shown again, as each field shows one, or while the frame recorder holds the game, changes nothing). */
+static void AfterPicture(void)
+{
     if (drawnSincePresent) {
         picturesWithoutScene = sceneWide ? 0 : SDL_min(picturesWithoutScene + 1, 1000);
         picturesWithoutMenu = menuWide ? 0 : SDL_min(picturesWithoutMenu + 1, 1000);
@@ -1205,19 +1221,27 @@ void GpuPresentSplit(int x, int y, int w, int h, const uint8_t *lower, int lower
     static int textureW, textureH;
     int width, height, ox, oy, ow, oh;
 
+    /* widescreen: each half as wide as the window, which is as wide as the picture with its sides (half the
+       height across the same width is the band's shape) */
+    int wide = GpuShownMargin(x, w) != 0, across = wide ? WideWidth() : w;
+
     Flush();
-    SyncWide();
+    if (!wide) {
+        SyncWide();
+    }
     PortDrawableSize(&width, &height);
+    /* the other game draws the lower half as wide, and hands it over at its size in pixels */
+    PortLinkSetBand(GpuShownMargin(x, w), width, height / 2);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
     glDisable(GL_SCISSOR_TEST);
     glViewport(0, 0, width, height);
     glClearColor(0, 0, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT);
     /* the upper half: this game's band (OpenGL's rows go up: the upper half is from height / 2) */
-    Fit(0, height - height / 2, width, height / 2, w, h, &ox, &oy, &ow, &oh);
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
-    glBlitFramebuffer(x * scale, y * scale, (x + w) * scale, (y + h) * scale, ox, oy + oh, ox + ow, oy,
-                      GL_COLOR_BUFFER_BIT, GL_LINEAR);
+    Fit(0, height - height / 2, width, height / 2, across, h, &ox, &oy, &ow, &oh);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, wide ? wideFramebuffer : framebuffer);
+    glBlitFramebuffer(wide ? 0 : x * scale, y * scale, (wide ? across : x + w) * scale, (y + h) * scale, ox, oy + oh,
+                      ox + ow, oy, GL_COLOR_BUFFER_BIT, GL_LINEAR);
     /* the lower half: the other game's band, as it read it (rows from the bottom) */
     if (lower && lowerW > 0 && lowerH > 0) {
         if (!texture) {
@@ -1236,13 +1260,14 @@ void GpuPresentSplit(int x, int y, int w, int h, const uint8_t *lower, int lower
             glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, lowerW, lowerH, GL_RGBA, GL_UNSIGNED_BYTE, lower);
         }
         glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
-        Fit(0, 0, width, height / 2, w, h, &ox, &oy, &ow, &oh);
+        Fit(0, 0, width, height / 2, lowerW, lowerH, &ox, &oy, &ow, &oh);
         glBindFramebuffer(GL_READ_FRAMEBUFFER, readFramebuffer);
         glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
         glBlitFramebuffer(0, 0, lowerW, lowerH, ox, oy + oh, ox + ow, oy, GL_COLOR_BUFFER_BIT, GL_LINEAR);
     }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     PortVideoPresent();
+    AfterPicture();
 }
 
 void GpuShowImage(const uint8_t *rgb, int width, int height)

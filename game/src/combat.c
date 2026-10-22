@@ -138,6 +138,7 @@ void DrawLinkSign(ShipData *ships)
                 poly->tpage = page;
                 linkSign[CurrentScreen].clut = linkSignTexture->cba;
                 AddPrim(OT[CurrentScreen] + (depth >> 1), poly);
+                PortSceneSprite(poly); /* Port: over the other ship, also when it is near (the HUD's entry) */
             }
         }
     }

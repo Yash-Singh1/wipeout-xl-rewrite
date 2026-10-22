@@ -134,12 +134,18 @@ pads. The in-game controller screen rebinds the race controls for both.
 ONE ON ONE and ARCADE LINK (RACE TYPE on the main menu) were the console's
 link-cable modes; here they are two players on one machine, the window split
 top and bottom. The lobby shows the first player's controller and ship on the
-left; the second player presses START (or ENTER on the keyboard) on another
-controller to join on the right. Each chooses a team with left and right and
-confirms with their accept button; when both are ready, the first player
-chooses the class and track and the race starts. The second player runs a
-second copy of the game behind the scenes, linked to the first as the two
-consoles were by the cable.
+left; the second player presses START on another controller (or ENTER on the
+keyboard, when the first player uses a gamepad) to join on the right. Each
+chooses a team with left and right and confirms with their accept button; when
+both are ready, the first player chooses the class and track and the race
+starts. With widescreen on, each half fills the window's width (the half-size
+HUD at its edges). After the race the lobby comes back with the same players,
+for another.
+
+The second player runs a second copy of the game behind the scenes, linked to
+the first as the two consoles were by the cable. It is started from the same
+program file, so after a rebuild the game must be restarted before two players
+can link again (the lobby says so).
 
 ## Saves
 

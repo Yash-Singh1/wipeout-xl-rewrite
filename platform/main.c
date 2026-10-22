@@ -114,6 +114,7 @@ int main(int argc, char **argv)
     value = SDL_getenv("WIPEOUT_CAPTURE_TO");
     portConfig.captureTo = value ? SDL_atoi(value) : 0;
     portConfig.executable = argv[0];
+    PortLinkNoteProgram(argv[0]);
     portConfig.savePath = SDL_getenv("WIPEOUT_SAVE_DIR");
     for (i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--disc") && i + 1 < argc) {

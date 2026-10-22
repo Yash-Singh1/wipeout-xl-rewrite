@@ -14,12 +14,12 @@ enum {
     LINK_SLAVE_NONE,     /* not running */
     LINK_SLAVE_BOOTING,  /* started, not yet at the link screen */
     LINK_SLAVE_WAITING,  /* at the link screen, waiting for the master's go */
-    LINK_SLAVE_LINKED    /* linked: in the menus or racing */
+    LINK_SLAVE_LINKED,   /* linked: in the menus or racing */
+    LINK_SLAVE_OTHER_BUILD /* refused: not the program the master runs (it was replaced since the master started) */
 };
 
-/* The largest picture the slave hands over: 320x120 console pixels (the band of a split window) at
-   eight times the console's resolution. */
-#define LINK_FRAME_BYTES (2560u * 960u * 4u)
+/* The largest picture the slave hands over: the lower half of a window up to 3840 pixels across. */
+#define LINK_FRAME_BYTES (3840u * 1080u * 4u)
 
 /* The second player's controller, as the master reads it. */
 typedef struct LinkInput {
@@ -43,6 +43,8 @@ int PortInputLastDevice(void);
 void PortInputAssign(int first, int second);
 
 int PortLinkRole(void);
+void PortLinkNoteProgram(const char *path); /* at start-up, before the program's file can change */
+int PortLinkField(void);                    /* each field: alive; 1 while the second player's game starts up */
 
 /* Master */
 int PortLinkStartSlave(int windowWidth, int windowHeight);
@@ -52,6 +54,8 @@ void PortLinkGo(int secondShip);
 void PortLinkSetInput(const LinkInput *input);
 void PortLinkSetSplit(int split);
 const uint8_t *PortLinkGetFrame(int *width, int *height, unsigned *sequence);
+/* The split window's lower half, for the slave's band: the widescreen margin and its size in pixels. */
+void PortLinkSetBand(int margin, int width, int height);
 
 /* Slave */
 int PortLinkSlaveInit(const char *sharedName);
@@ -61,6 +65,7 @@ void PortLinkClearGo(void);
 int PortLinkQuitRequested(void);
 int PortLinkGetInput(LinkInput *input);
 void PortLinkPutFrame(const uint8_t *pixels, int width, int height);
+int PortLinkBand(int *margin, int *width, int *height); /* 0 before the master has said */
 
 /* Both */
 int PortLinkSplit(void);

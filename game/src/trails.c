@@ -666,6 +666,17 @@ void DrawTrail(TrackCamera *camera, Trail *trail, int ship) {
 }
 
 
+/* Port: the lock-on boxes are placed over the target ship in the HUD's entry of the table (PortSceneSprite). */
+static void PortTargetSprites(LINE_F2 (*prims)[2])
+{
+    int k;
+
+    for (k = 0; k < 4; k++) {
+        PortSceneSprite(&prims[k][CurrentScreen]);
+    }
+}
+
+
 void DrawShipTrails(TrackCamera *camera) {
     int i;
     u_char *flag;
@@ -700,6 +711,7 @@ void DrawShipTrails(TrackCamera *camera) {
                         AddPrim(OT[CurrentScreen], &targetPrims[i][1][CurrentScreen]);
                         AddPrim(OT[CurrentScreen], &targetPrims[i][2][CurrentScreen]);
                         AddPrim(OT[CurrentScreen], &targetPrims[i][3][CurrentScreen]);
+                        PortTargetSprites(targetPrims[i]); /* Port: over the target ship, not the HUD */
                     }
                     i++;
                 } while (i < 8);
@@ -708,6 +720,7 @@ void DrawShipTrails(TrackCamera *camera) {
                 AddPrim(OT[CurrentScreen], &targetPrims[targetBank][1][CurrentScreen]);
                 AddPrim(OT[CurrentScreen], &targetPrims[targetBank][2][CurrentScreen]);
                 AddPrim(OT[CurrentScreen], &targetPrims[targetBank][3][CurrentScreen]);
+                PortTargetSprites(targetPrims[targetBank]); /* Port: over the target ship, not the HUD */
             }
         } else {
             i = 7;
