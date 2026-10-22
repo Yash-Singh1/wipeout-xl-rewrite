@@ -3,6 +3,9 @@
 #ifndef PORT_ORIGINAL_H
 #define PORT_ORIGINAL_H
 
+#include <stddef.h>
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -20,6 +23,11 @@ int PortWipeout64Open(const char *path, char *message, int messageSize);
 void PortWipeout64Close(void);
 const char *PortWipeout64Source(void); /* "" when none */
 int PortWipeout64TrackCount(void);
+
+/* The games' compression of texture sequences (.cmp): unpacked into out (size bytes at most; returns how many),
+   and the same bytes as a stream without back references (the caller frees). */
+size_t PortLzssDecompress(const uint8_t *in, size_t length, uint8_t *out, size_t size);
+uint8_t *PortLzssStore(const uint8_t *in, size_t length, size_t *size);
 
 #ifdef __cplusplus
 }

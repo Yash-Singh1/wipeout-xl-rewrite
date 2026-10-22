@@ -23,6 +23,7 @@
 #include <string.h>
 
 #include "platform.h"
+#include "region.h"
 #include "settings.h"
 #include "psx/disc.h"
 #include "psx/gpu.h"
@@ -38,12 +39,15 @@
 #define XA_GROUPS 18
 #define XA_GROUP_BYTES 128
 
-/* The console's movie programs: the file each plays and the frame count it was built with. */
+/* The console's movie programs: the file each plays and the frame count it was built with (the US disc's at 30
+   frames a second; WipEout 2097's, Europe's, at 25: the same movies, the European program PALANIM.EXE for the
+   intro, region.c). */
 static const struct {
     const char *program, *file;
-    int frames;
-} movies[] = {{"ntscanim.exe", "\\MAKE.AV", 2044}, {"xtro1.exe", "\\XTRO1.AV", 630}, {"xtro2.exe", "\\XTRO2.AV", 600},
-              {"xtro3.exe", "\\XTRO3.AV", 780},    {"xtro4.exe", "\\XTRO4.AV", 960}};
+    int frames, europeFrames;
+} movies[] = {{"ntscanim.exe", "\\MAKE.AV", 2044, 1709}, {"xtro1.exe", "\\XTRO1.AV", 630, 540},
+              {"xtro2.exe", "\\XTRO2.AV", 600, 500},      {"xtro3.exe", "\\XTRO3.AV", 780, 650},
+              {"xtro4.exe", "\\XTRO4.AV", 960, 800}};
 
 /* ---- the pictures ---- */
 
@@ -497,7 +501,7 @@ void PsxPlayMovie(const char *program)
         }
         ShowFrame(disc, &frames[next], data, rgb);
         shown = next + 1;
-        if (frames[next].number >= movies[movie].frames - 2) {
+        if (frames[next].number >= (PortRegionEurope() ? movies[movie].europeFrames : movies[movie].frames) - 2) {
             break; /* as the console's player, two frames before its count */
         }
     }

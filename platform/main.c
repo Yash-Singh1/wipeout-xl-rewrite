@@ -9,6 +9,7 @@
 #include "platform.h"
 #include "psx/gte.h"
 #include "psx/psx_io.h"
+#include "archive.h"
 #include "link.h"
 #include "music.h"
 #include "settings.h"
@@ -53,7 +54,7 @@ static void SDLCALL DiscChosen(void *user, const char *const *files, int filter)
 
 static const char *ChooseDisc(void)
 {
-    static const SDL_DialogFileFilter cue[] = {{"Wipeout XL disc image (.cue)", "cue"}};
+    static const SDL_DialogFileFilter cue[] = {{"Wipeout XL or WipEout 2097 disc image (.cue, or a .7z of one)", "cue;7z"}};
     SDL_PathInfo info;
 
     if (portSettings.discPath[0] && SDL_GetPathInfo(portSettings.discPath, &info)) {
@@ -179,6 +180,20 @@ int main(int argc, char **argv)
     }
     if (!PortVideoInit()) {
         return 1;
+    }
+    if (PortIsArchive(portConfig.discPath)) {
+        /* a .7z of the disc image: unpacked the first time (archive.c), then its .cue */
+        static char cue[1200];
+        char message[512];
+
+        if (!PortArchiveDisc(portConfig.discPath, cue, sizeof(cue), message, sizeof(message))) {
+            SDL_Log("%s", message);
+            if (!portConfig.hidden) {
+                SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Wipeout XL", message, NULL);
+            }
+            return 1;
+        }
+        portConfig.discPath = cue;
     }
     {
         PsxIoConfig io;

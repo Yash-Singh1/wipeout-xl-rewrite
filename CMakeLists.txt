@@ -91,6 +91,10 @@ set(DEBUG_UI_SOURCES ${CMAKE_SOURCE_DIR}/platform/debug_ui.cpp
     ${IMGUI_DIR}/imgui.cpp ${IMGUI_DIR}/imgui_draw.cpp ${IMGUI_DIR}/imgui_tables.cpp ${IMGUI_DIR}/imgui_widgets.cpp
     ${IMGUI_DIR}/backends/imgui_impl_sdl3.cpp ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp)
 set(PLATFORM_SOURCES ${PLATFORM_TOP_SOURCES} ${PLATFORM_PSX_SOURCES} ${DEBUG_UI_SOURCES})
+# Disc images in .7z archives (platform/archive.c): the LZMA SDK's 7z decoder (platform/third_party/lzma, public
+# domain).
+file(GLOB LZMA_SOURCES ${CMAKE_SOURCE_DIR}/platform/third_party/lzma/*.c)
+add_library(lzma7z STATIC ${LZMA_SOURCES})
 list(SORT PLATFORM_SOURCES)
 if(NOT EMSCRIPTEN)
     find_package(ZLIB QUIET)
@@ -101,7 +105,7 @@ function(port_platform_target name)
         ${CMAKE_SOURCE_DIR}/game/include ${IMGUI_DIR})
     set_source_files_properties(${DEBUG_UI_SOURCES} PROPERTIES COMPILE_OPTIONS "-std=c++17")
     target_compile_options(${name} PRIVATE -fsigned-char -fno-strict-aliasing)
-    target_link_libraries(${name} PRIVATE game psxio m)
+    target_link_libraries(${name} PRIVATE game psxio lzma7z m)
     if(GAME_DATA_SOURCES)
         target_link_libraries(${name} PRIVATE gamedata)
     endif()

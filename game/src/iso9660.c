@@ -304,6 +304,9 @@ int iso_get_file_info(char *pathname, IsoFileInfo *fi)
     if (PortOriginalFileInfo(pathname, &fi->loc, &fi->size)) {
         return 1; /* Port: a file made from the original Wipeout's, for its track raced as a guest */
     }
+    if (PortRegionFileInfo(pathname, &fi->loc, &fi->size)) {
+        return 1; /* Port: WipEout 2097's piece in place of Wipeout XL's (platform/region.c) */
+    }
     tmpS = tmpString;
     c = pathname;
     while (*c != '\\') {
@@ -411,8 +414,8 @@ int iso_read(void *buffer, int nsec, int fd)
     if ((fd_tab[fd].fp - fd_tab[fd].fi.loc + ((fd_tab[fd].fi.size + 2047) >> 11)) < nsec) {
         return 0;
     }
-    if (PortOriginalRead(fd_tab[fd].fp, nsec, buffer)) {
-        fd_tab[fd].fp += nsec; /* Port: the original Wipeout's file, from memory (PortOriginalFileInfo) */
+    if (PortOriginalRead(fd_tab[fd].fp, nsec, buffer) || PortRegionRead(fd_tab[fd].fp, nsec, buffer)) {
+        fd_tab[fd].fp += nsec; /* Port: a file made in memory (PortOriginalFileInfo, PortRegionFileInfo) */
         return nsec;
     }
     LogicalSectorToLoc(fd_tab[fd].fp, &cdLoc);

@@ -14,7 +14,9 @@
 
 extern "C" {
 #include "debug_ui.h"
+#include "archive.h"
 #include "hdtex.h"
+#include "region.h"
 #include "music.h"
 #include "saves.h"
 #include "original.h"
@@ -712,7 +714,7 @@ static void StartFolder(const char *path, char *out, size_t size)
 
 static void PickerOpen(Picker *picker, bool folder, const char *current)
 {
-    static const SDL_DialogFileFilter cue[] = {{"PlayStation disc image (.cue)", "cue"}};
+    static const SDL_DialogFileFilter cue[] = {{"PlayStation disc image (.cue, or a .7z of one)", "cue;7z"}};
     static const SDL_DialogFileFilter zip[] = {{"Texture pack (.zip)", "zip"}};
     static const SDL_DialogFileFilter n64[] = {{"Nintendo 64 cartridge image (.z64, .n64, .v64)", "z64;n64;v64"}};
     static const SDL_DialogFileFilter card[] = {
@@ -782,7 +784,7 @@ static bool Wanted(int kind, const char *extension)
     case PICK_CARD:
         return true;
     default:
-        return !SDL_strcasecmp(extension, ".cue");
+        return !SDL_strcasecmp(extension, ".cue") || !SDL_strcasecmp(extension + 1, ".7z");
     }
 }
 
@@ -907,7 +909,8 @@ static void Browser(void)
 
 // ---- the Wipeout XL disc ----
 
-// Whether a disc image is Wipeout XL's (USA): its executable and data folder; message says what is wrong.
+// Whether a disc image is Wipeout XL's (USA) or WipEout 2097's (Europe, the same game, region.c): its program and
+// data folder; message says what is wrong.
 static bool CheckDisc(const char *path, char *message, size_t size)
 {
     char error[256];
@@ -919,19 +922,61 @@ static bool CheckDisc(const char *path, char *message, size_t size)
         SDL_snprintf(message, size, "%s", error);
         return false;
     }
-    bool ok = DiscFindFile(disc, "\\SCUS_943.51", &lba, &length) && DiscFindFile(disc, "\\WIPEOUT2\\COMMON", &lba, &length);
+    bool ok = (DiscFindFile(disc, "\\SCUS_943.51", &lba, &length) || DiscFindFile(disc, "\\SLES_003.27", &lba, &length)) &&
+              DiscFindFile(disc, "\\WIPEOUT2\\COMMON", &lba, &length);
     DiscClose(disc);
     if (!ok) {
-        SDL_snprintf(message, size, "That is not Wipeout XL (USA): its SCUS_943.51 and WIPEOUT2 folder are not on it.");
+        SDL_snprintf(message, size, "That is not Wipeout XL (USA) or WipEout 2097 (Europe): its program "
+                                    "(SCUS_943.51, SLES_003.27) and WIPEOUT2 folder are not on it.");
     }
     return ok;
+}
+
+// A .7z of a disc image: unpacked on a thread of its own (archive.c), then checked as a disc.
+static SDL_Thread *unpacking;
+static SDL_AtomicInt unpacked; // 1 done, 2 failed
+static char unpackArchive[1024], unpackCue[1200], unpackMessage[300];
+
+static int SDLCALL Unpack(void *)
+{
+    SDL_SetAtomicInt(&unpacked, PortArchiveDisc(unpackArchive, unpackCue, sizeof(unpackCue), unpackMessage,
+                                                sizeof(unpackMessage)) ? 1 : 2);
+    return 0;
 }
 
 static void UseDisc(const char *path)
 {
     SDL_strlcpy(discEdit, path, sizeof(discEdit));
+    if (PortIsArchive(path)) {
+        if (!unpacking) {
+            SDL_strlcpy(unpackArchive, path, sizeof(unpackArchive));
+            SDL_SetAtomicInt(&unpacked, 0);
+            unpacking = SDL_CreateThread(Unpack, "unpack", nullptr);
+            discMessage[0] = 0;
+        }
+        return;
+    }
     if (CheckDisc(path, discMessage, sizeof(discMessage))) {
         SDL_strlcpy(portSettings.discPath, path, sizeof(portSettings.discPath));
+        Changed();
+        discMessage[0] = 0;
+    }
+}
+
+// The unpacking's end: the archive is the disc from then on (its image is used as unpacked).
+static void Unpacked(void)
+{
+    int state = SDL_GetAtomicInt(&unpacked);
+
+    if (!unpacking || !state) {
+        return;
+    }
+    SDL_WaitThread(unpacking, nullptr);
+    unpacking = nullptr;
+    if (state == 2) {
+        SDL_strlcpy(discMessage, unpackMessage, sizeof(discMessage));
+    } else if (CheckDisc(unpackCue, discMessage, sizeof(discMessage))) {
+        SDL_strlcpy(portSettings.discPath, unpackArchive, sizeof(portSettings.discPath));
         Changed();
         discMessage[0] = 0;
     }
@@ -955,6 +1000,7 @@ static void XlDisc(void)
         PortRestart(path);
     }
     tested = true;
+    Unpacked();
     chosen = PickerTake(&discPicker);
 
     if (chosen) {
@@ -962,7 +1008,15 @@ static void XlDisc(void)
         SDL_free(chosen);
     }
     ImGui::TextUnformatted("Wipeout XL disc image (PlayStation)");
-    ImGui::TextWrapped("In use: %s", portConfig.discPath ? portConfig.discPath : "");
+    ImGui::TextWrapped("Wipeout XL (USA), or WipEout 2097 (Europe): the same game, with its own title screen, logo and "
+                       "movies. A .cue with its .bin tracks, or a .7z of them (unpacked once, into the settings folder).");
+    ImGui::TextWrapped("In use: %s (%s)", portConfig.discPath ? portConfig.discPath : "",
+                       PortRegionEurope() ? "WipEout 2097, Europe" : "Wipeout XL, USA");
+    if (unpacking) {
+        char label[64];
+        SDL_snprintf(label, sizeof(label), "Unpacking %d%%", PortArchiveProgress() / 10);
+        ImGui::ProgressBar(PortArchiveProgress() / 1000.0f, ImVec2(-1, 0), label);
+    }
     if (ImGui::Button("Browse...##disc")) {
         PickerOpen(&discPicker, false, discEdit);
     }

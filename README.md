@@ -71,6 +71,18 @@ Files tab changes it: Browse... (the system's file picker; where the system has
 none, the console's own) or a typed path, then "Restart with it now"; the game
 starts with that disc from then on.
 
+WipEout 2097 (Europe, SLES-00327) works too: the same game on a disc with its
+own program, whose data is Wipeout XL's file for file but for the pieces the
+program chooses by region. With that disc the game shows them
+(`platform/region.c`): the WipEout 2097 title screen, copyright and Red Bull
+screens, the menus' backdrop and logo, the piracy warning, and the movies at 25
+frames a second. Their pictures were made for the European television's 256
+lines and are fitted to the 240 the game draws, keeping their shape. A disc
+image can also be given as a `.7z` of its `.cue` and `.bin` files (`--disc
+"Wipeout 2097 (Europe).7z"`, or the Files tab): it is unpacked once into the
+settings folder (`discs/`, about 650 MB) and used from there (`platform/archive.c`,
+with the LZMA SDK's 7z decoder, public domain, in `platform/third_party/lzma`).
+
 In the browser, the page loads the disc the site hosts by itself and the game
 starts: the first visit downloads it (about 700 MB, so a desktop browser with
 WebGL 2: Chrome, Edge, Firefox or Safari), and the browser keeps it, so later

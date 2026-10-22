@@ -1359,3 +1359,15 @@ static int Wipeout64Parts(int index, uint8_t **parts, size_t *sizes)
     LayoutFree(&layout);
     return ok;
 }
+
+/* ---- the games' compression, for others (region.c) ---- */
+
+size_t PortLzssDecompress(const uint8_t *in, size_t length, uint8_t *out, size_t size)
+{
+    return LzssDecompress(in, length, out, size);
+}
+
+uint8_t *PortLzssStore(const uint8_t *in, size_t length, size_t *size)
+{
+    return LzssStore(in, length, size);
+}
