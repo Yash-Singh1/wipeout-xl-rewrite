@@ -1,4 +1,4 @@
-// The debug console: the backtick key opens it over the game (Dear ImGui). It shows the frame rates and
+// The debug console: the ~ key (below Esc) opens it over the whole game window (Dear ImGui). It shows the frame rates and
 // changes the settings (settings.h), which are saved as they change: the frame-rate overlay, the draw
 // distance and its fade, the frame rate, widescreen, the intro movie, full screen, and where the settings and the
 // memory cards live. Not in the tests' hidden runs.
@@ -299,7 +299,7 @@ static void RecorderTab(void)
     ImGui::Text("game frame %llu, %d primitives, %s", (unsigned long long)f->gameFrame, f->count,
                 f->shown ? "shown" : "never shown");
 
-    // the picture, twice the console's size; a click picks the pixel
+    // the picture; a click picks the pixel
     if (!frameTexture) {
         glGenTextures(1, &frameTexture);
         glBindTexture(GL_TEXTURE_2D, frameTexture);
@@ -316,8 +316,12 @@ static void RecorderTab(void)
         frameUploaded = frameShown;
         Pick(frameShown);
     }
-    // the picture as large as fits, at most twice the console's size
-    float zoom = SDL_clamp((ImGui::GetMainViewport()->WorkSize.y * 0.92f - 470 * ui) / 240.0f, 1.0f, 2.0f * ui);
+    // the picture as large as fits, the picked pixel's primitives beside it (in a narrow window below it)
+    ImVec2 room = ImGui::GetContentRegionAvail();
+    bool beside = room.x > 1000 * ui;
+    float zoom = beside ? SDL_min(room.x * 0.5f / 320.0f, room.y / 240.0f)
+                        : SDL_min(room.x / 320.0f, (room.y - 300 * ui) / 240.0f);
+    zoom = SDL_max(1.0f, zoom);
     ImVec2 origin = ImGui::GetCursorScreenPos();
     PixelImage(ImVec2(320 * zoom, 240 * zoom), ImVec2(0, 0), ImVec2(1, 1));
     bool hovered = ImGui::IsItemHovered();
@@ -375,14 +379,23 @@ static void RecorderTab(void)
         draw->AddCircle(c, 6.0f * ui, IM_COL32(255, 0, 255, 255), 0, 2.0f);
     }
     draw->PopClipRect();
+    if (beside) {
+        ImGui::SameLine();
+    }
+    ImGui::BeginChild("##pixel", ImVec2(0, 0), ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar);
     if (pickX >= 0) {
-        ImGui::Text("Pixel %d, %d: %d primitives there (topmost first). Click one for its details.", pickX, pickY,
-                    hitCount);
+        // wrapped at the pane's edge (the pane scrolls sideways for the details' long lines)
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x);
+        ImGui::TextWrapped("Pixel %d, %d: %d primitives there (topmost first). Click one for its details.", pickX,
+                           pickY, hitCount);
+        ImGui::PopTextWrapPos();
     } else {
         ImGui::TextUnformatted("Click the picture to pick a pixel.");
     }
+    // the list, above the picked primitive's details (eight lines)
+    float listHeight = SDL_max(120 * ui, ImGui::GetContentRegionAvail().y - 8 * ImGui::GetTextLineHeightWithSpacing());
     if (ImGui::BeginTable("hits", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Borders,
-                          ImVec2(-1, 180 * ui))) {
+                          ImVec2(-1, listHeight))) {
         ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed, 40 * ui);
         ImGui::TableSetupColumn("built by", ImGuiTableColumnFlags_WidthFixed, 190 * ui);
         ImGui::TableSetupColumn("writes", ImGuiTableColumnFlags_WidthFixed, 60 * ui);
@@ -428,6 +441,7 @@ static void RecorderTab(void)
         }
         ImGui::Text("  writes rgb %.0f,%.0f,%.0f", h->r, h->g, h->b);
     }
+    ImGui::EndChild();
 }
 
 /* WIPEOUT_DEBUG_UI=stats|graphics|game|recorder|files (tests): the tab shown first */
@@ -469,18 +483,14 @@ static void Console(void)
 {
     const ImGuiViewport *view = ImGui::GetMainViewport();
 
-    if (showRecorder) {
-        // the frame viewer is tall: from the top of the window
-        ImGui::SetNextWindowPos(ImVec2(view->WorkPos.x + view->WorkSize.x * 0.5f, view->WorkPos.y + 8),
-                                ImGuiCond_Always, ImVec2(0.5f, 0.0f));
-    } else {
-        ImGui::SetNextWindowPos(ImVec2(view->WorkPos.x + view->WorkSize.x * 0.5f, view->WorkPos.y + view->WorkSize.y * 0.5f),
-                                ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    }
+    // the whole window
+    ImGui::SetNextWindowPos(view->WorkPos, ImGuiCond_Always);
+    ImGui::SetNextWindowSize(view->WorkSize, ImGuiCond_Always);
+    ImGui::SetNextWindowBgAlpha(1.0f);
     float width = 720 * ImGui::GetIO().FontGlobalScale;
-    ImGui::SetNextWindowSizeConstraints(ImVec2(width, 0), ImVec2(width, view->WorkSize.y * 0.9f));
-    if (!ImGui::Begin("Wipeout XL debug console   (` closes it)", &open,
-                      ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (!ImGui::Begin("Wipeout XL debug console   (~ closes it)", &open,
+                      ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
+                          ImGuiWindowFlags_NoSavedSettings)) {
         ImGui::End();
         return;
     }
@@ -519,14 +529,6 @@ static void Console(void)
                 portSettings.fade = fade;
                 Changed();
             }
-            ImGui::BeginDisabled(!portSettings.fade);
-            int range[2] = {portSettings.fadeNear, portSettings.fadeFar};
-            if (ImGui::DragInt2("Fade from / to", range, 500.0f, 8000, 400000)) {
-                portSettings.fadeNear = SDL_clamp(range[0], 8000, 399000);
-                portSettings.fadeFar = SDL_clamp(range[1], portSettings.fadeNear + 1000, 400000);
-                Changed();
-            }
-            ImGui::EndDisabled();
             ImGui::EndDisabled();
             ImGui::Separator();
             static const char *const rates[] = {"Uncapped", "Display refresh (VSync)", "Capped", "Console (60 fields a second)"};

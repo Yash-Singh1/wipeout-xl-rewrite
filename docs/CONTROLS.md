@@ -84,7 +84,7 @@ key held when the game switches contexts and that means something else in the ne
 pause) is ignored until released, so it does not also accept the first menu entry.
 
 Alt+Enter and F11 switch between window and full screen (the window handles them, the game never
-sees them). So do the port's own keys: the backtick (`` ` ``) opens and closes the debug console, and Tab
+sees them). So do the port's own keys: the ~ key (below Esc) opens and closes the debug console, and Tab
 freezes the game and saves the frame recorder's last seconds of drawing (the console's Recorder tab), or
 resumes it.
 

@@ -6,4 +6,9 @@ bool PsxAudioDeviceOpen(void)
     return false;
 }
 
+void PsxAudioDevicePause(bool paused)
+{
+    (void)paused;
+}
+
 void PsxAudioDeviceClose(void) {}

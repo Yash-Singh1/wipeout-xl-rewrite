@@ -16,6 +16,7 @@
 #include "../platform.h"
 #include "../settings.h"
 #include "framecap.h"
+#include "internal.h"
 #include "../debug_ui.h"
 #include "psx_io.h"
 #include "../trace.h"
@@ -125,13 +126,17 @@ static void Field(void)
             DebugUiShowRecorder();
         }
     }
-    /* Tab (the frame recorder): the game waits here while the window and the debug console go on */
-    while (FrameCapFrozen()) {
-        PsxShowDisplay();
-        if (!PortPumpEvents()) {
-            exit(0);
+    /* Tab (the frame recorder): the game waits here, silent, while the window and the debug console go on */
+    if (FrameCapFrozen()) {
+        PsxAudioDevicePause(true);
+        while (FrameCapFrozen()) {
+            PsxShowDisplay();
+            if (!PortPumpEvents()) {
+                exit(0);
+            }
+            SDL_Delay(16);
         }
-        SDL_Delay(16);
+        PsxAudioDevicePause(false);
     }
 }
 

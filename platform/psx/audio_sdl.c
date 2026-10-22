@@ -54,6 +54,19 @@ bool PsxAudioDeviceOpen(void)
     return true;
 }
 
+/* The frame recorder's freeze: the device stops asking for samples, so the SPU and the CD's music stop where
+   they are and go on from there. */
+void PsxAudioDevicePause(bool paused)
+{
+    if (stream) {
+        if (paused) {
+            SDL_PauseAudioStreamDevice(stream);
+        } else {
+            SDL_ResumeAudioStreamDevice(stream);
+        }
+    }
+}
+
 void PsxAudioDeviceClose(void)
 {
     if (stream) {

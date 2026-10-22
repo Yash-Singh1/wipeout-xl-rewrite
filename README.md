@@ -57,7 +57,7 @@ The environment variable `WIPEOUT_XL_DISC` can stand in for the disc's path.
 
 ## Debug console
 
-The backtick key (`` ` ``) opens a console over the game: frame rates and a
+The ~ key (below Esc) opens a console over the whole game window: frame rates and a
 frame-rate overlay, the draw distance (the console's or the whole track) and
 its fade, the frame rate, widescreen, skipping the intro movie, full screen, and where
 the settings and the memory cards are. Changes are saved at once to

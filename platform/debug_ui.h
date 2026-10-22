@@ -1,4 +1,4 @@
-/* The debug console (debug_ui.cpp): the backtick key opens it. */
+/* The debug console (debug_ui.cpp): the ~ key (below Esc) opens it. */
 #ifndef PORT_DEBUG_UI_H
 #define PORT_DEBUG_UI_H
 

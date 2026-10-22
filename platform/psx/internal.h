@@ -59,6 +59,7 @@ void PsxIoService(void);
 
 /* audio_sdl.c */
 bool PsxAudioDeviceOpen(void);
+void PsxAudioDevicePause(bool paused);
 void PsxAudioDeviceClose(void);
 
 /* ---- BIOS events (libapi.c) -------------------------------------------------------- */

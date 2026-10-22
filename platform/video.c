@@ -216,7 +216,7 @@ int PortPumpEvents(void)
             continue;
         }
         if (DebugUiEvent(&event)) {
-            continue; /* the debug console's (the backtick key) */
+            continue; /* the debug console's (the ~ key) */
         }
         if (portConfig.hidden && (event.type == SDL_EVENT_WINDOW_FOCUS_LOST || event.type == SDL_EVENT_WINDOW_FOCUS_GAINED)) {
             scriptedFocus = event.type == SDL_EVENT_WINDOW_FOCUS_GAINED;

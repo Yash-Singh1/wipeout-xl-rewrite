@@ -135,7 +135,7 @@ int PortSettingsSave(void)
         return 0;
     }
     fprintf(file,
-            "# Wipeout XL settings (the backtick key opens the debug console that changes them)\n"
+            "# Wipeout XL settings (the ~ key opens the debug console that changes them)\n"
             "show_fps = %d\nfar_view = %d\nfade = %d\nfade_near = %d\nfade_far = %d\n"
             "widescreen = %d\nframe_rate = %d\nframe_cap = %d\nskip_intro = %d\nrecord_frames = %d\nrecord_replays = %d\nsave_dir = %s\n",
             portSettings.showFps, portSettings.farView, portSettings.fade, portSettings.fadeNear, portSettings.fadeFar,
