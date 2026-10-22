@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "../../platform/link.h"
 #include "../../platform/psx/psx_io.h"
 
 #ifndef REPO_DIR
@@ -26,6 +27,28 @@ void PsxVBlank(void)
 {
     fields++;
     PsxIoField(fields);
+}
+
+/* The platform's two-player link and window, as without them: no link, the window in focus. */
+int PortLinkRole(void)
+{
+    return LINK_NONE;
+}
+
+void PortLinkSetInput(const LinkInput *input)
+{
+    (void)input;
+}
+
+int PortLinkGetInput(LinkInput *input)
+{
+    (void)input;
+    return 0;
+}
+
+int PortWindowFocused(void)
+{
+    return 1;
 }
 
 void PortLog(const char *format, ...)
