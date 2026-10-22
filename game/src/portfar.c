@@ -226,6 +226,7 @@ void PortFarProject(const PortView *view, double x, double y, double z, PortFarV
     out->rejected = 0;
     out->handle = GteRecordProjection((uint32_t)out->screen, (float)out->x, (float)out->y, (float)(cz * depthBias),
                                       GteFade(sqrt(cx * cx + cy * cy + cz * cz)));
+    GteRecordView(out->handle, cx, cy, cz); /* frame interpolation (gte.h) */
 }
 
 void PortFarProjectCamera(double cx, double cy, double cz, PortFarVertex *out)
@@ -242,6 +243,7 @@ void PortFarProjectCamera(double cx, double cy, double cz, PortFarVertex *out)
     out->rejected = 0;
     out->handle = GteRecordProjection((uint32_t)out->screen, (float)out->x, (float)out->y, (float)(cz * depthBias),
                                       GteFade(sqrt(cx * cx + cy * cy + cz * cz)));
+    GteRecordView(out->handle, cx, cy, cz); /* frame interpolation (gte.h) */
 }
 
 u_long *PortFarSlot(int entry, double depth)
@@ -403,7 +405,9 @@ static void DrawFarShips(ShipData *ships, Object **shipShapes)
         if (!(ship->attr & LSIDE)) {
             face++;
         }
+        PortInterpInstance(i); /* frame interpolation: the ship's drawing, as DrawShips gives it */
         PortDrawObjectFar(object, &view, (const CVECTOR *)&face->red);
+        PortInterpInstance(-1);
     }
 }
 

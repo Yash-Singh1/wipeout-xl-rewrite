@@ -523,6 +523,21 @@ static void Console(void)
             }
             ImGui::TextDisabled("The console skips polygons over 1023x511 pixels: holes in the track close to the camera.");
             ImGui::Separator();
+            static const char *const rates[] = {"Uncapped", "Display refresh (VSync)", "Capped", "Console (60 fields a second)"};
+            int rate = portSettings.frameRate;
+            if (ImGui::Combo("Frame rate", &rate, rates, IM_ARRAYSIZE(rates))) {
+                portSettings.frameRate = rate;
+                Changed();
+            }
+            if (portSettings.frameRate == FRAME_RATE_CAPPED) {
+                int cap = portSettings.frameCap;
+                if (ImGui::DragInt("Pictures a second", &cap, 1.0f, 30, 1000)) {
+                    portSettings.frameCap = SDL_clamp(cap, 30, 1000);
+                    Changed();
+                }
+            }
+            ImGui::TextDisabled("The game keeps its 30 frames a second; the pictures between move smoothly from one to the next.");
+            ImGui::Separator();
             bool wide = portSettings.widescreen != 0;
             if (ImGui::Checkbox("Widescreen", &wide)) {
                 portSettings.widescreen = wide;

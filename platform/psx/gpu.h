@@ -56,8 +56,14 @@ void GpuTriangles(const GpuDrawState *state, const GpuVertex *vertices, int coun
 void GpuLine(const GpuDrawState *state, const GpuVertex *a, const GpuVertex *b);
 /* Fills a rectangle of video memory (BLK_FILL, ClearImage, background clears). */
 void GpuFill(int x, int y, int w, int h, uint8_t r, uint8_t g, uint8_t b);
+/* ... of the drawn picture only (an interpolated picture's background: video memory keeps the game's). */
+void GpuClearArea(int x, int y, int w, int h, uint8_t r, uint8_t g, uint8_t b);
 /* Shows the given rectangle of video memory. */
 void GpuPresent(int x, int y, int w, int h);
+/* ... a picture between two of the game's frames (frame interpolation, libgpu.c): not a new frame of its own. */
+void GpuPresentInterpolated(int x, int y, int w, int h);
+/* What is drawn while on is such a picture. */
+void GpuInterpolating(int on);
 /* The depth buffer of an area is cleared (each ordering table starts afresh). */
 void GpuClearDepth(int x, int y, int w, int h);
 /* Two players on one machine (link.c): the area (x, y, w, h) of video memory in the upper half of the

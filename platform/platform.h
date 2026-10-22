@@ -25,6 +25,7 @@ extern PortConfig portConfig;
 int PortVideoInit(void);
 void PortVideoShutdown(void);
 void PortVideoPresent(void);
+void PortSwapInterval(int vsync); /* whether pictures wait for the display's refresh */
 void PortDumpVram(void);
 void PortDrawableSize(int *width, int *height);
 /* Whether the window has the input focus (always, for the hidden test window). */
@@ -44,6 +45,14 @@ uint64_t PsxScanlines(void);  /* since power-on */
 
 /* libgpu.c */
 void PsxShowDisplay(void);
+/* Frame interpolation (libgpu.c): whether the display draws pictures between the game's frames (the settings, not
+   in tests or a linked game); whether there is a frame to move towards now; one such picture, drawn and shown. */
+int PsxInterpolationOn(void);
+int PsxCanInterpolate(void);
+void PsxDrawInterpolated(void);
+void PsxDrawInterpolatedAt(float along); /* 0: the frame before .. 1: the frame to come */
+int PsxInterpolationTest(void);
+void PsxDrawInterpolatedTest(int k, int n);
 
 /* controls.c: scripted key and gamepad events (WIPEOUT_KEYS), fed to SDL's queue each field */
 void PortInputScript(uint64_t field);

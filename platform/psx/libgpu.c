@@ -9,9 +9,12 @@
    they are numbers from a table of the packets and table entries that have
    been linked, so the game's linking (all through AddPrim and ClearOTagR)
    behaves the same with 64-bit addresses. */
+#include <SDL3/SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "../platform.h"
 
 #include "../trace.h"
 #include "framecap.h"
@@ -339,9 +342,14 @@ static void Packet(const uint32_t *w, int words);
 static void ReadPendingTables(void);
 
 /* A packet as the GPU receives it: recorded for tests, then drawn. */
+static int interpolating; /* drawing a picture between two of the game's frames (PsxDrawInterpolated) */
+static float interpolationAlong;
+
 static void Submit(const uint32_t *w, int words)
 {
-    PortTraceGp0(w, words);
+    if (!interpolating) {
+        PortTraceGp0(w, words);
+    }
     Packet(w, words);
 }
 
@@ -525,6 +533,13 @@ static void ShowSplit(void)
 void PsxShowDisplay(void)
 {
     GpuFlush();
+    if (PsxCanInterpolate() && !(portConfig.fixedStep && PsxInterpolationTest())) {
+        if (state.displayEnabled && state.displayW > 0 && state.displayH > 0) {
+            FrameCapShown(state.displayX, state.displayY, state.displayW, state.displayH > 256 ? 480 : 240);
+        }
+        PsxDrawInterpolated();
+        return;
+    }
     if (PortLinkSplit()) {
         ShowSplit();
         return;
@@ -703,7 +718,11 @@ static float hudShift; /* widescreen: the HUD element being drawn goes this far 
 static void Vertex(GpuVertex *v, uint32_t xy, const GtePrecise *precise)
 {
     int x = (int32_t)(xy << 21) >> 21, y = (int32_t)(xy << 5) >> 21;
+    GtePrecise moved;
 
+    if (precise && interpolating && GteInterpolate(precise, interpolationAlong, &moved)) {
+        precise = &moved; /* between the frame before and this one */
+    }
     if (precise) {
         v->x = precise->x + (float)state.offsetX;
         v->y = precise->y + (float)state.offsetY;
@@ -804,7 +823,7 @@ static int Skipped(const GpuVertex *v, const int32_t x[3], const int32_t y[3])
 static void Record(int kind, uint32_t code, int count, const int32_t *ix, const int32_t *iy, const GpuVertex *v,
                    const GpuDrawState *draw, int flags, const uint32_t *w, uint32_t page, uint32_t clut)
 {
-    FrameCapPrim *p = FrameCapAdd();
+    FrameCapPrim *p = interpolating ? NULL : FrameCapAdd();
     int i, r;
 
     if (!p) {
@@ -1016,7 +1035,11 @@ static void Packet(const uint32_t *w, int words)
         corners[0].g = (uint8_t)(w[0] >> 8);
         corners[0].b = (uint8_t)(w[0] >> 16);
         Record(FRAMECAP_FILL, code, 2, NULL, NULL, corners, NULL, 0, w, 0, 0);
-        GpuFill(x, y, width, height, (uint8_t)w[0], (uint8_t)(w[0] >> 8), (uint8_t)(w[0] >> 16));
+        if (interpolating) {
+            GpuClearArea(x, y, width, height, (uint8_t)w[0], (uint8_t)(w[0] >> 8), (uint8_t)(w[0] >> 16));
+        } else {
+            GpuFill(x, y, width, height, (uint8_t)w[0], (uint8_t)(w[0] >> 8), (uint8_t)(w[0] >> 16));
+        }
     } else if (code >= 0xE1 && code <= 0xE6) {
         int i;
         for (i = 0; i < words; i++) {
@@ -1265,11 +1288,144 @@ static void DrawAnchored(u_long *p, int margin)
     }
 }
 
+/* ---- frame interpolation ----
+
+   The game draws a frame every second field. Swap says which ordering tables it will draw once its fields have
+   passed, and where (PsxUpcomingTables); until then every picture shown is those tables drawn with each
+   projected vertex placed between the frame before and this one by the time passed (gte.h), into the area
+   the frame is about to be drawn to afresh (the drawn picture only: the CPU's copy of video memory, the tests'
+   traces and the frame recorder never see it). */
+static struct {
+    u_long *table, *second, *hudEntry;
+    int left, top, width, height, offsetX, offsetY;
+    int background;
+    uint8_t r, g, b;
+} upcoming;
+static uint64_t frameDrawnTicks;
+static uint64_t frameTicks = 33366667; /* between the game's frames: two fields */
+static uint64_t frameDrawnField;       /* tests: the field the last frame was drawn in */
+
+void PsxUpcomingTables(u_long *table, u_long *second, u_long *hudFirst, DRAWENV *env)
+{
+    upcoming.table = table;
+    upcoming.second = second;
+    upcoming.hudEntry = hudFirst;
+    upcoming.left = env->clip.x;
+    upcoming.top = env->clip.y;
+    upcoming.width = env->clip.w;
+    upcoming.height = env->clip.h;
+    upcoming.offsetX = env->ofs[0];
+    upcoming.offsetY = env->ofs[1];
+    upcoming.background = env->isbg;
+    upcoming.r = env->r0;
+    upcoming.g = env->g0;
+    upcoming.b = env->b0;
+}
+
+/* Tests: WIPEOUT_INTERPOLATE=n draws n pictures between the game's frames in each field of a fixed-step run
+   (libetc.c). */
+int PsxInterpolationTest(void)
+{
+    static int count = -1;
+
+    if (count < 0) {
+        const char *value = SDL_getenv("WIPEOUT_INTERPOLATE");
+        count = value ? SDL_atoi(value) : 0;
+    }
+    return count;
+}
+
+int PsxInterpolationOn(void)
+{
+    int on = (PsxInterpolationTest() > 0 ||
+              (portSettings.frameRate != FRAME_RATE_CONSOLE && !portConfig.fixedStep && !portConfig.hidden)) &&
+             PortLinkRole() == LINK_NONE && !PortTracing();
+
+    GteKeepPast(on);
+    return on;
+}
+
+int PsxCanInterpolate(void)
+{
+    return upcoming.table && upcoming.width > 0 && upcoming.height > 0 && !holdPicture && PsxInterpolationOn();
+}
+
+static void DrawTableAgain(u_long *p)
+{
+    u_long *node;
+
+    if (PortScreenMargin()) {
+        DrawAnchored(p, PortScreenMargin());
+        return;
+    }
+    for (node = PacketFrom(p); node; node = PacketFrom(NodeAfter(node))) {
+        Submit((const uint32_t *)(node + 1), (int)(*node >> 24));
+    }
+}
+
+void PsxDrawInterpolated(void)
+{
+    uint64_t now = SDL_GetTicksNS();
+
+    PsxDrawInterpolatedAt(frameDrawnTicks ? (float)(now - frameDrawnTicks) / (float)frameTicks : 1.0f);
+}
+
+/* Tests: the picture the k-th of n of this field (two fields a frame). */
+void PsxDrawInterpolatedTest(int k, int n)
+{
+    PsxDrawInterpolatedAt(((float)(PsxFieldCount() - frameDrawnField - 1) + (float)k / (float)n) / 2.0f);
+}
+
+void PsxDrawInterpolatedAt(float along)
+{
+    u_long *savedHudEntry = hudEntry, *savedHudTable = hudTable;
+    __typeof__(state) saved = state;
+
+    interpolating = 1;
+    interpolationAlong = along < 0.0f ? 0.0f : along > 1.0f ? 1.0f : along;
+    GpuInterpolating(1);
+    state.areaLeft = upcoming.left;
+    state.areaTop = upcoming.top;
+    state.areaRight = upcoming.left + upcoming.width - 1;
+    state.areaBottom = upcoming.top + upcoming.height - 1;
+    state.offsetX = upcoming.offsetX;
+    state.offsetY = upcoming.offsetY;
+    ApplyArea();
+    GpuClearArea(upcoming.left, upcoming.top, upcoming.width, upcoming.height, upcoming.background ? upcoming.r : 0,
+                 upcoming.background ? upcoming.g : 0, upcoming.background ? upcoming.b : 0);
+    GpuClearDepth(upcoming.left, upcoming.top, upcoming.width, upcoming.height);
+    hudEntry = upcoming.hudEntry;
+    hudTable = upcoming.second;
+    DrawTableAgain(upcoming.table);
+    if (upcoming.second) {
+        DrawTableAgain(upcoming.second);
+    }
+    GpuFlush();
+    hudEntry = savedHudEntry;
+    hudTable = savedHudTable;
+    state = saved;
+    ApplyArea();
+    interpolating = 0;
+    GpuInterpolating(0);
+    GpuPresentInterpolated(upcoming.left, upcoming.top, upcoming.width, upcoming.height > 256 ? 480 : 240);
+}
+
 void DrawOTag(u_long *p)
 {
     u_long *node;
     int tracing = PortTracing() && pendingCount < PENDING_TABLES;
 
+    if (p == upcoming.table) {
+        /* the frame interpolated towards is drawn: the next starts from here */
+        uint64_t now = SDL_GetTicksNS();
+
+        if (frameDrawnTicks && now - frameDrawnTicks > 8000000ull && now - frameDrawnTicks < 150000000ull) {
+            frameTicks = (frameTicks * 3 + (now - frameDrawnTicks)) / 4;
+        }
+        frameDrawnTicks = now;
+        frameDrawnField = PsxFieldCount();
+        upcoming.table = NULL;
+    }
     if (holdPicture && holdAreaCount < HOLD_AREAS) {
         holdAreas[holdAreaCount].left = state.areaLeft;
         holdAreas[holdAreaCount].top = state.areaTop;
@@ -1341,3 +1497,4 @@ int SetVideoMode(int mode)
     videoMode = mode;
     return previous;
 }
+

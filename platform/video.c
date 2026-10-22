@@ -58,13 +58,27 @@ int PortVideoInit(void)
     if (!portConfig.hidden || SDL_getenv("WIPEOUT_DEBUG_UI")) {
         DebugUiInit(window, context); /* WIPEOUT_DEBUG_UI: also in a hidden test run */
     }
-    /* The game paces itself to the console's field rate (libetc.c). On
-       screen each picture also waits for the display's refresh, so it never
-       tears (adaptive where the driver offers it); tests run unthrottled. */
-    if (portConfig.hidden || portConfig.fixedStep || !SDL_GL_SetSwapInterval(-1)) {
-        SDL_GL_SetSwapInterval(portConfig.hidden || portConfig.fixedStep ? 0 : 1);
-    }
+    PortSwapInterval(1);
     return GpuInit();
+}
+
+/* The game paces itself to the console's field rate (libetc.c). On screen each picture also waits for the
+   display's refresh, so it never tears (adaptive where the driver offers it), unless the frame rate is
+   uncapped or capped (the settings); tests run unthrottled. */
+void PortSwapInterval(int vsync)
+{
+    static int current = -2;
+
+    if (portConfig.hidden || portConfig.fixedStep) {
+        vsync = 0;
+    }
+    if (vsync == current) {
+        return;
+    }
+    current = vsync;
+    if (!vsync || !SDL_GL_SetSwapInterval(-1)) {
+        SDL_GL_SetSwapInterval(vsync);
+    }
 }
 
 void PortVideoShutdown(void)

@@ -38,6 +38,8 @@ typedef struct GtePrecise {
     float z;     /* view-space depth (for perspective-correct texturing) */
     float fade;  /* the port's distance fade: 1 opaque .. 0 gone */
     int background; /* projected while GteSetBackground was on (the sky): drawn behind everything */
+    uint64_t key;   /* frame interpolation: what was projected (0: not known), see GteKeyNext */
+    float view[3];  /* ... and where it was in view space */
 } GtePrecise;
 
 #define GTE_RESOLVE_MAX 4
@@ -69,6 +71,25 @@ uint32_t GteRecordProjection(uint32_t sxy, float x, float y, float z, float fade
 void GteRecordGrid(const uint32_t corner[4], const void *const cornerAddress[4], const int *x, const int *y, int size,
                    uint32_t *handles);
 void GteClearPrecise(void);
+
+/* Frame interpolation (the display drawn more often than the game's 30 frames a second): a projection made
+   with a key is found again in the next frame by that key, and a vertex drawn between the two frames is placed
+   between its two view-space positions. The renderers give the key of what they project (a model's vertex and
+   which drawing of the model, a track vertex, a particle) just before the projection: GteKeyNext(slot, key)
+   for the GTE's vertex register slot (0-2: the next RTPS uses 0, RTPT 0, 1 and 2; GteRecordProjection 0).
+   GteRecordView gives a projection made outside the GTE its view-space position. */
+void GteKeyNext(int slot, uint64_t key);
+/* The number of the frame whose projections are being made (it changes when a drawn frame's next projection
+   starts the next one). */
+uint32_t GteFrameNumber(void);
+uint64_t GteKeyMix(uint64_t a, uint64_t b);
+void GteRecordView(uint32_t handle, double x, double y, double z);
+/* On while the display interpolates: the projections of the frame before are kept. */
+void GteKeepPast(int on);
+/* A vertex of the frame being drawn as it is a fraction `along` (0..1) of the way from the frame before:
+   1 when *out was made, 0 when there is nothing to go by (no key, not in the frame before, too near, or the
+   view jumped: a camera cut). */
+int GteInterpolate(const GtePrecise *p, float along, GtePrecise *out);
 /* libgpu has drawn a frame's ordering table: the next projection starts a
    new frame's cache. */
 void GteFrameDrawn(void);

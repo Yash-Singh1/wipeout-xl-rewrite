@@ -107,6 +107,7 @@ void AsmDrawParticles(SParticle *particles, Skeleton *camera, int mode)
         }
         GteWriteData(0, (x & 0xFFFF) | (int)((u_int)y << 16));
         GteWriteData(1, z);
+        GteKeyNext(0, (uint64_t)(uintptr_t)particle); /* Port: frame interpolation (gte.h) */
         GteExecute(GTE_RTPS);
         flag = GteReadControl(31);
         line->x1 = (short)particle->pos.pad;

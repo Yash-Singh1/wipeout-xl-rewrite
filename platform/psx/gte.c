@@ -310,6 +310,295 @@ static PreciseSlot *FindSlot(uint32_t key, int create)
     return NULL;
 }
 
+/* ---- frame interpolation ---- */
+
+static int32_t HandleRecord(uint32_t handle);
+static uint64_t pendingKey[3];
+static int keepPast;
+
+#define PAST_SLOTS 262144
+typedef struct PastEntry {
+    uint64_t key;      /* 0: empty */
+    uint32_t frame;    /* the past frame it belongs to */
+    float view[3];
+    float fade;
+} PastEntry;
+static PastEntry past[PAST_SLOTS];
+static uint32_t pastFrame;       /* the frame whose projections `past` holds */
+static uint32_t cutCheckedFrame; /* the frame the camera cut test was made for */
+static int cut;
+
+uint64_t GteKeyMix(uint64_t a, uint64_t b)
+{
+    uint64_t v = a * 0x9E3779B97F4A7C15ull ^ (b + 0x632BE59BD9B4E019ull + (a << 6) + (a >> 2));
+
+    v ^= v >> 31;
+    v *= 0xBF58476D1CE4E5B9ull;
+    v ^= v >> 29;
+    return v ? v : 1;
+}
+
+void GteKeyNext(int slot, uint64_t key)
+{
+    if (slot >= 0 && slot < 3) {
+        pendingKey[slot] = key;
+    }
+}
+
+uint32_t GteFrameNumber(void)
+{
+    if (clearPending) {
+        clearPending = 0;
+        GteClearPrecise();
+    }
+    return preciseFrame;
+}
+
+void GteKeepPast(int on)
+{
+    keepPast = on;
+}
+
+static PastEntry *PastSlot(uint64_t key, int create)
+{
+    uint32_t slot = (uint32_t)(key ^ (key >> 32)) & (PAST_SLOTS - 1), probe;
+
+    for (probe = 0; probe < 32; probe++) {
+        PastEntry *entry = &past[(slot + probe) & (PAST_SLOTS - 1)];
+
+        if (entry->frame != pastFrame || !entry->key) {
+            return create ? entry : NULL;
+        }
+        if (entry->key == key) {
+            return create ? NULL : entry; /* the first projection under a key stays */
+        }
+    }
+    return NULL;
+}
+
+/* The frame's keyed projections become the frame before. */
+static void KeepPast(void)
+{
+    int i;
+
+    pastFrame++;
+    if (!keepPast) {
+        return;
+    }
+    for (i = 0; i < recordCount; i++) {
+        PastEntry *entry;
+
+        if (!records[i].value.key || records[i].value.view[2] <= 0.0f || !(entry = PastSlot(records[i].value.key, 1))) {
+            continue;
+        }
+        entry->key = records[i].value.key;
+        entry->frame = pastFrame;
+        memcpy(entry->view, records[i].value.view, sizeof(entry->view));
+        entry->fade = records[i].value.fade;
+    }
+}
+
+static float Moved(const float a[3], const float b[3])
+{
+    float dx = a[0] - b[0], dy = a[1] - b[1], dz = a[2] - b[2];
+
+    return dx * dx + dy * dy + dz * dz;
+}
+
+#define CUT_DISTANCE 6000.0f /* view-space units a vertex cannot move in one frame of the game */
+
+/* The view's motion between the two frames, fitted to what both projected: cur = R past + T (small rotations:
+   the rotation vector w solved linearly, R made from it), refitted without the projections that do not follow it
+   (moving ships). What one frame projects and the other did not (track coming into view) moves by it. */
+static double motionR[3][3], motionT[3];
+static int motionValid;
+
+static int Solve6(double a[6][7], double x[6])
+{
+    int i, j, k;
+
+    for (i = 0; i < 6; i++) {
+        int best = i;
+
+        for (j = i + 1; j < 6; j++) {
+            best = fabs(a[j][i]) > fabs(a[best][i]) ? j : best;
+        }
+        if (fabs(a[best][i]) < 1e-9) {
+            return 0;
+        }
+        for (k = 0; k < 7; k++) {
+            double t = a[i][k];
+
+            a[i][k] = a[best][k];
+            a[best][k] = t;
+        }
+        for (j = 0; j < 6; j++) {
+            if (j != i) {
+                double f = a[j][i] / a[i][i];
+
+                for (k = i; k < 7; k++) {
+                    a[j][k] -= f * a[i][k];
+                }
+            }
+        }
+    }
+    for (i = 0; i < 6; i++) {
+        x[i] = a[i][6] / a[i][i];
+    }
+    return 1;
+}
+
+static void FitMotion(int pass)
+{
+    double a[6][7] = {{0}}, x[6], angle, k[3], c, s;
+    int i, r, n = 0;
+
+    for (i = 0; i < recordCount; i++) {
+        PastEntry *entry = records[i].value.key ? PastSlot(records[i].value.key, 0) : NULL;
+        double p[3], d[3], row[3][6];
+
+        if (!entry || records[i].value.view[2] <= 0.0f) {
+            continue;
+        }
+        for (r = 0; r < 3; r++) {
+            p[r] = entry->view[r];
+            d[r] = records[i].value.view[r] - p[r];
+        }
+        if (pass) {
+            double e = 0.0;
+
+            for (r = 0; r < 3; r++) {
+                double moved = motionR[r][0] * p[0] + motionR[r][1] * p[1] + motionR[r][2] * p[2] + motionT[r];
+
+                e += (moved - records[i].value.view[r]) * (moved - records[i].value.view[r]);
+            }
+            if (e > 150.0 * 150.0) {
+                continue; /* it moves on its own */
+            }
+        }
+        /* d = w x p + T: rows of [-[p]x | I] */
+        memset(row, 0, sizeof(row));
+        row[0][1] = p[2], row[0][2] = -p[1];
+        row[1][0] = -p[2], row[1][2] = p[0];
+        row[2][0] = p[1], row[2][1] = -p[0];
+        row[0][3] = row[1][4] = row[2][5] = 1.0;
+        for (r = 0; r < 3; r++) {
+            int u, v;
+
+            for (u = 0; u < 6; u++) {
+                for (v = 0; v < 6; v++) {
+                    a[u][v] += row[r][u] * row[r][v];
+                }
+                a[u][6] += row[r][u] * d[r];
+            }
+        }
+        n++;
+    }
+    if (n < 16 || !Solve6(a, x)) {
+        motionValid = 0;
+        return;
+    }
+    angle = sqrt(x[0] * x[0] + x[1] * x[1] + x[2] * x[2]);
+    for (r = 0; r < 3; r++) {
+        k[r] = angle > 1e-12 ? x[r] / angle : 0.0;
+        motionT[r] = x[3 + r];
+    }
+    c = cos(angle), s = sin(angle);
+    /* Rodrigues: R = cI + s[k]x + (1 - c)kk' */
+    for (r = 0; r < 3; r++) {
+        for (i = 0; i < 3; i++) {
+            motionR[r][i] = (r == i ? c : 0.0) + (1.0 - c) * k[r] * k[i];
+        }
+    }
+    motionR[0][1] -= s * k[2], motionR[0][2] += s * k[1];
+    motionR[1][0] += s * k[2], motionR[1][2] -= s * k[0];
+    motionR[2][0] -= s * k[1], motionR[2][1] += s * k[0];
+    motionValid = 1;
+}
+
+/* Whether the view jumped between the two frames (a cut to another camera, a restart): most of what both
+   frames projected moved too far. The view's motion is fitted at the same time. */
+static int CameraCut(void)
+{
+    int i, matched = 0, far = 0;
+
+    if (cutCheckedFrame == preciseFrame) {
+        return cut;
+    }
+    cutCheckedFrame = preciseFrame;
+    for (i = 0; i < recordCount; i += 7) {
+        PastEntry *entry = records[i].value.key ? PastSlot(records[i].value.key, 0) : NULL;
+
+        if (entry) {
+            matched++;
+            far += Moved(entry->view, records[i].value.view) > CUT_DISTANCE * CUT_DISTANCE;
+        }
+    }
+    cut = matched < 8 || far * 3 > matched;
+    if (!cut) {
+        FitMotion(0);
+        if (motionValid) {
+            FitMotion(1);
+        }
+    }
+    return cut;
+}
+
+int GteInterpolate(const GtePrecise *p, float along, GtePrecise *out)
+{
+    PastEntry *entry;
+    double h = (double)(uint16_t)gte.control[H], was[3], x, y, z;
+    int r;
+
+    if (!keepPast || !p->key || p->view[2] <= 0.0f || pastFrame != preciseFrame - 1 || CameraCut()) {
+        return 0;
+    }
+    entry = PastSlot(p->key, 0);
+    if (entry && Moved(entry->view, p->view) <= CUT_DISTANCE * CUT_DISTANCE) {
+        for (r = 0; r < 3; r++) {
+            was[r] = entry->view[r];
+        }
+    } else if (motionValid) {
+        /* new in this frame (or another thing under its key): where the view's motion brings it from */
+        double d[3];
+
+        for (r = 0; r < 3; r++) {
+            d[r] = p->view[r] - motionT[r];
+        }
+        for (r = 0; r < 3; r++) {
+            was[r] = motionR[0][r] * d[0] + motionR[1][r] * d[1] + motionR[2][r] * d[2];
+        }
+        entry = NULL;
+    } else {
+        return 0;
+    }
+    x = was[0] + (p->view[0] - was[0]) * along;
+    y = was[1] + (p->view[1] - was[1]) * along;
+    z = was[2] + (p->view[2] - was[2]) * along;
+    if (z < h * 0.5 || z < 1.0) {
+        return 0; /* too near the camera to project */
+    }
+    *out = *p;
+    out->x = (float)(gte.control[OFX] / 65536.0 + x * h / z);
+    out->y = (float)(gte.control[OFY] / 65536.0 + y * h / z);
+    out->z = (float)(z * (p->z / p->view[2])); /* (the far view draws a hair deeper: kept) */
+    if (entry) {
+        out->fade = entry->fade + (p->fade - entry->fade) * along;
+    }
+    return 1;
+}
+
+void GteRecordView(uint32_t handle, double x, double y, double z)
+{
+    int32_t record = HandleRecord(handle);
+
+    if (record >= 0) {
+        records[record].value.view[0] = (float)x;
+        records[record].value.view[1] = (float)y;
+        records[record].value.view[2] = (float)z;
+    }
+}
+
 static uint32_t RecordPrecise(uint32_t sxy, float x, float y, float z)
 {
     PreciseSlot *slot;
@@ -328,6 +617,8 @@ static uint32_t RecordPrecise(uint32_t sxy, float x, float y, float z)
     record->value.z = z;
     record->value.fade = 1.0f;
     record->value.background = backgroundOn;
+    record->value.key = 0;
+    record->value.view[0] = record->value.view[1] = record->value.view[2] = 0.0f;
     record->key = sxy;
     record->previous = slot->latest;
     slot->latest = recordCount++;
@@ -546,7 +837,9 @@ uint32_t GteRecordProjection(uint32_t sxy, float x, float y, float z, float fade
 
     if (handle) {
         records[(handle & HANDLE_INDEX_MASK) - 1].value.fade = fade;
+        records[(handle & HANDLE_INDEX_MASK) - 1].value.key = pendingKey[0];
     }
+    pendingKey[0] = 0;
     return handle;
 }
 
@@ -589,6 +882,7 @@ void GteFrameDrawn(void)
 
 void GteClearPrecise(void)
 {
+    KeepPast();
     recordCount = 0;
     preciseFrame++;
     if (preciseFrame == 0xFFFFFFFFu) {
@@ -652,9 +946,18 @@ static void Rtp(int v, int last, int sf)
                 if (fadeOn && sxyHandle[2]) {
                     records[(sxyHandle[2] & HANDLE_INDEX_MASK) - 1].value.fade = GteFade(sqrt(x * x + y * y + z * z));
                 }
+                if (sxyHandle[2]) {
+                    PreciseRecord *record = &records[(sxyHandle[2] & HANDLE_INDEX_MASK) - 1];
+
+                    record->value.key = pendingKey[v];
+                    record->value.view[0] = (float)x;
+                    record->value.view[1] = (float)y;
+                    record->value.view[2] = (float)z;
+                }
             }
         }
     }
+    pendingKey[v] = 0;
     if (last) {
         int64_t mac0 = SetMac0((int64_t)n * Low16(c[DQA]) + c[DQB]);
         int32_t ir0 = (int32_t)(mac0 >> 12);

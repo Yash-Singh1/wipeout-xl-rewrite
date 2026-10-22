@@ -40,6 +40,7 @@
     X(PFNGLBINDVERTEXARRAYPROC, glBindVertexArray) \
     X(PFNGLENABLEVERTEXATTRIBARRAYPROC, glEnableVertexAttribArray) \
     X(PFNGLVERTEXATTRIBPOINTERPROC, glVertexAttribPointer) \
+    X(PFNGLVERTEXATTRIBIPOINTERPROC, glVertexAttribIPointer) \
     X(PFNGLCREATESHADERPROC, glCreateShader) \
     X(PFNGLSHADERSOURCEPROC, glShaderSource) \
     X(PFNGLCOMPILESHADERPROC, glCompileShader) \
@@ -82,6 +83,7 @@ GL_FUNCTIONS(DECLARE_GL)
 #define glBindVertexArray p_glBindVertexArray
 #define glEnableVertexAttribArray p_glEnableVertexAttribArray
 #define glVertexAttribPointer p_glVertexAttribPointer
+#define glVertexAttribIPointer p_glVertexAttribIPointer
 #define glCreateShader p_glCreateShader
 #define glShaderSource p_glShaderSource
 #define glCompileShader p_glCompileShader
@@ -145,7 +147,7 @@ static GLuint vramTexture;           /* the CPU copy, R16UI */
 static GLuint glyphTexture;          /* the glyph page (GpuSetGlyphMemory): RGBA, premultiplied, filtered */
 static GLuint program, vertexArray, vertexBuffer;
 static GLint uniformAlphaScale;
-static GLint uniformVram, uniformGlyphs, uniformTexture, uniformClut, uniformWindow, uniformMode, uniformTarget;
+static GLint uniformVram, uniformGlyphs, uniformPass, uniformTarget;
 static int vramDirty = 1;
 static int dirtyLeft, dirtyTop, dirtyRight, dirtyBottom;
 static int areaX, areaY, areaW = VRAM_WIDTH, areaH = VRAM_HEIGHT;
@@ -158,16 +160,22 @@ static GLuint wideFramebuffer, wideColour, wideDepth;
 static int wideDirty;                          /* drawn into since its middle was copied to video memory's */
 static int areaWide;                           /* the draw area is in the screen's columns: drawn wide */
 static int sceneWide;                          /* the game built a race's scene since the last new picture */
-static int drawnSincePresent;                  /* anything drawn since the last picture shown */
+static int drawnSincePresent;                  /* the game drew anything since the last picture shown */
+static int interpolatingDraw;                  /* libgpu draws a picture between two of the game's frames */
 static int picturesWithoutScene = 1000;        /* new pictures in a row that were not a race's */
 static GLint uniformOrigin;
 
-/* A batch of triangles with one draw state. */
+/* A batch of triangles drawn with one blending and depth state. What else a primitive's draw state says
+   (texture page, palette, texture window, colour depth) goes with each vertex, so that primitives of
+   different textures, which the ordering tables interleave, are drawn together. */
 #define BATCH_VERTICES 8192
 typedef struct BatchVertex {
     float x, y, w;
     float r, g, b, a;
     float u, v;
+    int16_t texture[4]; /* page x, page y, palette x, palette y */
+    uint8_t window[4];  /* texture window: mask x, mask y, offset x, offset y */
+    uint8_t mode[4];    /* textured, raw, colour depth */
 } BatchVertex;
 static BatchVertex batch[BATCH_VERTICES];
 static int batchCount;
@@ -178,6 +186,14 @@ static const char *vertexSource =
     "in vec3 position;\n"
     "in vec4 colour;\n"
     "in vec2 texel;\n"
+    "in ivec4 texture;\n"
+    "in ivec4 window;\n"
+    "in ivec4 modeIn;\n"
+    "flat out ivec4 texturePage;\n"
+    "flat out ivec4 clut;\n"
+    "flat out ivec4 vWindow;\n"
+    "flat out ivec4 mode;\n"
+    "uniform int pass;\n"
     "uniform vec2 target;\n"           /* framebuffer size in video-memory pixels */
     "uniform vec2 origin;\n"           /* the video-memory position of its first pixel */
     "out vec4 vColour;\n"
@@ -188,6 +204,10 @@ static const char *vertexSource =
     "    vec2 ndc = (position.xy - origin) / target * 2.0 - 1.0;\n"
     "    gl_Position = vec4(ndc * w, position.z > 0.0 ? w - 2.0 : 0.0, w);\n"
     "    vColour = colour;\n"
+    "    texturePage = ivec4(texture.xy, 0, 0);\n"
+    "    clut = ivec4(texture.zw, 0, 0);\n"
+    "    vWindow = window;\n"
+    "    mode = ivec4(modeIn.x, modeIn.y, pass, modeIn.z);\n"
     "    vTexel = vec3(texel, 1.0);\n"
     "    vTexelAffine = texel;\n"
     "}\n";
@@ -202,10 +222,10 @@ static const char *fragmentSource =
     "noperspective in vec2 vTexelAffine;\n"
     "uniform usampler2D vram;\n"
     "uniform sampler2D glyphs;\n"
-    "uniform ivec4 texturePage;\n"
-    "uniform ivec4 clut;\n"
-    "uniform ivec4 window;\n"
-    "uniform ivec4 mode;\n"
+    "flat in ivec4 texturePage;\n"
+    "flat in ivec4 clut;\n"
+    "flat in ivec4 vWindow;\n"
+    "flat in ivec4 mode;\n"
     "out vec4 fragment;\n"
     "uint Fetch(ivec2 p) { return texelFetch(vram, ivec2(p.x & 1023, p.y & 511), 0).r; }\n"
     "void main() {\n"
@@ -225,8 +245,8 @@ static const char *fragmentSource =
     "        return;\n"
     "    }\n"
     "    ivec2 uv = ivec2(floor(t)) & 255;\n"
-    "    uv.x = (uv.x & ~(window.x * 8)) | ((window.z & window.x) * 8);\n"
-    "    uv.y = (uv.y & ~(window.y * 8)) | ((window.w & window.y) * 8);\n"
+    "    uv.x = (uv.x & ~(vWindow.x * 8)) | ((vWindow.z & vWindow.x) * 8);\n"
+    "    uv.y = (uv.y & ~(vWindow.y * 8)) | ((vWindow.w & vWindow.y) * 8);\n"
     "    uint texel;\n"
     "    if (mode.w == 0) {\n"
     "        uint word = Fetch(texturePage.xy + ivec2(uv.x >> 2, uv.y));\n"
@@ -299,6 +319,9 @@ int GpuInit(void)
     glBindAttribLocation(program, 0, "position");
     glBindAttribLocation(program, 1, "colour");
     glBindAttribLocation(program, 2, "texel");
+    glBindAttribLocation(program, 3, "texture");
+    glBindAttribLocation(program, 4, "window");
+    glBindAttribLocation(program, 5, "modeIn");
     glLinkProgram(program);
     glGetProgramiv(program, GL_LINK_STATUS, &ok);
     if (!ok) {
@@ -309,11 +332,8 @@ int GpuInit(void)
     }
     uniformVram = glGetUniformLocation(program, "vram");
     uniformGlyphs = glGetUniformLocation(program, "glyphs");
-    uniformTexture = glGetUniformLocation(program, "texturePage");
     uniformAlphaScale = glGetUniformLocation(program, "alphaScale");
-    uniformClut = glGetUniformLocation(program, "clut");
-    uniformWindow = glGetUniformLocation(program, "window");
-    uniformMode = glGetUniformLocation(program, "mode");
+    uniformPass = glGetUniformLocation(program, "pass");
     uniformTarget = glGetUniformLocation(program, "target");
     uniformOrigin = glGetUniformLocation(program, "origin");
 
@@ -327,6 +347,12 @@ int GpuInit(void)
     glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(BatchVertex), (void *)offsetof(BatchVertex, r));
     glEnableVertexAttribArray(2);
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(BatchVertex), (void *)offsetof(BatchVertex, u));
+    glEnableVertexAttribArray(3);
+    glVertexAttribIPointer(3, 4, GL_SHORT, sizeof(BatchVertex), (void *)offsetof(BatchVertex, texture));
+    glEnableVertexAttribArray(4);
+    glVertexAttribIPointer(4, 4, GL_UNSIGNED_BYTE, sizeof(BatchVertex), (void *)offsetof(BatchVertex, window));
+    glEnableVertexAttribArray(5);
+    glVertexAttribIPointer(5, 4, GL_UNSIGNED_BYTE, sizeof(BatchVertex), (void *)offsetof(BatchVertex, mode));
 
     glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
@@ -575,7 +601,7 @@ static void BindTarget(void)
         glUniform2f(uniformTarget, (float)WideWidth(), (float)VRAM_HEIGHT);
         glUniform2f(uniformOrigin, (float)-wideMargin, 0.0f);
         wideDirty = 1;
-        drawnSincePresent = 1;
+        drawnSincePresent |= !interpolatingDraw;
         return;
     }
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
@@ -584,12 +610,16 @@ static void BindTarget(void)
     glScissor(areaX * scale, areaY * scale, areaW * scale, areaH * scale);
     glUniform2f(uniformTarget, (float)VRAM_WIDTH, (float)VRAM_HEIGHT);
     glUniform2f(uniformOrigin, 0.0f, 0.0f);
-    drawnSincePresent = 1;
+    drawnSincePresent |= !interpolatingDraw;
 }
 
+/* Whether two primitives can be drawn in one batch: the same blending, depth test and passes (what else their
+   states say goes with the vertices). */
 static int SameState(const GpuDrawState *a, const GpuDrawState *b)
 {
-    return memcmp(a, b, sizeof(*a)) == 0;
+    return a->semi == b->semi && a->fade == b->fade && a->depthTest == b->depthTest &&
+           (a->textured && a->depth == 3) == (b->textured && b->depth == 3) &&
+           (a->textured && a->semi >= 0) == (b->textured && b->semi >= 0);
 }
 
 static void SetBlend(int semi)
@@ -643,7 +673,7 @@ static void DrawBatch(int pass)
 {
     const GpuDrawState *s = &batchState;
 
-    glUniform4i(uniformMode, s->textured, s->raw, pass, s->depth);
+    glUniform1i(uniformPass, pass);
     if (s->depthTest) {
         glEnable(GL_DEPTH_TEST);
         /* semi-transparent texels, faded and see-through primitives test but do not hide what is behind */
@@ -686,9 +716,6 @@ static void Flush(void)
     glBindTexture(GL_TEXTURE_2D, glyphTexture);
     glUniform1i(uniformGlyphs, 1);
     glActiveTexture(GL_TEXTURE0);
-    glUniform4i(uniformTexture, s->pageX, s->pageY, 0, 0);
-    glUniform4i(uniformClut, s->clutX, s->clutY, 0, 0);
-    glUniform4i(uniformWindow, s->windowMaskX, s->windowMaskY, s->windowOffsetX, s->windowOffsetY);
     if (s->textured && s->semi >= 0) {
         /* Texels without the semi-transparency bit are drawn opaque, the
            others blended: two passes, each discarding the other's texels. */
@@ -705,6 +732,12 @@ void GpuFlush(void)
     Flush();
 }
 
+void GpuInterpolating(int on)
+{
+    Flush();
+    interpolatingDraw = on;
+}
+
 void GpuSetDrawArea(int x, int y, int w, int h, int offsetX, int offsetY)
 {
     (void)offsetX;
@@ -719,13 +752,18 @@ void GpuSetDrawArea(int x, int y, int w, int h, int offsetX, int offsetY)
 
 /* Semi-transparent textured primitives must not share a batch: each one's
    opaque and blended passes have to come before the next primitive. */
+static GpuDrawState primitiveState; /* the primitive being added */
+
 static void Begin(const GpuDrawState *state, int vertices)
 {
     if (batchCount && (!SameState(state, &batchState) || batchCount + vertices > BATCH_VERTICES ||
                        (state->textured && state->semi >= 0))) {
         Flush();
     }
-    batchState = *state;
+    if (!batchCount) {
+        batchState = *state;
+    }
+    primitiveState = *state;
 }
 
 static void Add(const GpuVertex *v)
@@ -741,6 +779,18 @@ static void Add(const GpuVertex *v)
     out->a = v->a / 255.0f;
     out->u = v->u;
     out->v = v->v;
+    out->texture[0] = (int16_t)primitiveState.pageX;
+    out->texture[1] = (int16_t)primitiveState.pageY;
+    out->texture[2] = (int16_t)primitiveState.clutX;
+    out->texture[3] = (int16_t)primitiveState.clutY;
+    out->window[0] = (uint8_t)primitiveState.windowMaskX;
+    out->window[1] = (uint8_t)primitiveState.windowMaskY;
+    out->window[2] = (uint8_t)primitiveState.windowOffsetX;
+    out->window[3] = (uint8_t)primitiveState.windowOffsetY;
+    out->mode[0] = (uint8_t)primitiveState.textured;
+    out->mode[1] = (uint8_t)primitiveState.raw;
+    out->mode[2] = (uint8_t)primitiveState.depth;
+    out->mode[3] = 0;
 }
 
 /* Video memory is kept twice: psxVram (what the CPU uploads and reads, and
@@ -889,6 +939,12 @@ void GpuFill(int x, int y, int w, int h, uint8_t r, uint8_t g, uint8_t b)
     }
     GpuVramChanged(x, y, w, h);
     ClearDrawn(x, y, w, h);
+    GpuClearArea(x, y, w, h, r, g, b);
+}
+
+void GpuClearArea(int x, int y, int w, int h, uint8_t r, uint8_t g, uint8_t b)
+{
+    Flush();
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
     glEnable(GL_SCISSOR_TEST);
     glScissor(x * scale, y * scale, w * scale, h * scale);
@@ -1015,7 +1071,19 @@ void GpuMoveFramebuffer(int x, int y, int w, int h, int toX, int toY)
 
 /* Video memory row 0 is drawn at the bottom of the framebuffer (OpenGL
    counts rows upward), so the displayed area is flipped when shown. */
+static void Present(int x, int y, int w, int h, int interpolated);
+
 void GpuPresent(int x, int y, int w, int h)
+{
+    Present(x, y, w, h, 0);
+}
+
+void GpuPresentInterpolated(int x, int y, int w, int h)
+{
+    Present(x, y, w, h, 1);
+}
+
+static void Present(int x, int y, int w, int h, int interpolated)
 {
     int width, height, outW, outH, outX, outY;
 
@@ -1051,6 +1119,7 @@ void GpuPresent(int x, int y, int w, int h)
     PortVideoPresent();
     /* after a new picture: the window's shape, the setting or the end of a race may ask for another margin (a
        picture shown again, as each field shows one, or while the frame recorder holds the game, changes nothing) */
+    (void)interpolated;
     if (drawnSincePresent) {
         picturesWithoutScene = sceneWide ? 0 : SDL_min(picturesWithoutScene + 1, 1000);
         sceneWide = 0;
@@ -1224,3 +1293,4 @@ void GpuShowImage(const uint8_t *rgb, int width, int height)
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     PortVideoPresent();
 }
+

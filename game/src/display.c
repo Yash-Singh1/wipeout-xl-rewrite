@@ -132,6 +132,9 @@ void Swap(void)
     DRAWENV *draw;
 
     zero = 0;
+    /* Port: frame interpolation: what is drawn below once the fields have passed */
+    PsxUpcomingTables(OT[CurrentScreen] + 0x1FFF, activateOT2 ? OT2[CurrentScreen] + 0x63F : NULL, OT[CurrentScreen],
+                      doubleBuffer[(CurrentScreen + 1) & 1].draw);
     drawTime = GsGetVcount();
     DrawSync(zero);
     drawTime = GsGetVcount() - drawTime;

@@ -14,6 +14,7 @@
 #include <stdlib.h>
 
 #include "../platform.h"
+#include "../settings.h"
 #include "framecap.h"
 #include "../debug_ui.h"
 #include "psx_io.h"
@@ -44,6 +45,11 @@ static void Pace(void)
     uint64_t now, due;
 
     if (portConfig.fixedStep) {
+        int k, n = PsxInterpolationTest();
+
+        for (k = 1; k <= n && PsxCanInterpolate(); k++) {
+            PsxDrawInterpolatedTest(k, n); /* tests: WIPEOUT_INTERPOLATE */
+        }
         return;
     }
     if (!startTicks) {
@@ -51,7 +57,29 @@ static void Pace(void)
     }
     due = startTicks + (uint64_t)(fields * FIELD_SECONDS * 1e9);
     now = SDL_GetTicksNS();
-    if (due > now) {
+    PortSwapInterval(portSettings.frameRate == FRAME_RATE_CONSOLE || portSettings.frameRate == FRAME_RATE_VSYNC ||
+                     !PsxInterpolationOn());
+    if (due > now && PsxCanInterpolate()) {
+        /* frame interpolation: pictures between the game's frames until the field is due, as many as the
+           settings allow (each waits for the display's refresh with VSync) */
+        static uint64_t lastPicture, pictureCost = 2000000;
+
+        while ((now = SDL_GetTicksNS()) < due) {
+            uint64_t next = portSettings.frameRate == FRAME_RATE_CAPPED
+                                ? lastPicture + 1000000000ull / (uint64_t)SDL_max(portSettings.frameCap, 1)
+                                : now;
+
+            if (next > now || now + pictureCost > due) {
+                /* not yet (the cap), or no time for one before the field: the game's time comes first */
+                SDL_DelayPrecise(((next > now && next < due) ? next : due) - now);
+                continue;
+            }
+            lastPicture = now;
+            PsxDrawInterpolated();
+            /* what a picture takes, drawing and showing it (with VSync, the wait for the display's refresh) */
+            pictureCost = (pictureCost * 7 + (SDL_GetTicksNS() - now)) / 8;
+        }
+    } else if (due > now) {
         SDL_DelayPrecise(due - now);
     } else if (now - due > 250000000ull) {
         /* far behind (the host stalled): don't rush to catch up */
@@ -112,6 +140,7 @@ void PsxVBlank(void)
     Field();
     Pace();
     if (portConfig.frameLimit && fields >= (uint64_t)portConfig.frameLimit) {
+        fprintf(stderr, "%d pictures shown in %llu fields\n", PortShownFrames(), (unsigned long long)fields); /* tests */
         PortDumpVram();
         exit(0);
     }

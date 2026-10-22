@@ -88,10 +88,21 @@ MATRIX *TransMatrix(MATRIX *m, VECTOR *v)
     return m;
 }
 
+/* Frame interpolation (gte.h): a vertex the game keeps from frame to frame is known by its address; one on the
+   stack (a temporary, reused for every point) by nothing. */
+static uint64_t SourceKey(const void *v)
+{
+    char here;
+    intptr_t distance = (intptr_t)v - (intptr_t)&here;
+
+    return distance > -(1 << 20) && distance < (1 << 20) ? 0 : (uint64_t)(uintptr_t)v;
+}
+
 int RotTransPers(SVECTOR *v0, int *sxy, int *p, int *flag)
 {
     GteWriteData(0, Word(v0, 0));
     GteWriteData(1, Word(v0, 4));
+    GteKeyNext(0, SourceKey(v0));
     GteExecute(0x4A180001); /* rtps */
     *sxy = GteReadData(14);
     GteBindPrecise(sxy, GtePreciseHandle(14));
@@ -108,6 +119,9 @@ int RotTransPers3(SVECTOR *v0, SVECTOR *v1, SVECTOR *v2, int *sxy0, int *sxy1, i
     GteWriteData(3, Word(v1, 4));
     GteWriteData(4, Word(v2, 0));
     GteWriteData(5, Word(v2, 4));
+    GteKeyNext(0, SourceKey(v0));
+    GteKeyNext(1, SourceKey(v1));
+    GteKeyNext(2, SourceKey(v2));
     GteExecute(0x4A280030); /* rtpt */
     *sxy0 = GteReadData(12);
     *sxy1 = GteReadData(13);
@@ -126,6 +140,7 @@ void RotTransPersN(SVECTOR *v0, DVECTOR *sxy, u_short *sz, u_short *flag, int n)
     do {
         GteWriteData(0, Word(v0, 0));
         GteWriteData(1, Word(v0, 4));
+        GteKeyNext(0, SourceKey(v0));
         GteExecute(0x4A180001); /* rtps */
         v0++;
         n--;

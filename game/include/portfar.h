@@ -60,4 +60,8 @@ char *PortNearAlloc(int bytes);
 void PortTrackFar(TrackSection *section, const PortView *view);
 void PortDrawObjectFar(Object *object, const PortView *view, const CVECTOR *colour);
 
+/* Frame interpolation (objdraw.c, gte.h): the next model the game draws is drawing number `instance` of it this
+   frame (the ships share models: their ship number). */
+void PortInterpInstance(int instance);
+
 #endif

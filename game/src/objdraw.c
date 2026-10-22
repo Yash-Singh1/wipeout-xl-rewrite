@@ -66,12 +66,54 @@ typedef enum DrawKind {
 _Static_assert(sizeof(F3) == 0x10 && sizeof(F4) == 0x10 && sizeof(FT3) == 0x1C && sizeof(FT4) == 0x20, "PRM primitive sizes");
 _Static_assert(sizeof(G3) == 0x18 && sizeof(G4) == 0x1C && sizeof(GT3) == 0x24 && sizeof(GT4) == 0x2C && sizeof(SPR) == 0x10, "PRM primitive sizes");
 
+/* Port: frame interpolation (gte.h): a vertex is known by the model's vertex and which drawing of the model it is
+   this frame. The ships share models, and DrawShips says which ship it draws (PortInterpInstance); other models
+   drawn more than once count their drawings in order. The far view draws what the game drew in part or not at
+   all: its drawing is the game's. */
+static int      nextInstance = -1;
+static uint64_t currentDrawing; /* the key of the drawing being made */
+static uint64_t nearPrimitive;  /* ... and of the primitive DrawNearPrimitive cuts */
+
+void PortInterpInstance(int instance)
+{
+    nextInstance = instance;
+}
+
+static uint64_t DrawingKey(Object *object)
+{
+    static struct {
+        Object  *object;
+        uint32_t frame;
+        int      count;
+    } drawings[512];
+    uint32_t frame = GteFrameNumber(), slot = (uint32_t)(((uintptr_t)object >> 4) * 2654435761u) & 511, probe;
+    int      instance = nextInstance;
+
+    nextInstance = -1;
+    if (instance < 0 && !farView) {
+        instance = 0;
+        for (probe = 0; probe < 512; probe++, slot = (slot + 1) & 511) {
+            if (drawings[slot].frame != frame) {
+                drawings[slot].object = object;
+                drawings[slot].frame = frame;
+                drawings[slot].count = 0;
+            }
+            if (drawings[slot].object == object) {
+                instance = drawings[slot].count++;
+                break;
+            }
+        }
+    }
+    return GteKeyMix((uintptr_t)object, (uint64_t)(instance < 0 ? 0 : instance));
+}
+
 /* Transforms the object's vertices. */
 static void ProjectVertices(Object *object)
 {
     SVECTOR         *vertex = object->vertices;
     ProjectedVertex *out = projected;
     int              count = (u_short)object->vertexCount;
+    uint64_t         drawing = currentDrawing = DrawingKey(object); /* Port: frame interpolation */
 
     if (farView) {
         int i;
@@ -79,6 +121,7 @@ static void ProjectVertices(Object *object)
         for (i = 0; i < count && i < MAX_OBJECT_VERTICES; i++) {
             PortFarVertex v;
 
+            GteKeyNext(0, GteKeyMix(drawing, (uint64_t)i));
             PortFarProject(farView, vertex[i].vx, vertex[i].vy, vertex[i].vz, &v);
             projected[i].screen = v.screen;
             projected[i].depth = (u_short)(v.z < 0 ? 0 : v.z > 65535 ? 65535 : v.z);
@@ -96,6 +139,7 @@ static void ProjectVertices(Object *object)
     do {
         GteWriteData(0, (vertex->vx & 0xFFFF) | (int)((u_int)(int)vertex->vy << 16));
         GteWriteData(1, (vertex->vz & 0xFFFF) | (int)((u_int)(u_short)vertex->pad << 16));
+        GteKeyNext(0, GteKeyMix(drawing, (uint64_t)(vertex - object->vertices))); /* Port: frame interpolation */
         GteExecute(GTE_RTPS);
         out->depth = (u_short)GteReadData(19);
         out->flag = (u_short)(((u_int)GteReadControl(31) >> 12) & 0x466);
@@ -516,7 +560,7 @@ static void CameraSpace(const SVECTOR *v, double out[3])
 
 typedef struct NearCorner {
     double   c[8];   /* camera x, y, z, u, v, r, g, b */
-    int      vertex; /* the object's vertex, or -1 for a cut */
+    int      vertex; /* the object's vertex, or -1 - n for the cut in edge n */
 } NearCorner;
 
 static void SetNearCorner(short *x, short *y, u_char *rgb, const NearCorner *corner, const ProjectedVertex *vertex)
@@ -526,6 +570,9 @@ static void SetNearCorner(short *x, short *y, u_char *rgb, const NearCorner *cor
     } else {
         PortFarVertex point;
 
+        /* frame interpolation: the object's vertex as the game's projection of it, a cut by its edge */
+        GteKeyNext(0, corner->vertex >= 0 ? GteKeyMix(currentDrawing, (uint64_t)corner->vertex)
+                                          : GteKeyMix(nearPrimitive, (uint64_t)-corner->vertex));
         PortFarProjectCamera(corner->c[0], corner->c[1], corner->c[2], &point);
         StoreScreenXY(x, y, point.screen);
         GteBindPrecise(x, point.handle);
@@ -548,6 +595,8 @@ static int DrawNearPrimitive(Object *object, int index, u_long *ordering, Poly p
     int            margin = PortScreenMargin(); /* widescreen's sides */
     char          *start, *out;
     const double  *a, *b, *c;
+
+    nearPrimitive = GteKeyMix(currentDrawing, 0x10000 + (uint64_t)index); /* frame interpolation */
 
     switch ((u_short)prim.prim->type) {
     case TypeFT3:
@@ -617,7 +666,7 @@ static int DrawNearPrimitive(Object *object, int index, u_long *ordering, Poly p
                 clipped[n].c[k] = p->c[k] + (q->c[k] - p->c[k]) * t;
             }
             clipped[n].c[2] = PORT_FAR_NEAR;
-            clipped[n++].vertex = -1;
+            clipped[n++].vertex = -1 - i;
         }
     }
     if (n < 3) {

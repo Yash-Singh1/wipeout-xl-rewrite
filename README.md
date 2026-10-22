@@ -40,6 +40,14 @@ models, but decals such as sign faces then flicker against their boards). The
 disc is read as fast as the image allows, so loading takes a moment instead
 of the console's seconds (`WIPEOUT_CD_SPEED=1` for the console's drive).
 
+The game runs at its 30 frames a second, as on the console, but the picture is
+drawn as often as the computer can: between two of the game's frames every
+model, the track and the camera move smoothly from one to the next (the game's
+own frames are not changed, only shown more often). The debug console's
+Graphics tab sets the frame rate: uncapped (the default), the display's refresh
+(VSync), a cap in pictures a second, or the console's 60 fields a second
+without the frames in between (`WIPEOUT_FRAME_RATE=uncapped|vsync|console|N`).
+
 Widescreen (the debug console's Graphics tab, or `WIPEOUT_WIDESCREEN=1`): in a
 window wider than 4:3 a race fills the whole width, showing more of the scene at
 the sides, with the HUD at the window's edges. The menus, loading screens and

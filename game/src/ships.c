@@ -131,6 +131,7 @@ void DrawShips(ShipData *shipIndex, Object **shipShapes, int camShip, TrackCamer
                     face--;
                     if (!(shipIndex[i].attr & LSIDE)) face++;
                     win = (CVECTOR *)&face->red;
+                    PortInterpInstance(i); /* Port: frame interpolation: the model's drawing is this ship's */
                     if (raceType == 3) {
                         if ((i == remoteShip) || (i == ownShip)) {
                             AsmDrawObjectLit(obj, camera.camPos, 0, win);
@@ -147,6 +148,7 @@ void DrawShips(ShipData *shipIndex, Object **shipShapes, int camShip, TrackCamer
                     } else {
                         AsmDrawObjectLit(obj, camera.camPos, 0, win);
                     }
+                    PortInterpInstance(-1);
                 }
               }
             }
