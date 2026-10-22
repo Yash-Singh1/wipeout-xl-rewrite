@@ -1231,6 +1231,7 @@ void DisplayScreen(Texture *texture, DrBox *box)
     j = 0;
     do {
         AddPrim(&OT[CurrentScreen][4095], &box->rows[j][CurrentScreen]);
+        PortWideBackdrop(&box->rows[j][CurrentScreen]); /* Port: widescreen fills the sides with the backdrop */
         j++;
     } while (j < 2);
 }
@@ -6092,6 +6093,8 @@ void ShowMenuBackground(POLY_FT4 *menuPrim, POLY_FT4 *menu1Prim, LoadedImage *im
     menu1Prim[CurrentScreen].v3 = image->height - 1;
     menu1Prim[CurrentScreen].tpage = GetTPage(2, 0, image->x + 128, image->y);
     AddPrim(OT[CurrentScreen] + 4095, &menu1Prim[CurrentScreen]);
+    PortWideBackdrop(&menuPrim[CurrentScreen]); /* Port: widescreen fills the sides with the backdrop */
+    PortWideBackdrop(&menu1Prim[CurrentScreen]);
 }
 
 

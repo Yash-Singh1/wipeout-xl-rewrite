@@ -18,7 +18,10 @@
    either side, so that what the game projects past the screen's edges is
    seen; its middle is the console's picture. Untextured primitives across
    the whole screen (clears, fades, flashes) are stretched over the sides;
-   pictures keep their shape. Whenever video memory's copy of those columns
+   pictures keep their shape. A menu is shown wide too, but only its
+   backdrop, enlarged evenly, and those fills reach the sides: the rest
+   stays in the console's columns, where panels sliding in from off screen
+   come into view as on the console. Whenever video memory's copy of those columns
    is read or shown 4:3 it is brought up to date first (SyncWide), and what
    the CPU writes there goes to both. */
 #include <SDL3/SDL.h>
@@ -163,6 +166,10 @@ static int sceneWide;                          /* the game built a race's scene 
 static int drawnSincePresent;                  /* the game drew anything since the last picture shown */
 static int interpolatingDraw;                  /* libgpu draws a picture between two of the game's frames */
 static int picturesWithoutScene = 1000;        /* new pictures in a row that were not a race's */
+static int menuWide;                           /* the game built a menu's backdrop since the last new picture */
+static int picturesWithoutMenu = 1000;         /* ... and new pictures in a row that were not a menu's */
+static int backdropNext;                       /* the primitive being drawn is a menu's backdrop (GpuBackdrop) */
+static int primitiveSides, batchSides;         /* in a menu: the primitive, the batch reach the sides */
 static GLint uniformOrigin;
 
 /* A batch of triangles drawn with one blending state. What else a primitive's draw state says
@@ -515,7 +522,7 @@ static int WantedMargin(void)
 {
     int width, height, margin;
 
-    if (!portSettings.widescreen || picturesWithoutScene > 1 || PortLinkSplit()) {
+    if (!portSettings.widescreen || (picturesWithoutScene > 1 && picturesWithoutMenu > 1) || PortLinkSplit()) {
         return 0; /* (a split window shows each player's picture as the console's) */
     }
     PortDrawableSize(&width, &height);
@@ -568,12 +575,28 @@ void PortWideScene(void)
     sceneWide = 1;
 }
 
+void GpuWideMenu(void)
+{
+    menuWide = 1;
+}
+
+int GpuRaceWide(void)
+{
+    /* (the pictures between a race's frames are drawn after the new picture that ended sceneWide) */
+    return sceneWide || picturesWithoutScene == 0;
+}
+
+void GpuBackdrop(int on)
+{
+    backdropNext = on;
+}
+
 /* The framebuffer the next primitives go to, its viewport and the draw area's scissor. */
 static void BindTarget(void)
 {
     if (areaWide) {
-        /* a draw area across the screen reaches over the sides as well */
-        int full = areaX == 0 && areaW == SCREEN_COLUMNS;
+        /* a draw area across the screen reaches over the sides as well (in a menu only for what fills them) */
+        int full = areaX == 0 && areaW == SCREEN_COLUMNS && (GpuRaceWide() || batchSides);
 
         glBindFramebuffer(GL_FRAMEBUFFER, wideFramebuffer);
         glViewport(0, 0, WideWidth() * scale, VRAM_HEIGHT * scale);
@@ -732,11 +755,12 @@ static GpuDrawState primitiveState; /* the primitive being added */
 static void Begin(const GpuDrawState *state, int vertices)
 {
     if (batchCount && (!SameState(state, &batchState) || batchCount + vertices > BATCH_VERTICES ||
-                       (state->textured && state->semi >= 0))) {
+                       (state->textured && state->semi >= 0) || primitiveSides != batchSides)) {
         Flush();
     }
     if (!batchCount) {
         batchState = *state;
+        batchSides = primitiveSides;
     }
     primitiveState = *state;
 }
@@ -808,7 +832,7 @@ void GpuTriangles(const GpuDrawState *given, const GpuVertex *vertices, int coun
     GpuDrawState faded = *given;
     const GpuDrawState *state = &faded;
     int i;
-    int perspective = 1, stretch;
+    int perspective = 1, stretch, backdrop;
     float minX = vertices[0].x, minY = vertices[0].y, maxX = minX, maxY = minY;
 
     for (i = 1; i < count; i++) {
@@ -831,7 +855,11 @@ void GpuTriangles(const GpuDrawState *given, const GpuVertex *vertices, int coun
        the sides as well */
     stretch = areaWide && areaX == 0 && areaW == SCREEN_COLUMNS && !given->textured && !perspective && minX <= 0.0f &&
               maxX >= (float)SCREEN_COLUMNS;
+    /* ... and a menu's backdrop is enlarged about the middle of the draw area to fill them, keeping its shape */
+    backdrop = backdropNext && areaWide && areaX == 0 && areaW == SCREEN_COLUMNS && !perspective && !GpuRaceWide();
+    primitiveSides = stretch || backdrop;
     Begin(state, count);
+    primitiveSides = 0;
     for (i = 0; i < count; i++) {
         GpuVertex v = vertices[i];
         if (!perspective) {
@@ -839,6 +867,11 @@ void GpuTriangles(const GpuDrawState *given, const GpuVertex *vertices, int coun
         }
         if (stretch) {
             v.x = v.x * WideWidth() / SCREEN_COLUMNS - wideMargin;
+        } else if (backdrop) {
+            float zoom = (float)WideWidth() / SCREEN_COLUMNS, middle = areaY + areaH * 0.5f;
+
+            v.x = SCREEN_COLUMNS * 0.5f + (v.x - SCREEN_COLUMNS * 0.5f) * zoom;
+            v.y = middle + (v.y - middle) * zoom;
         }
         Add(&v);
     }
@@ -1073,7 +1106,8 @@ static void Present(int x, int y, int w, int h, int interpolated)
     (void)interpolated;
     if (drawnSincePresent) {
         picturesWithoutScene = sceneWide ? 0 : SDL_min(picturesWithoutScene + 1, 1000);
-        sceneWide = 0;
+        picturesWithoutMenu = menuWide ? 0 : SDL_min(picturesWithoutMenu + 1, 1000);
+        sceneWide = menuWide = 0;
         drawnSincePresent = 0;
         SetWideMargin(WantedMargin());
     }

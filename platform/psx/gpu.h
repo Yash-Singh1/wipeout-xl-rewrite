@@ -81,8 +81,16 @@ void GpuFlush(void);
    when it is wider (square pixels). */
 void GpuShowImage(const uint8_t *rgb, int width, int height);
 
-/* Widescreen: how far the picture reaches beyond each side of the screen's 320 columns while a race is shown
-   wide (0: the console's 4:3). Also the game's (port_platform.h), with PortWideScene. */
+/* Widescreen: how far the picture reaches beyond each side of the screen's 320 columns while a race or a menu is
+   shown wide (0: the console's 4:3). Also the game's (port_platform.h), with PortWideScene. */
 int PortScreenMargin(void);
+/* Widescreen: the picture being drawn is a race's (everything reaches the sides, the HUD goes to its edges), not
+   a menu's. */
+int GpuRaceWide(void);
+/* A menu's backdrop was built this frame (PortWideBackdrop in libgpu): the menu is shown wide. */
+void GpuWideMenu(void);
+/* The primitives that follow are (1) or are not (0) a menu's backdrop, which widescreen enlarges to fill the
+   sides. */
+void GpuBackdrop(int on);
 
 #endif

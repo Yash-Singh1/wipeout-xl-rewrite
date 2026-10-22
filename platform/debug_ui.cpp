@@ -551,7 +551,7 @@ static void Console(void)
                 portSettings.widescreen = wide;
                 Changed();
             }
-            ImGui::TextDisabled("In a window wider than 4:3 a race fills it, the HUD at the edges; the menus stay 4:3.");
+            ImGui::TextDisabled("In a window wider than 4:3 a race fills it, the HUD at the edges, and the menus' backdrop fills the sides.");
             bool fullscreen = (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) != 0;
             if (ImGui::Checkbox("Full screen (Alt+Enter, F11)", &fullscreen)) {
                 SDL_SetWindowFullscreen(window, fullscreen);

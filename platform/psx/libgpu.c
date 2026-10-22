@@ -345,12 +345,52 @@ static void ReadPendingTables(void);
 static int interpolating; /* drawing a picture between two of the game's frames (PsxDrawInterpolated) */
 static float interpolationAlong;
 
+/* Widescreen: the packets of the menus' backdrops (PortWideBackdrop), which fill the picture's sides. They are
+   the same few packets every frame. */
+#define BACKDROPS 8
+static const void *backdrops[BACKDROPS];
+static int backdropCount, backdropNext;
+
+void PortWideBackdrop(const void *packet)
+{
+    int i;
+
+    for (i = 0; i < backdropCount && backdrops[i] != packet; i++) {
+    }
+    if (i == backdropCount) {
+        backdrops[backdropNext] = packet;
+        backdropNext = (backdropNext + 1) % BACKDROPS;
+        backdropCount = backdropCount < BACKDROPS ? backdropCount + 1 : BACKDROPS;
+    }
+    GpuWideMenu();
+}
+
+static int Backdrop(const uint32_t *w)
+{
+    int i;
+
+    for (i = 0; i < backdropCount; i++) {
+        if ((const uint32_t *)backdrops[i] + 1 == w) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static void Submit(const uint32_t *w, int words)
 {
+    int backdrop = PortScreenMargin() && Backdrop(w);
+
     if (!interpolating) {
         PortTraceGp0(w, words);
     }
+    if (backdrop) {
+        GpuBackdrop(1);
+    }
     Packet(w, words);
+    if (backdrop) {
+        GpuBackdrop(0);
+    }
 }
 
 /* The library's clamps of a drawing-area corner and a size to video memory. */
@@ -1353,7 +1393,7 @@ static void DrawTableAgain(u_long *p)
 {
     u_long *node;
 
-    if (PortScreenMargin()) {
+    if (PortScreenMargin() && GpuRaceWide()) {
         DrawAnchored(p, PortScreenMargin());
         return;
     }
@@ -1448,7 +1488,7 @@ void DrawOTag(u_long *p)
         GteFrameDrawn();
         return;
     }
-    if (PortScreenMargin() && !tracing) {
+    if (PortScreenMargin() && GpuRaceWide() && !tracing) {
         DrawAnchored(p, PortScreenMargin());
         GteFrameDrawn();
         return;
