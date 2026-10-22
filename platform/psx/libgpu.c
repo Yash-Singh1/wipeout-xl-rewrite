@@ -448,6 +448,22 @@ static DISPENV nullDispEnv;
 
 static void HandOverSplit(void);
 
+/* Frame interpolation: the frame just drawn (DrawOTag of the upcoming tables), shown in place of the console's
+   picture until the game says what it draws next. The console shows each frame only once the next is drawn: the
+   picture it shows meanwhile is the frame before, which interpolation had already gone past (the pictures
+   shown come up to the frame just drawn), so a field that passes outside the game's Swap (pausing does), or
+   with tables that cannot be interpolated, would step back to it. The next frame drawn takes its place;
+   anything else the game does to video memory or the display ends it (the game shows what it put there). */
+static struct {
+    int pending, left, top, width, height;
+    u_long *second; /* (the tables' second, drawn just after: part of the frame) */
+} drawnFrame;
+
+static void ForgetDrawnFrame(void)
+{
+    drawnFrame.pending = 0;
+}
+
 DISPENV *PutDispEnv(DISPENV *env)
 {
     DISPENV *given = env;
@@ -456,6 +472,9 @@ DISPENV *PutDispEnv(DISPENV *env)
         env = &nullDispEnv;
     }
     PortTraceGp1(0x05000000u | (uint32_t)(env->disp.y & 0x1FF) << 10 | (uint32_t)(env->disp.x & 0x3FF));
+    if (env->disp.x != state.displayX || env->disp.y != state.displayY) {
+        ForgetDrawnFrame();
+    }
     state.displayX = env->disp.x;
     state.displayY = env->disp.y;
     state.displayW = env->disp.w;
@@ -468,6 +487,9 @@ DISPENV *PutDispEnv(DISPENV *env)
 
 void SetDispMask(int mask)
 {
+    if (!mask) {
+        ForgetDrawnFrame();
+    }
     state.displayEnabled = mask != 0;
 }
 
@@ -606,6 +628,14 @@ void PsxShowDisplay(void)
         PsxDrawInterpolated();
         return;
     }
+    if (drawnFrame.pending && PsxInterpolationOn() && !PortLinkSplit() && !holdPicture && state.displayEnabled &&
+        !(portConfig.fixedStep && PsxInterpolationTest())) {
+        if (state.displayW > 0 && state.displayH > 0) {
+            FrameCapShown(state.displayX, state.displayY, state.displayW, state.displayH > 256 ? 480 : 240);
+        }
+        GpuPresent(drawnFrame.left, drawnFrame.top, drawnFrame.width, drawnFrame.height > 256 ? 480 : 240);
+        return;
+    }
     if (PortLinkSplit()) {
         ShowSplit();
         return;
@@ -660,6 +690,7 @@ int LoadImage(RECT *rect, u_long *p)
     const uint16_t *pixels = (const uint16_t *)p;
     int x, y;
 
+    ForgetDrawnFrame();
     TraceTransfer(0xA0000000u, rect, p);
 
     if (rect->y >= VRAM_HEIGHT) {
@@ -705,6 +736,7 @@ int MoveImage(RECT *rect, int x, int y)
     uint32_t words[4];
     int i, j;
 
+    ForgetDrawnFrame();
     words[0] = 0x80000000u;
     words[1] = (uint32_t)(uint16_t)rect->y << 16 | (uint16_t)rect->x;
     words[2] = (uint32_t)(uint16_t)y << 16 | (uint16_t)x;
@@ -739,6 +771,7 @@ int ClearImage(RECT *rect, u_char r, u_char g, u_char b)
     uint32_t size = (uint32_t)ClampY(rect->h) << 16 | (uint32_t)ClampX(rect->w);
     uint32_t words[7];
 
+    ForgetDrawnFrame();
     if ((rect->x & 0x3F) || (ClampX(rect->w) & 0x3F)) {
         words[0] = 0xE3000000u;
         words[1] = 0xE4FFFFFFu;
@@ -1541,7 +1574,15 @@ void DrawOTag(u_long *p)
         }
         frameDrawnTicks = now;
         frameDrawnField = PsxFieldCount();
+        drawnFrame.pending = 1;
+        drawnFrame.left = upcoming.left;
+        drawnFrame.top = upcoming.top;
+        drawnFrame.width = upcoming.width;
+        drawnFrame.height = upcoming.height;
+        drawnFrame.second = upcoming.second;
         upcoming.table = NULL;
+    } else if (p != drawnFrame.second) {
+        ForgetDrawnFrame();
     }
     if (holdPicture && holdAreaCount < HOLD_AREAS) {
         holdAreas[holdAreaCount].left = state.areaLeft;
@@ -1591,6 +1632,7 @@ void DrawPrim(void *p)
 {
     uint32_t tag = *(uint32_t *)p;
 
+    ForgetDrawnFrame();
     Submit((const uint32_t *)p + 1, (int)(tag >> 24));
 }
 
