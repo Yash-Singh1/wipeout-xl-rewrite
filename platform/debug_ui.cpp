@@ -21,6 +21,7 @@ extern "C" {
 }
 
 static SDL_Window *window;
+static ImGuiStyle baseStyle; /* the style at a scale of 1 (FitToWindow) */
 static bool ready, open;
 static char saveDirEdit[1024];
 static bool showFrames; // Tab brings the Frames tab up
@@ -47,11 +48,7 @@ extern "C" void DebugUiInit(SDL_Window *w, void *context)
     style.WindowRounding = 6.0f;
     style.FrameRounding = 4.0f;
     style.Colors[ImGuiCol_WindowBg].w = 0.92f;
-    float scale = SDL_GetWindowDisplayScale(w);
-    if (scale > 0.0f) {
-        style.ScaleAllSizes(scale);
-        io.FontGlobalScale = scale;
-    }
+    baseStyle = style;
     ImGui_ImplSDL3_InitForOpenGL(w, context);
     ImGui_ImplOpenGL3_Init("#version 330 core");
     SDL_strlcpy(saveDirEdit, portSettings.saveDir, sizeof(saveDirEdit));
@@ -446,6 +443,28 @@ static ImGuiTabItemFlags FirstTab(const char *name)
     return ImGuiTabItemFlags_SetSelected;
 }
 
+/* The console's size follows the game window's: laid out for 720 points across, it is scaled to fit the window
+   (ImGui works in the window's points; the backend draws them at the display's density). */
+static void FitToWindow(void)
+{
+    static float applied;
+    int w, h;
+    float ui;
+
+    SDL_GetWindowSize(window, &w, &h);
+    if (w <= 0 || h <= 0) {
+        return;
+    }
+    ui = SDL_clamp(SDL_min(w * 0.92f / 720.0f, h * 0.9f / 560.0f), 0.6f, 3.0f);
+    if (SDL_fabsf(ui - applied) < 0.01f) {
+        return;
+    }
+    applied = ui;
+    ImGui::GetStyle() = baseStyle;
+    ImGui::GetStyle().ScaleAllSizes(ui);
+    ImGui::GetIO().FontGlobalScale = ui;
+}
+
 static void Console(void)
 {
     const ImGuiViewport *view = ImGui::GetMainViewport();
@@ -456,7 +475,7 @@ static void Console(void)
                                 ImGuiCond_Always, ImVec2(0.5f, 0.0f));
     } else {
         ImGui::SetNextWindowPos(ImVec2(view->WorkPos.x + view->WorkSize.x * 0.5f, view->WorkPos.y + view->WorkSize.y * 0.5f),
-                                ImGuiCond_FirstUseEver, ImVec2(0.5f, 0.5f));
+                                ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
     }
     float width = 720 * ImGui::GetIO().FontGlobalScale;
     ImGui::SetNextWindowSizeConstraints(ImVec2(width, 0), ImVec2(width, view->WorkSize.y * 0.9f));
@@ -626,6 +645,7 @@ extern "C" void DebugUiRender(void)
     }
     int width, height;
     SDL_GetWindowSizeInPixels(window, &width, &height);
+    FitToWindow();
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
