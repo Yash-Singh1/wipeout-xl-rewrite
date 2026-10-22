@@ -193,7 +193,8 @@ Disc *DiscOpen(const char *cuePath, char *error, int errorSize)
                 goto bad;
             }
             snprintf(name, sizeof(name), "%.*s", (int)(q2 - q1 - 1), q1 + 1);
-            snprintf(path, sizeof(path), "%s%s", name[0] == '/' ? "" : dir, name);
+            snprintf(path, sizeof(path), "%s%s", name[0] == '/' || name[0] == '\\' || name[1] == ':' ? "" : dir,
+                     name);
             f = &disc->files[disc->fileCount];
             if (!map_file(f, path)) {
                 fail(error, errorSize, "cannot read disc file %s", path);

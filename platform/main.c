@@ -9,7 +9,7 @@
 #include "platform.h"
 #include "psx/gte.h"
 #include "psx/psx_io.h"
-#include "archive.h"
+#include "discimage.h"
 #include "link.h"
 #include "music.h"
 #include "settings.h"
@@ -24,7 +24,8 @@ static void Usage(void)
 {
     fprintf(stderr,
             "usage: wipeoutxl [--disc FILE.cue] [--window WxH] [--fullscreen]\n"
-            "  --disc     your Wipeout XL (USA) PlayStation disc image (.cue with its .bin tracks);\n"
+            "  --disc     your Wipeout XL (USA) or WipEout 2097 (Europe) PlayStation disc image: a .cue with its\n"
+            "             .bin tracks, a .bin alone, or an archive of either (.7z, .zip, .rar, .tar, .gz, ...);\n"
             "             without it, the one chosen last time, else a file dialog asks for it\n"
             "environment: WIPEOUT_XL_DISC, WIPEOUT_RENDER_SCALE (0 auto, else 1-12), WIPEOUT_HD_PACK (a texture pack's\n"
             "  .zip or folder); tests: WIPEOUT_MUTE, WIPEOUT_HIDDEN,\n"
@@ -54,7 +55,8 @@ static void SDLCALL DiscChosen(void *user, const char *const *files, int filter)
 
 static const char *ChooseDisc(void)
 {
-    static const SDL_DialogFileFilter cue[] = {{"Wipeout XL or WipEout 2097 disc image (.cue, or a .7z of one)", "cue;7z"}};
+    static const SDL_DialogFileFilter cue[] = {
+        {"Wipeout XL or WipEout 2097 disc image (.cue, .bin, or an archive of one)", PORT_DISC_EXTENSIONS}};
     SDL_PathInfo info;
 
     if (portSettings.discPath[0] && SDL_GetPathInfo(portSettings.discPath, &info)) {
@@ -181,18 +183,19 @@ int main(int argc, char **argv)
     if (!PortVideoInit()) {
         return 1;
     }
-    if (PortIsArchive(portConfig.discPath)) {
-        /* a .7z of the disc image: unpacked the first time (archive.c), then its .cue */
+    {
+        /* the image's .cue: an archive's unpacked the first time, a .bin's made for it (discimage.c) */
         static char cue[1200];
         char message[512];
 
-        if (!PortArchiveDisc(portConfig.discPath, cue, sizeof(cue), message, sizeof(message))) {
+        if (!PortDiscImage(portConfig.discPath, cue, sizeof(cue), message, sizeof(message))) {
             SDL_Log("%s", message);
             if (!portConfig.hidden) {
                 SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Wipeout XL", message, NULL);
             }
             return 1;
         }
+        portConfig.discGiven = portConfig.discPath;
         portConfig.discPath = cue;
     }
     {

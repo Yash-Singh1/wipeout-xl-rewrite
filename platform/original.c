@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "discimage.h"
 #include "original.h"
 #include "platform.h"
 #include "settings.h"
@@ -171,7 +172,13 @@ int PortOriginalOpen(const char *path, char *message, int messageSize)
             folder[0] = 0;
         }
     } else {
-        disc = DiscOpen(path, error, sizeof(error));
+        char cue[1200];
+
+        /* (an archive or a .bin: its .cue, discimage.c) */
+        if (!PortDiscImage(path, cue, sizeof(cue), message, (size_t)messageSize)) {
+            return 0;
+        }
+        disc = DiscOpen(cue, error, sizeof(error));
         if (!disc) {
             SDL_snprintf(message, (size_t)messageSize, "%s", error);
             return 0;

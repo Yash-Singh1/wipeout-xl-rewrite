@@ -6,6 +6,7 @@
 
 typedef struct PortConfig {
     const char *discPath;    /* the PS1 disc image's .cue */
+    const char *discGiven;   /* the disc as given: the .cue, a .bin, an archive (discimage.c) */
     const char *savePath;    /* writable: memory card files */
     int windowWidth, windowHeight, fullscreen;
     int muted;               /* tests: no audio device */

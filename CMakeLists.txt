@@ -95,6 +95,41 @@ set(PLATFORM_SOURCES ${PLATFORM_TOP_SOURCES} ${PLATFORM_PSX_SOURCES} ${DEBUG_UI_
 # domain).
 file(GLOB LZMA_SOURCES ${CMAKE_SOURCE_DIR}/platform/third_party/lzma/*.c)
 add_library(lzma7z STATIC ${LZMA_SOURCES})
+# The other archives (zip, rar, tar, gzip, bzip2, xz, zstd): libarchive (BSD), the system's when CMake finds it
+# (Homebrew's is keg-only: looked for there too), otherwise (or with WIPEOUT_BUILD_LIBARCHIVE=ON) downloaded and
+# built into the program with the compression libraries the system has. The web has no archives.
+if(NOT EMSCRIPTEN)
+    option(WIPEOUT_BUILD_LIBARCHIVE "Build libarchive from source instead of using the system's" OFF)
+    if(NOT WIPEOUT_BUILD_LIBARCHIVE)
+        if(APPLE)
+            list(APPEND CMAKE_PREFIX_PATH /opt/homebrew/opt/libarchive /usr/local/opt/libarchive)
+        endif()
+        find_package(LibArchive QUIET)
+    endif()
+    if(LibArchive_FOUND)
+        add_library(port_archive INTERFACE)
+        target_include_directories(port_archive INTERFACE ${LibArchive_INCLUDE_DIRS})
+        target_link_libraries(port_archive INTERFACE ${LibArchive_LIBRARIES})
+    else()
+        include(FetchContent)
+        message(STATUS "libarchive not found: building it from source")
+        foreach(off ENABLE_TEST ENABLE_TAR ENABLE_CPIO ENABLE_CAT ENABLE_UNZIP ENABLE_INSTALL ENABLE_OPENSSL
+                    ENABLE_MBEDTLS ENABLE_NETTLE ENABLE_LIBXML2 ENABLE_EXPAT ENABLE_ACL ENABLE_XATTR ENABLE_ICONV
+                    ENABLE_LIBB2 ENABLE_CNG ENABLE_PCREPOSIX ENABLE_PCRE2POSIX ENABLE_LZO ENABLE_LIBGCC
+                    ENABLE_WERROR ENABLE_COVERAGE)
+            set(${off} OFF CACHE BOOL "" FORCE)
+        endforeach()
+        set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+        FetchContent_Declare(libarchive
+            URL https://github.com/libarchive/libarchive/releases/download/v3.8.10/libarchive-3.8.10.tar.xz
+            URL_HASH SHA256=56cad765459d5ee25a3b761f90c47d99379d28297fbfb72d908880d6b875fb96)
+        FetchContent_MakeAvailable(libarchive)
+        add_library(port_archive INTERFACE)
+        target_include_directories(port_archive INTERFACE ${libarchive_SOURCE_DIR}/libarchive)
+        target_compile_definitions(port_archive INTERFACE LIBARCHIVE_STATIC)
+        target_link_libraries(port_archive INTERFACE archive_static)
+    endif()
+endif()
 list(SORT PLATFORM_SOURCES)
 if(NOT EMSCRIPTEN)
     find_package(ZLIB QUIET)
@@ -110,6 +145,10 @@ function(port_platform_target name)
         target_link_libraries(${name} PRIVATE gamedata)
     endif()
     target_link_libraries(${name} PRIVATE SDL3::SDL3)
+    if(TARGET port_archive)
+        target_link_libraries(${name} PRIVATE port_archive)
+        target_compile_definitions(${name} PRIVATE PORT_HAVE_LIBARCHIVE)
+    endif()
     if(ZLIB_FOUND)
         target_link_libraries(${name} PRIVATE ZLIB::ZLIB)
         target_compile_definitions(${name} PRIVATE PORT_HAVE_ZLIB)

@@ -14,7 +14,7 @@
 
 extern "C" {
 #include "debug_ui.h"
-#include "archive.h"
+#include "discimage.h"
 #include "hdtex.h"
 #include "region.h"
 #include "music.h"
@@ -77,7 +77,7 @@ extern "C" void DebugUiInit(SDL_Window *w, void *context)
     ImGui_ImplOpenGL3_Init(PORT_GLSL_VERSION);
     SDL_strlcpy(saveDirEdit, portSettings.saveDir, sizeof(saveDirEdit));
     SDL_strlcpy(originalEdit, portSettings.originalPath, sizeof(originalEdit));
-    SDL_strlcpy(discEdit, portSettings.discPath[0] ? portSettings.discPath : (portConfig.discPath ? portConfig.discPath : ""),
+    SDL_strlcpy(discEdit, portSettings.discPath[0] ? portSettings.discPath : (portConfig.discGiven ? portConfig.discGiven : ""),
                 sizeof(discEdit));
     pickLock = SDL_CreateMutex();
     ready = true;
@@ -714,7 +714,8 @@ static void StartFolder(const char *path, char *out, size_t size)
 
 static void PickerOpen(Picker *picker, bool folder, const char *current)
 {
-    static const SDL_DialogFileFilter cue[] = {{"PlayStation disc image (.cue, or a .7z of one)", "cue;7z"}};
+    static const SDL_DialogFileFilter cue[] = {
+        {"PlayStation disc image (.cue, .bin, or an archive of one)", PORT_DISC_EXTENSIONS}};
     static const SDL_DialogFileFilter zip[] = {{"Texture pack (.zip)", "zip"}};
     static const SDL_DialogFileFilter n64[] = {{"Nintendo 64 cartridge image (.z64, .n64, .v64)", "z64;n64;v64"}};
     static const SDL_DialogFileFilter card[] = {
@@ -772,9 +773,12 @@ static int CompareNames(const void *a, const void *b)
     return xd != yd ? (xd ? 1 : -1) : SDL_strcasecmp(x, y); /* the disc images first, then the folders */
 }
 
-// Whether a file's extension is of the kind a picker wants.
-static bool Wanted(int kind, const char *extension)
+// Whether a file's name is of the kind a picker wants.
+static bool Wanted(int kind, const char *name)
 {
+    size_t length = strlen(name);
+    const char *extension = length > 4 ? name + length - 4 : name;
+
     switch (kind) {
     case PICK_ZIP:
         return !SDL_strcasecmp(extension, ".zip");
@@ -784,7 +788,7 @@ static bool Wanted(int kind, const char *extension)
     case PICK_CARD:
         return true;
     default:
-        return !SDL_strcasecmp(extension, ".cue") || !SDL_strcasecmp(extension + 1, ".7z");
+        return PortIsDiscName(name);
     }
 }
 
@@ -806,7 +810,7 @@ static SDL_EnumerationResult SDLCALL BrowseEntry(void *user, const char *dir, co
     }
     if (info.type == SDL_PATHTYPE_DIRECTORY) {
         SDL_snprintf(named, sizeof(named), "%s/", name);
-    } else if (!browsing->folder && length > 4 && Wanted(browsing->kind, name + length - 4)) {
+    } else if (!browsing->folder && Wanted(browsing->kind, name)) {
         SDL_strlcpy(named, name, sizeof(named));
     } else {
         return SDL_ENUM_CONTINUE;
@@ -923,45 +927,63 @@ static bool CheckDisc(const char *path, char *message, size_t size)
         return false;
     }
     bool ok = (DiscFindFile(disc, "\\SCUS_943.51", &lba, &length) || DiscFindFile(disc, "\\SLES_003.27", &lba, &length)) &&
-              DiscFindFile(disc, "\\WIPEOUT2\\COMMON", &lba, &length);
+              DiscFindFile(disc, "\\WIPEOUT2\\TEXTURES\\MENUTIMS.CMP", &lba, &length);
     DiscClose(disc);
     if (!ok) {
         SDL_snprintf(message, size, "That is not Wipeout XL (USA) or WipEout 2097 (Europe): its program "
-                                    "(SCUS_943.51, SLES_003.27) and WIPEOUT2 folder are not on it.");
+                                    "(SCUS_943.51, SLES_003.27) and WIPEOUT2 folder's menus are not on it.");
     }
     return ok;
 }
 
-// A .7z of a disc image: unpacked on a thread of its own (archive.c), then checked as a disc.
+// An archive of a disc image: unpacked on a thread of its own (discimage.c), then used as a disc (for Wipeout XL
+// or the original Wipeout, unpackFor).
 static SDL_Thread *unpacking;
 static SDL_AtomicInt unpacked; // 1 done, 2 failed
 static char unpackArchive[1024], unpackCue[1200], unpackMessage[300];
+enum { UNPACK_XL, UNPACK_ORIGINAL };
+static int unpackFor;
 
 static int SDLCALL Unpack(void *)
 {
-    SDL_SetAtomicInt(&unpacked, PortArchiveDisc(unpackArchive, unpackCue, sizeof(unpackCue), unpackMessage,
-                                                sizeof(unpackMessage)) ? 1 : 2);
+    SDL_SetAtomicInt(&unpacked, PortDiscImage(unpackArchive, unpackCue, sizeof(unpackCue), unpackMessage,
+                                              sizeof(unpackMessage)) ? 1 : 2);
     return 0;
+}
+
+// Starts unpacking an archive (unless one is being unpacked); whether it is one.
+static bool StartUnpack(const char *path, int what, char *message)
+{
+    if (!PortIsArchive(path)) {
+        return false;
+    }
+    if (!unpacking) {
+        SDL_strlcpy(unpackArchive, path, sizeof(unpackArchive));
+        unpackFor = what;
+        SDL_SetAtomicInt(&unpacked, 0);
+        unpacking = SDL_CreateThread(Unpack, "unpack", nullptr);
+        message[0] = 0;
+    }
+    return true;
 }
 
 static void UseDisc(const char *path)
 {
+    char cue[1200];
+
     SDL_strlcpy(discEdit, path, sizeof(discEdit));
-    if (PortIsArchive(path)) {
-        if (!unpacking) {
-            SDL_strlcpy(unpackArchive, path, sizeof(unpackArchive));
-            SDL_SetAtomicInt(&unpacked, 0);
-            unpacking = SDL_CreateThread(Unpack, "unpack", nullptr);
-            discMessage[0] = 0;
-        }
+    if (StartUnpack(path, UNPACK_XL, discMessage)) {
         return;
     }
-    if (CheckDisc(path, discMessage, sizeof(discMessage))) {
+    if (PortDiscImage(path, cue, sizeof(cue), discMessage, sizeof(discMessage)) &&
+        CheckDisc(cue, discMessage, sizeof(discMessage))) {
         SDL_strlcpy(portSettings.discPath, path, sizeof(portSettings.discPath));
         Changed();
         discMessage[0] = 0;
     }
 }
+
+static void OpenOriginal(const char *path);
 
 // The unpacking's end: the archive is the disc from then on (its image is used as unpacked).
 static void Unpacked(void)
@@ -973,12 +995,28 @@ static void Unpacked(void)
     }
     SDL_WaitThread(unpacking, nullptr);
     unpacking = nullptr;
-    if (state == 2) {
+    if (unpackFor == UNPACK_ORIGINAL) {
+        if (state == 2) {
+            SDL_strlcpy(originalMessage, unpackMessage, sizeof(originalMessage));
+        } else {
+            OpenOriginal(unpackArchive); /* (unpacked now: at once) */
+        }
+    } else if (state == 2) {
         SDL_strlcpy(discMessage, unpackMessage, sizeof(discMessage));
     } else if (CheckDisc(unpackCue, discMessage, sizeof(discMessage))) {
         SDL_strlcpy(portSettings.discPath, unpackArchive, sizeof(portSettings.discPath));
         Changed();
         discMessage[0] = 0;
+    }
+}
+
+// The unpacking's progress, when it is for this (UNPACK_*).
+static void UnpackProgress(int what)
+{
+    if (unpacking && unpackFor == what) {
+        char label[64];
+        SDL_snprintf(label, sizeof(label), "Unpacking %d%%", PortArchiveProgress() / 10);
+        ImGui::ProgressBar(PortArchiveProgress() / 1000.0f, ImVec2(-1, 0), label);
     }
 }
 
@@ -999,6 +1037,9 @@ static void XlDisc(void)
         UseDisc(path);
         PortRestart(path);
     }
+    if (!tested && SDL_getenv("WIPEOUT_TEST_USE_DISC")) {
+        UseDisc(SDL_getenv("WIPEOUT_TEST_USE_DISC")); /* tests: this disc, as if chosen */
+    }
     tested = true;
     Unpacked();
     chosen = PickerTake(&discPicker);
@@ -1009,14 +1050,11 @@ static void XlDisc(void)
     }
     ImGui::TextUnformatted("Wipeout XL disc image (PlayStation)");
     ImGui::TextWrapped("Wipeout XL (USA), or WipEout 2097 (Europe): the same game, with its own title screen, logo and "
-                       "movies. A .cue with its .bin tracks, or a .7z of them (unpacked once, into the settings folder).");
-    ImGui::TextWrapped("In use: %s (%s)", portConfig.discPath ? portConfig.discPath : "",
+                       "movies. A .cue with its .bin tracks, a .bin without its .cue, or an archive of them (.7z, "
+                       ".zip, .rar, .tar, .gz and the like: unpacked once, into the settings folder).");
+    ImGui::TextWrapped("In use: %s (%s)", portConfig.discGiven ? portConfig.discGiven : "",
                        PortRegionEurope() ? "WipEout 2097, Europe" : "Wipeout XL, USA");
-    if (unpacking) {
-        char label[64];
-        SDL_snprintf(label, sizeof(label), "Unpacking %d%%", PortArchiveProgress() / 10);
-        ImGui::ProgressBar(PortArchiveProgress() / 1000.0f, ImVec2(-1, 0), label);
-    }
+    UnpackProgress(UNPACK_XL);
     if (ImGui::Button("Browse...##disc")) {
         PickerOpen(&discPicker, false, discEdit);
     }
@@ -1031,7 +1069,7 @@ static void XlDisc(void)
     if (discMessage[0]) {
         ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.4f, 1.0f), "%s", discMessage);
     }
-    if (portSettings.discPath[0] && portConfig.discPath && strcmp(portSettings.discPath, portConfig.discPath) != 0) {
+    if (portSettings.discPath[0] && portConfig.discGiven && strcmp(portSettings.discPath, portConfig.discGiven) != 0) {
         ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "The game starts with %s from now on.",
                            portSettings.discPath);
         if (ImGui::Button("Restart with it now")) {
@@ -1045,26 +1083,36 @@ static void XlDisc(void)
 // The original Wipeout's tracks (platform/original.c): the player's copy of the original, raced from the RACING
 // CLASS menu's WIPEOUT line.
 
-static void UseOriginal(const char *path)
+static void OpenOriginal(const char *path)
 {
-    SDL_strlcpy(originalEdit, path, sizeof(originalEdit));
     if (PortOriginalOpen(path, originalMessage, sizeof(originalMessage)) > 0 || !path[0]) {
         SDL_strlcpy(portSettings.originalPath, path, sizeof(portSettings.originalPath));
         Changed();
     }
 }
 
+static void UseOriginal(const char *path)
+{
+    SDL_strlcpy(originalEdit, path, sizeof(originalEdit));
+    if (!StartUnpack(path, UNPACK_ORIGINAL, originalMessage)) {
+        OpenOriginal(path);
+    }
+}
+
 static void OriginalWipeout(void)
 {
-    char *chosen = PickerTake(&originalPicker);
+    char *chosen;
+
+    Unpacked();
+    chosen = PickerTake(&originalPicker);
 
     if (chosen) {
         UseOriginal(chosen);
         SDL_free(chosen);
     }
     ImGui::TextUnformatted("The original Wipeout (PlayStation)");
-    ImGui::TextWrapped("Your copy of the original game: its disc image (a .cue with its .bin), or a folder of its "
-                       "data (the disc's WIPEOUT folder). Its tracks are then on the RACING CLASS menu, on the "
+    ImGui::TextWrapped("Your copy of the original game: its disc image (a .cue with its .bin, or an archive of it), "
+                       "or a folder of its data (the disc's WIPEOUT folder). Its tracks are then on the RACING CLASS menu, on the "
                        "WIPEOUT line under the classes (arcade races and time trials): left and right go through them.");
     int tracks = PortOriginalFoundCount();
     if (!originalEdit[0] && PortOriginalSource()[0]) {
@@ -1078,6 +1126,7 @@ static void OriginalWipeout(void)
     if (originalMessage[0]) {
         ImGui::TextWrapped("%s", originalMessage);
     }
+    UnpackProgress(UNPACK_ORIGINAL);
 #ifndef __EMSCRIPTEN__
     if (ImGui::Button("Browse for its disc image...")) {
         PickerOpen(&originalPicker, false, originalEdit);

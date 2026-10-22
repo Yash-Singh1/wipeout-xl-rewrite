@@ -11,12 +11,16 @@ real game.
 
 ## What you need
 
-- Your copy of the PlayStation disc as a `.cue` with its `.bin` tracks
-  (Wipeout XL USA). The music plays from the disc's audio tracks, the intro
-  and ending movies from its movie files.
+- Your copy of the PlayStation disc (Wipeout XL USA, or WipEout 2097 Europe):
+  a `.cue` with its `.bin` tracks, a `.bin` without its `.cue`, or an archive
+  of either (`.7z`, `.zip`, `.rar`, `.tar`, `.gz` and the like). The music
+  plays from the disc's audio tracks, the intro and ending movies from its
+  movie files.
 - To build: CMake, Ninja, a C compiler (Clang or GCC), and SDL3 3.2 or later
   (zlib for the test traces is optional). Where CMake does not find SDL3 it
-  downloads and builds it (`-DWIPEOUT_BUILD_SDL=ON` always does).
+  downloads and builds it (`-DWIPEOUT_BUILD_SDL=ON` always does). The same
+  goes for libarchive (`libarchive-dev` on Linux, Homebrew's `libarchive` on
+  macOS; `-DWIPEOUT_BUILD_LIBARCHIVE=ON` always builds it).
 
 ## Build
 
@@ -77,11 +81,23 @@ program chooses by region. With that disc the game shows them
 (`platform/region.c`): the WipEout 2097 title screen, copyright and Red Bull
 screens, the menus' backdrop and logo, the piracy warning, and the movies at 25
 frames a second. Their pictures were made for the European television's 256
-lines and are fitted to the 240 the game draws, keeping their shape. A disc
-image can also be given as a `.7z` of its `.cue` and `.bin` files (`--disc
-"Wipeout 2097 (Europe).7z"`, or the Files tab): it is unpacked once into the
-settings folder (`discs/`, about 650 MB) and used from there (`platform/archive.c`,
-with the LZMA SDK's 7z decoder, public domain, in `platform/third_party/lzma`).
+lines and are fitted to the 240 the game draws, keeping their shape.
+
+The disc image can be given as it is kept (`platform/discimage.c`):
+
+- a `.cue` with its `.bin` tracks;
+- a `.bin` (or `.img`) without its `.cue`: when a `.cue` beside it names it,
+  that one; otherwise a `.cue` is made for it, with the audio tracks beside it
+  when they are named as Redump names them (`Game (Track 02).bin` and on);
+- an archive of either: `.7z`, `.zip`, `.rar`, `.tar`, and single files or
+  tars compressed with gzip, bzip2, xz or zstd (`--disc "Wipeout 2097
+  (Europe).7z"`, or the Files tab). Archives are known by their contents, not
+  their names. The archive is unpacked once into the settings folder
+  (`discs/<its name>/`, about 700 MB) and used from there while it stays the
+  same. The disc image in it is found by what it is (a PlayStation disc's data
+  track), not by a checksum, so a modified disc works as well. 7z archives are
+  read with the LZMA SDK's decoder (public domain, `platform/third_party/lzma`),
+  the others with libarchive (BSD).
 
 In the browser, the page loads the disc the site hosts by itself and the game
 starts: the first visit downloads it (about 700 MB, so a desktop browser with
@@ -184,7 +200,7 @@ can link again (the lobby says so).
 The original Wipeout's seven circuits (Altima VII, Karbonis V, Terramax,
 Korodera, Arridos IV, Silverstream, Firestar), each in its Venom and Rapier
 version, can be raced in XL. In the debug console's Files tab, choose your copy
-of the original PlayStation game: its disc image (a `.cue` with its `.bin`), or
+of the original PlayStation game: its disc image (a `.cue` with its `.bin`, or an archive of it), or
 a folder of its data (the disc's `WIPEOUT` folder). The RACING CLASS menu then
 has a WIPEOUT line under the classes (arcade races and time trials); left and
 right go through the tracks, each raced at the class it was made for. The race
