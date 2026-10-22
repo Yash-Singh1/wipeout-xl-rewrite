@@ -554,7 +554,8 @@ static void Console(void)
     // the whole window
     ImGui::SetNextWindowPos(view->WorkPos, ImGuiCond_Always);
     ImGui::SetNextWindowSize(view->WorkSize, ImGuiCond_Always);
-    ImGui::SetNextWindowBgAlpha(1.0f);
+    // see-through: the game goes on behind it
+    ImGui::SetNextWindowBgAlpha(0.8f);
     float width = 720 * ImGui::GetIO().FontGlobalScale;
     if (!ImGui::Begin("Wipeout XL debug console   (~ closes it)", &open,
                       ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
