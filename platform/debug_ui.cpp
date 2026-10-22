@@ -14,12 +14,14 @@
 
 extern "C" {
 #include "debug_ui.h"
+#include "hdtex.h"
 #include "original.h"
 #include "platform.h"
 #include "settings.h"
 #include "trace.h"
 #include "psx/framecap.h"
 #include "psx/disc.h"
+#include "psx/gpu.h"
 }
 
 static SDL_Window *window;
@@ -28,6 +30,8 @@ static bool ready, open;
 static char saveDirEdit[1024];
 static char originalEdit[1024];     // the original Wipeout's disc image or folder, as typed or chosen
 static char originalMessage[300];   // what opening it found
+static char packEdit[1024];         // the HD texture pack, as typed or chosen
+static char packMessage[300];       // what opening it found
 static char discEdit[1024];         // the Wipeout XL disc image, as typed or chosen
 static char discMessage[300];       // what checking it found
 static SDL_Mutex *pickLock;         // the file dialog may answer from a thread of its own
@@ -563,10 +567,11 @@ static void FitToWindow(void)
 struct Picker {
     char *chosen;     // the answer, until taken
     bool folder;      // a folder is wanted, else a disc image (.cue)
+    bool zip;         // ... or else a .zip (a texture pack)
     bool browse;      // the system had no dialog: the console's browser
     char start[1024]; // the folder it starts in
 };
-static Picker discPicker, originalPicker;
+static Picker discPicker, originalPicker, packPicker = {nullptr, false, true, false, ""};
 static Picker *browsing;            // the picker the console's browser is open for
 static char browseDir[1024];
 static char **browseNames;          // its entries: disc images first, then folders (with a trailing /)
@@ -615,11 +620,13 @@ static void StartFolder(const char *path, char *out, size_t size)
 static void PickerOpen(Picker *picker, bool folder, const char *current)
 {
     static const SDL_DialogFileFilter cue[] = {{"PlayStation disc image (.cue)", "cue"}};
+    static const SDL_DialogFileFilter zip[] = {{"Texture pack (.zip)", "zip"}};
 
     picker->folder = folder;
     StartFolder(current, picker->start, sizeof(picker->start));
 #ifdef __EMSCRIPTEN__
     (void)cue;
+    (void)zip;
     picker->browse = true;
 #else
     if (SDL_getenv("WIPEOUT_CONSOLE_BROWSER")) {
@@ -629,7 +636,7 @@ static void PickerOpen(Picker *picker, bool folder, const char *current)
     if (folder) {
         SDL_ShowOpenFolderDialog(PickerAnswer, picker, window, picker->start, false);
     } else {
-        SDL_ShowOpenFileDialog(PickerAnswer, picker, window, cue, 1, picker->start, false);
+        SDL_ShowOpenFileDialog(PickerAnswer, picker, window, picker->zip ? zip : cue, 1, picker->start, false);
     }
 #endif
 }
@@ -677,7 +684,7 @@ static SDL_EnumerationResult SDLCALL BrowseEntry(void *user, const char *dir, co
     }
     if (info.type == SDL_PATHTYPE_DIRECTORY) {
         SDL_snprintf(named, sizeof(named), "%s/", name);
-    } else if (!browsing->folder && length > 4 && !SDL_strcasecmp(name + length - 4, ".cue")) {
+    } else if (!browsing->folder && length > 4 && !SDL_strcasecmp(name + length - 4, browsing->zip ? ".zip" : ".cue")) {
         SDL_strlcpy(named, name, sizeof(named));
     } else {
         return SDL_ENUM_CONTINUE;
@@ -920,6 +927,104 @@ static void OriginalWipeout(void)
     }
 }
 
+// The resolution: the framebuffer's scale (gpu_gl.c), the window's or the player's.
+static void Resolution(void)
+{
+    char auto_[64], labels[16][48];
+    const char *items[17];
+    int count = GpuMaxScale(), choice = SDL_min(portSettings.renderScale, count), i;
+
+    SDL_snprintf(auto_, sizeof(auto_), "Auto: as the window (%dx, %dx%d)", GpuWindowScale(), 320 * GpuWindowScale(),
+                 240 * GpuWindowScale());
+    items[0] = auto_;
+    for (i = 1; i <= count && i <= 16; i++) {
+        SDL_snprintf(labels[i - 1], sizeof(labels[i - 1]), "%dx  %dx%d%s", i, 320 * i, 240 * i,
+                     i == 1 ? "  (the console's)" : "");
+        items[i] = labels[i - 1];
+    }
+    if (ImGui::Combo("Resolution", &choice, items, SDL_min(count, 16) + 1)) {
+        portSettings.renderScale = choice;
+        Changed();
+    }
+    ImGui::TextDisabled("Drawn at %dx (%dx%d) now. Above the window's it is smoothed down to fit; each step up takes "
+                        "more video memory.", GpuScale(), 320 * GpuScale(), 240 * GpuScale());
+}
+
+static void UsePack(const char *path)
+{
+    SDL_strlcpy(packEdit, path, sizeof(packEdit));
+    if (HdTexOpen(path, packMessage, sizeof(packMessage)) > 0 || !path[0]) {
+        SDL_strlcpy(portSettings.hdPackPath, path, sizeof(portSettings.hdPackPath));
+        if (path[0]) {
+            portSettings.hdTextures = 1;
+        }
+        Changed();
+    }
+}
+
+// HD textures (hdtex.c): the player's own texture pack, made for DuckStation.
+static void HdTextures(void)
+{
+    char *chosen = PickerTake(&packPicker);
+
+    if (chosen) {
+        UsePack(chosen);
+        SDL_free(chosen);
+    }
+    if (!packEdit[0] && portSettings.hdPackPath[0]) {
+        SDL_strlcpy(packEdit, portSettings.hdPackPath, sizeof(packEdit));
+    }
+    bool on = portSettings.hdTextures != 0;
+    if (ImGui::Checkbox("HD textures (from your texture pack)", &on)) {
+        portSettings.hdTextures = on;
+        Changed();
+    }
+    ImGui::TextWrapped("Made for NR74W's WipEout 2097 / XL texture pack (github.com/NR74W/WipEout-Mods): the menus, "
+                       "fonts and HUD redrawn at 16 times the detail. The game does not include it: download it from "
+                       "there and choose its .zip, or the folder it is in. Other packs made for DuckStation's texture "
+                       "replacement (for SCUS-94351) work as well.");
+    if (ImGui::Button("Open the pack's page")) {
+        SDL_OpenURL("https://github.com/NR74W/WipEout-Mods");
+    }
+    if (HdTexCount() > 0) {
+        ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "%d replacement textures from %s", HdTexCount(),
+                           HdTexSource());
+        if (HdTexAbout()[0]) {
+            ImGui::Indent();
+            ImGui::TextDisabled("%s", HdTexAbout());
+            ImGui::Unindent();
+        }
+    } else if (portSettings.hdPackPath[0] && !portSettings.hdTextures) {
+        ImGui::TextDisabled("%s (opened when HD textures are on)", portSettings.hdPackPath);
+    } else {
+        ImGui::TextDisabled("No pack chosen.");
+    }
+    if (packMessage[0] && HdTexCount() == 0) {
+        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.4f, 1.0f), "%s", packMessage);
+    }
+#ifndef __EMSCRIPTEN__
+    if (ImGui::Button("Choose the pack's .zip...")) {
+        PickerOpen(&packPicker, false, packEdit);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("... or its folder")) {
+        PickerOpen(&packPicker, true, packEdit);
+    }
+    ImGui::SameLine();
+#endif
+    if (ImGui::Button("Forget it##pack")) {
+        UsePack("");
+        packMessage[0] = 0;
+    }
+    ImGui::SetNextItemWidth(-ImGui::CalcTextSize("Use this").x - ImGui::GetStyle().ItemSpacing.x -
+                            ImGui::GetStyle().FramePadding.x * 2);
+    ImGui::InputText("##pack", packEdit, sizeof(packEdit));
+    ImGui::SameLine();
+    if (ImGui::Button("Use this##pack")) {
+        UsePack(packEdit);
+    }
+}
+
 static void Console(void)
 {
     const ImGuiViewport *view = ImGui::GetMainViewport();
@@ -959,6 +1064,8 @@ static void Console(void)
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Graphics", nullptr, FirstTab("graphics"))) {
+            Resolution();
+            ImGui::Separator();
             static const char *const distances[] = {"Console (pop-in at the original distance)", "Full (the whole track)"};
             int distance = portSettings.farView ? 1 : 0;
             if (ImGui::Combo("Draw distance", &distance, distances, IM_ARRAYSIZE(distances))) {
@@ -998,6 +1105,9 @@ static void Console(void)
             if (ImGui::Checkbox("Full screen (Alt+Enter, F11)", &fullscreen)) {
                 SDL_SetWindowFullscreen(window, fullscreen);
             }
+            ImGui::Separator();
+            HdTextures();
+            Browser(); /* (a picker's, where the system has no file dialog) */
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Game", nullptr, FirstTab("game"))) {

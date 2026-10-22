@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "../hdtex.h"
 #include "../platform.h"
 
 #include "../trace.h"
@@ -672,6 +673,7 @@ int LoadImage(RECT *rect, u_long *p)
         }
     }
     GpuVramChanged(rect->x, rect->y, rect->w, rect->h);
+    HdTexUploaded(rect->x, rect->y, rect->w, rect->h);
     GpuWriteFramebuffer(rect->x, rect->y, rect->w, rect->h);
     FrameCapVramChanged();
     return 0;
@@ -716,6 +718,7 @@ int MoveImage(RECT *rect, int x, int y)
         }
     }
     GpuVramChanged(x, y, rect->w, rect->h);
+    HdTexOverwritten(x, y, rect->w, rect->h);
     GpuMoveFramebuffer(rect->x, rect->y, rect->w, rect->h, x, y);
     FrameCapVramChanged();
     return 0;

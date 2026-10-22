@@ -54,6 +54,12 @@ static void Set(const char *key, const char *value)
         SDL_strlcpy(portSettings.discPath, value, sizeof(portSettings.discPath));
     } else if (!strcmp(key, "original")) {
         SDL_strlcpy(portSettings.originalPath, value, sizeof(portSettings.originalPath));
+    } else if (!strcmp(key, "render_scale")) {
+        portSettings.renderScale = SDL_clamp(number, 0, 16);
+    } else if (!strcmp(key, "hd_textures")) {
+        portSettings.hdTextures = number != 0;
+    } else if (!strcmp(key, "hd_pack")) {
+        SDL_strlcpy(portSettings.hdPackPath, value, sizeof(portSettings.hdPackPath));
     }
 }
 
@@ -98,6 +104,14 @@ void PortSettingsLoad(void)
     /* the environment overrides the file for this run */
     if ((value = SDL_getenv("WIPEOUT_FAR_VIEW"))) {
         portSettings.farView = SDL_atoi(value) != 0;
+    }
+    if ((value = SDL_getenv("WIPEOUT_RENDER_SCALE"))) {
+        portSettings.renderScale = SDL_clamp(SDL_atoi(value), 0, 16);
+    }
+    if ((value = SDL_getenv("WIPEOUT_HD_PACK"))) {
+        /* a pack's .zip or folder, drawn ("" not) */
+        SDL_strlcpy(portSettings.hdPackPath, value, sizeof(portSettings.hdPackPath));
+        portSettings.hdTextures = value[0] != 0;
     }
     if ((value = SDL_getenv("WIPEOUT_WIDESCREEN"))) {
         portSettings.widescreen = SDL_atoi(value) != 0;
@@ -144,13 +158,15 @@ int PortSettingsSave(void)
     fprintf(file,
             "# Wipeout XL settings (the ~ key opens the debug console that changes them)\n"
             "show_fps = %d\nfar_view = %d\nfade = %d\nfade_near = %d\nfade_far = %d\n"
-            "widescreen = %d\nframe_rate = %d\nframe_cap = %d\nskip_intro = %d\nrecord_frames = %d\nrecord_replays = %d\nsave_dir = %s\ndisc = %s\noriginal = %s\n",
+            "widescreen = %d\nframe_rate = %d\nframe_cap = %d\nskip_intro = %d\nrecord_frames = %d\nrecord_replays = %d\nsave_dir = %s\ndisc = %s\noriginal = %s\n"
+            "render_scale = %d\nhd_textures = %d\nhd_pack = %s\n",
             portSettings.showFps, portSettings.farView, portSettings.fade, portSettings.fadeNear, portSettings.fadeFar,
             portSettings.widescreen, portSettings.frameRate,
             portSettings.frameCap, portSettings.skipIntro,
             portSettings.recordFrames,
             portSettings.recordReplays,
-            portSettings.saveDir, portSettings.discPath, portSettings.originalPath);
+            portSettings.saveDir, portSettings.discPath, portSettings.originalPath, portSettings.renderScale,
+            portSettings.hdTextures, portSettings.hdPackPath);
     fclose(file);
     return 1;
 }

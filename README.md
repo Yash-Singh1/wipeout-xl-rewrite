@@ -97,6 +97,12 @@ the sides, with the HUD at the window's edges. In the menus the backdrop is
 enlarged to fill the width while the menus themselves keep the console's 4:3;
 loading screens and movies stay 4:3. The game computes exactly what it did.
 
+Resolution (the debug console's Graphics tab, or `WIPEOUT_RENDER_SCALE=N`):
+the game is drawn at a whole multiple of the console's 320x240, as many as the
+window's height needs (Auto), or as many as you choose, up to 12x where the
+graphics card allows. Above the window's own it is smoothed down to fit
+(supersampling). The change takes effect at once.
+
 `--window 1920x1440` sets the window size, `--fullscreen` starts full screen;
 Alt+Enter or F11 switches while playing. The environment variables
 The environment variable `WIPEOUT_XL_DISC` can stand in for the disc's path.
@@ -105,7 +111,7 @@ The environment variable `WIPEOUT_XL_DISC` can stand in for the disc's path.
 
 The ~ key (below Esc) opens a console over the whole game window: frame rates and a
 frame-rate overlay, the draw distance (the console's or the whole track) and
-its fade, the frame rate, widescreen, skipping the intro movie, full screen, the
+its fade, the frame rate, widescreen, the resolution, HD textures, skipping the intro movie, full screen, the
 frame recorder (Tab: the last 3 seconds, or from one Tab to the next, with every
 primitive behind any pixel), and where the settings and the memory cards are. Changes are saved at once to
 `wipeoutxl.ini` in the user's data folder; a new saves folder takes effect at
@@ -165,6 +171,30 @@ files are turned into XL's as the race loads (`platform/original.c`); its scener
 textures go into a second half of video memory, as the 2 MB development
 PlayStation had, since they do not fit beside XL's own. Races on these tracks
 keep no records or medals.
+
+## HD textures
+
+The Graphics tab's HD textures draw a texture pack made for DuckStation's
+texture replacement in place of the console's textures. It was made for
+**NR74W's WipEout 2097 / XL texture pack**
+([github.com/NR74W/WipEout-Mods](https://github.com/NR74W/WipEout-Mods)), which
+redraws the menus, fonts and HUD at 16 times the detail. The pack is NR74W's
+work and does not come with the game: download it from there, then choose its
+`.zip` as downloaded (or the folder you extracted it to, or DuckStation's
+`textures/SCUS-94351` folder) with "Choose the pack's .zip..." and turn HD
+textures on. Other packs for Wipeout XL (USA), SCUS-94351, made the same way
+work as well (`WIPEOUT_HD_PACK=path` for a run).
+
+A pack names each image after the texture it replaces, by hashes of the
+texture's pixels and palette as DuckStation computes them; `platform/hdtex.c`
+computes the same hashes for what the game uploads to video memory and draws
+each image where its texture was, at the game's resolution (images are
+decoded on a thread of their own the first time they are seen). PNG and JPEG
+images are read with stb_image (`platform/third_party/stb`, public domain),
+hashed with xxHash (`platform/third_party/xxhash`, BSD 2-clause). Images the
+pack has in other formats (WebP, DDS) are not read. The pack's fonts carry the
+console's own tiny ® marks inside some letters, drawn as crisply as the rest;
+DuckStation shows them the same way.
 
 ## Saves
 

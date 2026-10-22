@@ -1,6 +1,7 @@
 /* The player's settings (settings.c): a small INI file in the user's data folder, changed from the
    debug console (debug_ui.cpp, the ~ key). Environment variables still override them for a
-   run (WIPEOUT_FAR_VIEW, WIPEOUT_FADE, WIPEOUT_WIDESCREEN, WIPEOUT_FRAME_RATE, WIPEOUT_SAVE_DIR); the tests' hidden runs ignore the file. */
+   run (WIPEOUT_FAR_VIEW, WIPEOUT_FADE, WIPEOUT_WIDESCREEN, WIPEOUT_FRAME_RATE, WIPEOUT_SAVE_DIR, WIPEOUT_RENDER_SCALE,
+   WIPEOUT_HD_PACK); the tests' hidden runs ignore the file. */
 #ifndef PORT_SETTINGS_H
 #define PORT_SETTINGS_H
 
@@ -22,6 +23,9 @@ typedef struct PortSettings {
     char saveDir[1024];   /* memory cards ("" = the user's data folder); takes effect at the next start */
     char discPath[1024];  /* the disc's .cue chosen last (main.c), for a start without --disc */
     char originalPath[1024]; /* the original Wipeout's disc image or data folder: its tracks (original.c) */
+    int renderScale;      /* the framebuffer's pixels per console pixel; 0: as many as the window shows (gpu_gl.c) */
+    int hdTextures;       /* the HD texture pack is drawn (hdtex.c) */
+    char hdPackPath[1024]; /* ... the player's pack: its .zip or folder */
 } PortSettings;
 
 /* PortSettings.recordFrames: what the frame recorder keeps, and what Tab does */

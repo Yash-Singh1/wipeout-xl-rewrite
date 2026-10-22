@@ -23,7 +23,14 @@
    stays in the console's columns, where panels sliding in from off screen
    come into view as on the console. Whenever video memory's copy of those columns
    is read or shown 4:3 it is brought up to date first (SyncWide), and what
-   the CPU writes there goes to both. */
+   the CPU writes there goes to both.
+
+   The scale (the settings' resolution, or as many pixels as the window shows) can change while the game
+   runs: the framebuffers are made again at the new scale from what they held (SetScale).
+
+   HD textures (the player's texture pack, hdtex.c): a textured primitive that the pack has an image for
+   carries where that image is in the atlas (an RGBA texture of the images in use, at the framebuffer's scale)
+   and which texels of its page it covers; the shader samples the image there instead of video memory. */
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_opengl.h>
 #include <stddef.h>
@@ -31,6 +38,7 @@
 #include <string.h>
 
 #include "gpu.h"
+#include "../hdtex.h"
 #include "../link.h"
 #include "../platform.h"
 #include "../settings.h"
@@ -148,9 +156,10 @@ static int scale = 1;
 static GLuint framebuffer, colour;   /* all of video memory, scaled */
 static GLuint vramTexture;           /* the CPU copy, R16UI */
 static GLuint glyphTexture;          /* the glyph page (GpuSetGlyphMemory): RGBA, premultiplied, filtered */
+static GLuint hdAtlas;               /* HD textures: the images in use (HdPlaced) */
 static GLuint program, vertexArray, vertexBuffer;
 static GLint uniformAlphaScale;
-static GLint uniformVram, uniformGlyphs, uniformPass, uniformTarget;
+static GLint uniformVram, uniformGlyphs, uniformHdAtlas, uniformPass, uniformTarget;
 static int vramDirty = 1;
 static int dirtyLeft, dirtyTop, dirtyRight, dirtyBottom;
 static int areaX, areaY, areaW = VRAM_WIDTH, areaH = VRAM_HEIGHT;
@@ -183,6 +192,8 @@ typedef struct BatchVertex {
     int16_t texture[4]; /* page x, page y, palette x, palette y */
     uint8_t window[4];  /* texture window: mask x, mask y, offset x, offset y */
     uint8_t mode[4];    /* textured, raw, colour depth */
+    uint16_t hd[4];     /* HD texture: its part of the atlas, x, y, w, h (w 0: none) */
+    int16_t hdTexels[4]; /* ... the texels of the page it covers, x, y, w, h */
 } BatchVertex;
 static BatchVertex batch[BATCH_VERTICES];
 static int batchCount;
@@ -197,6 +208,10 @@ static const char *vertexSource =
     "in ivec4 texture;\n"
     "in uvec4 window;\n"              /* unsigned bytes: WebGL wants an attribute's signedness kept */
     "in uvec4 modeIn;\n"
+    "in uvec4 hdIn;\n"
+    "in ivec4 hdTexelsIn;\n"
+    "flat out uvec4 hd;\n"
+    "flat out ivec4 hdTexels;\n"
     "flat out ivec4 texturePage;\n"
     "flat out ivec4 clut;\n"
     "flat out ivec4 vWindow;\n"
@@ -216,6 +231,8 @@ static const char *vertexSource =
     "    vWindow = ivec4(window);\n"
     "    mode = ivec4(int(modeIn.x), int(modeIn.y), pass, int(modeIn.z));\n"
     "    vTexel = vec3(texel, 1.0);\n"
+    "    hd = hdIn;\n"
+    "    hdTexels = hdTexelsIn;\n"
     "}\n";
 
 /* mode: x = textured (0/1), y = raw, z = pass (0 all, 1 opaque texels, 2 semi texels), w = depth
@@ -231,6 +248,9 @@ static const char *fragmentSource =
     "in vec3 vTexel;\n"
     "uniform usampler2D vram;\n"
     "uniform sampler2D glyphs;\n"
+    "uniform sampler2D hdAtlas;\n"
+    "flat in uvec4 hd;\n"
+    "flat in ivec4 hdTexels;\n"
     "flat in ivec4 texturePage;\n"
     "flat in ivec4 clut;\n"
     "flat in ivec4 vWindow;\n"
@@ -258,6 +278,21 @@ static const char *fragmentSource =
     "    ivec2 uv = ivec2(floor(t)) & 255;\n"
     "    uv.x = (uv.x & ~(vWindow.x * 8)) | ((vWindow.z & vWindow.x) * 8);\n"
     "    uv.y = (uv.y & ~(vWindow.y * 8)) | ((vWindow.w & vWindow.y) * 8);\n"
+    /* the HD texture over the texels it covers: alpha 0 transparent, 0.5 semi-transparent, 1 opaque */
+    "    if (hd.z > 0u) {\n"
+    "        vec2 into = vec2(uv - hdTexels.xy) + (t - floor(t));\n"
+    "        if (all(greaterThanEqual(into, vec2(0.0))) && all(lessThan(into, vec2(hdTexels.zw)))) {\n"
+    "            ivec2 at = min(ivec2(into * vec2(hd.zw) / vec2(hdTexels.zw)), ivec2(hd.zw) - 1);\n"
+    "            vec4 h = texelFetch(hdAtlas, ivec2(hd.xy) + at, 0);\n"
+    "            if (h.a < 0.25) discard;\n"
+    "            bool hdSemi = h.a < 0.75;\n"
+    "            if (mode.z == 1 && hdSemi) discard;\n"
+    "            if (mode.z == 2 && !hdSemi) discard;\n"
+    "            vec3 hc = mode.y == 0 ? min(h.rgb * c * (255.0 / 128.0), vec3(1.0)) : h.rgb;\n"
+    "            fragment = vec4(hc * fade, fade * alphaScale);\n"
+    "            return;\n"
+    "        }\n"
+    "    }\n"
     "    uint texel;\n"
     "    if (mode.w == 0) {\n"
     "        uint word = Fetch(texturePage.xy + ivec2(uv.x >> 2, uv.y));\n"
@@ -299,20 +334,58 @@ static GLuint Compile(GLenum type, const char *source)
     return shader;
 }
 
-/* The framebuffer's scale: enough for the window, at least 1. */
-static int ChooseScale(void)
+/* The largest scale: the wide framebuffer at its widest within the GPU's textures, and at most 12 (the
+   framebuffers then take some 560 MB). */
+int GpuMaxScale(void)
 {
-    int width, height, s;
+    static int largest;
+
+    if (!largest) {
+        GLint size = 4096;
+
+        glGetIntegerv(GL_MAX_TEXTURE_SIZE, &size);
+        largest = SDL_clamp(size / (SCREEN_COLUMNS + 2 * MAX_WIDE_MARGIN), 1, 12);
+    }
+    return largest;
+}
+
+/* The scale the window asks for: enough for its height, at least 1. */
+int GpuWindowScale(void)
+{
+    int width, height;
 
     PortDrawableSize(&width, &height);
-    s = (height + 239) / 240;
-    if (s < 1) {
-        s = 1;
+    return SDL_clamp((height + 239) / 240, 1, SDL_min(8, GpuMaxScale()));
+}
+
+/* The scale wanted: the settings' resolution, or the window's. */
+static int ChooseScale(void)
+{
+    return portSettings.renderScale > 0 ? SDL_min(portSettings.renderScale, GpuMaxScale()) : GpuWindowScale();
+}
+
+int GpuScale(void)
+{
+    return scale;
+}
+
+/* Video memory's framebuffer at the scale. */
+static int CreateFramebuffer(void)
+{
+    glGenTextures(1, &colour);
+    glBindTexture(GL_TEXTURE_2D, colour);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, VRAM_WIDTH * scale, VRAM_HEIGHT * scale, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+                 NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glGenFramebuffers(1, &framebuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colour, 0);
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        SDL_Log("framebuffer incomplete at scale %d", scale);
+        return 0;
     }
-    if (s > 8) {
-        s = 8;
-    }
-    return s;
+    return 1;
 }
 
 int GpuInit(void)
@@ -334,6 +407,8 @@ int GpuInit(void)
     glBindAttribLocation(program, 3, "texture");
     glBindAttribLocation(program, 4, "window");
     glBindAttribLocation(program, 5, "modeIn");
+    glBindAttribLocation(program, 6, "hdIn");
+    glBindAttribLocation(program, 7, "hdTexelsIn");
     glLinkProgram(program);
     glGetProgramiv(program, GL_LINK_STATUS, &ok);
     if (!ok) {
@@ -344,10 +419,16 @@ int GpuInit(void)
     }
     uniformVram = glGetUniformLocation(program, "vram");
     uniformGlyphs = glGetUniformLocation(program, "glyphs");
+    uniformHdAtlas = glGetUniformLocation(program, "hdAtlas");
     uniformAlphaScale = glGetUniformLocation(program, "alphaScale");
     uniformPass = glGetUniformLocation(program, "pass");
     uniformTarget = glGetUniformLocation(program, "target");
     uniformOrigin = glGetUniformLocation(program, "origin");
+    /* each sampler its own unit from the start (an integer and a float texture may not share one) */
+    glUseProgram(program);
+    glUniform1i(uniformVram, 0);
+    glUniform1i(uniformGlyphs, 1);
+    glUniform1i(uniformHdAtlas, 2);
 
     glGenVertexArrays(1, &vertexArray);
     glBindVertexArray(vertexArray);
@@ -365,6 +446,10 @@ int GpuInit(void)
     glVertexAttribIPointer(4, 4, GL_UNSIGNED_BYTE, sizeof(BatchVertex), (void *)offsetof(BatchVertex, window));
     glEnableVertexAttribArray(5);
     glVertexAttribIPointer(5, 4, GL_UNSIGNED_BYTE, sizeof(BatchVertex), (void *)offsetof(BatchVertex, mode));
+    glEnableVertexAttribArray(6);
+    glVertexAttribIPointer(6, 4, GL_UNSIGNED_SHORT, sizeof(BatchVertex), (void *)offsetof(BatchVertex, hd));
+    glEnableVertexAttribArray(7);
+    glVertexAttribIPointer(7, 4, GL_SHORT, sizeof(BatchVertex), (void *)offsetof(BatchVertex, hdTexels));
 
     glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
@@ -387,17 +472,8 @@ int GpuInit(void)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
     scale = ChooseScale();
-    glGenTextures(1, &colour);
-    glBindTexture(GL_TEXTURE_2D, colour);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, VRAM_WIDTH * scale, VRAM_HEIGHT * scale, 0, GL_RGBA, GL_UNSIGNED_BYTE,
-                 NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glGenFramebuffers(1, &framebuffer);
-    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colour, 0);
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-        SDL_Log("framebuffer incomplete");
+    HdTexSetScale(scale);
+    if (!CreateFramebuffer()) {
         return 0;
     }
     glViewport(0, 0, VRAM_WIDTH * scale, VRAM_HEIGHT * scale);
@@ -414,6 +490,7 @@ void GpuVramChanged(int x, int y, int w, int h)
     if (w <= 0 || h <= 0) {
         return;
     }
+    HdTexChanged(x, y, w, h);
     if (x < 0 || y < 0 || right > VRAM_WIDTH || bottom > VRAM_HEIGHT) {
         x = 0;
         y = 0;
@@ -739,6 +816,9 @@ static void Flush(void)
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, glyphTexture);
     glUniform1i(uniformGlyphs, 1);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, hdAtlas);
+    glUniform1i(uniformHdAtlas, 2);
     glActiveTexture(GL_TEXTURE0);
     if (s->textured && s->semi >= 0) {
         /* Texels without the semi-transparency bit are drawn opaque, the
@@ -777,6 +857,120 @@ void GpuSetDrawArea(int x, int y, int w, int h, int offsetX, int offsetY)
 /* Semi-transparent textured primitives must not share a batch: each one's
    opaque and blended passes have to come before the next primitive. */
 static GpuDrawState primitiveState; /* the primitive being added */
+static uint16_t primitiveHd[4];     /* ... its HD texture (BatchVertex) */
+static int16_t primitiveHdTexels[4];
+
+/* ---- HD textures: the images in use, side by side in one texture ---- */
+
+static int hdAtlasSize;
+static unsigned hdEpoch;            /* the images' (HdTexEpoch) the atlas holds */
+static unsigned hdFill = 1;         /* the atlas's filling: an image is in it when hdPlaced[] says this one */
+static unsigned *hdPlaced;
+static int *hdPlace;                /* x, y, w, h of each image in it */
+static int hdImages;
+static int hdShelfX, hdShelfY, hdShelfH; /* the shelf being filled, left to right, the shelves top to bottom */
+static int pictures, hdEmptiedAt = -1;
+
+/* The atlas empty again (what was drawn from it is drawn first). */
+static void HdEmpty(void)
+{
+    Flush();
+    hdFill++;
+    hdShelfX = hdShelfY = hdShelfH = 0;
+}
+
+/* Where image is in the atlas (put there now if it was not); 0 while it is not ready, or does not fit. */
+static int HdPlaced(int image, int *at)
+{
+    const uint8_t *pixels;
+    int w, h, size;
+
+    if (HdTexEpoch() != hdEpoch || HdTexImageCount() != hdImages) {
+        /* other images (another scale, another pack): an atlas for them */
+        size = SDL_min(scale <= 6 ? 4096 : 8192, GpuMaxScale() * (SCREEN_COLUMNS + 2 * MAX_WIDE_MARGIN));
+        HdEmpty();
+        hdEpoch = HdTexEpoch();
+        hdImages = HdTexImageCount();
+        hdPlaced = SDL_realloc(hdPlaced, sizeof(unsigned) * (size_t)SDL_max(hdImages, 1));
+        hdPlace = SDL_realloc(hdPlace, sizeof(int) * 4 * (size_t)SDL_max(hdImages, 1));
+        memset(hdPlaced, 0, sizeof(unsigned) * (size_t)SDL_max(hdImages, 1));
+        if (size != hdAtlasSize) {
+            if (!hdAtlas) {
+                glGenTextures(1, &hdAtlas);
+            }
+            glBindTexture(GL_TEXTURE_2D, hdAtlas);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, size, size, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            hdAtlasSize = size;
+        }
+    }
+    if (image >= hdImages) {
+        return 0;
+    }
+    if (hdPlaced[image] != hdFill) {
+        if (!(pixels = HdTexImage(image, &w, &h)) || w > hdAtlasSize || h > hdAtlasSize) {
+            return 0;
+        }
+        if (hdShelfX + w > hdAtlasSize) {
+            hdShelfY += hdShelfH;
+            hdShelfX = hdShelfH = 0;
+        }
+        if (hdShelfY + h > hdAtlasSize) {
+            /* full: emptied for the images in use now (once a picture: past that some go without) */
+            if (hdEmptiedAt == pictures) {
+                return 0;
+            }
+            HdEmpty();
+            hdEmptiedAt = pictures;
+        }
+        glBindTexture(GL_TEXTURE_2D, hdAtlas);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, hdShelfX, hdShelfY, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
+        hdPlace[image * 4] = hdShelfX;
+        hdPlace[image * 4 + 1] = hdShelfY;
+        hdPlace[image * 4 + 2] = w;
+        hdPlace[image * 4 + 3] = h;
+        hdPlaced[image] = hdFill;
+        hdShelfX += w;
+        hdShelfH = SDL_max(hdShelfH, h);
+    }
+    memcpy(at, &hdPlace[image * 4], sizeof(int) * 4);
+    return 1;
+}
+
+/* The primitive's HD texture, if the pack has one for its texels. */
+static void FindHd(const GpuDrawState *state, const GpuVertex *vertices, int count)
+{
+    float u0 = vertices[0].u, v0 = vertices[0].v, u1 = u0, v1 = v0;
+    HdTexHit hit;
+    int at[4], i;
+
+    memset(primitiveHd, 0, sizeof(primitiveHd));
+    if (!state->textured || state->depth > 2 || !HdTexActive()) {
+        return;
+    }
+    for (i = 1; i < count; i++) {
+        u0 = SDL_min(u0, vertices[i].u);
+        v0 = SDL_min(v0, vertices[i].v);
+        u1 = SDL_max(u1, vertices[i].u);
+        v1 = SDL_max(v1, vertices[i].v);
+    }
+    if (!HdTexFind(state->pageX, state->pageY, state->depth, state->clutX, state->clutY, u0, v0, u1, v1, &hit) ||
+        !HdPlaced(hit.image, at)) {
+        return;
+    }
+    /* the image's part over those texels: the replaced texture's texels are at[2] / nameW pixels wide */
+    primitiveHd[0] = (uint16_t)(at[0] + hit.srcX * at[2] / hit.nameW);
+    primitiveHd[1] = (uint16_t)(at[1] + hit.srcY * at[3] / hit.nameH);
+    primitiveHd[2] = (uint16_t)SDL_max(hit.w * at[2] / hit.nameW, 1);
+    primitiveHd[3] = (uint16_t)SDL_max(hit.h * at[3] / hit.nameH, 1);
+    primitiveHdTexels[0] = (int16_t)hit.x;
+    primitiveHdTexels[1] = (int16_t)hit.y;
+    primitiveHdTexels[2] = (int16_t)hit.w;
+    primitiveHdTexels[3] = (int16_t)hit.h;
+}
 
 static void Begin(const GpuDrawState *state, int vertices)
 {
@@ -816,6 +1010,8 @@ static void Add(const GpuVertex *v)
     out->mode[1] = (uint8_t)primitiveState.raw;
     out->mode[2] = (uint8_t)primitiveState.depth;
     out->mode[3] = 0;
+    memcpy(out->hd, primitiveHd, sizeof(out->hd));
+    memcpy(out->hdTexels, primitiveHdTexels, sizeof(out->hdTexels));
 }
 
 /* Video memory is kept twice: psxVram (what the CPU uploads and reads, and
@@ -884,6 +1080,7 @@ void GpuTriangles(const GpuDrawState *given, const GpuVertex *vertices, int coun
     /* ... and a menu's backdrop is enlarged about the middle of the draw area to fill them, keeping its shape */
     backdrop = backdropNext && areaWide && areaX == 0 && areaW == SCREEN_COLUMNS && !perspective && !GpuRaceWide();
     primitiveSides = stretch || backdrop;
+    FindHd(state, vertices, count);
     Begin(state, count);
     primitiveSides = 0;
     for (i = 0; i < count; i++) {
@@ -948,6 +1145,7 @@ void GpuFill(int x, int y, int w, int h, uint8_t r, uint8_t g, uint8_t b)
         }
     }
     GpuVramChanged(x, y, w, h);
+    HdTexOverwritten(x, y, w, h);
     ClearDrawn(x, y, w, h);
     GpuClearArea(x, y, w, h, r, g, b);
 }
@@ -1140,10 +1338,45 @@ void GpuPictureHandedOver(void)
     AfterPicture();
 }
 
+/* The framebuffers made again at another scale, from what they held (enlarged or reduced: the next picture
+   is drawn at the new scale). */
+static void SetScale(int newScale)
+{
+    GLuint oldColour = colour, oldFramebuffer = framebuffer;
+    int oldScale = scale, margin = wideMargin;
+
+    Flush();
+    SetWideMargin(0); /* (its middle into video memory's first) */
+    scale = newScale;
+    if (!CreateFramebuffer()) {
+        glDeleteFramebuffers(1, &framebuffer);
+        glDeleteTextures(1, &colour);
+        colour = oldColour;
+        framebuffer = oldFramebuffer;
+        scale = oldScale;
+    } else {
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, oldFramebuffer);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, framebuffer);
+        glDisable(GL_SCISSOR_TEST);
+        glBlitFramebuffer(0, 0, VRAM_WIDTH * oldScale, VRAM_HEIGHT * oldScale, 0, 0, VRAM_WIDTH * scale,
+                          VRAM_HEIGHT * scale, GL_COLOR_BUFFER_BIT, scale < oldScale ? GL_LINEAR : GL_NEAREST);
+        glDeleteFramebuffers(1, &oldFramebuffer);
+        glDeleteTextures(1, &oldColour);
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    SetWideMargin(margin);
+    HdTexSetScale(scale);
+}
+
 /* After a new picture: the window's shape, the setting or the end of a race may ask for another margin (a
-   picture shown again, as each field shows one, or while the frame recorder holds the game, changes nothing). */
+   picture shown again, as each field shows one, or while the frame recorder holds the game, changes nothing),
+   or another scale. */
 static void AfterPicture(void)
 {
+    pictures++;
+    if (ChooseScale() != scale) {
+        SetScale(ChooseScale());
+    }
     if (drawnSincePresent) {
         picturesWithoutScene = sceneWide ? 0 : SDL_min(picturesWithoutScene + 1, 1000);
         picturesWithoutMenu = menuWide ? 0 : SDL_min(picturesWithoutMenu + 1, 1000);

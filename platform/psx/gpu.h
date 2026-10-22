@@ -6,6 +6,10 @@
 
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define VRAM_WIDTH 1024
 #define VRAM_HEIGHT 512
 
@@ -55,6 +59,11 @@ typedef struct GpuDrawState {
 } GpuDrawState;
 
 int GpuInit(void);
+/* The framebuffer's scale (its pixels per console pixel), the largest it can be, and the window's (the
+   settings' resolution 0: what it follows). */
+int GpuScale(void);
+int GpuMaxScale(void);
+int GpuWindowScale(void);
 /* The drawing area (a rectangle of video memory) the next primitives go to. */
 void GpuSetDrawArea(int x, int y, int w, int h, int offsetX, int offsetY);
 void GpuTriangles(const GpuDrawState *state, const GpuVertex *vertices, int count);
@@ -106,5 +115,9 @@ void GpuWideMenu(void);
 /* The primitives that follow are (1) or are not (0) a menu's backdrop, which widescreen enlarges to fill the
    sides. */
 void GpuBackdrop(int on);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
