@@ -54,7 +54,7 @@ extern "C" void DebugUiInit(SDL_Window *w, void *context)
     style.Colors[ImGuiCol_WindowBg].w = 0.92f;
     baseStyle = style;
     ImGui_ImplSDL3_InitForOpenGL(w, context);
-    ImGui_ImplOpenGL3_Init("#version 330 core");
+    ImGui_ImplOpenGL3_Init(PORT_GLSL_VERSION);
     SDL_strlcpy(saveDirEdit, portSettings.saveDir, sizeof(saveDirEdit));
     ready = true;
 }

@@ -3,6 +3,11 @@
 
 /* PlayStation runtime library types and prototypes (libgte, libgpu, libetc, libcd, libspu, libapi). */
 
+/* Port: u_long is 32 bits, as on the console. The C library's <sys/types.h> may have a u_long of its
+   own (glibc's is 64 bits), so the game's is a type of another name underneath. */
+#include <sys/types.h>
+#define u_long PsxULong
+
 typedef unsigned char  u_char;
 typedef unsigned short u_short;
 typedef unsigned int   u_int;
@@ -379,6 +384,10 @@ int  ResetGraph(int mode);
 int  ResetCallback(void);
 int  SetMem(int megabytes);
 void StopCallback(void);
+/* Port: linked under names of their own, as kernel32 has an EnterCriticalSection of its own that a
+   Windows build cannot link beside them (platform/psx/libapi.c defines them under these names) */
+#define EnterCriticalSection PsxEnterCriticalSection
+#define ExitCriticalSection PsxExitCriticalSection
 int  EnterCriticalSection(void);
 void ExitCriticalSection(void);
 int  OpenEvent(u_long desc, int spec, int mode, int (*func)(void));
@@ -424,7 +433,7 @@ int  SpuGetKeyStatus(u_long voice_bit);
 void SpuSetCommonAttr(SpuCommonAttr *attr);
 int  SpuSetReverb(int on_off);
 u_long SpuSetReverbVoice(int on_off, u_long voice_bit);
-void SpuSetReverbModeParam(SpuReverbAttr *attr);
+int  SpuSetReverbModeParam(SpuReverbAttr *attr);
 int  SpuReserveReverbWorkArea(int on_off);
 int  SpuClearReverbWorkArea(int mode);
 

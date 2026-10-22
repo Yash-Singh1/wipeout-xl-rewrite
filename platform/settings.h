@@ -20,6 +20,7 @@ typedef struct PortSettings {
     int recordFrames;     /* the frame recorder (psx/framecap.h): RECORD_* */
     int recordReplays;    /* every session is recorded as a replay (trace.c, --record) */
     char saveDir[1024];   /* memory cards ("" = the user's data folder); takes effect at the next start */
+    char discPath[1024];  /* the disc's .cue chosen last (main.c), for a start without --disc */
 } PortSettings;
 
 /* PortSettings.recordFrames: what the frame recorder keeps, and what Tab does */

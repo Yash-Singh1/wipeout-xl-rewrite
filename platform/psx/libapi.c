@@ -186,7 +186,8 @@ int WaitEvent(int handle)
     }
 }
 
-int EnterCriticalSection(void)
+/* The game's EnterCriticalSection and ExitCriticalSection (game/include/psyq.h names them so) */
+int PsxEnterCriticalSection(void)
 {
     PsxLock();
     criticalDepth++;
@@ -194,7 +195,7 @@ int EnterCriticalSection(void)
     return 1;
 }
 
-void ExitCriticalSection(void)
+void PsxExitCriticalSection(void)
 {
     PsxLock();
     if (criticalDepth > 0) {

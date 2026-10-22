@@ -188,14 +188,15 @@ static BatchVertex batch[BATCH_VERTICES];
 static int batchCount;
 static GpuDrawState batchState;
 
+/* The shaders are written once for OpenGL 3.3 and OpenGL ES 3 (WebGL 2): Compile() puts the version
+   line in front (PORT_GLSL_VERSION); ES needs the precision of floats, integers and integer textures. */
 static const char *vertexSource =
-    "#version 330 core\n"
     "in vec3 position;\n"
     "in vec4 colour;\n"
     "in vec2 texel;\n"
     "in ivec4 texture;\n"
-    "in ivec4 window;\n"
-    "in ivec4 modeIn;\n"
+    "in uvec4 window;\n"              /* unsigned bytes: WebGL wants an attribute's signedness kept */
+    "in uvec4 modeIn;\n"
     "flat out ivec4 texturePage;\n"
     "flat out ivec4 clut;\n"
     "flat out ivec4 vWindow;\n"
@@ -204,8 +205,7 @@ static const char *vertexSource =
     "uniform vec2 target;\n"           /* framebuffer size in video-memory pixels */
     "uniform vec2 origin;\n"           /* the video-memory position of its first pixel */
     "out vec4 vColour;\n"
-    "out vec3 vTexel;\n"               /* texel * w, w (perspective) */
-    "noperspective out vec2 vTexelAffine;\n"
+    "out vec3 vTexel;\n"
     "void main() {\n"
     "    float w = position.z > 0.0 ? position.z : 1.0;\n"
     "    vec2 ndc = (position.xy - origin) / target * 2.0 - 1.0;\n"
@@ -213,20 +213,22 @@ static const char *vertexSource =
     "    vColour = colour;\n"
     "    texturePage = ivec4(texture.xy, 0, 0);\n"
     "    clut = ivec4(texture.zw, 0, 0);\n"
-    "    vWindow = window;\n"
-    "    mode = ivec4(modeIn.x, modeIn.y, pass, modeIn.z);\n"
+    "    vWindow = ivec4(window);\n"
+    "    mode = ivec4(int(modeIn.x), int(modeIn.y), pass, int(modeIn.z));\n"
     "    vTexel = vec3(texel, 1.0);\n"
-    "    vTexelAffine = texel;\n"
     "}\n";
 
 /* mode: x = textured (0/1), y = raw, z = pass (0 all, 1 opaque texels, 2 semi texels), w = depth
    texturePage: page x, page y; clut: x, y; window: mask x, mask y, offset x, offset y */
 static const char *fragmentSource =
-    "#version 330 core\n"
+    "#ifdef GL_ES\n"
+    "precision highp float;\n"
+    "precision highp int;\n"
+    "precision highp usampler2D;\n"
+    "#endif\n"
     "in vec4 vColour;\n"
     "uniform float alphaScale;\n"
     "in vec3 vTexel;\n"
-    "noperspective in vec2 vTexelAffine;\n"
     "uniform usampler2D vram;\n"
     "uniform sampler2D glyphs;\n"
     "flat in ivec4 texturePage;\n"
@@ -280,9 +282,10 @@ static const char *fragmentSource =
 static GLuint Compile(GLenum type, const char *source)
 {
     GLuint shader = glCreateShader(type);
+    const char *sources[2] = {PORT_GLSL_VERSION, source};
     GLint ok;
 
-    glShaderSource(shader, 1, &source, NULL);
+    glShaderSource(shader, 2, sources, NULL);
     glCompileShader(shader);
     glGetShaderiv(shader, GL_COMPILE_STATUS, &ok);
     if (!ok) {
@@ -1072,6 +1075,9 @@ static void Present(int x, int y, int w, int h, int interpolated)
     int width, height, outW, outH, outX, outY;
 
     Flush();
+    if (interpolated) {
+        PortVideoBetweenFrames();
+    }
     PortDrawableSize(&width, &height);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
     glDisable(GL_SCISSOR_TEST);
@@ -1103,7 +1109,6 @@ static void Present(int x, int y, int w, int h, int interpolated)
     PortVideoPresent();
     /* after a new picture: the window's shape, the setting or the end of a race may ask for another margin (a
        picture shown again, as each field shows one, or while the frame recorder holds the game, changes nothing) */
-    (void)interpolated;
     if (drawnSincePresent) {
         picturesWithoutScene = sceneWide ? 0 : SDL_min(picturesWithoutScene + 1, 1000);
         picturesWithoutMenu = menuWide ? 0 : SDL_min(picturesWithoutMenu + 1, 1000);
@@ -1254,7 +1259,7 @@ void GpuShowImage(const uint8_t *rgb, int width, int height)
     glBindTexture(GL_TEXTURE_2D, texture);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     if (width != textureWidth || height != textureHeight) {
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, rgb);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, rgb);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         textureWidth = width;

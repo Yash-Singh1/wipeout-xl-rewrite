@@ -57,6 +57,19 @@ void PsxAudioRenderLocked(int16_t *out, uint32_t frames)
     int16_t scratch[2];
     uint32_t i;
 
+    if (!out && g_io.queuedAudio) {
+        /* queued audio: the samples time passes over go to the device */
+        int16_t block[2 * 256];
+
+        while (frames > 0) {
+            uint32_t n = frames < 256 ? frames : 256;
+
+            PsxAudioRenderLocked(block, n);
+            PsxAudioDeviceQueue(block, n);
+            frames -= n;
+        }
+        return;
+    }
     for (i = 0; i < frames; i++) {
         int16_t cd[2];
         int16_t *dest = out ? out + (size_t)i * 2 : scratch;
@@ -226,11 +239,14 @@ int PsxIoInit(const PsxIoConfig *config, char *error, int errorSize)
     PsxPadInit(config->padScript);
     PsxCardInit(g_io.savePath);
     g_io.initialized = true;
-    if (!g_io.fixedStep && !config->noDevice) {
-        g_io.deviceClock = PsxAudioDeviceOpen();
-        if (!g_io.deviceClock) {
-            PortLog("audio: no output device; time follows the video fields\n");
-        }
+    if (!g_io.fixedStep && !config->noDevice && config->queueAudio) {
+        g_io.queuedAudio = PsxAudioDeviceOpen(true);
+    } else if (!g_io.fixedStep && !config->noDevice) {
+        g_io.deviceClock = PsxAudioDeviceOpen(false);
+    }
+    if (!g_io.fixedStep && !g_io.deviceClock) {
+        PortLog(g_io.queuedAudio ? "audio: time follows the video fields, the samples are queued\n"
+                                 : "audio: no output device; time follows the video fields\n");
     }
     return 1;
 }
@@ -242,6 +258,7 @@ void PsxIoShutdown(void)
     }
     PsxAudioDeviceClose();
     g_io.deviceClock = false;
+    g_io.queuedAudio = false;
     PsxCardShutdown();
     PsxPadShutdown();
     if (g_io.wav) {

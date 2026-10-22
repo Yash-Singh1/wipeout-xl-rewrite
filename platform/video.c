@@ -3,6 +3,7 @@
 #include <SDL3/SDL_opengl.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "debug_ui.h"
 #include "link.h"
@@ -12,6 +13,26 @@
 
 static SDL_Window *window;
 static SDL_GLContext context;
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+/* The web: the browser shows the canvas at its next display refresh after the game gives it its turn. A
+   picture ends the game's turn without waiting for that refresh (the game's time must not follow the
+   display's), and is marked unseen until then. */
+EM_ASYNC_JS(void, ShowPicture, (void), {
+    Module.pictureUnseen = true;
+    requestAnimationFrame(function () { Module.pictureUnseen = false; });
+    await new Promise(function (resolve) { setTimeout(resolve, 0); });
+});
+/* ... and a picture between the game's frames waits until the one before it has been shown (in a hidden page,
+   which shows nothing, it does not wait). */
+EM_ASYNC_JS(void, WaitPictureShown, (void), {
+    if (Module.pictureUnseen && !document.hidden) {
+        await new Promise(requestAnimationFrame);
+        await new Promise(function (resolve) { setTimeout(resolve, 0); });
+    }
+});
+#endif
 
 /* Input events go to the pad emulation (platform/psx), which defines this. */
 
@@ -39,10 +60,17 @@ int PortVideoInit(void)
     } else if (portConfig.fullscreen) {
         flags |= SDL_WINDOW_FULLSCREEN;
     }
+#ifdef __EMSCRIPTEN__
+    flags |= SDL_WINDOW_FILL_DOCUMENT; /* the web: the whole page, following the browser window's size */
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3); /* WebGL 2 */
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+#else
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
+#endif
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     window = SDL_CreateWindow("Wipeout XL", portConfig.windowWidth, portConfig.windowHeight, flags);
     if (!window) {
@@ -119,24 +147,27 @@ static void Capture(void)
         return;
     }
     PortDrawableSize(&width, &height);
-    pixels = SDL_malloc((size_t)width * height * 3);
-    glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, pixels);
+    /* RGBA, the one format every OpenGL (ES too) reads back */
+    pixels = SDL_malloc((size_t)width * height * 4);
+    glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
     if (SDL_getenv("WIPEOUT_ALPHA_CHECK")) {
         /* tests: pixels the window would show see-through */
-        unsigned char *rgba = SDL_malloc((size_t)width * height * 4);
         long low = 0, k;
 
-        glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
         for (k = 0; k < (long)width * height; k++) {
-            low += rgba[k * 4 + 3] < 255;
+            low += pixels[k * 4 + 3] < 255;
         }
         PortLog("alpha: frame %d has %ld see-through pixels\n", shown, low);
-        SDL_free(rgba);
     }
     SDL_snprintf(path, sizeof(path), "%s/frame_%06d.ppm", portConfig.captureDir, shown);
     file = fopen(path, "wb");
     if (file) {
         fprintf(file, "P6\n%d %d\n255\n", width, height);
+        size_t k;
+
+        for (k = 0; k < (size_t)width * height; k++) { /* RGBA to RGB, in place */
+            memmove(pixels + k * 3, pixels + k * 4, 3);
+        }
         for (y = height - 1; y >= 0; y--) {
             fwrite(pixels + (size_t)y * width * 3, 1, (size_t)width * 3, file);
         }
@@ -183,6 +214,18 @@ void PortVideoPresent(void)
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     Capture();
     SDL_GL_SwapWindow(window);
+#ifdef __EMSCRIPTEN__
+    ShowPicture();
+#endif
+}
+
+/* Before a picture between the game's frames: on the desktop the swap's VSync (the settings) paces them; the
+   web's pictures are paced here, one per display refresh at most. */
+void PortVideoBetweenFrames(void)
+{
+#ifdef __EMSCRIPTEN__
+    WaitPictureShown();
+#endif
 }
 
 /* The hidden test window never has the focus: it counts as focused unless its script says otherwise. */

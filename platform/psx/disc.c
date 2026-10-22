@@ -9,6 +9,16 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#elif defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+/* The web: the page has read the player's disc files into memory, once (platform/web/shell.html); a file is
+   found there by its name, without a second copy. */
+EM_JS(const uint8_t *, WebDiscFile, (const char *path, size_t *size), {
+    var file = Module.discFiles && Module.discFiles[UTF8ToString(path).split('/').pop()];
+    if (!file) return 0;
+    HEAPU32[size >> 2] = file.size;
+    return file.data;
+});
 #else
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -58,6 +68,9 @@ static bool map_file(DiscFile *f, const char *path)
     CloseHandle(mapping);
     f->size = (size_t)size.QuadPart;
     return f->data != NULL;
+#elif defined(__EMSCRIPTEN__)
+    f->data = WebDiscFile(path, &f->size);
+    return f->data != NULL;
 #else
     struct stat st;
     int fd = open(path, O_RDONLY);
@@ -88,6 +101,8 @@ static void unmap_file(DiscFile *f)
     }
 #ifdef _WIN32
     UnmapViewOfFile(f->data);
+#elif defined(__EMSCRIPTEN__)
+    /* the page's memory, for as long as the page is open */
 #else
     munmap((void *)f->data, f->size);
 #endif
@@ -305,7 +320,7 @@ const uint8_t *DiscRawSector(const Disc *disc, int32_t lba)
 
 void DiscPrefetch(const Disc *disc, int32_t lba, int sectors)
 {
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__) /* a mapped file (the web's is in memory already) */
     int i;
 
     for (i = disc->fileCount - 1; i >= 0; i--) {

@@ -33,6 +33,12 @@ One clock for the SPU and the drive: the count of output samples at 44100 Hz.
 - Fixed-step (and when no device opens): `PsxIoField(n)` renders up to exactly
   `n * 44100 * 1001 / 60000` samples. No wall clock, no device: two runs give identical audio.
   Waits shorter than a field (a command's reply) advance the clock directly.
+- Queued audio (`queueAudio`; the web, or `WIPEOUT_QUEUE_AUDIO=1` on the desktop): the clock
+  advances as in fixed-step mode, from the video fields, and the samples rendered are queued for
+  the device instead of dropped (about 46 ms in hand when it runs dry, at most 186 ms queued). In
+  a browser the device's callback runs on the game's own thread, only while the game waits, so
+  the clock cannot follow the device there: every reply from the drive would wait for the
+  browser's next audio callback.
 - While the game waits for the drive (`WaitEvent`, `CdReadSync`, `CdControlB`, `CdSync`),
   video fields pass through `PsxVBlank()` (the loading screen animates from its VSync callback).
   `TestEvent` polled 256 times in a row without result also lets a field pass.

@@ -32,6 +32,7 @@ typedef struct PsxIoState {
     bool initialized;
     bool fixedStep;
     bool deviceClock;     /* an audio device thread advances time */
+    bool queuedAudio;     /* ... or the video fields do, and what they render is queued for the device */
     Spu *spu;
     Disc *disc;
     CdDrive cd;
@@ -57,8 +58,9 @@ void PsxIoWait(uint64_t deadline);
    with the lock NOT held. */
 void PsxIoService(void);
 
-/* audio_sdl.c */
-bool PsxAudioDeviceOpen(void);
+/* audio_sdl.c: the device pulls the samples (PsxAudioDeviceOpen), or they are queued for it (PsxAudioDeviceQueue) */
+bool PsxAudioDeviceOpen(bool queued);
+void PsxAudioDeviceQueue(const int16_t *samples, uint32_t frames);
 void PsxAudioDevicePause(bool paused);
 void PsxAudioDeviceClose(void);
 

@@ -1,0 +1,208 @@
+<!doctype html>
+<!-- The web page around the game (CMakeLists.txt: --shell-file). The player chooses their disc image (the .cue
+     and its .bin tracks); the page reads the tracks into the game's memory once (platform/psx/disc.c finds
+     them there by name), keeps the settings and memory cards in the browser's storage (IndexedDB, under
+     SDL's data folder /libsdl) and starts the game's main(). Gamepads come through the browser's Gamepad
+     API (SDL's joystick driver for the web): press a button on one for the browser to show it. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wipeout XL</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; color: #ddd; overflow: hidden;
+               font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #canvas { display: block; outline: none; }  /* SDL sizes it to the page (SDL_WINDOW_FILL_DOCUMENT) */
+  #start { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+           background: radial-gradient(circle at 50% 35%, #1b2340, #000 70%); }
+  #panel { width: min(560px, 90vw); padding: 28px 32px; border: 1px solid #3a4670; border-radius: 10px;
+           background: rgba(10, 14, 30, 0.92); box-shadow: 0 10px 40px #000; }
+  h1 { margin: 0 0 6px; font-size: 26px; letter-spacing: 0.08em; color: #fff; }
+  p { margin: 8px 0; }
+  .muted { color: #8d97b5; font-size: 13px; }
+  #drop { margin: 16px 0 10px; padding: 22px; border: 2px dashed #46558a; border-radius: 8px; text-align: center;
+          cursor: pointer; }
+  #drop.over { border-color: #9fb4ff; background: rgba(80, 100, 180, 0.15); }
+  button { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid #5a6aa8; background: #26305a;
+           color: #fff; cursor: pointer; }
+  #progress { height: 6px; margin-top: 12px; border-radius: 3px; background: #1d2440; overflow: hidden;
+              visibility: hidden; }
+  #bar { height: 100%; width: 0; background: #7f9bff; }
+  #status { min-height: 1.45em; }
+  #status.error, .error { color: #ff8f8f; }
+</style>
+</head>
+<body>
+<canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
+<div id="start">
+  <div id="panel">
+    <h1>WIPEOUT XL</h1>
+    <p>The PlayStation game, running in your browser. It needs your copy of the disc: the
+       <b>.cue</b> file and all of its <b>.bin</b> tracks (Wipeout XL, USA).</p>
+    <div id="drop">Drop the files here, or <button id="choose" type="button">choose them</button>
+      <input id="files" type="file" multiple accept=".cue,.bin" hidden>
+    </div>
+    <p id="status"></p>
+    <div id="progress"><div id="bar"></div></div>
+    <p class="muted">The disc stays on this computer: it is read into this page's memory and nothing is uploaded.
+      Settings and memory cards are kept in this browser. Keyboard or gamepad; ~ opens the debug console.</p>
+  </div>
+</div>
+<script>
+'use strict';
+var statusLine = document.getElementById('status');
+var drop = document.getElementById('drop');
+var input = document.getElementById('files');
+var canvas = document.getElementById('canvas');
+
+// after the game has started the panel is gone: errors come back on a panel of their own
+function showError(text) {
+  var box = document.createElement('div');
+  box.id = 'start';
+  box.innerHTML = '<div id="panel"><h1>WIPEOUT XL</h1><p class="error"></p></div>';
+  box.querySelector('p').textContent = text;
+  document.body.appendChild(box);
+}
+
+function say(text, error) {
+  statusLine.textContent = text;
+  statusLine.className = error ? 'error' : '';
+}
+
+var Module = {
+  canvas: canvas,
+  discFiles: {},          // name -> {data: pointer, size}: platform/psx/disc.c reads the tracks here
+  output: [],             // the game's last lines of output, for a look from the browser's console
+  print: function (text) { console.log(text); Module.keep(text); },
+  printErr: function (text) { console.warn(text); Module.keep(text); },
+  keep: function (text) { Module.output.push(text); if (Module.output.length > 200) Module.output.shift(); },
+  onExit: function (code) { if (code) showError('The game stopped: ' + Module.output.slice(-3).join(' ')); },
+  onAbort: function (what) { showError('The game stopped: ' + what); },
+  setStatus: function (text) { if (text) say(text); },
+  onRuntimeInitialized: function () {
+    runtimeReady = true;
+    say('Ready for your disc.');
+    var disc = new URLSearchParams(location.search).get('disc');
+    if (disc) startUrl(disc);
+  },
+};
+var runtimeReady = false;
+addEventListener('error', function (e) { Module.keep('error: ' + e.message); });
+addEventListener('unhandledrejection', function (e) { Module.keep('error: ' + (e.reason && e.reason.stack || e.reason)); });
+var started = false;
+
+// The .bin files a cue sheet names (FILE "name" BINARY)
+function cueFiles(text) {
+  var names = [], re = /^\s*FILE\s+"([^"]+)"/gim, m;
+  while ((m = re.exec(text))) names.push(m[1].split(/[\\/]/).pop());
+  return names;
+}
+
+// A track: its size, and its bytes in pieces (a File chosen or dropped, or a URL on the page's server)
+function fileTrack(file) {
+  return { name: file.name, size: async function () { return file.size; },
+           pieces: async function* () {
+             for (var at = 0; at < file.size; at += 16 << 20)
+               yield new Uint8Array(await file.slice(at, Math.min(at + (16 << 20), file.size)).arrayBuffer());
+           } };
+}
+function urlTrack(url) {
+  var response;
+  return { name: decodeURIComponent(url.split('/').pop()),
+           size: async function () {
+             response = await fetch(url);
+             if (!response.ok) throw new Error(url + ': ' + response.status);
+             return Number(response.headers.get('Content-Length'));
+           },
+           pieces: async function* () {
+             var reader = response.body.getReader();
+             for (;;) { var r = await reader.read(); if (r.done) return; yield r.value; }
+           } };
+}
+
+// The cue sheet's text and its tracks (by name), then the game
+async function start(cueName, cueText, trackOf) {
+  if (started) return;
+  if (!runtimeReady) { say('Still loading the game, a moment...', true); return; }
+  var needed = cueFiles(cueText);
+  if (!needed.length) { say(cueName + ' names no tracks.', true); return; }
+  var missing = needed.filter(function (n) { return !trackOf(n); });
+  if (missing.length) { say('Missing: ' + missing.join(', '), true); return; }
+  started = true;
+
+  // the tracks into the game's memory, a piece at a time (the memory may grow, and move, meanwhile)
+  document.getElementById('progress').style.visibility = 'visible';
+  try {
+    var tracks = needed.map(trackOf), sizes = [], total = 0, done = 0;
+    for (var i = 0; i < tracks.length; i++) { sizes[i] = await tracks[i].size(); total += sizes[i]; }
+    for (i = 0; i < tracks.length; i++) {
+      var data = Module._malloc(sizes[i]), at = 0;
+      if (!data) throw new Error('not enough memory for ' + tracks[i].name);
+      for await (var piece of tracks[i].pieces()) {
+        if (at + piece.length > sizes[i]) throw new Error(tracks[i].name + ' is longer than it said');
+        Module.HEAPU8.set(piece, data + at);
+        at += piece.length;
+        done += piece.length;
+        document.getElementById('bar').style.width = (100 * done / total).toFixed(1) + '%';
+        say('Reading the disc: ' + Math.round(done / 1048576) + ' of ' + Math.round(total / 1048576) + ' MB');
+      }
+      Module.discFiles[tracks[i].name] = { data: data, size: at };
+    }
+  } catch (e) {
+    say('The disc could not be read: ' + e.message, true);
+    started = false;
+    return;
+  }
+  FS.mkdir('/disc');
+  FS.writeFile('/disc/' + cueName, cueText);
+
+  // settings and memory cards: SDL's data folder, kept in IndexedDB
+  FS.mkdir('/libsdl');
+  FS.mount(IDBFS, {}, '/libsdl');
+  FS.syncfs(true, function (error) {
+    if (error) console.warn('saved data: ' + error);
+    var save = function () { FS.syncfs(false, function (e) { if (e) console.warn('saving: ' + e); }); };
+    setInterval(save, 3000);
+    addEventListener('pagehide', save);
+    document.addEventListener('visibilitychange', function () { if (document.hidden) save(); });
+
+    document.getElementById('start').remove();
+    canvas.focus();
+    Module.callMain(['--disc', '/disc/' + cueName]);
+  });
+}
+
+// The player's files, chosen or dropped
+async function startFiles(fileList) {
+  var files = Array.from(fileList), byName = {};
+  var cue = files.find(function (f) { return /\.cue$/i.test(f.name); });
+  if (!cue) { say('Choose the .cue file together with its .bin tracks.', true); return; }
+  files.forEach(function (f) { byName[f.name] = f; });
+  start(cue.name, await cue.text(), function (name) { return byName[name] && fileTrack(byName[name]); });
+}
+// ...or a disc image on the page's own server: wipeoutxl.html?disc=path/to/the.cue (the tracks beside it)
+async function startUrl(cueUrl) {
+  try {
+    var response = await fetch(cueUrl);
+    if (!response.ok) throw new Error(response.status);
+    var base = new URL(cueUrl, location.href);
+    start(decodeURIComponent(base.pathname.split('/').pop()), await response.text(),
+          function (name) { return urlTrack(new URL(encodeURIComponent(name), base).href); });
+  } catch (e) {
+    say('No disc at ' + cueUrl + ' (' + e.message + ')', true);
+  }
+}
+
+document.getElementById('choose').onclick = function (e) { e.stopPropagation(); input.click(); };
+drop.onclick = function () { input.click(); };
+input.onchange = function () { startFiles(input.files); };
+drop.ondragover = function (e) { e.preventDefault(); drop.classList.add('over'); };
+drop.ondragleave = function () { drop.classList.remove('over'); };
+drop.ondrop = function (e) { e.preventDefault(); drop.classList.remove('over'); startFiles(e.dataTransfer.files); };
+addEventListener('dragover', function (e) { e.preventDefault(); });
+addEventListener('drop', function (e) { e.preventDefault(); });
+say('Loading the game...');
+</script>
+{{{ SCRIPT }}}
+</body>
+</html>

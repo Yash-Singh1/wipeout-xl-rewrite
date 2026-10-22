@@ -21,10 +21,17 @@ typedef struct PortConfig {
 } PortConfig;
 extern PortConfig portConfig;
 
-/* video.c */
+/* video.c: the window and its OpenGL, 3.3 core on the desktop and OpenGL ES 3 (WebGL 2) on the web; every
+   shader begins with this line */
+#ifdef __EMSCRIPTEN__
+#define PORT_GLSL_VERSION "#version 300 es\n"
+#else
+#define PORT_GLSL_VERSION "#version 330 core\n"
+#endif
 int PortVideoInit(void);
 void PortVideoShutdown(void);
 void PortVideoPresent(void);
+void PortVideoBetweenFrames(void); /* before a picture between the game's frames (the web paces them) */
 void PortSwapInterval(int vsync); /* whether pictures wait for the display's refresh */
 void PortDumpVram(void);
 void PortDrawableSize(int *width, int *height);

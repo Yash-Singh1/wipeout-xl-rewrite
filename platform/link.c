@@ -25,6 +25,16 @@
 #include "link.h"
 #include "platform.h"
 
+#ifdef __EMSCRIPTEN__
+/* The web: a page runs one copy of the game and SDL has no processes there, so the second player's game
+   never starts (PortLinkStartSlave fails as when the program cannot be run) and the two-player modes find no
+   partner. */
+#define SDL_CreateProcess(args, pipeStdio) (SDL_SetError("the web has no second program"), (SDL_Process *)NULL)
+#define SDL_WaitProcess(process, block, exitCode) true
+#define SDL_KillProcess(process, force) true
+#define SDL_DestroyProcess(process) ((void)(process))
+#endif
+
 #define LINK_MAGIC 0x574C4B31u /* WLK1 */
 #define PACKET_BYTES 128
 #define TRANSFER_TIMEOUT_MS 5000

@@ -9,7 +9,6 @@
                            buttons active high in hex, applied from the
                            COUNT-th read of the fixed pad on */
 #include <SDL3/SDL.h>
-#include <dlfcn.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,6 +19,28 @@
 
 #include "platform.h"
 #include "trace.h"
+
+/* The game's globals by name, for the write scripts: the program's own symbol table (on Windows
+   the executable exports its symbols for this; the web has no such table and runs no traces). */
+#if defined(_WIN32)
+#include <windows.h>
+static void *FindSymbol(const char *name)
+{
+    return (void *)GetProcAddress(GetModuleHandleA(NULL), name);
+}
+#elif defined(__EMSCRIPTEN__)
+static void *FindSymbol(const char *name)
+{
+    (void)name;
+    return NULL;
+}
+#else
+#include <dlfcn.h>
+static void *FindSymbol(const char *name)
+{
+    return dlsym(RTLD_DEFAULT, name);
+}
+#endif
 
 enum {
     KIND_BOUNDARY = 1,
@@ -310,7 +331,7 @@ static void LoadWrites(const char *path)
 
 static void *Symbol(const char *name)
 {
-    void *address = dlsym(RTLD_DEFAULT, name);
+    void *address = FindSymbol(name);
 
     if (!address) {
         fprintf(stderr, "trace: write target %s not found\n", name);
@@ -534,7 +555,7 @@ static void TraceState(void)
 
     if (!looked) {
         looked = 1;
-        seed = dlsym(RTLD_DEFAULT, "attractShip");
+        seed = FindSymbol("attractShip");
     }
     memset(words, 0, sizeof(words));
     words[0] = padReads;

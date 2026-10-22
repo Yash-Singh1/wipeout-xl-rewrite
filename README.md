@@ -1,7 +1,8 @@
 # Wipeout XL
 
 The PlayStation game (USA, SCUS-94351) running natively on macOS, Linux and
-Windows. The game is the console's own code: the decompiled C of the retail
+Windows, and in a web browser. One code base builds all four (the same game, the
+same platform layer over SDL3 and OpenGL; the web uses WebGL 2). The game is the console's own code: the decompiled C of the retail
 executable, compiled for the PC, with the PlayStation libraries replaced by the
 platform layer (OpenGL drawing at any resolution, the sound chip, the CD drive,
 pads and memory cards). It plays like the console, frame for frame: see
@@ -13,20 +14,61 @@ real game.
 - Your copy of the PlayStation disc as a `.cue` with its `.bin` tracks
   (Wipeout XL USA). The music plays from the disc's audio tracks, the intro
   and ending movies from its movie files.
-- To build: CMake, a C compiler, SDL3 (and zlib for the test traces).
+- To build: CMake, Ninja, a C compiler (Clang or GCC), and SDL3 3.2 or later
+  (zlib for the test traces is optional). Where CMake does not find SDL3 it
+  downloads and builds it (`-DWIPEOUT_BUILD_SDL=ON` always does).
 
 ## Build
+
+macOS (Homebrew's `sdl3`) and Linux (for example Debian 13 or Ubuntu 25.04:
+`libsdl3-dev libgl-dev`):
 
 ```sh
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
 ninja -C build
 ```
 
+Windows, with MSYS2's MinGW-w64 (UCRT64 or CLANG64 shell, packages `cmake`
+`ninja` `gcc` or `clang`): the same two commands. From macOS or Linux, with the
+MinGW-w64 cross compiler, use the toolchain file:
+
+```sh
+cmake -S . -B build-windows -G Ninja -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64-x86_64.cmake
+ninja -C build-windows
+```
+
+`wipeoutxl.exe` is a single file, with SDL3 and the C runtime linked in.
+
+The web, with Emscripten:
+
+```sh
+emcmake cmake -S . -B build-web -G Ninja -DCMAKE_BUILD_TYPE=Release
+ninja -C build-web
+```
+
+This makes `wipeoutxl.html`, `wipeoutxl.js` and `wipeoutxl.wasm`; put the three
+on any web server (or `python3 -m http.server` in `build-web` and open
+`http://localhost:8000/wipeoutxl.html`).
+
 ## Play
 
 ```sh
 build/wipeoutxl --disc "path/to/Wipeout XL (USA).cue"
 ```
+
+Started without `--disc` (from the desktop, say), the game opens the disc
+chosen last time, or asks for the `.cue` with a file dialog.
+
+In the browser, the page asks for the disc: choose or drop the `.cue` together
+with all its `.bin` tracks. They are read into the page's memory (about 750 MB,
+so a desktop browser with WebGL 2: Chrome, Edge, Firefox or Safari) and never
+leave the computer. A disc image on the same server can be given in the
+address instead: `wipeoutxl.html?disc=path/to/Wipeout%20XL%20(USA).cue`, with
+the tracks beside the `.cue`. Gamepads work through the browser's Gamepad API
+(press a button for the browser to make the gamepad known). Settings and memory
+cards are kept in the browser's storage for the site. The two-player modes need
+the second copy of the game the desktop starts, so the web has one player.
 
 The whole track is drawn, as far as the camera sees, where the console let
 scenery, track and other ships pop in at a fixed distance; nothing the game
@@ -103,8 +145,9 @@ consoles were by the cable.
 
 The game saves to memory cards, as on the console. Card 1 is
 `memcard0.mcr` in the user's data folder (macOS:
-`~/Library/Application Support/Psygnosis/WipeoutXL/`), in the raw format
-emulators use.
+`~/Library/Application Support/Psygnosis/WipeoutXL/`, Linux:
+`~/.local/share/Psygnosis/WipeoutXL/`, Windows:
+`%APPDATA%\Psygnosis\WipeoutXL\`), in the raw format emulators use.
 
 ## How it is built
 

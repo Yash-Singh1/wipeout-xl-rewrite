@@ -10,7 +10,8 @@
    second). With an audio device the device advances it. In fixed-step mode (and when there
    is no device) it advances only when the game passes time: PsxIoField() once per video
    field, to exactly field * 44100 * 1001 / 60000 samples, so the audio is the same on every
-   run. Waits inside the libraries (a CD read, a seek) pass the video fields that elapse
+   run. With queued audio (PsxIoConfig.queueAudio) time passes the same way and the samples go
+   to the device. Waits inside the libraries (a CD read, a seek) pass the video fields that elapse
    while waiting by calling PsxVBlank(), as the console's vertical blanks go on during them. */
 #ifndef PSX_IO_H
 #define PSX_IO_H
@@ -27,6 +28,9 @@ typedef struct PsxIoConfig {
     const char *padScript;  /* scripted pad input file (see pad.c); NULL for live input */
     const char *wavPath;    /* write the mixed audio here (fixed-step runs) */
     int noCdAudio;          /* the disc's audio tracks are not heard (the second player's game) */
+    int queueAudio;         /* time follows the video fields and their samples are queued for the device, which
+                               then never sets the time (the web, where the device's callback can only run while
+                               the game waits) */
 } PsxIoConfig;
 
 /* Returns 1 on success; on failure fills error (when non-NULL). */

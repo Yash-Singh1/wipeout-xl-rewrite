@@ -528,6 +528,8 @@ int RenameFile(char *name, int slot, ConfigData *settings);
 int RenameFile1(char *card, char *source, int type, void *output);
 u_char SaveCardFile(char *name, int slot, ConfigData *settings);
 int UnFormat(int slot);
+/* Port: linked under a name of its own, not kernel32's WriteFile (a Windows build links both) */
+#define WriteFile CardWriteFile
 int WriteFile(void *header, char *filename, ConfigData *settings);
 void CloseCardEvents(void);
 int GetCardInfo(int slot);

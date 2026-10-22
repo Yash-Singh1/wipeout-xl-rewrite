@@ -22,7 +22,8 @@ static void Usage(void)
 {
     fprintf(stderr,
             "usage: wipeoutxl [--disc FILE.cue] [--window WxH] [--fullscreen]\n"
-            "  --disc     your Wipeout XL (USA) PlayStation disc image (.cue with its .bin tracks)\n"
+            "  --disc     your Wipeout XL (USA) PlayStation disc image (.cue with its .bin tracks);\n"
+            "             without it, the one chosen last time, else a file dialog asks for it\n"
             "environment: WIPEOUT_XL_DISC; tests: WIPEOUT_MUTE, WIPEOUT_HIDDEN,\n"
             "  WIPEOUT_FIXED_STEP, WIPEOUT_FRAMES, WIPEOUT_CAPTURE_DIR, WIPEOUT_CAPTURE_EVERY, WIPEOUT_CAPTURE_FROM,\n"
             "  WIPEOUT_TRACE (trace file), WIPEOUT_PADS (pad script), WIPEOUT_VCOUNTS (counter reads),\n"
@@ -30,6 +31,51 @@ static void Usage(void)
             "  WIPEOUT_KEYS (scripted keys and gamepad), WIPEOUT_VRAM_DUMP (video memory picture at the end of a run),\n"
             "  WIPEOUT_FAR_VIEW (0: the console's draw distance; 2: the whole track even while tracing),\n"
             "  WIPEOUT_MOVIES (play the movies in fixed-step runs too)\n");
+}
+
+/* No disc given (--disc, WIPEOUT_XL_DISC): the one chosen last time, else the player picks the .cue in the
+   system's file dialog, as when the program is started from the desktop. The web page passes --disc. */
+static const char *chosenDisc;
+static SDL_AtomicInt discDialogDone; /* the dialog may answer from a thread of its own (Windows) */
+
+static void SDLCALL DiscChosen(void *user, const char *const *files, int filter)
+{
+    (void)user;
+    (void)filter;
+    if (files && files[0]) {
+        chosenDisc = SDL_strdup(files[0]);
+    }
+    SDL_SetAtomicInt(&discDialogDone, 1);
+}
+
+static const char *ChooseDisc(void)
+{
+    static const SDL_DialogFileFilter cue[] = {{"Wipeout XL disc image (.cue)", "cue"}};
+    SDL_PathInfo info;
+
+    if (portSettings.discPath[0] && SDL_GetPathInfo(portSettings.discPath, &info)) {
+        return portSettings.discPath;
+    }
+#ifdef __EMSCRIPTEN__
+    return NULL; /* the page has no file dialog of SDL's: it starts the game with --disc */
+#else
+    if (portConfig.hidden) {
+        return NULL;
+    }
+    SDL_ShowOpenFileDialog(DiscChosen, NULL, NULL, cue, SDL_arraysize(cue), NULL, false);
+    while (!SDL_GetAtomicInt(&discDialogDone)) {
+        SDL_Event event;
+
+        if (SDL_WaitEventTimeout(&event, 100) && event.type == SDL_EVENT_QUIT) {
+            break;
+        }
+    }
+    if (chosenDisc) {
+        SDL_strlcpy(portSettings.discPath, chosenDisc, sizeof(portSettings.discPath));
+        PortSettingsSave();
+    }
+    return chosenDisc;
+#endif
 }
 
 int main(int argc, char **argv)
@@ -91,10 +137,6 @@ int main(int argc, char **argv)
             return 1;
         }
     }
-    if (!portConfig.discPath) {
-        Usage();
-        return 1;
-    }
     PortSettingsLoad();
     if (!portConfig.savePath && portSettings.saveDir[0]) {
         static char saveDir[1040];
@@ -126,6 +168,10 @@ int main(int argc, char **argv)
         SDL_Log("SDL: %s", SDL_GetError());
         return 1;
     }
+    if (!portConfig.discPath && !(portConfig.discPath = ChooseDisc())) {
+        Usage();
+        return 1;
+    }
     if (!PortVideoInit()) {
         return 1;
     }
@@ -139,6 +185,11 @@ int main(int argc, char **argv)
         io.fixedStep = portConfig.fixedStep;
         io.muted = portConfig.muted;
         io.noCdAudio = portConfig.linkName != NULL;
+#ifdef __EMSCRIPTEN__
+        io.queueAudio = 1; /* the page's audio callback runs only while the game waits (psx_io.h) */
+#else
+        io.queueAudio = SDL_getenv("WIPEOUT_QUEUE_AUDIO") != NULL; /* tests: as the web does */
+#endif
         value = SDL_getenv("WIPEOUT_CD_SPEED");
         /* data reads as fast as the disc image allows (the console's drive: WIPEOUT_CD_SPEED=1) */
         io.cdSpeed = value ? SDL_atof(value) : 1000.0;

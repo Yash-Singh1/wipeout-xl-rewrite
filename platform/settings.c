@@ -50,6 +50,8 @@ static void Set(const char *key, const char *value)
         portSettings.recordReplays = number != 0;
     } else if (!strcmp(key, "save_dir")) {
         SDL_strlcpy(portSettings.saveDir, value, sizeof(portSettings.saveDir));
+    } else if (!strcmp(key, "disc")) {
+        SDL_strlcpy(portSettings.discPath, value, sizeof(portSettings.discPath));
     }
 }
 
@@ -137,13 +139,13 @@ int PortSettingsSave(void)
     fprintf(file,
             "# Wipeout XL settings (the ~ key opens the debug console that changes them)\n"
             "show_fps = %d\nfar_view = %d\nfade = %d\nfade_near = %d\nfade_far = %d\n"
-            "widescreen = %d\nframe_rate = %d\nframe_cap = %d\nskip_intro = %d\nrecord_frames = %d\nrecord_replays = %d\nsave_dir = %s\n",
+            "widescreen = %d\nframe_rate = %d\nframe_cap = %d\nskip_intro = %d\nrecord_frames = %d\nrecord_replays = %d\nsave_dir = %s\ndisc = %s\n",
             portSettings.showFps, portSettings.farView, portSettings.fade, portSettings.fadeNear, portSettings.fadeFar,
             portSettings.widescreen, portSettings.frameRate,
             portSettings.frameCap, portSettings.skipIntro,
             portSettings.recordFrames,
             portSettings.recordReplays,
-            portSettings.saveDir);
+            portSettings.saveDir, portSettings.discPath);
     fclose(file);
     return 1;
 }

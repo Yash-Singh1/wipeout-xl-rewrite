@@ -7,7 +7,7 @@
 #define RETURNS(name, value) int name() { return (value); }
 
 /* events and interrupts */
-NOOP(ResetCallback) NOOP(StopCallback) NOOP(SetMem) NOOP(EnterCriticalSection) NOOP(ExitCriticalSection)
+NOOP(ResetCallback) NOOP(StopCallback) NOOP(SetMem) NOOP(PsxEnterCriticalSection) NOOP(PsxExitCriticalSection) /* psyq.h links them so */
 RETURNS(OpenEvent, 1) RETURNS(EnableEvent, 1) RETURNS(CloseEvent, 1) RETURNS(TestEvent, 1)
 NOOP(VSync) NOOP(VSyncCallback)
 NOOP(GsInitVcount) NOOP(GsClearVcount)

@@ -23,8 +23,8 @@ int DisableEvent(int);
 int CloseEvent(int);
 int TestEvent(int);
 int WaitEvent(int);
-int EnterCriticalSection(void);
-int ExitCriticalSection(void);
+int PsxEnterCriticalSection(void); /* the game's EnterCriticalSection (game/include/psyq.h) */
+void PsxExitCriticalSection(void);
 int CdInit(void);
 int CdControl(int, const uint8_t *, uint8_t *);
 int CdControlB(int, const uint8_t *, uint8_t *);
@@ -118,10 +118,10 @@ int main(void)
     CHECK_EQ_INT(WaitEvent(a), 0);                     /* disabled: no wait */
     /* handlers wait for the end of a critical section */
     handlerCalls = 0;
-    EnterCriticalSection();
+    PsxEnterCriticalSection();
     PsxDeliverEvent(0xF0000099u, 1);
     CHECK_EQ_INT(handlerCalls, 0);
-    ExitCriticalSection();
+    PsxExitCriticalSection();
     CHECK_EQ_INT(handlerCalls, 1);
     CloseEvent(b);
     PsxDeliverEvent(0xF0000099u, 1);
