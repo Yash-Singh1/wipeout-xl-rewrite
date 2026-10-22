@@ -53,6 +53,9 @@ unsigned GteResolvePrecise(const uint32_t *xy, const void *const *addresses, int
    the same pixel. addresses[] of GteResolvePrecise: the xy words of the packet, or NULL. */
 uint32_t GtePreciseHandle(int reg);
 void GteBindPrecise(const void *address, uint32_t handle);
+/* A packet's xy word the renderer placed in 2D (about a projection, say): the primitive is drawn as given, not
+   matched to whatever projections land on the same pixels. */
+void GteBindFlat(const void *address);
 int GtePreciseOf(uint32_t handle, GtePrecise *out);
 /* The handle bound to an address that still holds the screen position xy (libgte's projections bind the
    words they store to), or 0. */
@@ -81,6 +84,8 @@ void GteKeyNext(int slot, uint64_t key);
 /* The number of the frame whose projections are being made (it changes when a drawn frame's next projection
    starts the next one). */
 uint32_t GteFrameNumber(void);
+/* The number of the frame whose projections are recorded, without starting the next (a frame drawn again). */
+uint32_t GteFrameRecorded(void);
 uint64_t GteKeyMix(uint64_t a, uint64_t b);
 void GteRecordView(uint32_t handle, double x, double y, double z);
 /* On while the display interpolates: the projections of the frame before are kept. */

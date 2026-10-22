@@ -86,8 +86,27 @@
     X(PFNGLDELETEFRAMEBUFFERSPROC, glDeleteFramebuffers) \
     X(PFNGLDELETERENDERBUFFERSPROC, glDeleteRenderbuffers)
 
+#ifndef __EMSCRIPTEN__
+/* The desktop's: a picture read back without waiting for it (GpuReadPictureStart; WebGL 2 maps no buffers). */
+#define GPU_READ_ASYNC 1
+#define ASYNC_GL_FUNCTIONS(X) \
+    X(PFNGLFENCESYNCPROC, glFenceSync) \
+    X(PFNGLCLIENTWAITSYNCPROC, glClientWaitSync) \
+    X(PFNGLDELETESYNCPROC, glDeleteSync) \
+    X(PFNGLMAPBUFFERRANGEPROC, glMapBufferRange) \
+    X(PFNGLUNMAPBUFFERPROC, glUnmapBuffer)
+#else
+#define ASYNC_GL_FUNCTIONS(X)
+#endif
+
 #define DECLARE_GL(type, name) static type p_##name;
 GL_FUNCTIONS(DECLARE_GL)
+ASYNC_GL_FUNCTIONS(DECLARE_GL)
+#define glFenceSync p_glFenceSync
+#define glClientWaitSync p_glClientWaitSync
+#define glDeleteSync p_glDeleteSync
+#define glMapBufferRange p_glMapBufferRange
+#define glUnmapBuffer p_glUnmapBuffer
 #define glGenBuffers p_glGenBuffers
 #define glBindBuffer p_glBindBuffer
 #define glBufferData p_glBufferData
@@ -148,9 +167,11 @@ static int LoadFunctions(void)
         return 0;                                              \
     }
     GL_FUNCTIONS(LOAD_GL)
+    ASYNC_GL_FUNCTIONS(LOAD_GL)
     return 1;
 }
 #else
+#define GPU_READ_ASYNC 1
 static int LoadFunctions(void)
 {
     return 1; /* (the platform's OpenGL ES library is linked) */
@@ -647,7 +668,12 @@ static int WantedMargin(void)
     if (height <= 0) {
         return 0;
     }
-    margin = (int)SDL_ceil((240.0 * width / height - SCREEN_COLUMNS) / 2);
+    if (PortLinkSplit()) {
+        /* each half of a split window: the band's rows across half the height */
+        margin = (int)SDL_ceil((GPU_SPLIT_ROWS * 2.0 * width / height - SCREEN_COLUMNS) / 2);
+    } else {
+        margin = (int)SDL_ceil((240.0 * width / height - SCREEN_COLUMNS) / 2);
+    }
     return SDL_clamp(margin, 0, MAX_WIDE_MARGIN);
 }
 
@@ -1480,11 +1506,12 @@ int GpuShownMargin(int x, int w)
     return wideMargin && x == 0 && w == SCREEN_COLUMNS ? wideMargin : 0;
 }
 
-uint8_t *GpuReadPicture(int x, int y, int w, int h, int margin, int outW, int outH)
+/* The picture at (x, y, w, h) with its sides (GpuReadPicture) scaled to outW x outH, in a framebuffer bound for
+   reading. */
+static void ScalePicture(int x, int y, int w, int h, int margin, int outW, int outH)
 {
     static GLuint small, smallTexture;
     static int smallW, smallH;
-    static uint8_t *pixels;
     int wide = margin && margin == GpuShownMargin(x, w);
 
     Flush();
@@ -1500,7 +1527,6 @@ uint8_t *GpuReadPicture(int x, int y, int w, int h, int margin, int outW, int ou
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, smallTexture, 0);
         smallW = outW;
         smallH = outH;
-        pixels = realloc(pixels, (size_t)outW * outH * 4);
     }
     glDisable(GL_SCISSOR_TEST);
     glBindFramebuffer(GL_READ_FRAMEBUFFER, wide ? wideFramebuffer : framebuffer);
@@ -1514,9 +1540,100 @@ uint8_t *GpuReadPicture(int x, int y, int w, int h, int margin, int outW, int ou
     }
     glBindFramebuffer(GL_READ_FRAMEBUFFER, small);
     glPixelStorei(GL_PACK_ALIGNMENT, 4);
+}
+
+uint8_t *GpuReadPicture(int x, int y, int w, int h, int margin, int outW, int outH)
+{
+    static uint8_t *pixels;
+    static size_t size;
+
+    if ((size_t)outW * outH * 4 > size) {
+        size = (size_t)outW * outH * 4;
+        pixels = realloc(pixels, size);
+    }
+    ScalePicture(x, y, w, h, margin, outW, outH);
     glReadPixels(0, 0, outW, outH, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
     glBindFramebuffer(GL_FRAMEBUFFER, windowFramebuffer);
     return pixels; /* video memory's rows go up the framebuffer: the first row read is the picture's top */
+}
+
+/* One picture at a time on its way back (GPU_READ_ASYNC: into a buffer, done when the fence is passed). */
+static struct {
+    int busy, w, h;
+#ifdef GPU_READ_ASYNC
+    GLuint buffer;
+    GLsync fence;
+#else
+    uint8_t *pixels;
+#endif
+} reading;
+
+int GpuReadPictureBusy(void)
+{
+    return reading.busy;
+}
+
+int GpuReadPictureStart(int x, int y, int w, int h, int margin, int outW, int outH)
+{
+    if (reading.busy) {
+        return 0;
+    }
+#ifdef GPU_READ_ASYNC
+    ScalePicture(x, y, w, h, margin, outW, outH);
+    if (!reading.buffer) {
+        glGenBuffers(1, &reading.buffer);
+    }
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, reading.buffer);
+    glBufferData(GL_PIXEL_PACK_BUFFER, (GLsizeiptr)outW * outH * 4, NULL, GL_STREAM_READ);
+    glReadPixels(0, 0, outW, outH, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+    reading.fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+    glFlush();
+    glBindFramebuffer(GL_FRAMEBUFFER, windowFramebuffer);
+#else
+    reading.pixels = GpuReadPicture(x, y, w, h, margin, outW, outH);
+#endif
+    reading.w = outW;
+    reading.h = outH;
+    reading.busy = 1;
+    return 1;
+}
+
+int GpuReadPictureDone(void (*use)(const uint8_t *pixels, int width, int height))
+{
+#ifdef GPU_READ_ASYNC
+    GLenum status;
+    void *pixels;
+
+    if (!reading.busy) {
+        return 0;
+    }
+    status = glClientWaitSync(reading.fence, 0, 0);
+    if (status == GL_TIMEOUT_EXPIRED) {
+        return 0;
+    }
+    glDeleteSync(reading.fence);
+    reading.fence = NULL;
+    reading.busy = 0;
+    if (status == GL_WAIT_FAILED) {
+        return 0;
+    }
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, reading.buffer);
+    pixels = glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0, (GLsizeiptr)reading.w * reading.h * 4, GL_MAP_READ_BIT);
+    if (pixels) {
+        use((const uint8_t *)pixels, reading.w, reading.h);
+        glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+    }
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+    return pixels != NULL;
+#else
+    if (!reading.busy) {
+        return 0;
+    }
+    reading.busy = 0;
+    use(reading.pixels, reading.w, reading.h);
+    return 1;
+#endif
 }
 
 void GpuPresentSplit(int x, int y, int w, int h, const uint8_t *lower, int lowerW, int lowerH, int lowerNew)

@@ -83,6 +83,10 @@ void GpuInterpolating(int on);
    window and another picture (RGBA, rows from the bottom; lowerNew: changed since the last call) in the
    lower half; and an area read back at the framebuffer's scale (RGBA, rows from the bottom). */
 void GpuPresentSplit(int x, int y, int w, int h, const uint8_t *lower, int lowerW, int lowerH, int lowerNew);
+/* The band of console rows each player's half shows (libgpu.c): below the middle, where the ship is, and a few
+   rows more than half the picture (a little more of the view, with widescreen's sides to match). */
+#define GPU_SPLIT_TOP 76
+#define GPU_SPLIT_ROWS 136
 uint8_t *GpuReadArea(int x, int y, int w, int h, int *outW, int *outH);
 /* Brings psxVram up to date with what was drawn into the rectangle (before
    the CPU reads or copies it). */
@@ -113,6 +117,11 @@ int GpuShownMargin(int x, int w);
 /* The picture at (x, y, w, h) of video memory, with `margin` columns beyond each side (GpuShownMargin), as
    outW x outH RGBA, top row first (the frame recorder's). */
 uint8_t *GpuReadPicture(int x, int y, int w, int h, int margin, int outW, int outH);
+/* ... the same, without waiting for the GPU to finish the picture (one at a time: 0 while one is on its way);
+   GpuReadPictureDone gives it to `use` once it is back (1), else 0. */
+int GpuReadPictureStart(int x, int y, int w, int h, int margin, int outW, int outH);
+int GpuReadPictureDone(void (*use)(const uint8_t *pixels, int width, int height));
+int GpuReadPictureBusy(void);
 /* The second player's game handed its picture over (the split window) instead of showing it. */
 void GpuPictureHandedOver(void);
 /* A menu's backdrop was built this frame (PortWideBackdrop in libgpu): the menu is shown wide. */

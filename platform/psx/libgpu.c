@@ -561,66 +561,89 @@ static int HoldReleased(void)
 }
 
 /* Two players on one machine (link.c): during a linked race each game shows the band of console rows
-   SPLIT_TOP .. SPLIT_TOP + SPLIT_ROWS of its picture (the full width, half the height), the first in the
-   upper half of the window and the second, which hands its band over, in the lower half. With widescreen
-   the band has the wide picture's sides, and fills the half of a wide window. Each game's HUD (the last
-   entry of its ordering table and the second table) is drawn at half size, its elements at the band's
-   edges and corners (DrawAnchored), so that it fits in the band. */
-#define SPLIT_TOP 60
-#define SPLIT_ROWS 120
+   GPU_SPLIT_TOP .. GPU_SPLIT_TOP + GPU_SPLIT_ROWS of its picture (gpu.h: the full width, the part of the height
+   with the ship), the first in the upper half of the window and the second, which hands its band over, in the
+   lower half. With widescreen the band has the wide picture's sides, and fills the half of a wide window. Each
+   game's HUD (the last entry of its ordering table and the second table) is drawn smaller, its elements at the
+   band's edges and corners (DrawAnchored), so that it fits in the band. */
 static int drawnSinceRead;
 
-/* The second player's game: the band of the picture on display goes to the first player's game, at
-   each switch of the display (its Swap waits for no fields: the link paces it). */
+/* The second player's game: the size the first player's game shows the band of the picture at column x at (the
+   half's height, the band's shape); 0 when it has not said. */
+static int SplitSize(int x, int *w, int *h)
+{
+    int margin, halfW, halfH, across = 320 + 2 * GpuShownMargin(x, 320);
+
+    if (!state.displayEnabled || !PortLinkBand(&margin, &halfW, &halfH)) {
+        return 0;
+    }
+    *h = halfH;
+    *w = (int)((int64_t)halfH * across / GPU_SPLIT_ROWS);
+    if (*w > halfW) {
+        *w = halfW;
+        *h = (int)((int64_t)halfW * GPU_SPLIT_ROWS / across);
+    }
+    while ((size_t)*w * *h * 4 > LINK_FRAME_BYTES) {
+        *w = *w * 3 / 4;
+        *h = *h * 3 / 4;
+    }
+    return *w > 0 && *h > 0;
+}
+
+static void PutSplit(const uint8_t *pixels, int w, int h)
+{
+    PortLinkPutFrame(pixels, w, h);
+    GpuPictureHandedOver();
+}
+
+/* ... the band of the picture at (x, y) goes to the first player's game; 1 when it did. */
+static int HandOverSplitOf(int x, int y)
+{
+    int w, h;
+
+    if (!SplitSize(x, &w, &h)) {
+        return 0;
+    }
+    PutSplit(GpuReadPicture(x, y + GPU_SPLIT_TOP, 320, GPU_SPLIT_ROWS, GpuShownMargin(x, 320), w, h), w, h);
+    return 1;
+}
+
+/* ... the picture on display, at each switch of the display (its Swap waits for no fields: the link paces it),
+   unless pictures between its frames went over since the frame was drawn (PsxLinkWaiting, while it waited). */
 static void HandOverSplit(void)
 {
-    int margin, halfW, halfH;
-
-    if (drawnSinceRead && state.displayEnabled && PortLinkBand(&margin, &halfW, &halfH)) {
-        /* at the size the first player's game shows it: the half's height, the band's shape */
-        int across = 320 + 2 * GpuShownMargin(state.displayX, 320);
-        int h = halfH, w = (int)((int64_t)h * across / SPLIT_ROWS);
-        uint8_t *pixels;
-
-        if (w > halfW) {
-            w = halfW;
-            h = (int)((int64_t)w * SPLIT_ROWS / across);
-        }
-        while ((size_t)w * h * 4 > LINK_FRAME_BYTES) {
-            w = w * 3 / 4;
-            h = h * 3 / 4;
-        }
-        if (w <= 0 || h <= 0) {
-            return;
-        }
-        pixels = GpuReadPicture(state.displayX, state.displayY + SPLIT_TOP, 320, SPLIT_ROWS,
-                                GpuShownMargin(state.displayX, 320), w, h);
-        PortLinkPutFrame(pixels, w, h);
-        GpuPictureHandedOver();
+    if (drawnSinceRead && HandOverSplitOf(state.displayX, state.displayY)) {
         drawnSinceRead = 0;
     }
 }
 
-static void ShowSplit(void)
+/* The first player's game: the band of its picture at (x, y), and the second player's under it (which draws its
+   pictures as often as this game shows them). */
+static void ShowSplit(int x, int y)
 {
-    if (PortLinkRole() == LINK_SLAVE) {
-        return;
-    }
-    {
-        static unsigned shownSequence;
-        unsigned sequence = 0;
-        int w = 0, h = 0;
-        const uint8_t *lower = PortLinkGetFrame(&w, &h, &sequence);
+    static unsigned shownSequence;
+    static uint64_t lastShown, period = 16666667;
+    uint64_t now = SDL_GetTicksNS();
+    unsigned sequence = 0;
+    int w = 0, h = 0;
+    const uint8_t *lower = PortLinkGetFrame(&w, &h, &sequence);
 
-        GpuPresentSplit(state.displayX, state.displayY + SPLIT_TOP, 320, SPLIT_ROWS, lower, w, h,
-                        sequence != shownSequence);
-        shownSequence = sequence;
+    GpuPresentSplit(x, y + GPU_SPLIT_TOP, 320, GPU_SPLIT_ROWS, lower, w, h, sequence != shownSequence);
+    shownSequence = sequence;
+    if (lastShown && now - lastShown < 100000000ull) {
+        period = (period * 7 + (now - lastShown)) / 8;
+        PortLinkSetPresentPeriod((unsigned)(period / 1000));
     }
+    lastShown = now;
 }
 
 void PsxShowDisplay(void)
 {
     GpuFlush();
+    if (PortLinkRole() == LINK_SLAVE && PortLinkSplit()) {
+        PsxLinkWaiting(); /* (its pictures go to the first player's game) */
+        return;
+    }
     if (PsxCanInterpolate() && !(portConfig.fixedStep && PsxInterpolationTest())) {
         if (state.displayEnabled && state.displayW > 0 && state.displayH > 0) {
             FrameCapShown(state.displayX, state.displayY, state.displayW, state.displayH > 256 ? 480 : 240);
@@ -628,16 +651,20 @@ void PsxShowDisplay(void)
         PsxDrawInterpolated();
         return;
     }
-    if (drawnFrame.pending && PsxInterpolationOn() && !PortLinkSplit() && !holdPicture && state.displayEnabled &&
+    if (drawnFrame.pending && PsxInterpolationOn() && !holdPicture && state.displayEnabled &&
         !(portConfig.fixedStep && PsxInterpolationTest())) {
         if (state.displayW > 0 && state.displayH > 0) {
             FrameCapShown(state.displayX, state.displayY, state.displayW, state.displayH > 256 ? 480 : 240);
         }
-        GpuPresent(drawnFrame.left, drawnFrame.top, drawnFrame.width, drawnFrame.height > 256 ? 480 : 240);
+        if (PortLinkSplit()) {
+            ShowSplit(drawnFrame.left, drawnFrame.top);
+        } else {
+            GpuPresent(drawnFrame.left, drawnFrame.top, drawnFrame.width, drawnFrame.height > 256 ? 480 : 240);
+        }
         return;
     }
     if (PortLinkSplit()) {
-        ShowSplit();
+        ShowSplit(state.displayX, state.displayY);
         return;
     }
     if (holdPicture) {
@@ -851,7 +878,10 @@ static void Vertex(GpuVertex *v, uint32_t xy, const GtePrecise *precise)
    the whole primitive is drawn affine, as the console draws it, so that the
    two triangles of a quad agree. */
 static void HudPoint(GpuVertex *v);
-static int hudActive;
+enum { HUD_PLAIN, HUD_SCALED, HUD_FILL };
+static int hudActive;            /* the HUD element being drawn is moved by HudPoint: HUD_SCALED or HUD_FILL */
+static int hudFillBand;          /* ... a box over the whole screen covers the band of a split window */
+static float hudMoveX, hudMoveY; /* ... a scaled one goes this far from the band's middle */
 
 static unsigned Vertices(GpuVertex *v, const uint32_t *const *words, int count)
 {
@@ -875,7 +905,7 @@ static unsigned Vertices(GpuVertex *v, const uint32_t *const *words, int count)
     }
     if (hudActive && !mask) {
         for (i = 0; i < count; i++) {
-            HudPoint(&v[i]); /* the HUD of a split window */
+            HudPoint(&v[i]); /* the HUD of a split window, or a box over the whole screen */
         }
     }
     return mask;
@@ -1269,13 +1299,28 @@ void PsxHudTables(u_long *lastEntry, u_long *secondTable)
     hudTable = secondTable;
 }
 
-/* A HUD vertex, halved about the centre of the picture (the band of a split window). */
+/* The HUD in the band of a split window, at this size of the console's (a little smaller, against the band,
+   than the console's HUD against its screen). */
+#define HUD_SPLIT_SCALE 0.45f
+
+/* A HUD vertex (DrawAnchored): a box over the whole screen out to the sides of the wide picture (and the
+   band's top and bottom); else scaled about the centre of the picture to the middle of the band, and moved
+   (hudMoveX, hudMoveY). */
 static void HudPoint(GpuVertex *v)
 {
     float ox = (float)state.offsetX, oy = (float)state.offsetY;
 
-    v->x = ox + 160.0f + (v->x - ox - 160.0f) * 0.5f;
-    v->y = oy + 120.0f + (v->y - oy - 120.0f) * 0.5f;
+    if (hudActive == HUD_FILL) {
+        float sides = (float)PortScreenMargin() + 1.0f;
+
+        v->x = v->x - ox < 160.0f ? ox - sides : ox + 320.0f + sides;
+        if (hudFillBand) {
+            v->y = v->y - oy < 120.0f ? oy + GPU_SPLIT_TOP - 1.0f : oy + GPU_SPLIT_TOP + GPU_SPLIT_ROWS + 1.0f;
+        }
+        return;
+    }
+    v->x = ox + 160.0f + (v->x - ox - 160.0f) * HUD_SPLIT_SCALE + hudMoveX;
+    v->y = oy + GPU_SPLIT_TOP + GPU_SPLIT_ROWS / 2.0f + (v->y - oy - 120.0f) * HUD_SPLIT_SCALE + hudMoveY;
 }
 
 /* The rectangle a drawing packet covers, in drawing-area coordinates; 0 for packets that draw nothing. */
@@ -1337,8 +1382,9 @@ static int PacketBounds(const uint32_t *w, int words, int box[4])
    HUD's packets (from hudEntry on, or all of hudTable) are taken apart into elements, runs of packets that
    touch (the letters of a text, the parts of the speedometer), and an element wholly in the left or the right
    part of the console's picture goes to that edge; what reaches the middle (centred messages, the weapon icon,
-   the pause menu) stays where the game put it. A split window's band (half): the HUD at half size about the
-   picture's centre, and the elements at the sides as far again, to the band's edges. */
+   the pause menu) stays where the game put it. A box over the whole screen (the pause's shade) is an element of
+   its own, stretched over the sides. A split window's band (half): the HUD smaller (HudPoint), the elements at
+   the sides as far from the band's corners as they were from the screen's, the rest about the band's middle. */
 #define ANCHOR_GAP 10    /* packets this close side by side are one element */
 #define ANCHOR_LEFT 140  /* an element ending left of this goes to the left edge */
 #define ANCHOR_RIGHT 180 /* ... beginning right of this to the right edge */
@@ -1399,15 +1445,19 @@ static void DrawAnchored(u_long *p, int margin, int half)
         hud[count++] = node;
     }
     for (first = 0; first < count;) {
-        int box[4], group[4], have = 0, last, shift;
+        int box[4], group[4], have = 0, last, side, whole;
 
-        /* the element from `first`: packets that touch the ones before them */
+        /* the element from `first`: packets that touch the ones before them; a box over the whole screen alone */
+        whole = 0;
         for (last = first; last < count; last++) {
+            int over;
+
             if (!PacketBounds((const uint32_t *)(hud[last] + 1), (int)(*hud[last] >> 24), box)) {
                 continue;
             }
-            if (have && (box[0] > group[2] + ANCHOR_GAP || box[2] < group[0] - ANCHOR_GAP || box[1] > group[3] ||
-                         box[3] < group[1])) {
+            over = box[0] <= 0 && box[1] <= 0 && box[2] >= 320 && box[3] >= 240;
+            if (have && (over || box[0] > group[2] + ANCHOR_GAP || box[2] < group[0] - ANCHOR_GAP ||
+                         box[1] > group[3] || box[3] < group[1])) {
                 break;
             }
             if (!have) {
@@ -1419,21 +1469,33 @@ static void DrawAnchored(u_long *p, int margin, int half)
                 group[2] = box[2] > group[2] ? box[2] : group[2];
                 group[3] = box[3] > group[3] ? box[3] : group[3];
             }
+            if (over) {
+                whole = 1;
+                last++;
+                break;
+            }
         }
-        shift = !have ? 0 : group[2] <= ANCHOR_LEFT ? -margin : group[0] >= ANCHOR_RIGHT ? margin : 0;
-        if (half && shift) {
-            /* drawn at half size (HudPoint halves the shift too): the half-size element, which would be a quarter of
-               the way in, goes out to the band's edge */
-            shift = 2 * (shift + (shift < 0 ? -80 : 80));
-        } else if (half && have && (group[2] <= ANCHOR_LEFT || group[0] >= ANCHOR_RIGHT)) {
-            shift = group[2] <= ANCHOR_LEFT ? -160 : 160; /* no sides (4:3): the band's edges */
+        side = !have ? 0 : group[2] <= ANCHOR_LEFT ? -1 : group[0] >= ANCHOR_RIGHT ? 1 : 0;
+        hudShift = 0.0f;
+        hudMoveX = hudMoveY = 0.0f;
+        if (whole) {
+            hudActive = HUD_FILL;
+            hudFillBand = half;
+        } else if (half) {
+            /* each corner's element as far from the band's corner as it was from the screen's, at the HUD's size */
+            hudActive = HUD_SCALED;
+            hudMoveX = (float)side * (160.0f * (1.0f - HUD_SPLIT_SCALE) + (float)margin);
+            if (side && (group[3] <= 120 || group[1] >= 120)) {
+                hudMoveY = (group[3] <= 120 ? -1.0f : 1.0f) * (GPU_SPLIT_ROWS / 2.0f - 120.0f * HUD_SPLIT_SCALE);
+            }
+        } else {
+            hudActive = HUD_PLAIN;
+            hudShift = (float)(side * margin);
         }
-        hudShift = (float)shift;
-        hudActive = half;
         for (i = first; i < last; i++) {
             Submit((const uint32_t *)(hud[i] + 1), (int)(*hud[i] >> 24));
         }
-        hudActive = 0;
+        hudActive = HUD_PLAIN;
         hudShift = 0.0f;
         first = last > first ? last : first + 1;
     }
@@ -1488,10 +1550,19 @@ int PsxInterpolationTest(void)
 
 int PsxInterpolationOn(void)
 {
-    int on = (PsxInterpolationTest() > 0 ||
-              (portSettings.frameRate != FRAME_RATE_CONSOLE && !portConfig.fixedStep && !portConfig.hidden)) &&
-             PortLinkRole() == LINK_NONE && !PortTracing();
+    int role = PortLinkRole(), on;
 
+    if (role == LINK_SLAVE) {
+        on = PortLinkSplit() && PortLinkInterpolate(); /* as the first player's game (whose window it is) does */
+    } else {
+        on = PsxInterpolationTest() > 0 ||
+             (portSettings.frameRate != FRAME_RATE_CONSOLE && !portConfig.fixedStep && !portConfig.hidden);
+        if (role == LINK_MASTER) {
+            PortLinkSetInterpolate(on);
+            on = on && PortLinkSplit(); /* a linked race only (the window split) */
+        }
+    }
+    on = on && !PortTracing();
     GteKeepPast(on);
     return on;
 }
@@ -1505,6 +1576,10 @@ static void DrawTableAgain(u_long *p)
 {
     u_long *node;
 
+    if (PortLinkSplit()) {
+        DrawAnchored(p, PortScreenMargin(), 1);
+        return;
+    }
     if (PortScreenMargin() && GpuRaceWide()) {
         DrawAnchored(p, PortScreenMargin(), 0);
         return;
@@ -1527,7 +1602,7 @@ void PsxDrawInterpolatedTest(int k, int n)
     PsxDrawInterpolatedAt(((float)(PsxFieldCount() - frameDrawnField - 1) + (float)k / (float)n) / 2.0f);
 }
 
-void PsxDrawInterpolatedAt(float along)
+static void DrawInterpolated(float along)
 {
     u_long *savedHudEntry = hudEntry, *savedHudTable = hudTable;
     __typeof__(state) saved = state;
@@ -1557,7 +1632,55 @@ void PsxDrawInterpolatedAt(float along)
     ApplyArea();
     interpolating = 0;
     GpuInterpolating(0);
-    GpuPresentInterpolated(upcoming.left, upcoming.top, upcoming.width, upcoming.height > 256 ? 480 : 240);
+}
+
+void PsxDrawInterpolatedAt(float along)
+{
+    DrawInterpolated(along);
+    if (PortLinkSplit()) {
+        ShowSplit(upcoming.left, upcoming.top);
+    } else {
+        GpuPresentInterpolated(upcoming.left, upcoming.top, upcoming.width, upcoming.height > 256 ? 480 : 240);
+    }
+}
+
+/* The second player's game has no fields to wait in (the link paces it): it draws its frame's tables again
+   while it waits for the first player's game, after the frame is drawn, each projected vertex as far from the
+   frame before as the time since (the picture the console would show then, the frame before, moving to this
+   one), and hands a picture over as often as the first player's game shows the window. Only while the frame is
+   the picture (nothing else was drawn or loaded since: drawnFrame) and the projections are still the frame's. */
+static __typeof__(upcoming) shownTables;
+static uint32_t shownGteFrame;
+static int shownComplete; /* the frame itself has been handed over (nothing moves until the next) */
+
+void PsxLinkWaiting(void)
+{
+    static uint64_t lastPicture;
+    __typeof__(upcoming) saved;
+    uint64_t now = SDL_GetTicksNS(), period;
+    float along;
+    int w, h;
+
+    if (PortLinkRole() != LINK_SLAVE || !PortLinkSplit()) {
+        return;
+    }
+    GpuReadPictureDone(PutSplit); /* (read back while the game went on) */
+    period = (uint64_t)PortLinkPresentPeriod() * 900; /* (a little sooner: a picture is ready when it is shown) */
+    if (!shownTables.table || !drawnFrame.pending || shownComplete || GpuReadPictureBusy() || !PsxInterpolationOn() ||
+        GteFrameRecorded() != shownGteFrame || now - lastPicture < (period ? period : 8000000ull) ||
+        !SplitSize(shownTables.left, &w, &h)) {
+        return;
+    }
+    lastPicture = now;
+    along = (float)(now - frameDrawnTicks) / (float)frameTicks;
+    saved = upcoming;
+    upcoming = shownTables;
+    DrawInterpolated(along);
+    upcoming = saved;
+    GpuReadPictureStart(shownTables.left, shownTables.top + GPU_SPLIT_TOP, 320, GPU_SPLIT_ROWS,
+                        GpuShownMargin(shownTables.left, 320), w, h);
+    drawnSinceRead = 0;
+    shownComplete = along >= 1.0f;
 }
 
 void DrawOTag(u_long *p)
@@ -1580,6 +1703,11 @@ void DrawOTag(u_long *p)
         drawnFrame.width = upcoming.width;
         drawnFrame.height = upcoming.height;
         drawnFrame.second = upcoming.second;
+        if (PortLinkRole() == LINK_SLAVE) {
+            shownTables = upcoming; /* (PsxLinkWaiting) */
+            shownGteFrame = GteFrameRecorded();
+            shownComplete = 0;
+        }
         upcoming.table = NULL;
     } else if (p != drawnFrame.second) {
         ForgetDrawnFrame();

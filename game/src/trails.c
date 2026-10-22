@@ -1,6 +1,7 @@
 #include "functions.h"
 #include "trails.h"
 #include "include_asm_g8.h"
+#include "../../platform/psx/gte.h" /* Port: the flare is placed in 2D */
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
 extern Trail *shipTrails;
@@ -33,6 +34,7 @@ void DrawFlare(int x, int y, int distance, int ship) {
     ShipData *s;
     POLY_G4 *p;
     int offset;
+    int k; /* Port */
     if (ship < 15) {
         s = &shipIndex[ship];
         if (s->combatAttr & DESTROYED) return;
@@ -161,6 +163,15 @@ void DrawFlare(int x, int y, int distance, int ship) {
         AddPrim(OT[CurrentScreen] + (distance >> 1), &flare[0][1][0] + ship * 24 + CurrentScreen);
         AddPrim(OT[CurrentScreen] + (distance >> 1), &flare[0][2][0] + ship * 24 + CurrentScreen);
         AddPrim(OT[CurrentScreen] + (distance >> 1), &flare[0][3][0] + ship * 24 + CurrentScreen);
+    }
+    for (k = 0; k < 12; k++) {
+        /* Port: the flare's corners are placed in 2D about one projected point: drawn as given, not matched to
+           the projections (of the ship's own model, say) that land on the same pixels */
+        p = (POLY_G4 *)((char *)&flare[0][k][0] + offset);
+        GteBindFlat(&p->x0);
+        GteBindFlat(&p->x1);
+        GteBindFlat(&p->x2);
+        GteBindFlat(&p->x3);
     }
     AddPrim(OT[CurrentScreen] + (distance >> 1), &flare[0][4][0] + ship * 24 + CurrentScreen);
     AddPrim(OT[CurrentScreen] + (distance >> 1), &flare[0][5][0] + ship * 24 + CurrentScreen);

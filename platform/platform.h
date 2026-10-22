@@ -72,6 +72,9 @@ void PsxDrawInterpolated(void);
 void PsxDrawInterpolatedAt(float along); /* 0: the frame before .. 1: the frame to come */
 int PsxInterpolationTest(void);
 void PsxDrawInterpolatedTest(int k, int n);
+/* The second player's game waits for the first's over the link (link.c): a picture between its frames for the
+   split window, when the first player's game has shown the last one. */
+void PsxLinkWaiting(void);
 
 /* controls.c: scripted key and gamepad events (WIPEOUT_KEYS), fed to SDL's queue each field */
 void PortInputScript(uint64_t field);

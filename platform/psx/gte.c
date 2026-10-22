@@ -349,6 +349,11 @@ uint32_t GteFrameNumber(void)
     return preciseFrame;
 }
 
+uint32_t GteFrameRecorded(void)
+{
+    return preciseFrame;
+}
+
 void GteKeepPast(int on)
 {
     keepPast = on;
@@ -659,6 +664,30 @@ void GteBindPrecise(const void *address, uint32_t handle)
     }
 }
 
+#define FLAT_HANDLE 0xFFFFFFFFu /* (GteBindFlat) */
+
+void GteBindFlat(const void *address)
+{
+    GteBindPrecise(address, FLAT_HANDLE);
+}
+
+/* Whether a packet vertex was bound flat this frame. */
+static int BoundFlat(const void *address)
+{
+    uint32_t slot = BindingSlot(address), probe;
+
+    for (probe = 0; probe < 64; probe++) {
+        Binding *b = &bindings[(slot + probe) & (BINDING_SLOTS - 1)];
+        if (b->frame != preciseFrame) {
+            return 0;
+        }
+        if (b->address == address) {
+            return b->handle == FLAT_HANDLE;
+        }
+    }
+    return 0;
+}
+
 /* The projection a packet vertex was bound to this frame, if its word still holds that projection's
    screen position. */
 static int32_t BoundRecord(const void *address, uint32_t xy)
@@ -671,7 +700,7 @@ static int32_t BoundRecord(const void *address, uint32_t xy)
             return -1;
         }
         if (b->address == address) {
-            int32_t record = HandleRecord(b->handle);
+            int32_t record = b->handle == FLAT_HANDLE ? -1 : HandleRecord(b->handle);
             return record >= 0 && records[record].key == xy ? record : -1;
         }
     }
@@ -727,6 +756,11 @@ unsigned GteResolvePrecise(const uint32_t *xy, const void *const *addresses, int
     int32_t sorted[GTE_RESOLVE_MAX], middle;
     unsigned mask = 0;
 
+    for (i = 0; addresses && i < count; i++) {
+        if (BoundFlat(addresses[i])) {
+            return 0;
+        }
+    }
     for (i = 0; i < count; i++) {
         int32_t record = addresses ? BoundRecord(addresses[i], xy[i]) : -1;
 

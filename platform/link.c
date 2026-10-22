@@ -55,9 +55,11 @@ typedef struct LinkShared {
     atomic_int quit;                /* master: the slave is to exit */
     atomic_int split;               /* master: both are racing, the window is split */
     atomic_int bandMargin, bandWidth, bandHeight; /* master: the lower half (widescreen margin, pixels) */
+    atomic_int interpolate;         /* master: pictures between the game's frames (the slave draws its own too) */
     LinkInput input;                /* the second player's controller, written by the master */
     atomic_uint inputSequence;
     atomic_uint frameSequence;      /* the slave's pictures (three buffers) */
+    atomic_uint presentPeriod;      /* master: how often it shows the window, in microseconds */
     int frameWidth[3], frameHeight[3];
     uint8_t frames[3][LINK_FRAME_BYTES];
 } LinkShared;
@@ -388,6 +390,7 @@ int PortLinkTransfer(const uint8_t *send, uint8_t *recv, int count)
 
         if (role == LINK_SLAVE) {
             PsxPassFields();
+            PsxLinkWaiting();
         } else if (now - pumped >= 50) {
             pumped = now;
             atomic_fetch_add(&shared->heartbeat[me], 1);
@@ -487,6 +490,30 @@ void PortLinkPutFrame(const uint8_t *pixels, int width, int height)
     shared->frameWidth[next] = width;
     shared->frameHeight[next] = height;
     atomic_fetch_add(&shared->frameSequence, 1);
+}
+
+void PortLinkSetPresentPeriod(unsigned microseconds)
+{
+    if (shared) {
+        atomic_store(&shared->presentPeriod, microseconds);
+    }
+}
+
+unsigned PortLinkPresentPeriod(void)
+{
+    return shared ? atomic_load(&shared->presentPeriod) : 0;
+}
+
+void PortLinkSetInterpolate(int on)
+{
+    if (shared) {
+        atomic_store(&shared->interpolate, on);
+    }
+}
+
+int PortLinkInterpolate(void)
+{
+    return shared && atomic_load(&shared->interpolate);
 }
 
 const uint8_t *PortLinkGetFrame(int *width, int *height, unsigned *sequence)

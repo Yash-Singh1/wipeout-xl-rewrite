@@ -232,9 +232,11 @@ left; the second player presses START on another controller (or ENTER on the
 keyboard, when the first player uses a gamepad) to join on the right. Each
 chooses a team with left and right and confirms with their accept button; when
 both are ready, the first player chooses the class and track and the race
-starts. With widescreen on, each half fills the window's width (the half-size
-HUD at its edges). After the race the lobby comes back with the same players,
-for another.
+starts. Each half shows the lower part of its player's view, with the whole
+ship, and a smaller HUD in its corners; with widescreen on, each half fills the
+window's width. Both halves are drawn between the game's frames as a single
+player's race is (the frame rate setting). After the race the lobby comes back
+with the same players, for another.
 
 The second player runs a second copy of the game behind the scenes, linked to
 the first as the two consoles were by the cable. It is started from the same

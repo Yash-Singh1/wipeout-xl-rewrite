@@ -56,6 +56,10 @@ void PortLinkSetSplit(int split);
 const uint8_t *PortLinkGetFrame(int *width, int *height, unsigned *sequence);
 /* The split window's lower half, for the slave's band: the widescreen margin and its size in pixels. */
 void PortLinkSetBand(int margin, int width, int height);
+/* Whether this game draws pictures between the game's frames: the slave then hands such pictures over too, as
+   often as this game shows the window (microseconds). */
+void PortLinkSetInterpolate(int on);
+void PortLinkSetPresentPeriod(unsigned microseconds);
 
 /* Slave */
 int PortLinkSlaveInit(const char *sharedName);
@@ -66,6 +70,8 @@ int PortLinkQuitRequested(void);
 int PortLinkGetInput(LinkInput *input);
 void PortLinkPutFrame(const uint8_t *pixels, int width, int height);
 int PortLinkBand(int *margin, int *width, int *height); /* 0 before the master has said */
+int PortLinkInterpolate(void);  /* the master draws pictures between the game's frames */
+unsigned PortLinkPresentPeriod(void); /* how often the master shows the window (microseconds; 0: not known) */
 
 /* Both */
 int PortLinkSplit(void);
