@@ -229,7 +229,13 @@ static void RecorderNote(void)
 
 // ---- the frame recorder's viewer (psx/framecap.h) ----
 
-static int frameShown = -1, frameUploaded = -1;
+static int frameShown = -1;
+static uint64_t frameShownGame;     // ... its game frame (while a recording grows the oldest frames make way)
+static bool followNewest = true;    // while recording: the newest frame, as each comes in
+static bool uploaded;               // the picture in frameTexture: of game frame uploadedGame, as uploadedShown
+static uint64_t uploadedGame;
+static int uploadedShown;
+static float pictureZoom;           // the picture's pixels per console pixel; 0: as large as fits
 static GLuint frameTexture;
 static int pickHit = -1;
 
@@ -341,38 +347,111 @@ static void RecorderTab(void)
             OpenFolder(FrameCapSavedDir());
         }
     }
-    if (!FrameCapViewable()) {
+    // a recording holding still, or one being made (its frames come in as the game goes on)
+    bool live = FrameCapTaking();
+    if (!FrameCapViewable() && !(live && total > 0)) {
         frameShown = -1;
         return;
     }
     if (shownGeneration != FrameCapGeneration()) {
         // another recording: from its newest frame, its picture uploaded afresh
         shownGeneration = FrameCapGeneration();
-        frameShown = frameUploaded = -1;
+        frameShown = -1;
+        uploaded = false;
+        followNewest = true;
     }
     ImGui::Separator();
-    if (frameShown < 0 || frameShown >= total) {
-        frameShown = total - 1;
+    // while recording, the frames up to the newest shown (the one being drawn is not finished)
+    int usable = total;
+    while (live && usable > 0 && !FrameCapFrameAt(usable - 1)->shown) {
+        usable--;
+    }
+    if (usable == 0) {
+        ImGui::TextDisabled("Waiting for the first frame...");
+        return;
+    }
+    if (frameShown >= 0 && !followNewest) {
+        // the same frame as before, wherever it is now (the oldest once it is gone)
+        int i = usable - 1;
+        while (i >= 0 && FrameCapFrameAt(i)->gameFrame != frameShownGame) {
+            i--;
+        }
+        frameShown = SDL_max(i, 0);
+    }
+    if (frameShown < 0 || frameShown >= usable || followNewest) {
+        frameShown = usable - 1;
         while (frameShown > 0 && !FrameCapFrameAt(frameShown)->shown) {
             frameShown--; // the newest frame that reached the screen
         }
     }
-    bool changed = false;
-    if (ImGui::ArrowButton("##previous", ImGuiDir_Left) && frameShown > 0) {
-        frameShown--;
-        changed = true;
+    // , and . step back and forward a frame (held: on and on), as the arrows do
+    int step = 0;
+    if (ImGui::ArrowButton("##previous", ImGuiDir_Left)) {
+        step = -1;
     }
     ImGui::SameLine();
-    if (ImGui::ArrowButton("##next", ImGuiDir_Right) && frameShown < total - 1) {
-        frameShown++;
-        changed = true;
+    if (ImGui::ArrowButton("##next", ImGuiDir_Right)) {
+        step = 1;
     }
+    if (!ImGui::GetIO().WantTextInput) {
+        if (ImGui::IsKeyPressed(ImGuiKey_Comma)) {
+            step = -1;
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_Period)) {
+            step = 1;
+        }
+    }
+    bool changed = step != 0;
+    frameShown = SDL_clamp(frameShown + step, 0, usable - 1);
     ImGui::SameLine();
     ImGui::SetNextItemWidth(-1);
-    changed |= ImGui::SliderInt("##frame", &frameShown, 0, total - 1, "frame %d");
+    char sliderLabel[64];
+    SDL_snprintf(sliderLabel, sizeof(sliderLabel), live ? "frame %%d / %d (recording)" : "frame %%d / %d", usable - 1);
+    if (ImGui::SliderInt("##frame", &frameShown, 0, usable - 1, sliderLabel)) {
+        changed = true;
+    }
+    if (changed || frameShown >= usable - 1) {
+        followNewest = live && frameShown >= usable - 1; // back at the newest: following it again
+    }
     const FrameCapFrame *f = FrameCapFrameAt(frameShown);
-    ImGui::Text("game frame %llu, %d primitives, %s", (unsigned long long)f->gameFrame, f->count,
+    frameShownGame = f->gameFrame;
+
+    // the room for the picture (below this line) and the pixel's primitives
+    ImVec2 room = ImGui::GetContentRegionAvail();
+    room.y -= ImGui::GetFrameHeightWithSpacing();
+    bool beside = room.x > 1000 * ui;
+    bool hasPicture = f->picture && f->shown;
+    int pictureW = hasPicture ? f->pictureW : 320, pictureX = hasPicture ? f->pictureX : 0;
+    float paneW = beside ? room.x * 0.5f : room.x, paneH = beside ? room.y : room.y - 300 * ui;
+    float fit = SDL_max(0.5f, SDL_min(paneW / pictureW, paneH / 240.0f));
+
+    ImGui::Text("game frame %llu, %d primitives, %s   (, and . step)", (unsigned long long)f->gameFrame, f->count,
                 f->shown ? "shown" : "never shown");
+    // zoom: steps of whole and half pixels (smaller than the console's too), or as large as fits
+    static const float levels[] = {0.5f, 0.75f, 1, 1.5f, 2, 2.5f, 3, 4, 5, 6, 8, 10, 12, 16, 20, 24, 32};
+    float current = pictureZoom > 0 ? pictureZoom : fit;
+    ImGui::SameLine();
+    if (ImGui::Button(" - ##zoomout")) {
+        int i = IM_ARRAYSIZE(levels) - 1;
+        while (i > 0 && levels[i] >= current * 0.99f) {
+            i--;
+        }
+        pictureZoom = levels[i];
+    }
+    ImGui::SameLine();
+    if (ImGui::Button(" + ##zoomin")) {
+        int i = 0;
+        while (i < IM_ARRAYSIZE(levels) - 1 && levels[i] <= current * 1.01f) {
+            i++;
+        }
+        pictureZoom = levels[i];
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Fit##zoom")) {
+        pictureZoom = 0;
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("%.1fx%s", pictureZoom > 0 ? pictureZoom : fit, pictureZoom > 0 ? "" : " (fits)");
 
     // the picture; a click picks the pixel
     if (!frameTexture) {
@@ -382,24 +461,27 @@ static void RecorderTab(void)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     }
     // the picture: the console's 320 columns, and with widescreen the sides (from column `pictureX`)
-    bool hasPicture = f->picture && f->shown;
-    int pictureW = hasPicture ? f->pictureW : 320, pictureX = hasPicture ? f->pictureX : 0;
-    if (frameUploaded != frameShown || changed) {
+    if (!uploaded || uploadedGame != f->gameFrame || uploadedShown != f->shown) {
         static uint8_t black[320 * 240 * 4];
         glBindTexture(GL_TEXTURE_2D, frameTexture);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, pictureW, 240, 0, GL_RGBA, GL_UNSIGNED_BYTE,
                      hasPicture ? f->picture : black);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
-        frameUploaded = frameShown;
+        uploaded = true;
+        uploadedGame = f->gameFrame;
+        uploadedShown = f->shown;
         Pick(frameShown);
     }
-    // the picture as large as fits, the picked pixel's primitives beside it (in a narrow window below it)
-    ImVec2 room = ImGui::GetContentRegionAvail();
-    bool beside = room.x > 1000 * ui;
-    float zoom = beside ? SDL_min(room.x * 0.5f / pictureW, room.y / 240.0f)
-                        : SDL_min(room.x / pictureW, (room.y - 300 * ui) / 240.0f);
-    zoom = SDL_max(1.0f, zoom);
+    // the picture as large as fits or as zoomed (in a pane of its own that scrolls when it is larger), the picked
+    // pixel's primitives beside it (in a narrow window below it)
+    float zoom = pictureZoom > 0 ? pictureZoom : fit;
+    ImVec2 imageSize(pictureW * zoom, 240 * zoom);
+    float bar = ImGui::GetStyle().ScrollbarSize;
+    bool across = imageSize.x > paneW, down = imageSize.y > paneH;
+    ImGui::BeginChild("##picture",
+                      ImVec2(across ? paneW : imageSize.x + (down ? bar : 0), down ? paneH : imageSize.y + (across ? bar : 0)),
+                      ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar);
     ImVec2 origin = ImGui::GetCursorScreenPos();
     PixelImage(ImVec2(pictureW * zoom, 240 * zoom), ImVec2(0, 0), ImVec2(1, 1));
     bool hovered = ImGui::IsItemHovered();
@@ -462,6 +544,7 @@ static void RecorderTab(void)
         draw->AddCircle(c, 6.0f * ui, IM_COL32(255, 0, 255, 255), 0, 2.0f);
     }
     draw->PopClipRect();
+    ImGui::EndChild();
     if (beside) {
         ImGui::SameLine();
     }

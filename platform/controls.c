@@ -192,6 +192,15 @@ static void Run(const Step *step)
     case STEP_KEY:
         event.type = step->down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
         event.key.scancode = (SDL_Scancode)step->code;
+        event.key.key = SDL_GetKeyFromScancode((SDL_Scancode)step->code, SDL_KMOD_NONE, false); /* as a keyboard's */
+        {
+            /* ... and to the game's window (the debug console takes only its window's keys) */
+            int windows = 0;
+            SDL_Window **list = SDL_GetWindows(&windows);
+
+            event.key.windowID = list && windows ? SDL_GetWindowID(list[0]) : 0;
+            SDL_free(list);
+        }
         event.key.down = step->down;
         SDL_PushEvent(&event);
         break;
