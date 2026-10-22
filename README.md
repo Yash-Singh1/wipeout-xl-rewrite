@@ -34,9 +34,7 @@ computes changes (`WIPEOUT_FAR_VIEW=0` brings back the console's view).
 Far away, from 64000 to 96000 units, everything fades smoothly into the sky,
 as in wipeout-rewrite (`WIPEOUT_FADE=near,far` sets the distances,
 `WIPEOUT_FADE=0` draws without a fade).
-Polygons are drawn in the console's order, as the game sorts them;
-`WIPEOUT_DEPTH=1` adds a per-pixel depth test (fewer sorting errors between
-models, but decals such as sign faces then flicker against their boards). The
+Polygons are drawn in the console's order, as the game sorts them. The
 disc is read as fast as the image allows, so loading takes a moment instead
 of the console's seconds (`WIPEOUT_CD_SPEED=1` for the console's drive).
 
@@ -61,7 +59,7 @@ The environment variable `WIPEOUT_XL_DISC` can stand in for the disc's path.
 
 The backtick key (`` ` ``) opens a console over the game: frame rates and a
 frame-rate overlay, the draw distance (the console's or the whole track) and
-its fade, the depth test, skipping the intro movie, full screen, and where
+its fade, the frame rate, widescreen, skipping the intro movie, full screen, and where
 the settings and the memory cards are. Changes are saved at once to
 `wipeoutxl.ini` in the user's data folder; a new saves folder takes effect at
 the next start. Dear ImGui (`platform/third_party/imgui`, MIT) draws it.

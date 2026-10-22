@@ -196,7 +196,3 @@ int PortFadeRange(int *nearDistance, int *farDistance)
     return portSettings.fade;
 }
 
-void PortBackground(int on)
-{
-    GteSetBackground(on);
-}

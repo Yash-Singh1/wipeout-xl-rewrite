@@ -32,7 +32,6 @@ typedef struct GpuVertex {
     float x, y, w;
     uint8_t r, g, b, a;
     float u, v;
-    uint8_t background;  /* from a projection drawn behind everything (the sky): no depth test */
 } GpuVertex;
 
 /* How a primitive is drawn. */
@@ -46,7 +45,6 @@ typedef struct GpuDrawState {
     int windowMaskX, windowMaskY, windowOffsetX, windowOffsetY; /* texture window, in 8-texel units */
     int dither;
     int fade;          /* the port's distance fade: the vertices' alpha (GpuVertex.a) blends it out */
-    int depthTest;     /* the port's depth buffer: 0 none (2D, the sky), 1 test and write, 2 test only */
 } GpuDrawState;
 
 int GpuInit(void);
@@ -64,8 +62,6 @@ void GpuPresent(int x, int y, int w, int h);
 void GpuPresentInterpolated(int x, int y, int w, int h);
 /* What is drawn while on is such a picture. */
 void GpuInterpolating(int on);
-/* The depth buffer of an area is cleared (each ordering table starts afresh). */
-void GpuClearDepth(int x, int y, int w, int h);
 /* Two players on one machine (link.c): the area (x, y, w, h) of video memory in the upper half of the
    window and another picture (RGBA, rows from the bottom; lowerNew: changed since the last call) in the
    lower half; and an area read back at the framebuffer's scale (RGBA, rows from the bottom). */

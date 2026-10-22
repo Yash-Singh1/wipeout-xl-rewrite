@@ -1,6 +1,6 @@
 // The debug console: the backtick key opens it over the game (Dear ImGui). It shows the frame rates and
 // changes the settings (settings.h), which are saved as they change: the frame-rate overlay, the draw
-// distance and its fade, the depth test, the intro movie, full screen, and where the settings and the
+// distance and its fade, the frame rate, widescreen, the intro movie, full screen, and where the settings and the
 // memory cards live. Not in the tests' hidden runs.
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_opengl.h>
@@ -528,19 +528,6 @@ static void Console(void)
             }
             ImGui::EndDisabled();
             ImGui::EndDisabled();
-            ImGui::Separator();
-            bool depth = portSettings.depthTest != 0;
-            if (ImGui::Checkbox("Per-pixel depth test (experimental)", &depth)) {
-                portSettings.depthTest = depth;
-                Changed();
-            }
-            ImGui::TextDisabled("Fixes polygons sorted wrongly, but decals such as sign faces can flicker.");
-            bool large = portSettings.largePolygons != 0;
-            if (ImGui::Checkbox("Draw near polygons the console drops", &large)) {
-                portSettings.largePolygons = large;
-                Changed();
-            }
-            ImGui::TextDisabled("The console skips polygons over 1023x511 pixels: holes in the track close to the camera.");
             ImGui::Separator();
             static const char *const rates[] = {"Uncapped", "Display refresh (VSync)", "Capped", "Console (60 fields a second)"};
             int rate = portSettings.frameRate;

@@ -470,6 +470,8 @@ static void Save(void)
             Put(file, &p->clut, 2);
             Put(file, p->ix, 8);
             Put(file, p->iy, 8);
+            const uint8_t none = 0;
+
             for (j = 0; j < 4; j++) {
                 const GpuVertex *v = &p->v[j];
                 Put(file, &v->x, 4);
@@ -481,13 +483,14 @@ static void Save(void)
                 Put(file, &v->a, 1);
                 Put(file, &v->u, 4);
                 Put(file, &v->v, 4);
-                Put(file, &v->background, 1);
+                Put(file, &none, 1); /* the file keeps the place of the sky's mark of earlier versions */
             }
             {
                 const int *d = &p->draw.textured;
-                for (j = 0; j < 15; j++) {
+                for (j = 0; j < 14; j++) {
                     PutI32(file, d[j]);
                 }
+                PutI32(file, 0); /* ... and of the depth test */
             }
             Put(file, &p->address, 8);
             Put(file, p->tag, 48);

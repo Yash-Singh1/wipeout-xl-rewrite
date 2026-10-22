@@ -7,7 +7,7 @@
 #include "platform.h"
 #include "settings.h"
 
-PortSettings portSettings = {0, 1, 1, 64000, 96000, 0, 1, 0, FRAME_RATE_UNCAPPED, 144, 0, 1, 0, ""};
+PortSettings portSettings = {0, 1, 1, 64000, 96000, 0, FRAME_RATE_UNCAPPED, 144, 0, 1, 0, ""};
 
 static char path[1024];
 static char defaultSaveDir[1024];
@@ -36,10 +36,6 @@ static void Set(const char *key, const char *value)
         portSettings.fadeNear = number;
     } else if (!strcmp(key, "fade_far") && number > 0) {
         portSettings.fadeFar = number;
-    } else if (!strcmp(key, "depth_test")) {
-        portSettings.depthTest = number != 0;
-    } else if (!strcmp(key, "large_polygons")) {
-        portSettings.largePolygons = number != 0;
     } else if (!strcmp(key, "widescreen")) {
         portSettings.widescreen = number != 0;
     } else if (!strcmp(key, "frame_rate")) {
@@ -99,12 +95,6 @@ void PortSettingsLoad(void)
     if ((value = SDL_getenv("WIPEOUT_FAR_VIEW"))) {
         portSettings.farView = SDL_atoi(value) != 0;
     }
-    if ((value = SDL_getenv("WIPEOUT_DEPTH"))) {
-        portSettings.depthTest = SDL_atoi(value) != 0;
-    }
-    if ((value = SDL_getenv("WIPEOUT_LARGE_POLYGONS"))) {
-        portSettings.largePolygons = SDL_atoi(value) != 0;
-    }
     if ((value = SDL_getenv("WIPEOUT_WIDESCREEN"))) {
         portSettings.widescreen = SDL_atoi(value) != 0;
     }
@@ -146,10 +136,10 @@ int PortSettingsSave(void)
     }
     fprintf(file,
             "# Wipeout XL settings (the backtick key opens the debug console that changes them)\n"
-            "show_fps = %d\nfar_view = %d\nfade = %d\nfade_near = %d\nfade_far = %d\ndepth_test = %d\n"
-            "large_polygons = %d\nwidescreen = %d\nframe_rate = %d\nframe_cap = %d\nskip_intro = %d\nrecord_frames = %d\nrecord_replays = %d\nsave_dir = %s\n",
+            "show_fps = %d\nfar_view = %d\nfade = %d\nfade_near = %d\nfade_far = %d\n"
+            "widescreen = %d\nframe_rate = %d\nframe_cap = %d\nskip_intro = %d\nrecord_frames = %d\nrecord_replays = %d\nsave_dir = %s\n",
             portSettings.showFps, portSettings.farView, portSettings.fade, portSettings.fadeNear, portSettings.fadeFar,
-            portSettings.depthTest, portSettings.largePolygons, portSettings.widescreen, portSettings.frameRate,
+            portSettings.widescreen, portSettings.frameRate,
             portSettings.frameCap, portSettings.skipIntro,
             portSettings.recordFrames,
             portSettings.recordReplays,

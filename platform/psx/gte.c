@@ -11,12 +11,7 @@
 
 Gte gte;
 int gtePrecision = 1;
-static int fadeOn, backgroundOn;
-
-void GteSetBackground(int on)
-{
-    backgroundOn = on;
-}
+static int fadeOn;
 static double fadeNear = 64000.0, fadeFar = 96000.0;
 
 void GteSetFade(int on, double nearDistance, double farDistance)
@@ -616,7 +611,6 @@ static uint32_t RecordPrecise(uint32_t sxy, float x, float y, float z)
     record->value.y = y;
     record->value.z = z;
     record->value.fade = 1.0f;
-    record->value.background = backgroundOn;
     record->value.key = 0;
     record->value.view[0] = record->value.view[1] = record->value.view[2] = 0.0f;
     record->key = sxy;

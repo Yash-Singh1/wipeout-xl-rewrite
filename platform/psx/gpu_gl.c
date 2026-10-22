@@ -156,7 +156,7 @@ static int initialised;
 #define SCREEN_COLUMNS 320
 #define MAX_WIDE_MARGIN 400
 static int wideMargin;                         /* console pixels beyond each side; 0: no wide framebuffer */
-static GLuint wideFramebuffer, wideColour, wideDepth;
+static GLuint wideFramebuffer, wideColour;
 static int wideDirty;                          /* drawn into since its middle was copied to video memory's */
 static int areaWide;                           /* the draw area is in the screen's columns: drawn wide */
 static int sceneWide;                          /* the game built a race's scene since the last new picture */
@@ -165,7 +165,7 @@ static int interpolatingDraw;                  /* libgpu draws a picture between
 static int picturesWithoutScene = 1000;        /* new pictures in a row that were not a race's */
 static GLint uniformOrigin;
 
-/* A batch of triangles drawn with one blending and depth state. What else a primitive's draw state says
+/* A batch of triangles drawn with one blending state. What else a primitive's draw state says
    (texture page, palette, texture window, colour depth) goes with each vertex, so that primitives of
    different textures, which the ordering tables interleave, are drawn together. */
 #define BATCH_VERTICES 8192
@@ -380,24 +380,13 @@ int GpuInit(void)
     glGenFramebuffers(1, &framebuffer);
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colour, 0);
-    {
-        /* the depth buffer the console did not have: 3D geometry is depth tested per pixel */
-        GLuint depth;
-
-        glGenRenderbuffers(1, &depth);
-        glBindRenderbuffer(GL_RENDERBUFFER, depth);
-        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT32F, VRAM_WIDTH * scale, VRAM_HEIGHT * scale);
-        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depth);
-    }
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         SDL_Log("framebuffer incomplete");
         return 0;
     }
     glViewport(0, 0, VRAM_WIDTH * scale, VRAM_HEIGHT * scale);
     glClearColor(0, 0, 0, 1);
-    glClearDepth(1.0);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glDepthFunc(GL_LEQUAL);
+    glClear(GL_COLOR_BUFFER_BIT);
     initialised = 1;
     return 1;
 }
@@ -547,8 +536,7 @@ static void SetWideMargin(int margin)
     if (wideFramebuffer) {
         glDeleteFramebuffers(1, &wideFramebuffer);
         glDeleteTextures(1, &wideColour);
-        glDeleteRenderbuffers(1, &wideDepth);
-        wideFramebuffer = wideColour = wideDepth = 0;
+        wideFramebuffer = wideColour = 0;
     }
     wideMargin = margin;
     if (margin) {
@@ -558,18 +546,12 @@ static void SetWideMargin(int margin)
                      NULL);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glGenRenderbuffers(1, &wideDepth);
-        glBindRenderbuffer(GL_RENDERBUFFER, wideDepth);
-        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT32F, WideWidth() * scale, VRAM_HEIGHT * scale);
         glGenFramebuffers(1, &wideFramebuffer);
         glBindFramebuffer(GL_FRAMEBUFFER, wideFramebuffer);
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, wideColour, 0);
-        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, wideDepth);
         glDisable(GL_SCISSOR_TEST);
         glClearColor(0, 0, 0, 1);
-        glClearDepth(1.0);
-        glDepthMask(GL_TRUE);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT);
         CopyToWide(0, 0, SCREEN_COLUMNS, VRAM_HEIGHT);
     }
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
@@ -613,11 +595,11 @@ static void BindTarget(void)
     drawnSincePresent |= !interpolatingDraw;
 }
 
-/* Whether two primitives can be drawn in one batch: the same blending, depth test and passes (what else their
-   states say goes with the vertices). */
+/* Whether two primitives can be drawn in one batch: the same blending and passes (what else their states say
+   goes with the vertices). */
 static int SameState(const GpuDrawState *a, const GpuDrawState *b)
 {
-    return a->semi == b->semi && a->fade == b->fade && a->depthTest == b->depthTest &&
+    return a->semi == b->semi && a->fade == b->fade &&
            (a->textured && a->depth == 3) == (b->textured && b->depth == 3) &&
            (a->textured && a->semi >= 0) == (b->textured && b->semi >= 0);
 }
@@ -674,13 +656,6 @@ static void DrawBatch(int pass)
     const GpuDrawState *s = &batchState;
 
     glUniform1i(uniformPass, pass);
-    if (s->depthTest) {
-        glEnable(GL_DEPTH_TEST);
-        /* semi-transparent texels, faded and see-through primitives test but do not hide what is behind */
-        glDepthMask(s->depthTest == 1 && !s->fade && (pass == 1 || s->semi < 0) ? GL_TRUE : GL_FALSE);
-    } else {
-        glDisable(GL_DEPTH_TEST);
-    }
     glUniform1f(uniformAlphaScale, s->fade && s->semi == 0 && pass != 1 ? 0.5f : 1.0f);
     if (s->fade && (pass == 1 || s->semi < 0)) {
         SetBlend(5);
@@ -843,15 +818,8 @@ void GpuTriangles(const GpuDrawState *given, const GpuVertex *vertices, int coun
         maxY = SDL_max(maxY, vertices[i].y);
     }
     MarkDrawn(minX, minY, maxX, maxY);
-    /* off by default: the game's models put decals (sign faces, screen pictures, the menus' track and
-       medal models) on or close to the surfaces behind them and rely on the drawing order; a depth
-       buffer makes them fight (the settings, WIPEOUT_DEPTH=1) */
-    faded.depthTest = portSettings.depthTest;
     for (i = 0; i < count; i++) {
         faded.fade |= vertices[i].a < 255;
-        if (vertices[i].w <= 0.0f || vertices[i].background) {
-            faded.depthTest = 0;
-        }
     }
 
     for (i = 0; i < count; i++) {
@@ -906,23 +874,6 @@ void GpuLine(const GpuDrawState *state, const GpuVertex *a, const GpuVertex *b)
     q[0].w = q[1].w = q[2].w = q[3].w = 0.0f;
     GpuTriangles(state, q, 3);
     GpuTriangles(state, q + 1, 3);
-}
-
-void GpuClearDepth(int x, int y, int w, int h)
-{
-    Flush();
-    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
-    glEnable(GL_SCISSOR_TEST);
-    glScissor(x * scale, y * scale, w * scale, h * scale);
-    glDepthMask(GL_TRUE);
-    glClear(GL_DEPTH_BUFFER_BIT);
-    if (InScreenColumns(x, w)) {
-        glBindFramebuffer(GL_FRAMEBUFFER, wideFramebuffer);
-        glScissor(0, y * scale, WideWidth() * scale, h * scale);
-        glClear(GL_DEPTH_BUFFER_BIT);
-        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
-    }
-    glDisable(GL_SCISSOR_TEST);
 }
 
 void GpuFill(int x, int y, int w, int h, uint8_t r, uint8_t g, uint8_t b)

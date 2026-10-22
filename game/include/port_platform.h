@@ -17,8 +17,6 @@ extern unsigned char PsxScratchpad[1024];
    is not meant to see. */
 void PsxHoldPicture(void);
 
-/* What is projected while on is drawn behind everything, without the port's depth test (the sky). */
-void PortBackground(int on);
 
 /* Frame interpolation (platform/psx/libgpu.c): the ordering tables Swap will draw when its fields have passed (the
    second may be NULL), the first entry of the HUD's in the first, and the drawing environment they go to. While

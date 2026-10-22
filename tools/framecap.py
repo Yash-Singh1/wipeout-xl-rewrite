@@ -18,6 +18,7 @@ VERTEX = struct.Struct('<fffBBBBffB')
 DRAW = struct.Struct('<15i')
 PRIM_TAIL = struct.Struct('<Q48s')
 FRAME = struct.Struct('<qiiiiiiiii')
+# the last field (a depth test the port once had) is always 0 now, as the vertices' sky mark (bg)
 DRAW_FIELDS = ('textured', 'raw', 'semi', 'depth', 'pageX', 'pageY', 'clutX', 'clutY', 'windowMaskX', 'windowMaskY',
                'windowOffsetX', 'windowOffsetY', 'dither', 'fade', 'depthTest')
 KINDS = ('polygon', 'line', 'rectangle', 'fill')

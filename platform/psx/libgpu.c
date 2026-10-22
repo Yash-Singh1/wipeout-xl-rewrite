@@ -728,7 +728,6 @@ static void Vertex(GpuVertex *v, uint32_t xy, const GtePrecise *precise)
         v->y = precise->y + (float)state.offsetY;
         v->w = precise->z;
         v->a = (uint8_t)(precise->fade * 255.0f + 0.5f);
-        v->background = (uint8_t)precise->background;
     } else {
         v->x = (float)(x + state.offsetX) + hudShift;
         v->y = (float)(y + state.offsetY);
@@ -804,8 +803,8 @@ static void StateFor(GpuDrawState *draw, int textured, int semi, int raw)
    pixels (judged on the integer coordinates). A track face right beside the
    camera has a corner far off the screen, so it dropped out for a frame or two
    and left a hole in front of the ship. The port draws such a triangle when
-   all its corners are projections it knows in 3D (the setting); one with a
-   corner placed in 2D is still skipped. */
+   all its corners are projections it knows in 3D; one with a corner placed
+   in 2D is still skipped. */
 static int Skipped(const GpuVertex *v, const int32_t x[3], const int32_t y[3])
 {
     int i;
@@ -813,7 +812,7 @@ static int Skipped(const GpuVertex *v, const int32_t x[3], const int32_t y[3])
     for (i = 0; i < 3; i++) {
         int j = (i + 1) % 3;
         if (abs(x[i] - x[j]) > 1023 || abs(y[i] - y[j]) > 511) {
-            return !portSettings.largePolygons || v[0].w <= 0.0f || v[1].w <= 0.0f || v[2].w <= 0.0f;
+            return v[0].w <= 0.0f || v[1].w <= 0.0f || v[2].w <= 0.0f;
         }
     }
     return 0;
@@ -1393,7 +1392,6 @@ void PsxDrawInterpolatedAt(float along)
     ApplyArea();
     GpuClearArea(upcoming.left, upcoming.top, upcoming.width, upcoming.height, upcoming.background ? upcoming.r : 0,
                  upcoming.background ? upcoming.g : 0, upcoming.background ? upcoming.b : 0);
-    GpuClearDepth(upcoming.left, upcoming.top, upcoming.width, upcoming.height);
     hudEntry = upcoming.hudEntry;
     hudTable = upcoming.second;
     DrawTableAgain(upcoming.table);
@@ -1433,7 +1431,6 @@ void DrawOTag(u_long *p)
         holdAreas[holdAreaCount].bottom = state.areaBottom;
         holdAreaCount++;
     }
-    GpuClearDepth(state.areaLeft, state.areaTop, state.areaRight - state.areaLeft + 1, state.areaBottom - state.areaTop + 1);
     FrameCapTable(state.offsetX, state.offsetY, state.areaLeft, state.areaTop, state.areaRight - state.areaLeft + 1,
                   state.areaBottom - state.areaTop + 1);
     drawnSinceRead = 1;

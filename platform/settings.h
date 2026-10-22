@@ -1,7 +1,6 @@
 /* The player's settings (settings.c): a small INI file in the user's data folder, changed from the
    debug console (debug_ui.cpp, the backtick key). Environment variables still override them for a
-   run (WIPEOUT_FAR_VIEW, WIPEOUT_FADE, WIPEOUT_DEPTH, WIPEOUT_LARGE_POLYGONS, WIPEOUT_WIDESCREEN,
-   WIPEOUT_FRAME_RATE, WIPEOUT_SAVE_DIR); the tests' hidden runs ignore the file. */
+   run (WIPEOUT_FAR_VIEW, WIPEOUT_FADE, WIPEOUT_WIDESCREEN, WIPEOUT_FRAME_RATE, WIPEOUT_SAVE_DIR); the tests' hidden runs ignore the file. */
 #ifndef PORT_SETTINGS_H
 #define PORT_SETTINGS_H
 
@@ -14,8 +13,6 @@ typedef struct PortSettings {
     int farView;          /* 0: the console's draw distance; 1: the whole track */
     int fade;             /* distant geometry fades into the sky */
     int fadeNear, fadeFar;
-    int depthTest;        /* the per-pixel depth test */
-    int largePolygons;    /* near polygons the console's GPU drops for their size are drawn */
     int widescreen;       /* the picture fills a wider window: more of the scene at the sides (gpu_gl.c) */
     int frameRate;        /* the display: FRAME_RATE_*; the game itself keeps its 30 frames a second */
     int frameCap;         /* pictures a second with FRAME_RATE_CAPPED */
