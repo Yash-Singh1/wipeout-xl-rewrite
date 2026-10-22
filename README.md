@@ -147,6 +147,22 @@ the first as the two consoles were by the cable. It is started from the same
 program file, so after a rebuild the game must be restarted before two players
 can link again (the lobby says so).
 
+## The original Wipeout's tracks
+
+The original Wipeout's seven circuits (Altima VII, Karbonis V, Terramax,
+Korodera, Arridos IV, Silverstream, Firestar), each in its Venom and Rapier
+version, can be raced in XL. In the debug console's Files tab, choose your copy
+of the original PlayStation game: its disc image (a `.cue` with its `.bin`), or
+a folder of its data (the disc's `WIPEOUT` folder). The RACING CLASS menu then
+has a WIPEOUT line under the classes (arcade races and time trials); left and
+right go through the tracks, each raced at the class it was made for. The race
+is XL's: its ships, weapons, HUD and checkpoints (gates a third of a lap apart,
+with time for a lap shared out among them). The original's track and scenery
+files are turned into XL's as the race loads (`platform/original.c`); its scenery's
+textures go into a second half of video memory, as the 2 MB development
+PlayStation had, since they do not fit beside XL's own. Races on these tracks
+keep no records or medals.
+
 ## Saves
 
 The game saves to memory cards, as on the console. Card 1 is

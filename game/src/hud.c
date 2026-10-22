@@ -1127,6 +1127,9 @@ void AssignMedals(ConfigData *config)
     short goldCount = 0;
     short trackIndex;
 
+    if (PortOriginalTrack() >= 0) {
+        return; /* Port: an original track's races give no medals for Talon's Reach */
+    }
     if (raceType == 0 || raceType == 4) {
         if ((unsigned int) ((u_short) finishPosition - 1) < 3U) {
             switch (finishPosition) {

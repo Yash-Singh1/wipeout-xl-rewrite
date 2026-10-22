@@ -524,7 +524,7 @@ void InitRaceLine(TrackData *track, ConfigData *game)
             section++;
         } while (i < count);
     }
-    offset = start[game->actTrackNum];
+    offset = PortOriginalTrack() >= 0 ? PortOriginalStartLine() : start[game->actTrackNum]; /* Port: an original track's start line */
     for (i = 0; i < weaponGridSections; i++) {
         value = raceLines[i].distance - offset;
         if (value >= numTrackSections) value -= numTrackSections;

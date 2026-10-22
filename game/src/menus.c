@@ -1,5 +1,6 @@
 #include "functions.h"
 #include "portlink.h" /* Port: two players on one machine */
+#include "portorig.h" /* Port: the original Wipeout's tracks */
 #include "menus.h"
 #include "hiscores.h"
 #include "card.h"
@@ -1288,6 +1289,7 @@ void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSele
             if (gameData->shipClass == 2) selection->trackSelection = menu[7].selection;
             if (gameData->shipClass == 3) selection->trackSelection = menu[8].selection;
             selection->current = gameData->shipClass;
+            PortOriginalMenuRestore(selection); /* Port: an original track chosen: its line */
         } else {
             gameData->shipClass = selection->shipClass;
             gameData->actTrackNum = selection->actTrackNum;
@@ -4464,6 +4466,7 @@ void ClassSelect(ConfigData *gameData, MenuSelection *selection)
     int optionCount;
     short trackCount;
     u_char track;
+    int original;
 
     trackCount = 2;
     if (gameData->class1Unlocked != 0 || gameData->phantomTrackCheatActive != 0) {
@@ -4488,22 +4491,24 @@ void ClassSelect(ConfigData *gameData, MenuSelection *selection)
     if (menu[2].options[3].enabled != 0) {
         optionCount = 4;
     }
+    /* Port: the lines shown, WIPEOUT after the classes (portorig.c) */
     if (GetMenuKey(1)) {
-        selection->current++;
-        if (selection->current >= optionCount) {
-            selection->current = optionCount - 1;
-        } else {
+        short moved = (short)PortClassMove(selection->current, 1, optionCount);
+
+        if (moved != selection->current) {
             Sound(8);
         }
+        selection->current = moved;
     }
     if (GetMenuKey(0)) {
-        selection->current--;
-        if (selection->current < 0) {
-            selection->current = 0;
-        } else {
+        short moved = (short)PortClassMove(selection->current, -1, optionCount);
+
+        if (moved != selection->current) {
             Sound(8);
         }
+        selection->current = moved;
     }
+    original = PortOriginalClassMenu(selection, &trackCount, 0); /* Port: the WIPEOUT line's tracks */
     if (GetMenuKey(3)) {
         selection->trackSelection++;
         if (selection->trackSelection < trackCount) {
@@ -4569,6 +4574,11 @@ void ClassSelect(ConfigData *gameData, MenuSelection *selection)
         }
         selection->shipClass = 3;
     }
+    if (original) {
+        /* Port: the original's track (left and right went through them above) */
+        PortOriginalClassMenu(selection, &trackCount, 1);
+        goto afterTrackDescription;
+    }
     switch (selection->current) {
     case 0:
         className = msgNovice;
@@ -4630,6 +4640,13 @@ afterTrackDescription:
     }
     if (selection->trackSelection > 0 && classBlink % 30 < 21) {
         DoButton(125, 165, 4, numTex);
+    }
+    if (original) {
+        /* Port: no model of the original's track; its name; no medals (its races keep no records) */
+        PrintCX((u_char *)PortRaceTrackName(selection->actTrackNum), 160, 90);
+        DrawTeamShips(-780, 40, 1400, heading, 0, menuModels[classOrder.order[selection->shipClass]]);
+        classBlink += 1;
+        return;
     }
     DrawTeamShips(400, -200, 1800, heading, 220, shipModels[trackModelOrder[selection->trackNum]]);
     PrintCX(GetTrackName(selection->actTrackNum, 90, 90, 0), 160, 90);
@@ -4764,7 +4781,7 @@ void AddTextBits(ConfigData *gameData)
             break;
         }
         PrintCX(menuLabel, 0x3F, 0xAC);
-        strcpy(formattedTrack, GetTrackName(gameData->actTrackNum, 0x46, 0x64, 0));
+        strcpy(formattedTrack, PortRaceTrackName(gameData->actTrackNum)); /* Port: an original track's name */
         PrintCX(formattedTrack, 0x100, 0xAC);
         __builtin_memcpy(menuLabel, msgEssentialOptions, 18);
         break;
@@ -4903,8 +4920,9 @@ void ShowMenu(ConfigData *gameData, MenuBars *polys, MenuSelection *selection)
             } else if(menu[currMenu].options[i].enabled) {
                 if(currMenu==2) {
                     MenuOption *options=menu[2].options;
-                    if(i==selection->current) CentreText2(options[i].text[j].text,68,menu[2].options[0].y+i*10,8,0);
-                    else CentreText2(options[i].text[j].text,68,menu[2].options[0].y+i*10,8,1);
+                    int row=(i==4 && !options[3].enabled)?3:i; /* Port: WIPEOUT in the fourth class's row when that is locked */
+                    if(i==selection->current) CentreText2(options[i].text[j].text,68,menu[2].options[0].y+row*10,8,0);
+                    else CentreText2(options[i].text[j].text,68,menu[2].options[0].y+row*10,8,1);
                 } else if(currMenu==3) {
                     MenuOption *options=menu[3].options;
                     if(i==menu[3].selection) CentreText(options[i].text[j].text,68,menu[3].options[0].y+i*12,8,0);
@@ -5286,12 +5304,24 @@ void InitMenus(void)
     menu[2].options[3].selection = 0;
     menu[2].options[3].enabled = 0;
     menu[2].options[3].flags = 0;
+    /* Port: the original Wipeout's tracks (portorig.c), shown when the player's copy has been found */
+    __builtin_memcpy(menu[2].options[4].text[0].text, "WIPEOUT", 8);
+    menu[2].options[4].text[0].size = 8;
+    menu[2].options[4].text[0].colour = 1;
+    menu[2].options[4].x = menu[2].options[3].x;
+    menu[2].options[4].y = 64;
+    menu[2].options[4].numText = 1;
+    menu[2].options[4].font = 9;
+    menu[2].options[4].nextMenu = 0;
+    menu[2].options[4].selection = 0;
+    menu[2].options[4].enabled = 0;
+    menu[2].options[4].flags = 0;
     __builtin_memcpy(menu[2].title.text, &msgRacingClass, 13);
     menu[2].title.size = 40;
     menu[2].title.colour = 50;
     menu[2].id = 0;
     menu[2].flags = 0;
-    menu[2].numOptions = 4;
+    menu[2].numOptions = 5; /* Port: and WIPEOUT */
     menu[2].prevMenu = 0;
     menu[2].selection = 0;
     menu[2].mode = 0;

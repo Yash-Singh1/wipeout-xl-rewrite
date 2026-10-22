@@ -25,6 +25,7 @@
 #include "psyq.h"
 
 uint16_t psxVram[VRAM_HEIGHT][VRAM_WIDTH];
+uint16_t psxVramHigh[VRAM_HEIGHT][VRAM_WIDTH];
 
 /* ---- link numbers ---- */
 
@@ -199,7 +200,7 @@ u_short GetTPage(int tp, int abr, int x, int y)
     if (graphType) {
         page = (u_short)(((tp & 3) << 9) | ((abr & 3) << 7) | ((y & 0x300) >> 3));
     } else {
-        page = (u_short)(((tp & 3) << 7) | ((abr & 3) << 5) | ((y & 0x100) >> 4));
+        page = (u_short)(((tp & 3) << 7) | ((abr & 3) << 5) | ((y & 0x100) >> 4) | ((y & 0x200) << 2)); /* (bit 11: gpu.h) */
     }
     return (u_short)(page | ((x & 0x3FF) >> 6));
 }
@@ -221,7 +222,7 @@ static uint32_t DrawModeWord(int dfe, int dtd, int tpage)
         }
     } else {
         mode = dtd ? 0xE1000200u : 0xE1000000u;
-        page = (uint32_t)tpage & 0x1FF;
+        page = (uint32_t)tpage & 0x9FF; /* (bit 11: the second half of video memory, gpu.h) */
         if (dfe) {
             page |= 0x400;
         }
@@ -301,7 +302,7 @@ static void ApplyArea(void)
    depth (bits 0-8); dithering and drawing to the display stay as E1 set them. */
 static void SetTexpage(uint32_t value)
 {
-    state.texpage = (state.texpage & ~0x1FFu) | (value & 0x1FF);
+    state.texpage = (state.texpage & ~0x9FFu) | (value & 0x9FF);
 }
 
 /* GP0 E1-E6 */
@@ -655,6 +656,16 @@ int LoadImage(RECT *rect, u_long *p)
 
     TraceTransfer(0xA0000000u, rect, p);
 
+    if (rect->y >= VRAM_HEIGHT) {
+        /* the second half (gpu.h): textures only */
+        for (y = 0; y < rect->h; y++) {
+            for (x = 0; x < rect->w; x++) {
+                psxVramHigh[(rect->y + y) & (VRAM_HEIGHT - 1)][(rect->x + x) & (VRAM_WIDTH - 1)] = *pixels++;
+            }
+        }
+        GpuVramHighChanged();
+        return 0;
+    }
     for (y = 0; y < rect->h; y++) {
         for (x = 0; x < rect->w; x++) {
             psxVram[(rect->y + y) & (VRAM_HEIGHT - 1)][(rect->x + x) & (VRAM_WIDTH - 1)] = *pixels++;
@@ -840,7 +851,7 @@ static void Colour(GpuVertex *v, uint32_t word)
 static void TextureFromPage(GpuDrawState *draw, uint32_t page)
 {
     draw->pageX = (int)(page & 0xF) * 64;
-    draw->pageY = (int)((page >> 4) & 1) * 256;
+    draw->pageY = (int)((page >> 4) & 1) * 256 + (int)((page >> 11) & 1) * VRAM_HEIGHT; /* (the second half: gpu.h) */
     draw->depth = (int)((page >> 7) & 3);
 }
 

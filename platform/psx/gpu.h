@@ -14,6 +14,13 @@
 extern uint16_t psxVram[VRAM_HEIGHT][VRAM_WIDTH];
 void GpuVramChanged(int x, int y, int w, int h);
 
+/* The second half of video memory, as the PlayStation's 2 MB development GPU had: rows 512 to 1023, textures
+   only (nothing is drawn there, palettes stay in the first half), reached with bit 11 of a texture page (its
+   "Y base 2"). The console game never uses it; the original Wipeout's textures do when its tracks are raced
+   (platform/original.c), as they do not fit beside XL's own. */
+extern uint16_t psxVramHigh[VRAM_HEIGHT][VRAM_WIDTH];
+void GpuVramHighChanged(void);
+
 /* The port's own page of texture memory, beyond the console's video memory, that a textured
    primitive reads when its texture page says colour depth 3 (the depth the console's GPU leaves
    reserved; the game never uses it). The button glyphs of the keyboard and of other gamepads

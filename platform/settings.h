@@ -21,6 +21,7 @@ typedef struct PortSettings {
     int recordReplays;    /* every session is recorded as a replay (trace.c, --record) */
     char saveDir[1024];   /* memory cards ("" = the user's data folder); takes effect at the next start */
     char discPath[1024];  /* the disc's .cue chosen last (main.c), for a start without --disc */
+    char originalPath[1024]; /* the original Wipeout's disc image or data folder: its tracks (original.c) */
 } PortSettings;
 
 /* PortSettings.recordFrames: what the frame recorder keeps, and what Tab does */

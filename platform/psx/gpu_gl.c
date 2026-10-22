@@ -236,7 +236,9 @@ static const char *fragmentSource =
     "flat in ivec4 vWindow;\n"
     "flat in ivec4 mode;\n"
     "out vec4 fragment;\n"
-    "uint Fetch(ivec2 p) { return texelFetch(vram, ivec2(p.x & 1023, p.y & 511), 0).r; }\n"
+    /* texels from either half of video memory (rows to 1023), palettes from the first */
+    "uint Fetch(ivec2 p) { return texelFetch(vram, ivec2(p.x & 1023, p.y & 1023), 0).r; }\n"
+    "uint FetchClut(ivec2 p) { return texelFetch(vram, ivec2(p.x & 1023, p.y & 511), 0).r; }\n"
     "void main() {\n"
     "    vec3 c = vColour.rgb;\n"
     "    float fade = vColour.a;\n"
@@ -260,11 +262,11 @@ static const char *fragmentSource =
     "    if (mode.w == 0) {\n"
     "        uint word = Fetch(texturePage.xy + ivec2(uv.x >> 2, uv.y));\n"
     "        uint index = (word >> uint((uv.x & 3) * 4)) & 15u;\n"
-    "        texel = Fetch(clut.xy + ivec2(int(index), 0));\n"
+    "        texel = FetchClut(clut.xy + ivec2(int(index), 0));\n"
     "    } else if (mode.w == 1) {\n"
     "        uint word = Fetch(texturePage.xy + ivec2(uv.x >> 1, uv.y));\n"
     "        uint index = (word >> uint((uv.x & 1) * 8)) & 255u;\n"
-    "        texel = Fetch(clut.xy + ivec2(int(index), 0));\n"
+    "        texel = FetchClut(clut.xy + ivec2(int(index), 0));\n"
     "    } else {\n"
     "        texel = Fetch(texturePage.xy + uv);\n"
     "    }\n"
@@ -368,7 +370,11 @@ int GpuInit(void)
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
     glGenTextures(1, &vramTexture);
     glBindTexture(GL_TEXTURE_2D, vramTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_R16UI, VRAM_WIDTH, VRAM_HEIGHT, 0, GL_RED_INTEGER, GL_UNSIGNED_SHORT, psxVram);
+    /* both halves of video memory (gpu.h): the console's, then the second */
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R16UI, VRAM_WIDTH, VRAM_HEIGHT * 2, 0, GL_RED_INTEGER, GL_UNSIGNED_SHORT, NULL);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, VRAM_WIDTH, VRAM_HEIGHT, GL_RED_INTEGER, GL_UNSIGNED_SHORT, psxVram);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, VRAM_HEIGHT, VRAM_WIDTH, VRAM_HEIGHT, GL_RED_INTEGER, GL_UNSIGNED_SHORT,
+                    psxVramHigh);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
@@ -439,8 +445,21 @@ void GpuSetGlyphMemory(const uint32_t *rgba)
     glActiveTexture(GL_TEXTURE0);
 }
 
+static int vramHighDirty;
+
+void GpuVramHighChanged(void)
+{
+    vramHighDirty = 1;
+}
+
 static void UploadVram(void)
 {
+    if (vramHighDirty) {
+        glBindTexture(GL_TEXTURE_2D, vramTexture);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, VRAM_HEIGHT, VRAM_WIDTH, VRAM_HEIGHT, GL_RED_INTEGER, GL_UNSIGNED_SHORT,
+                        psxVramHigh);
+        vramHighDirty = 0;
+    }
     if (!vramDirty) {
         return;
     }

@@ -232,6 +232,7 @@ Texture *NewLoadTexture(struct Tim *tim, int context, int scene)
         texture->v3 = ((u16)tc4->textureH + pageY) - 1;
 
         texture->tsb = (tsbContext << 5) | ((texture->textureX >> 6) + ((texture->textureY >> 4) & 16));
+        texture->tsb |= (texture->textureY & 0x200) << 2; /* Port: the second half of video memory (an original Wipeout track's textures) */
         texture->cba = (texture->clutY << 6) | (texture->clutX >> 4);
 
         imageRect.x = tc4->clutX;
@@ -303,6 +304,7 @@ Texture *NewLoadTexture(struct Tim *tim, int context, int scene)
         texture->v3 = ((u16)tc8->textureH + pageY) - 1;
 
         texture->tsb = (context << 5) | 128 | ((texture->textureX >> 6) + ((texture->textureY >> 4) & 16));
+        texture->tsb |= (texture->textureY & 0x200) << 2; /* Port: (as for 4-bit textures) */
         texture->cba = (texture->clutY << 6) | (texture->clutX >> 4);
 
         imageRect.x = tc8->clutX;

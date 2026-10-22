@@ -119,7 +119,7 @@ void CheckForHiScore(ConfigData *config, HiScoreData *score, ShipData *ships, in
         ship = &ships[shipNum];
         lapNum = ship->lap;
         if (lapNum == 2 || !score->flag) {
-            if (ship->lapTimes[lapNum - 2] < hiScoreTable[trackNum][config->shipClass].lapTime) {
+            if (PortOriginalTrack() < 0 && ship->lapTimes[lapNum - 2] < hiScoreTable[trackNum][config->shipClass].lapTime) { /* Port: an original track's times are no records of Talon's Reach */
                 shipNo = ownShip;
                 own = &ships[shipNo];
                 record = *(volatile s32 *)&own->lapTimes[own->lap - 2];
@@ -149,7 +149,7 @@ void CheckForHiScore(ConfigData *config, HiScoreData *score, ShipData *ships, in
             } while (i < classLaps[config->shipClass]);
         }
         shipNo = score->totalTime;
-        if (shipNo < hiScoreTable[trackNum][config->shipClass].time) {
+        if (PortOriginalTrack() < 0 && shipNo < hiScoreTable[trackNum][config->shipClass].time) { /* Port: (as the lap's) */
             record = ownShip;
             myBestRace = shipNo;
             flag = score->flag | 2;

@@ -14,6 +14,7 @@
 
 extern "C" {
 #include "debug_ui.h"
+#include "original.h"
 #include "platform.h"
 #include "settings.h"
 #include "trace.h"
@@ -24,6 +25,10 @@ static SDL_Window *window;
 static ImGuiStyle baseStyle; /* the style at a scale of 1 (FitToWindow) */
 static bool ready, open;
 static char saveDirEdit[1024];
+static char originalEdit[1024];     // the original Wipeout's disc image or folder, as typed or chosen
+static char originalMessage[300];   // what opening it found
+static char *originalChosen;        // a path from the file dialog (it may answer from a thread of its own)
+static SDL_Mutex *originalLock;
 static bool showRecorder; // Tab brings the Recorder tab up
 // the frame viewer's pixel, in the console's columns and rows (left of 0 and beyond 319: widescreen's sides)
 static bool picked;
@@ -56,6 +61,8 @@ extern "C" void DebugUiInit(SDL_Window *w, void *context)
     ImGui_ImplSDL3_InitForOpenGL(w, context);
     ImGui_ImplOpenGL3_Init(PORT_GLSL_VERSION);
     SDL_strlcpy(saveDirEdit, portSettings.saveDir, sizeof(saveDirEdit));
+    SDL_strlcpy(originalEdit, portSettings.originalPath, sizeof(originalEdit));
+    originalLock = SDL_CreateMutex();
     ready = true;
 }
 
@@ -547,6 +554,81 @@ static void FitToWindow(void)
     ImGui::GetIO().FontGlobalScale = ui;
 }
 
+// The original Wipeout's tracks (platform/original.c): the player's copy of the original, raced from the RACING
+// CLASS menu's WIPEOUT line.
+static void SDLCALL OriginalChosen(void *user, const char *const *files, int filter)
+{
+    (void)user;
+    (void)filter;
+    if (files && files[0]) {
+        SDL_LockMutex(originalLock);
+        SDL_free(originalChosen);
+        originalChosen = SDL_strdup(files[0]);
+        SDL_UnlockMutex(originalLock);
+    }
+}
+
+static void UseOriginal(const char *path)
+{
+    SDL_strlcpy(originalEdit, path, sizeof(originalEdit));
+    if (PortOriginalOpen(path, originalMessage, sizeof(originalMessage)) > 0 || !path[0]) {
+        SDL_strlcpy(portSettings.originalPath, path, sizeof(portSettings.originalPath));
+        Changed();
+    }
+}
+
+static void OriginalWipeout(void)
+{
+    char *chosen;
+
+    SDL_LockMutex(originalLock);
+    chosen = originalChosen;
+    originalChosen = nullptr;
+    SDL_UnlockMutex(originalLock);
+    if (chosen) {
+        UseOriginal(chosen);
+        SDL_free(chosen);
+    }
+    ImGui::TextUnformatted("The original Wipeout (PlayStation)");
+    ImGui::TextWrapped("Your copy of the original game: its disc image (a .cue with its .bin), or a folder of its "
+                       "data (the disc's WIPEOUT folder). Its tracks are then on the RACING CLASS menu, on the "
+                       "WIPEOUT line under the classes (arcade races and time trials): left and right go through them.");
+    int tracks = PortOriginalTrackCount();
+    if (!originalEdit[0] && PortOriginalSource()[0]) {
+        SDL_strlcpy(originalEdit, PortOriginalSource(), sizeof(originalEdit));
+    }
+    if (tracks > 0) {
+        ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "%d tracks from %s", tracks, PortOriginalSource());
+    } else {
+        ImGui::TextDisabled("None chosen.");
+    }
+    if (originalMessage[0]) {
+        ImGui::TextWrapped("%s", originalMessage);
+    }
+#ifndef __EMSCRIPTEN__
+    static const SDL_DialogFileFilter cue[] = {{"PlayStation disc image (.cue)", "cue"}};
+    if (ImGui::Button("Choose its disc image...")) {
+        SDL_ShowOpenFileDialog(OriginalChosen, nullptr, window, cue, 1, nullptr, false);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Choose its data folder...")) {
+        SDL_ShowOpenFolderDialog(OriginalChosen, nullptr, window, nullptr, false);
+    }
+    ImGui::SameLine();
+#endif
+    if (ImGui::Button("Forget it")) {
+        UseOriginal("");
+        originalMessage[0] = 0;
+    }
+    ImGui::SetNextItemWidth(-ImGui::CalcTextSize("Use this").x - ImGui::GetStyle().ItemSpacing.x -
+                            ImGui::GetStyle().FramePadding.x * 2);
+    ImGui::InputText("##original", originalEdit, sizeof(originalEdit));
+    ImGui::SameLine();
+    if (ImGui::Button("Use this")) {
+        UseOriginal(originalEdit);
+    }
+}
+
 static void Console(void)
 {
     const ImGuiViewport *view = ImGui::GetMainViewport();
@@ -684,6 +766,8 @@ static void Console(void)
             if (portConfig.savePath && strncmp(configured, portConfig.savePath, strlen(configured)) != 0) {
                 ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Takes effect at the next start.");
             }
+            ImGui::Separator();
+            OriginalWipeout();
             ImGui::EndTabItem();
         }
         ImGui::EndTabBar();

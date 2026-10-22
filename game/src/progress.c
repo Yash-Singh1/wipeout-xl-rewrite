@@ -1,4 +1,5 @@
 #include "functions.h"
+#include "portorig.h" /* Port: the original Wipeout's tracks */
 #include "ghost.h"
 #include "include_asm_g8.h"
 
@@ -380,8 +381,17 @@ void VsyncFunc(void)
 printShipName:
             Print(shipName, 0x50, 0x9B, 8);
         }
-        Print((u_char *)GetTrackName(tempGameData->actTrackNum, 0, 0, 0), 0x50, 0x78, 8);
+        Print((u_char *)PortRaceTrackName(tempGameData->actTrackNum), 0x50, 0x78, 8); /* Port: an original track's name */
         trackType = tempGameData->actTrackNum;
+        if (trackType == 1 && PortOriginalTrack() >= 0) {
+            trackType = 0; /* Port: an original track: its own lines, in Talon's Reach's colour */
+            Print((u_char *)"A CIRCUIT OF THE", 0x50, 0x7F, 8);
+            Print((u_char *)"ORIGINAL WIPEOUT", 0x50, 0x86, 8);
+            Print((u_char *)(tempGameData->shipClass == 2 ? "RAPIER CLASS" : "VENOM CLASS"), 0x50, 0x8D, 8);
+            tintR = 0xFF;
+            tintG = 0;
+            tintB = 0;
+        }
         switch (trackType) {
         case 1:
             Print(track1DescriptionLine0, 0x50, 0x7F, 8);

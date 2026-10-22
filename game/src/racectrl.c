@@ -1,5 +1,6 @@
 #include "include_asm_g8.h"
 #include "functions.h"
+#include "portorig.h" /* Port: the original Wipeout's tracks */
 #include "portlink.h" /* Port: two players on one machine */
 #include "hud.h"
 #include "ayrace.h"
@@ -210,6 +211,7 @@ void race(ConfigData *gameData, int context, int scene)
     SetSkeletonPosition(raceCamera.camPos,0,0,0);SetSkeletonDirection(raceCamera.camPos,0,0,0);
     SetSkeletonPosition(upperSkeleton,0,0,0);SetSkeletonDirection(upperSkeleton,0,0,0);
     cameraPtr=&raceCamera;track=&locals.trackData;tempGameData=gameData;raceCamera.camPos->super=upperSkeleton;
+    PortOriginalRaceBegins(); /* Port: an original Wipeout track, or Talon's Reach's own values (portorig.c) */
     getPath(scenePath,gameData->actTrackNum,trackPathTable);
     wad=openwadfile(scenePath);
     WADInitVertices(wad);WADInitFaces(wad);WADInitSections(wad);WADInitViewList(wad);

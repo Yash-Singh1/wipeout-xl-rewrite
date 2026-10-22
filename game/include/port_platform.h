@@ -46,6 +46,20 @@ void PortWideBackdrop(const void *packet);
    where the HUD is (the other player's sign over a near ship, the missile lock's boxes): widescreen's and the
    split window's HUD handling leave it where the scene puts it. */
 void PortSceneSprite(const void *packet);
+
+/* The original Wipeout's tracks (platform/original.c), raced as guests in Talon's Reach's slot (trackNum 0,
+   folder 1): the ones the player's copy of the original has, their names and classes (XL's: 1 Venom,
+   2 Rapier); the one chosen (-1: an XL track); its start line's section and its sky's height. */
+int PortOriginalTrackCount(void);
+const char *PortOriginalTrackName(int index);
+int PortOriginalTrackClass(int index);
+void PortOriginalTrackSelect(int index);
+int PortOriginalTrack(void);
+int PortOriginalStartLine(void);
+int PortOriginalSkyY(void);
+/* The game's file layer (iso9660.c): a file of the chosen track's (where, and how long), and its sectors. */
+int PortOriginalFileInfo(const char *pathname, int *loc, int *size);
+int PortOriginalRead(int loc, int sectors, void *buffer);
 /* The distance fade's range in world units; whether it is on (the settings, platform/settings.c). */
 int PortFadeRange(int *nearDistance, int *farDistance);
 
