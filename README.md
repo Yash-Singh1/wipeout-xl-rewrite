@@ -173,6 +173,19 @@ textures go into a second half of video memory, as the 2 MB development
 PlayStation had, since they do not fit beside XL's own. Races on these tracks
 keep no records or medals.
 
+## Your own music
+
+The debug console's Game tab can play a folder of your own music instead of the
+game's soundtrack: MP3, FLAC, Ogg Vorbis and WAV files, in the folder and the
+folders in it (`WIPEOUT_MUSIC=folder` for a run). Each time the game would start a
+piece of its music (the menus', a race's) the next song plays, from its start;
+when a song ends, the one after it. In the folder's order or shuffled; "Next song"
+skips one. The game still runs its CD audio as before (pausing pauses the song,
+its music volume sets the song's), only what is heard changes
+(`platform/music.c`). The files are decoded as they play with miniaudio
+(`platform/third_party/miniaudio`, public domain or MIT-0) and stb_vorbis
+(public domain).
+
 ## HD textures
 
 The Graphics tab's HD textures draw a texture pack made for DuckStation's

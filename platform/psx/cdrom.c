@@ -419,6 +419,8 @@ static void arrive_sector(CdDrive *cd)
     }
 }
 
+bool (*CdMusicReplacement)(int track, int16_t out[2]);
+
 static int16_t saturate(int32_t value)
 {
     return (int16_t)(value > 32767 ? 32767 : value < -32768 ? -32768 : value);
@@ -436,11 +438,18 @@ static void play_sample(CdDrive *cd, int16_t out[2])
         }
         track = DiscTrackAt(cd->disc, cd->pos);
         cd->sector = track && track->audio ? DiscRawSector(cd->disc, cd->pos) : NULL;
+        cd->track = track ? track->number : 0;
     }
     if (cd->sector && !cd->muted && !cd->silent) {
         const uint8_t *p = cd->sector + cd->phase * 4;
         int32_t l = (int16_t)(p[0] | p[1] << 8);
         int32_t r = (int16_t)(p[2] | p[3] << 8);
+        int16_t own[2];
+
+        if (CdMusicReplacement && CdMusicReplacement(cd->track, own)) {
+            l = own[0];
+            r = own[1];
+        }
 
         out[0] = saturate((l * cd->mix[0] + r * cd->mix[3]) >> 7);
         out[1] = saturate((l * cd->mix[1] + r * cd->mix[2]) >> 7);

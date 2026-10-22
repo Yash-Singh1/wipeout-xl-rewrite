@@ -53,6 +53,11 @@ void PsxInputEvent(const union SDL_Event *event);
 typedef int (*PsxExecHook)(void *block);
 void PsxSetExecHook(PsxExecHook hook);
 
+/* The lock (above), for the platform's own audio that the drive or the SPU call into (platform/music.c), while
+   it changes what they play. */
+void PsxLock(void);
+void PsxUnlock(void);
+
 /* The disc image (disc.h), for the movie player; NULL before PsxIoInit. */
 struct Disc;
 const struct Disc *PsxIoDisc(void);

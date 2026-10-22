@@ -10,6 +10,7 @@
 #include "psx/gte.h"
 #include "psx/psx_io.h"
 #include "link.h"
+#include "music.h"
 #include "settings.h"
 #include "trace.h"
 
@@ -31,7 +32,8 @@ static void Usage(void)
             "  WIPEOUT_CD_SPEED (drive speed-up; 1 = the console's, default 1000), WIPEOUT_SAVE_DIR (memory cards; default: the user's data folder),\n"
             "  WIPEOUT_KEYS (scripted keys and gamepad), WIPEOUT_VRAM_DUMP (video memory picture at the end of a run),\n"
             "  WIPEOUT_FAR_VIEW (0: the console's draw distance; 2: the whole track even while tracing),\n"
-            "  WIPEOUT_MOVIES (play the movies in fixed-step runs too)\n");
+            "  WIPEOUT_MOVIES (play the movies in fixed-step runs too), WIPEOUT_WAV (the mixed audio, fixed-step),\n"
+            "  WIPEOUT_MUSIC (a music folder in place of the disc's music)\n");
 }
 
 /* No disc given (--disc, WIPEOUT_XL_DISC): the one chosen last time, else the player picks the .cue in the
@@ -140,6 +142,7 @@ int main(int argc, char **argv)
         }
     }
     PortSettingsLoad();
+    PortMusicInit();
     if (!portConfig.savePath && portSettings.saveDir[0]) {
         static char saveDir[1040];
 
@@ -187,6 +190,7 @@ int main(int argc, char **argv)
         io.fixedStep = portConfig.fixedStep;
         io.muted = portConfig.muted;
         io.noCdAudio = portConfig.linkName != NULL;
+        io.wavPath = SDL_getenv("WIPEOUT_WAV"); /* tests: the mixed audio of a fixed-step run */
 #ifdef __EMSCRIPTEN__
         io.queueAudio = 1; /* the page's audio callback runs only while the game waits (psx_io.h) */
 #else

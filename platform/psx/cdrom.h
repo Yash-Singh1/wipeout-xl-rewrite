@@ -75,6 +75,7 @@ typedef struct CdDrive {
     double nextSector;       /* READING: sample time the next sector arrives */
     unsigned phase;          /* PLAYING: sample within the current sector */
     const uint8_t *sector;   /* PLAYING: raw bytes of the current sector, or NULL for silence */
+    int track;               /* PLAYING: the number of the audio track it is in */
 
     uint64_t ackAt;          /* the first response of the last command arrives */
     uint64_t completeAt;     /* a second response (INT2) is pending, 0 if none */
@@ -86,6 +87,10 @@ typedef struct CdDrive {
 } CdDrive;
 
 void CdDriveInit(CdDrive *cd, const Disc *disc, double speed);
+/* The port's own music in place of the disc's audio tracks (platform/music.c): when set and it returns true, out
+   holds the sample to play for the given track instead of the disc's (called under the audio lock, while the
+   drive plays). */
+extern bool (*CdMusicReplacement)(int track, int16_t out[2]);
 /* One output sample of CD-DA (before the SPU's CD volume), advancing time by one sample. */
 void CdDriveSample(CdDrive *cd, int16_t out[2]);
 

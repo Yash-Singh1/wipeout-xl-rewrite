@@ -15,6 +15,7 @@
 extern "C" {
 #include "debug_ui.h"
 #include "hdtex.h"
+#include "music.h"
 #include "original.h"
 #include "platform.h"
 #include "settings.h"
@@ -30,6 +31,8 @@ static bool ready, open;
 static char saveDirEdit[1024];
 static char originalEdit[1024];     // the original Wipeout's disc image or folder, as typed or chosen
 static char originalMessage[300];   // what opening it found
+static char musicEdit[1024];        // the music folder, as typed or chosen
+static char musicMessage[300];      // what opening it found
 static char n64Edit[1024];          // Wipeout 64's cartridge image, as typed or chosen
 static char n64Message[300];        // what opening it found
 static char packEdit[1024];         // the HD texture pack, as typed or chosen
@@ -658,7 +661,7 @@ struct Picker {
 };
 enum { PICK_DISC, PICK_ZIP, PICK_N64 }; // a disc image (.cue), a texture pack (.zip), a cartridge image
 static Picker discPicker, originalPicker, packPicker = {nullptr, false, PICK_ZIP, false, ""},
-    n64Picker = {nullptr, false, PICK_N64, false, ""};
+    n64Picker = {nullptr, false, PICK_N64, false, ""}, musicPicker;
 static Picker *browsing;            // the picker the console's browser is open for
 static char browseDir[1024];
 static char **browseNames;          // its entries: disc images first, then folders (with a trailing /)
@@ -1085,6 +1088,84 @@ static void Wipeout64(void)
     }
 }
 
+// Music (music.c): the player's own folder of music in place of the disc's soundtrack.
+
+static void UseMusic(const char *path)
+{
+    SDL_strlcpy(musicEdit, path, sizeof(musicEdit));
+    if (PortMusicOpen(path, musicMessage, sizeof(musicMessage)) > 0 || !path[0]) {
+        SDL_strlcpy(portSettings.musicFolder, path, sizeof(portSettings.musicFolder));
+        if (path[0]) {
+            portSettings.customMusic = 1;
+        }
+        Changed();
+        PortMusicSettingsChanged();
+    }
+}
+
+static void Music(void)
+{
+    char *chosen = PickerTake(&musicPicker);
+
+    if (chosen) {
+        UseMusic(chosen);
+        SDL_free(chosen);
+    }
+    if (!musicEdit[0] && PortMusicFolder()[0]) {
+        SDL_strlcpy(musicEdit, PortMusicFolder(), sizeof(musicEdit));
+    }
+    ImGui::TextUnformatted("Music");
+    bool own = portSettings.customMusic != 0;
+    if (ImGui::Checkbox("Play my own music instead of the game's", &own)) {
+        portSettings.customMusic = own;
+        Changed();
+        PortMusicSettingsChanged();
+    }
+    ImGui::SameLine();
+    bool shuffle = portSettings.musicShuffle != 0;
+    if (ImGui::Checkbox("Shuffle", &shuffle)) {
+        portSettings.musicShuffle = shuffle;
+        Changed();
+        PortMusicSettingsChanged();
+    }
+    ImGui::TextWrapped("A folder of music files (MP3, FLAC, Ogg Vorbis or WAV; the folders in it too). Each time the "
+                       "game would start a piece of its music (the menus', a race's) the next song plays instead, "
+                       "and when a song ends the one after it. The game's music volume and pause still apply.");
+    if (PortMusicCount() > 0) {
+        ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "%d songs from %s", PortMusicCount(), PortMusicFolder());
+        const char *playing = PortMusicPlaying();
+        if (playing[0]) {
+            ImGui::Text("Playing: %s", playing);
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Next song")) {
+                PortMusicSkip();
+            }
+        }
+    } else {
+        ImGui::TextDisabled("No folder chosen.");
+    }
+    if (musicMessage[0] && PortMusicCount() == 0) {
+        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.4f, 1.0f), "%s", musicMessage);
+    }
+#ifndef __EMSCRIPTEN__
+    if (ImGui::Button("Choose the music folder...")) {
+        PickerOpen(&musicPicker, true, musicEdit);
+    }
+    ImGui::SameLine();
+#endif
+    if (ImGui::Button("Forget it##music")) {
+        UseMusic("");
+        musicMessage[0] = 0;
+    }
+    ImGui::SetNextItemWidth(-ImGui::CalcTextSize("Use this").x - ImGui::GetStyle().ItemSpacing.x -
+                            ImGui::GetStyle().FramePadding.x * 2);
+    ImGui::InputText("##music", musicEdit, sizeof(musicEdit));
+    ImGui::SameLine();
+    if (ImGui::Button("Use this##music")) {
+        UseMusic(musicEdit);
+    }
+}
+
 // The resolution: the framebuffer's scale (gpu_gl.c), the window's or the player's.
 static void Resolution(void)
 {
@@ -1287,6 +1368,9 @@ static void Console(void)
                     OpenFolder(PortRecordDir());
                 }
             }
+            ImGui::Separator();
+            Music();
+            Browser(); /* (a picker's, where the system has no file dialog) */
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Recorder", nullptr,
