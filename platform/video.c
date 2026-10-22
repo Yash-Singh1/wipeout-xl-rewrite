@@ -120,6 +120,11 @@ void PortVideoShutdown(void)
     }
 }
 
+int PortWindowFullscreen(void)
+{
+    return window && (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) != 0;
+}
+
 void PortWindowSize(int *width, int *height)
 {
     SDL_GetWindowSize(window, width, height);

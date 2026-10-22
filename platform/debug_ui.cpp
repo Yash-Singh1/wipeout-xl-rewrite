@@ -19,6 +19,7 @@ extern "C" {
 #include "settings.h"
 #include "trace.h"
 #include "psx/framecap.h"
+#include "psx/disc.h"
 }
 
 static SDL_Window *window;
@@ -27,8 +28,9 @@ static bool ready, open;
 static char saveDirEdit[1024];
 static char originalEdit[1024];     // the original Wipeout's disc image or folder, as typed or chosen
 static char originalMessage[300];   // what opening it found
-static char *originalChosen;        // a path from the file dialog (it may answer from a thread of its own)
-static SDL_Mutex *originalLock;
+static char discEdit[1024];         // the Wipeout XL disc image, as typed or chosen
+static char discMessage[300];       // what checking it found
+static SDL_Mutex *pickLock;         // the file dialog may answer from a thread of its own
 static bool showRecorder; // Tab brings the Recorder tab up
 // the frame viewer's pixel, in the console's columns and rows (left of 0 and beyond 319: widescreen's sides)
 static bool picked;
@@ -62,7 +64,9 @@ extern "C" void DebugUiInit(SDL_Window *w, void *context)
     ImGui_ImplOpenGL3_Init(PORT_GLSL_VERSION);
     SDL_strlcpy(saveDirEdit, portSettings.saveDir, sizeof(saveDirEdit));
     SDL_strlcpy(originalEdit, portSettings.originalPath, sizeof(originalEdit));
-    originalLock = SDL_CreateMutex();
+    SDL_strlcpy(discEdit, portSettings.discPath[0] ? portSettings.discPath : (portConfig.discPath ? portConfig.discPath : ""),
+                sizeof(discEdit));
+    pickLock = SDL_CreateMutex();
     ready = true;
 }
 
@@ -554,19 +558,311 @@ static void FitToWindow(void)
     ImGui::GetIO().FontGlobalScale = ui;
 }
 
-// The original Wipeout's tracks (platform/original.c): the player's copy of the original, raced from the RACING
-// CLASS menu's WIPEOUT line.
-static void SDLCALL OriginalChosen(void *user, const char *const *files, int filter)
+// ---- choosing files: the system's file dialog, or where the system has none the console's own browser ----
+
+struct Picker {
+    char *chosen;     // the answer, until taken
+    bool folder;      // a folder is wanted, else a disc image (.cue)
+    bool browse;      // the system had no dialog: the console's browser
+    char start[1024]; // the folder it starts in
+};
+static Picker discPicker, originalPicker;
+static Picker *browsing;            // the picker the console's browser is open for
+static char browseDir[1024];
+static char **browseNames;          // its entries: disc images first, then folders (with a trailing /)
+static int browseCount;
+
+static void SDLCALL PickerAnswer(void *user, const char *const *files, int filter)
 {
-    (void)user;
+    Picker *picker = (Picker *)user;
+
     (void)filter;
-    if (files && files[0]) {
-        SDL_LockMutex(originalLock);
-        SDL_free(originalChosen);
-        originalChosen = SDL_strdup(files[0]);
-        SDL_UnlockMutex(originalLock);
+    SDL_LockMutex(pickLock);
+    if (!files) {
+        picker->browse = true; // no dialog on this system (or it failed): the console's browser instead
+    } else if (files[0]) {
+        SDL_free(picker->chosen);
+        picker->chosen = SDL_strdup(files[0]);
+    }
+    SDL_UnlockMutex(pickLock);
+}
+
+// The folder of a path (the path itself when it is a folder), for where a picker starts.
+static void StartFolder(const char *path, char *out, size_t size)
+{
+    SDL_PathInfo info;
+
+    if (path && path[0] && SDL_GetPathInfo(path, &info)) {
+        SDL_strlcpy(out, path, size);
+        if (info.type != SDL_PATHTYPE_DIRECTORY) {
+            char *slash = SDL_strrchr(out, '/');
+#ifdef _WIN32
+            char *back = SDL_strrchr(out, '\\');
+            if (back && (!slash || back > slash)) {
+                slash = back;
+            }
+#endif
+            if (slash) {
+                slash[1] = 0;
+            }
+        }
+        return;
+    }
+    const char *home = SDL_GetUserFolder(SDL_FOLDER_HOME);
+    SDL_strlcpy(out, home ? home : "/", size);
+}
+
+static void PickerOpen(Picker *picker, bool folder, const char *current)
+{
+    static const SDL_DialogFileFilter cue[] = {{"PlayStation disc image (.cue)", "cue"}};
+
+    picker->folder = folder;
+    StartFolder(current, picker->start, sizeof(picker->start));
+#ifdef __EMSCRIPTEN__
+    (void)cue;
+    picker->browse = true;
+#else
+    if (SDL_getenv("WIPEOUT_CONSOLE_BROWSER")) {
+        picker->browse = true; /* the console's browser, not the system's dialog */
+        return;
+    }
+    if (folder) {
+        SDL_ShowOpenFolderDialog(PickerAnswer, picker, window, picker->start, false);
+    } else {
+        SDL_ShowOpenFileDialog(PickerAnswer, picker, window, cue, 1, picker->start, false);
+    }
+#endif
+}
+
+// The picker's answer, once (SDL_free it), or nullptr.
+static char *PickerTake(Picker *picker)
+{
+    char *chosen;
+
+    SDL_LockMutex(pickLock);
+    chosen = picker->chosen;
+    picker->chosen = nullptr;
+    if (picker->browse && !browsing) {
+        picker->browse = false;
+        browsing = picker;
+        browseDir[0] = 0;
+    }
+    SDL_UnlockMutex(pickLock);
+    return chosen;
+}
+
+static int CompareNames(const void *a, const void *b)
+{
+    const char *x = *(const char *const *)a, *y = *(const char *const *)b;
+    bool xd = x[strlen(x) - 1] == '/', yd = y[strlen(y) - 1] == '/';
+
+    return xd != yd ? (xd ? 1 : -1) : SDL_strcasecmp(x, y); /* the disc images first, then the folders */
+}
+
+// One entry of the folder (not what is inside its folders): folders, and disc images unless a folder is wanted.
+static SDL_EnumerationResult SDLCALL BrowseEntry(void *user, const char *dir, const char *name)
+{
+    static int capacity;
+    char path[2048], named[1100];
+    SDL_PathInfo info;
+    size_t length = strlen(name);
+
+    (void)user;
+    if (name[0] == '.') {
+        return SDL_ENUM_CONTINUE;
+    }
+    SDL_snprintf(path, sizeof(path), "%s%s", dir, name);
+    if (!SDL_GetPathInfo(path, &info)) {
+        return SDL_ENUM_CONTINUE;
+    }
+    if (info.type == SDL_PATHTYPE_DIRECTORY) {
+        SDL_snprintf(named, sizeof(named), "%s/", name);
+    } else if (!browsing->folder && length > 4 && !SDL_strcasecmp(name + length - 4, ".cue")) {
+        SDL_strlcpy(named, name, sizeof(named));
+    } else {
+        return SDL_ENUM_CONTINUE;
+    }
+    if (browseCount == capacity || !browseNames) {
+        capacity = capacity ? capacity * 2 : 64;
+        browseNames = (char **)SDL_realloc(browseNames, (size_t)capacity * sizeof(char *));
+    }
+    browseNames[browseCount++] = SDL_strdup(named);
+    return SDL_ENUM_CONTINUE;
+}
+
+static void BrowseRead(const char *dir)
+{
+    int i;
+
+    for (i = 0; i < browseCount; i++) {
+        SDL_free(browseNames[i]);
+    }
+    browseCount = 0;
+    SDL_strlcpy(browseDir, dir, sizeof(browseDir));
+    SDL_EnumerateDirectory(dir, BrowseEntry, nullptr);
+    if (browseCount) {
+        SDL_qsort(browseNames, (size_t)browseCount, sizeof(char *), CompareNames);
     }
 }
+
+// The console's own browser: folders to go into, and the disc images (or, for a folder, "Choose this folder").
+static void Browser(void)
+{
+    char path[2048];
+    int i;
+
+    if (!browsing) {
+        return;
+    }
+    if (!browseDir[0]) {
+        SDL_strlcpy(path, browsing->start, sizeof(path));
+        size_t length = strlen(path);
+        while (length > 1 && (path[length - 1] == '/' || path[length - 1] == '\\')) {
+            path[--length] = 0;
+        }
+        BrowseRead(path);
+        ImGui::OpenPopup("Choose a file");
+    }
+    ImGui::SetNextWindowSize(ImVec2(ImGui::GetMainViewport()->WorkSize.x * 0.8f,
+                                    ImGui::GetMainViewport()->WorkSize.y * 0.8f), ImGuiCond_Appearing);
+    if (!ImGui::BeginPopupModal("Choose a file", nullptr, ImGuiWindowFlags_NoSavedSettings)) {
+        browsing = nullptr;
+        return;
+    }
+    ImGui::TextWrapped("%s", browseDir);
+    if (ImGui::Button("Up")) {
+        SDL_strlcpy(path, browseDir, sizeof(path));
+        char *slash = SDL_strrchr(path, '/');
+        if (slash && slash != path) {
+            *slash = 0;
+        } else {
+            SDL_strlcpy(path, "/", sizeof(path));
+        }
+        BrowseRead(path);
+    }
+    if (browsing->folder) {
+        ImGui::SameLine();
+        if (ImGui::Button("Choose this folder")) {
+            SDL_LockMutex(pickLock);
+            browsing->chosen = SDL_strdup(browseDir);
+            SDL_UnlockMutex(pickLock);
+            browsing = nullptr;
+            ImGui::CloseCurrentPopup();
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel")) {
+        browsing = nullptr;
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::BeginChild("##entries", ImVec2(0, 0), ImGuiChildFlags_Borders);
+    for (i = 0; browsing && i < browseCount; i++) {
+        const char *name = browseNames[i];
+        bool folder = name[strlen(name) - 1] == '/';
+
+        if (ImGui::Selectable(name)) {
+            SDL_snprintf(path, sizeof(path), "%s%s%s", browseDir, strcmp(browseDir, "/") ? "/" : "", name);
+            if (folder) {
+                path[strlen(path) - 1] = 0;
+                BrowseRead(path);
+                break;
+            }
+            SDL_LockMutex(pickLock);
+            browsing->chosen = SDL_strdup(path);
+            SDL_UnlockMutex(pickLock);
+            browsing = nullptr;
+            ImGui::CloseCurrentPopup();
+        }
+    }
+    ImGui::EndChild();
+    ImGui::EndPopup();
+}
+
+// ---- the Wipeout XL disc ----
+
+// Whether a disc image is Wipeout XL's (USA): its executable and data folder; message says what is wrong.
+static bool CheckDisc(const char *path, char *message, size_t size)
+{
+    char error[256];
+    int32_t lba;
+    uint32_t length;
+    Disc *disc = DiscOpen(path, error, sizeof(error));
+
+    if (!disc) {
+        SDL_snprintf(message, size, "%s", error);
+        return false;
+    }
+    bool ok = DiscFindFile(disc, "\\SCUS_943.51", &lba, &length) && DiscFindFile(disc, "\\WIPEOUT2\\COMMON", &lba, &length);
+    DiscClose(disc);
+    if (!ok) {
+        SDL_snprintf(message, size, "That is not Wipeout XL (USA): its SCUS_943.51 and WIPEOUT2 folder are not on it.");
+    }
+    return ok;
+}
+
+static void UseDisc(const char *path)
+{
+    SDL_strlcpy(discEdit, path, sizeof(discEdit));
+    if (CheckDisc(path, discMessage, sizeof(discMessage))) {
+        SDL_strlcpy(portSettings.discPath, path, sizeof(portSettings.discPath));
+        Changed();
+        discMessage[0] = 0;
+    }
+}
+
+static void XlDisc(void)
+{
+    static bool tested;
+    char *chosen;
+
+    if (!tested && SDL_getenv("WIPEOUT_TEST_BROWSE")) {
+        PickerOpen(&discPicker, false, discEdit); /* tests: the picker, at once */
+    }
+    if (!tested && SDL_getenv("WIPEOUT_TEST_RESTART")) {
+        /* tests: this disc, and the game again with it */
+        char path[1024];
+
+        SDL_strlcpy(path, SDL_getenv("WIPEOUT_TEST_RESTART"), sizeof(path));
+        SDL_UnsetEnvironmentVariable(SDL_GetEnvironment(), "WIPEOUT_TEST_RESTART");
+        UseDisc(path);
+        PortRestart(path);
+    }
+    tested = true;
+    chosen = PickerTake(&discPicker);
+
+    if (chosen) {
+        UseDisc(chosen);
+        SDL_free(chosen);
+    }
+    ImGui::TextUnformatted("Wipeout XL disc image (PlayStation)");
+    ImGui::TextWrapped("In use: %s", portConfig.discPath ? portConfig.discPath : "");
+    if (ImGui::Button("Browse...##disc")) {
+        PickerOpen(&discPicker, false, discEdit);
+    }
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(-ImGui::CalcTextSize("Use this").x - ImGui::GetStyle().ItemSpacing.x -
+                            ImGui::GetStyle().FramePadding.x * 2);
+    ImGui::InputText("##disc", discEdit, sizeof(discEdit));
+    ImGui::SameLine();
+    if (ImGui::Button("Use this##disc")) {
+        UseDisc(discEdit);
+    }
+    if (discMessage[0]) {
+        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.4f, 1.0f), "%s", discMessage);
+    }
+    if (portSettings.discPath[0] && portConfig.discPath && strcmp(portSettings.discPath, portConfig.discPath) != 0) {
+        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "The game starts with %s from now on.",
+                           portSettings.discPath);
+        if (ImGui::Button("Restart with it now")) {
+            if (!PortRestart(portSettings.discPath)) {
+                SDL_snprintf(discMessage, sizeof(discMessage), "The game could not be started again: %s", SDL_GetError());
+            }
+        }
+    }
+}
+
+// The original Wipeout's tracks (platform/original.c): the player's copy of the original, raced from the RACING
+// CLASS menu's WIPEOUT line.
 
 static void UseOriginal(const char *path)
 {
@@ -579,12 +875,8 @@ static void UseOriginal(const char *path)
 
 static void OriginalWipeout(void)
 {
-    char *chosen;
+    char *chosen = PickerTake(&originalPicker);
 
-    SDL_LockMutex(originalLock);
-    chosen = originalChosen;
-    originalChosen = nullptr;
-    SDL_UnlockMutex(originalLock);
     if (chosen) {
         UseOriginal(chosen);
         SDL_free(chosen);
@@ -606,13 +898,12 @@ static void OriginalWipeout(void)
         ImGui::TextWrapped("%s", originalMessage);
     }
 #ifndef __EMSCRIPTEN__
-    static const SDL_DialogFileFilter cue[] = {{"PlayStation disc image (.cue)", "cue"}};
-    if (ImGui::Button("Choose its disc image...")) {
-        SDL_ShowOpenFileDialog(OriginalChosen, nullptr, window, cue, 1, nullptr, false);
+    if (ImGui::Button("Browse for its disc image...")) {
+        PickerOpen(&originalPicker, false, originalEdit);
     }
     ImGui::SameLine();
-    if (ImGui::Button("Choose its data folder...")) {
-        SDL_ShowOpenFolderDialog(OriginalChosen, nullptr, window, nullptr, false);
+    if (ImGui::Button("... or its data folder")) {
+        PickerOpen(&originalPicker, true, originalEdit);
     }
     ImGui::SameLine();
 #endif
@@ -737,6 +1028,11 @@ static void Console(void)
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Files", nullptr, FirstTab("files"))) {
+#ifndef __EMSCRIPTEN__
+            XlDisc(); /* (the web page chooses the disc) */
+            ImGui::Separator();
+#endif
+            Browser(); /* (a picker's, where the system has no file dialog) */
             ImGui::TextUnformatted("Settings file");
             ImGui::TextWrapped("%s", PortSettingsPath());
             if (ImGui::Button("Show settings folder")) {

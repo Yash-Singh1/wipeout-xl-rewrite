@@ -135,6 +135,9 @@ int PortSettingsSave(void)
 {
     FILE *file;
 
+    if (portConfig.hidden) {
+        return 0; /* the tests' hidden runs neither read the player's file nor write it */
+    }
     if (!path[0] || !(file = fopen(path, "w"))) {
         return 0;
     }

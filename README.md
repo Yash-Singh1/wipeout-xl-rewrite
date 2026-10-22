@@ -58,7 +58,10 @@ build/wipeoutxl --disc "path/to/Wipeout XL (USA).cue"
 ```
 
 Started without `--disc` (from the desktop, say), the game opens the disc
-chosen last time, or asks for the `.cue` with a file dialog.
+chosen last time, or asks for the `.cue` with a file dialog. The debug console's
+Files tab changes it: Browse... (the system's file picker; where the system has
+none, the console's own) or a typed path, then "Restart with it now"; the game
+starts with that disc from then on.
 
 In the browser, the page asks for the disc: choose or drop the `.cue` together
 with all its `.bin` tracks. They are read into the page's memory (about 750 MB,

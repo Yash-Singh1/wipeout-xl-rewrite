@@ -227,6 +227,35 @@ int main(int argc, char **argv)
     return 0;
 }
 
+/* The debug console's choice of disc: the game starts again with it (a running game cannot change discs), in a
+   window of the same size. Returns only when the new game could not be started. */
+int PortRestart(const char *discPath)
+{
+    const char *args[8];
+    char window[32];
+    int n = 0, width, height;
+    SDL_Process *process;
+
+    PortWindowSize(&width, &height);
+    SDL_snprintf(window, sizeof(window), "%dx%d", width, height);
+    args[n++] = portConfig.executable;
+    args[n++] = "--disc";
+    args[n++] = discPath;
+    args[n++] = "--window";
+    args[n++] = window;
+    if (PortWindowFullscreen()) {
+        args[n++] = "--fullscreen";
+    }
+    args[n] = NULL;
+    process = SDL_CreateProcess(args, false);
+    if (!process) {
+        fprintf(stderr, "restart: %s\n", SDL_GetError());
+        return 0;
+    }
+    SDL_DestroyProcess(process); /* (the object only: the new game goes on) */
+    exit(0);
+}
+
 int PortFarViewEnabled(void)
 {
     static int mode = -1; /* 2: forced on (tests), 0: off while tracing, 1: the setting */
