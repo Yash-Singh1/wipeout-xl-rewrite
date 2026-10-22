@@ -88,6 +88,7 @@ static int lastDevice = DEVICE_KEYBOARD; /* the device the player used last */
 static int lastSlot = -1;                /* ... its slot, when it is a gamepad */
 static int firstDevice = DEVICE_NONE, secondDevice = DEVICE_NONE;
 static PadState keyboardState, gamepadState[GAMEPADS];
+static uint16_t (*touchSource)(PadContext context); /* the touch controls (PsxPadSetTouchSource) */
 
 static void Route(void);
 static PadDevice gamepad_device(SDL_Gamepad *g);
@@ -115,6 +116,9 @@ static void update_keyboard(void)
         if (keyDown[i] && !keyHeldOver[i]) {
             st.buttons |= key_buttons(i, keyContext);
         }
+    }
+    if (touchSource) {
+        st.buttons |= touchSource(keyContext);
     }
     if (PsxPadGetType(0) == PAD_NEGCON) {
         /* NeGcon: S is button I (thrust), Space button II (fire), A the left shoulder (analogue
@@ -327,6 +331,18 @@ static void ReceiveSecondPlayer(void)
     }
     update_keyboard();
     PsxPadSetSource(0, PAD_SRC_GAMEPAD, input.keyboard ? &idle : &input.pad, !input.keyboard);
+}
+
+void PsxPadSetTouchSource(uint16_t (*buttons)(PadContext context))
+{
+    touchSource = buttons;
+}
+
+void PsxPadTouchChanged(void)
+{
+    if (PortLinkRole() != LINK_SLAVE) {
+        update_keyboard();
+    }
 }
 
 int PortInputLastDevice(void)

@@ -65,6 +65,11 @@ typedef enum {
 void PsxPadNoteDevice(PadDevice device);
 PadDevice PsxPadLastDevice(void);
 
+/* Touch controls (platform/touch.cpp): the buttons the fingers hold in a context, pressed with the keyboard's
+   (pad_sdl.c asks each time the keyboard's buttons are worked out); PsxPadTouchChanged when they changed. */
+void PsxPadSetTouchSource(uint16_t (*buttons)(PadContext context));
+void PsxPadTouchChanged(void);
+
 /* Parses a script (see pad.c) from memory; returns false on a syntax error (message in error). */
 bool PsxPadLoadScript(const char *text, char *error, int errorSize);
 

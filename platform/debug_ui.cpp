@@ -3,7 +3,7 @@
 // distance and its fade, the frame rate, widescreen, the intro movie, full screen, and where the settings and the
 // memory cards live. Not in the tests' hidden runs.
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_opengl.h>
+#include "port_gl.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -15,6 +15,8 @@
 extern "C" {
 #include "debug_ui.h"
 #include "discimage.h"
+#include "mobile.h"
+#include "touch.h"
 #include "hdtex.h"
 #include "region.h"
 #include "music.h"
@@ -128,6 +130,11 @@ extern "C" void DebugUiTab(void)
 extern "C" int DebugUiOpen(void)
 {
     return ready && open;
+}
+
+extern "C" void DebugUiSetOpen(int on)
+{
+    open = ready && on;
 }
 
 extern "C" int DebugUiEvent(const SDL_Event *event)
@@ -644,7 +651,13 @@ static void FitToWindow(void)
     if (w <= 0 || h <= 0) {
         return;
     }
+#ifdef PORT_MOBILE
+    /* a phone: never smaller than the screen's own scale (Android sizes its window in pixels), and it scrolls */
+    ui = SDL_max(SDL_min(w * 0.92f / 720.0f, h * 0.9f / 560.0f), SDL_GetDisplayContentScale(SDL_GetDisplayForWindow(window)));
+    ui = SDL_clamp(ui, 1.0f, 6.0f);
+#else
     ui = SDL_clamp(SDL_min(w * 0.92f / 720.0f, h * 0.9f / 560.0f), 0.6f, 3.0f);
+#endif
     if (SDL_fabsf(ui - applied) < 0.01f) {
         return;
     }
@@ -708,7 +721,7 @@ static void StartFolder(const char *path, char *out, size_t size)
         }
         return;
     }
-    const char *home = SDL_GetUserFolder(SDL_FOLDER_HOME);
+    const char *home = PortImportFolder() ? PortImportFolder() : SDL_GetUserFolder(SDL_FOLDER_HOME);
     SDL_strlcpy(out, home ? home : "/", size);
 }
 
@@ -723,7 +736,7 @@ static void PickerOpen(Picker *picker, bool folder, const char *current)
 
     picker->folder = folder;
     StartFolder(current, picker->start, sizeof(picker->start));
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(SDL_PLATFORM_IOS) /* (no file dialog: the console's own browser) */
     (void)cue;
     (void)zip;
     (void)n64;
@@ -911,6 +924,55 @@ static void Browser(void)
     ImGui::EndPopup();
 }
 
+// ---- touch controls (touch.cpp) ----
+
+// Help text in the disabled colour, wrapped to the window.
+static void DisabledWrapped(const char *text)
+{
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+    ImGui::TextWrapped("%s", text);
+    ImGui::PopStyleColor();
+}
+
+static void TouchControls(void)
+{
+    static const char *const modes[] = {"Automatic", "On", "Off"};
+    int mode = SDL_clamp(portSettings.touchControls, 0, 2);
+    int size = portSettings.touchSize > 0 ? portSettings.touchSize : 100;
+    int opacity = portSettings.touchOpacity > 0 ? portSettings.touchOpacity : 60;
+
+    ImGui::TextUnformatted("Touch controls");
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10);
+    if (ImGui::Combo("##touch", &mode, modes, IM_ARRAYSIZE(modes))) {
+        portSettings.touchControls = mode;
+        Changed();
+    }
+#ifdef PORT_MOBILE
+    DisabledWrapped("Automatic: shown until a gamepad or keyboard is used, and again at the next touch.");
+#else
+    DisabledWrapped("Automatic: shown once the screen is touched, until a key or gamepad is used. While they are "
+                        "shown the mouse works them too.");
+#endif
+    DisabledWrapped("Left: a stick wherever the thumb lands (steering, the menus' cursor). Right: thrust, fire, the "
+                        "air brakes, drop and view in a race, the four buttons in the menus. Top: pause, and this console.");
+    ImGui::BeginDisabled(mode == TOUCH_OFF);
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 14);
+    if (ImGui::SliderInt("Size##touch", &size, 50, 200, "%d%%")) {
+        portSettings.touchSize = size;
+    }
+    if (ImGui::IsItemDeactivatedAfterEdit()) {
+        Changed();
+    }
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 14);
+    if (ImGui::SliderInt("Opacity##touch", &opacity, 10, 100, "%d%%")) {
+        portSettings.touchOpacity = opacity;
+    }
+    if (ImGui::IsItemDeactivatedAfterEdit()) {
+        Changed();
+    }
+    ImGui::EndDisabled();
+}
+
 // ---- the Wipeout XL disc ----
 
 // Whether a disc image is Wipeout XL's (USA) or WipEout 2097's (Europe, the same game, region.c): its program and
@@ -946,6 +1008,14 @@ static int unpackFor;
 
 static int SDLCALL Unpack(void *)
 {
+    char local[1024];
+
+    // (Android's picker: a document, copied into the game's folder first; the copy is the disc from then on)
+    if (!PortImportFile(unpackArchive, local, sizeof(local), unpackMessage, sizeof(unpackMessage))) {
+        SDL_SetAtomicInt(&unpacked, 2);
+        return 0;
+    }
+    SDL_strlcpy(unpackArchive, local, sizeof(unpackArchive));
     SDL_SetAtomicInt(&unpacked, PortDiscImage(unpackArchive, unpackCue, sizeof(unpackCue), unpackMessage,
                                               sizeof(unpackMessage)) ? 1 : 2);
     return 0;
@@ -954,7 +1024,7 @@ static int SDLCALL Unpack(void *)
 // Starts unpacking an archive (unless one is being unpacked); whether it is one.
 static bool StartUnpack(const char *path, int what, char *message)
 {
-    if (!PortIsArchive(path)) {
+    if (!PortIsArchive(path) && SDL_strncmp(path, "content://", 10)) {
         return false;
     }
     if (!unpacking) {
@@ -1072,11 +1142,15 @@ static void XlDisc(void)
     if (portSettings.discPath[0] && portConfig.discGiven && strcmp(portSettings.discPath, portConfig.discGiven) != 0) {
         ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "The game starts with %s from now on.",
                            portSettings.discPath);
+#ifdef PORT_MOBILE
+        ImGui::TextWrapped("Close the game and open it again to play it."); /* (an app cannot start itself again) */
+#else
         if (ImGui::Button("Restart with it now")) {
             if (!PortRestart(portSettings.discPath)) {
                 SDL_snprintf(discMessage, sizeof(discMessage), "The game could not be started again: %s", SDL_GetError());
             }
         }
+#endif
     }
 }
 
@@ -1598,6 +1672,8 @@ static void Console(void)
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Game", nullptr, FirstTab("game"))) {
+            TouchControls();
+            ImGui::Separator();
             bool skip = portSettings.skipIntro != 0;
             if (ImGui::Checkbox("Skip the intro movie at start-up", &skip)) {
                 portSettings.skipIntro = skip;
@@ -1679,13 +1755,41 @@ static void Console(void)
     ImGui::End();
 }
 
+extern "C" void DebugUiSplash(const char *text, float fraction)
+{
+    if (!ready) {
+        return;
+    }
+    int width, height;
+    SDL_GetWindowSizeInPixels(window, &width, &height);
+    FitToWindow();
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplSDL3_NewFrame();
+    ImGui::NewFrame();
+    const ImGuiViewport *view = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(ImVec2(view->Pos.x + view->Size.x / 2, view->Pos.y + view->Size.y / 2), ImGuiCond_Always,
+                            ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(view->Size.x * 0.7f, 0), ImGuiCond_Always);
+    ImGui::Begin("##splash", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                                          ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBackground);
+    ImGui::TextWrapped("%s", text);
+    if (fraction >= 0) {
+        ImGui::ProgressBar(SDL_clamp(fraction, 0.0f, 1.0f), ImVec2(-1, 0));
+    }
+    ImGui::End();
+    ImGui::Render();
+    GpuClearWindow(0.0f, 0.0f, 0.18f);
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    SDL_GL_SwapWindow(window);
+}
+
 extern "C" void DebugUiRender(void)
 {
     if (!ready) {
         return;
     }
     Rates();
-    if (!open && !portSettings.showFps && !RecorderNoteWanted()) {
+    if (!open && !portSettings.showFps && !RecorderNoteWanted() && !TouchShown()) {
         return;
     }
     int width, height;
@@ -1703,6 +1807,7 @@ extern "C" void DebugUiRender(void)
     if (open) {
         Console();
     }
+    TouchDraw();
     ImGui::Render();
     glViewport(0, 0, width, height);
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

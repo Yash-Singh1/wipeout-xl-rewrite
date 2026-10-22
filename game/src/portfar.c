@@ -1,5 +1,6 @@
 /* Port: the whole track in view (see portfar.h). */
 #include <math.h>
+#include <stdlib.h>
 
 #include "functions.h"
 #include "portfar.h"

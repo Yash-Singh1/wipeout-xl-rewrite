@@ -1,6 +1,6 @@
 /* The window, its OpenGL context and the event pump. */
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_opengl.h>
+#include "port_gl.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -10,6 +10,7 @@
 #include "platform.h"
 #include "psx/gpu.h"
 #include "psx/psx_io.h"
+#include "touch.h"
 
 static SDL_Window *window;
 static SDL_GLContext context;
@@ -60,9 +61,13 @@ int PortVideoInit(void)
     } else if (portConfig.fullscreen) {
         flags |= SDL_WINDOW_FULLSCREEN;
     }
+#if defined(__EMSCRIPTEN__) || defined(PORT_MOBILE)
 #ifdef __EMSCRIPTEN__
     flags |= SDL_WINDOW_FILL_DOCUMENT; /* the web: the whole page, following the browser window's size */
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3); /* WebGL 2 */
+#else
+    flags |= SDL_WINDOW_FULLSCREEN; /* a phone or tablet: the whole screen */
+#endif
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3); /* WebGL 2, OpenGL ES 3 */
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
 #else
@@ -72,6 +77,9 @@ int PortVideoInit(void)
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
 #endif
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+#ifdef PORT_MOBILE
+    SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight"); /* (the game is wide, whichever way up) */
+#endif
     window = SDL_CreateWindow("Wipeout XL", portConfig.windowWidth, portConfig.windowHeight, flags);
     if (!window) {
         SDL_Log("window: %s", SDL_GetError());
@@ -83,11 +91,21 @@ int PortVideoInit(void)
         return 0;
     }
     SDL_GL_MakeCurrent(window, context);
+#ifdef SDL_PLATFORM_IOS
+    GpuSetWindowFramebuffer((unsigned int)SDL_GetNumberProperty(SDL_GetWindowProperties(window),
+                                                                SDL_PROP_WINDOW_UIKIT_OPENGL_FRAMEBUFFER_NUMBER, 0));
+#endif
+    TouchInit(window);
     if (!portConfig.hidden || SDL_getenv("WIPEOUT_DEBUG_UI")) {
         DebugUiInit(window, context); /* WIPEOUT_DEBUG_UI: also in a hidden test run */
     }
     PortSwapInterval(1);
     return GpuInit();
+}
+
+SDL_Window *PortWindow(void)
+{
+    return window;
 }
 
 /* The game paces itself to the console's field rate (libetc.c). On screen each picture also waits for the
@@ -274,10 +292,14 @@ int PortPumpEvents(void)
         if (DebugUiEvent(&event)) {
             continue; /* the debug console's (the ~ key) */
         }
+        if (TouchEvent(&event)) {
+            continue; /* the touch controls' */
+        }
         if (portConfig.hidden && (event.type == SDL_EVENT_WINDOW_FOCUS_LOST || event.type == SDL_EVENT_WINDOW_FOCUS_GAINED)) {
             scriptedFocus = event.type == SDL_EVENT_WINDOW_FOCUS_GAINED;
         }
         PsxInputEvent(&event);
     }
+    TouchUpdate();
     return 1;
 }

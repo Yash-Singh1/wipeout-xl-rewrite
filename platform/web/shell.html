@@ -11,12 +11,14 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Wipeout XL</title>
 <style>
   html, body { margin: 0; height: 100%; background: #000; color: #ddd; overflow: hidden;
                font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  #canvas { display: block; outline: none; }  /* SDL sizes it to the page (SDL_WINDOW_FILL_DOCUMENT) */
+  #canvas { display: block; outline: none;  /* SDL sizes it to the page (SDL_WINDOW_FILL_DOCUMENT) */
+            touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+            /* (the touch controls: a finger on the game neither scrolls nor zooms the page) */
   #start { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
            background: radial-gradient(circle at 50% 35%, #1b2340, #000 70%); }
   #panel { width: min(560px, 90vw); padding: 28px 32px; border: 1px solid #3a4670; border-radius: 10px;

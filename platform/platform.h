@@ -2,7 +2,13 @@
 #ifndef PORT_PLATFORM_H
 #define PORT_PLATFORM_H
 
+#include <SDL3/SDL_platform_defines.h>
 #include <stdint.h>
+
+/* Phones and tablets (iOS, Android): one window filling the screen, touch controls, no second program. */
+#if defined(SDL_PLATFORM_IOS) || defined(SDL_PLATFORM_ANDROID)
+#define PORT_MOBILE 1
+#endif
 
 typedef struct PortConfig {
     const char *discPath;    /* the PS1 disc image's .cue */
@@ -22,14 +28,15 @@ typedef struct PortConfig {
 } PortConfig;
 extern PortConfig portConfig;
 
-/* video.c: the window and its OpenGL, 3.3 core on the desktop and OpenGL ES 3 (WebGL 2) on the web; every
-   shader begins with this line */
-#ifdef __EMSCRIPTEN__
+/* video.c: the window and its OpenGL, 3.3 core on the desktop and OpenGL ES 3 on the web (WebGL 2), iOS and
+   Android; every shader begins with this line */
+#if defined(__EMSCRIPTEN__) || defined(PORT_MOBILE)
 #define PORT_GLSL_VERSION "#version 300 es\n"
 #else
 #define PORT_GLSL_VERSION "#version 330 core\n"
 #endif
 int PortVideoInit(void);
+struct SDL_Window *PortWindow(void); /* the game's window (for dialogs over it) */
 void PortVideoShutdown(void);
 void PortVideoPresent(void);
 void PortVideoBetweenFrames(void); /* before a picture between the game's frames (the web paces them) */

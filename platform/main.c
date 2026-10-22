@@ -9,8 +9,10 @@
 #include "platform.h"
 #include "psx/gte.h"
 #include "psx/psx_io.h"
+#include "debug_ui.h"
 #include "discimage.h"
 #include "link.h"
+#include "mobile.h"
 #include "music.h"
 #include "settings.h"
 #include "trace.h"
@@ -83,6 +85,162 @@ static const char *ChooseDisc(void)
     return chosenDisc;
 #endif
 }
+
+/* ---- the disc image before the game: unpacked or copied in on a thread of its own ---- */
+
+typedef struct DiscJob {
+    const char *path;
+    char result[1200]; /* the .cue, or the copy */
+    char message[512];
+    int ok;
+    SDL_AtomicInt done;
+} DiscJob;
+
+static int SDLCALL ImageJob(void *data)
+{
+    DiscJob *job = data;
+
+    job->ok = PortDiscImage(job->path, job->result, sizeof(job->result), job->message, sizeof(job->message));
+    SDL_SetAtomicInt(&job->done, 1);
+    return 0;
+}
+
+/* Runs a job on a thread of its own while the window says what is going on and how far it is (thousandths). */
+static void RunShowing(SDL_ThreadFunction run, DiscJob *job, const char *text, int (*progress)(void))
+{
+    SDL_Thread *thread = SDL_CreateThread(run, "disc", job);
+    SDL_Event event;
+
+    if (!thread) {
+        run(job);
+        return;
+    }
+    while (!SDL_GetAtomicInt(&job->done)) {
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_EVENT_QUIT) {
+                exit(0);
+            }
+        }
+        DebugUiSplash(text, progress() / 1000.0f);
+        SDL_Delay(50);
+    }
+    SDL_WaitThread(thread, NULL);
+}
+
+#ifdef PORT_MOBILE
+/* A phone or tablet: the disc chosen before, else a disc image in the app's folder (mobile.c). Without one the
+   player is told where to put it (Android: or picks it, and it is copied in), and the folder is looked at again. */
+static int SDLCALL ImportJob(void *data)
+{
+    DiscJob *job = data;
+
+    job->ok = PortImportFile(job->path, job->result, sizeof(job->result), job->message, sizeof(job->message));
+    SDL_SetAtomicInt(&job->done, 1);
+    return 0;
+}
+
+static char **picked;
+static int pickedCount;
+static SDL_AtomicInt pickDone;
+
+static void SDLCALL Picked(void *user, const char *const *files, int filter)
+{
+    (void)user;
+    (void)filter;
+    for (; files && *files; files++) {
+        picked = SDL_realloc(picked, (size_t)(pickedCount + 1) * sizeof(char *));
+        picked[pickedCount++] = SDL_strdup(*files);
+    }
+    SDL_SetAtomicInt(&pickDone, 1);
+}
+
+/* Android: the system's picker; the files chosen are copied into the app's folder. */
+static void PickAndCopy(void)
+{
+    SDL_Event event;
+    int i;
+
+    SDL_SetAtomicInt(&pickDone, 0);
+    SDL_ShowOpenFileDialog(Picked, NULL, PortWindow(), NULL, 0, NULL, true);
+    while (!SDL_GetAtomicInt(&pickDone)) {
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_EVENT_QUIT) {
+                exit(0);
+            }
+        }
+        DebugUiSplash("Choose the disc image: its .cue together with its .bin files, or a .zip or .7z of them.", -1);
+        SDL_Delay(50);
+    }
+    for (i = 0; i < pickedCount; i++) {
+        static DiscJob job;
+        char text[300];
+
+        memset(&job, 0, sizeof(job));
+        job.path = picked[i];
+        SDL_snprintf(text, sizeof(text), "Copying the disc image into the game's folder (%d of %d)...", i + 1, pickedCount);
+        RunShowing(ImportJob, &job, text, PortImportProgress);
+        if (!job.ok) {
+            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Wipeout XL", job.message, PortWindow());
+        }
+        SDL_free(picked[i]);
+    }
+    SDL_free(picked);
+    picked = NULL;
+    pickedCount = 0;
+}
+
+static const char *MobileDisc(void)
+{
+    static char found[1024];
+    char text[1200];
+    SDL_PathInfo info;
+
+    for (;;) {
+        const SDL_MessageBoxButtonData buttons[] = {
+            {SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 1, "Look again"},
+#ifdef SDL_PLATFORM_ANDROID
+            {0, 2, "Choose files..."},
+#endif
+            {SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, 0, "Quit"}};
+        SDL_MessageBoxData box;
+        int button = 0;
+
+        if (portSettings.discPath[0] && SDL_GetPathInfo(portSettings.discPath, &info)) {
+            return portSettings.discPath;
+        }
+        if (PortFindDisc(found, sizeof(found))) {
+            SDL_strlcpy(portSettings.discPath, found, sizeof(portSettings.discPath));
+            PortSettingsSave();
+            return found;
+        }
+#ifdef SDL_PLATFORM_IOS
+        SDL_snprintf(text, sizeof(text),
+                     "Wipeout XL needs your copy of the PlayStation disc: Wipeout XL (USA) or WipEout 2097 (Europe).\n\n"
+                     "In the Files app, put its .cue and .bin files (or a .zip or .7z of them) in On My iPhone (or iPad) "
+                     "> Wipeout XL, then tap Look again.");
+#else
+        SDL_snprintf(text, sizeof(text),
+                     "Wipeout XL needs your copy of the PlayStation disc: Wipeout XL (USA) or WipEout 2097 (Europe).\n\n"
+                     "Choose its .cue together with its .bin files (or a .zip or .7z of them) on this device, or copy them "
+                     "from a computer into %s, then tap Look again.", PortImportFolder() ? PortImportFolder() : "the app's folder");
+#endif
+        DebugUiSplash("", -1);
+        SDL_zero(box);
+        box.flags = SDL_MESSAGEBOX_INFORMATION;
+        box.window = PortWindow();
+        box.title = "Wipeout XL";
+        box.message = text;
+        box.numbuttons = (int)SDL_arraysize(buttons);
+        box.buttons = buttons;
+        if (!SDL_ShowMessageBox(&box, &button) || button == 0) {
+            return NULL;
+        }
+        if (button == 2) {
+            PickAndCopy();
+        }
+    }
+}
+#endif
 
 int main(int argc, char **argv)
 {
@@ -176,27 +334,40 @@ int main(int argc, char **argv)
         SDL_Log("SDL: %s", SDL_GetError());
         return 1;
     }
+#ifndef PORT_MOBILE
     if (!portConfig.discPath && !(portConfig.discPath = ChooseDisc())) {
         Usage();
         return 1;
     }
+#endif
     if (!PortVideoInit()) {
         return 1;
     }
+#ifdef PORT_MOBILE
+    if (!portConfig.discPath && !(portConfig.discPath = MobileDisc())) {
+        return 1;
+    }
+#endif
     {
-        /* the image's .cue: an archive's unpacked the first time, a .bin's made for it (discimage.c) */
-        static char cue[1200];
-        char message[512];
+        /* the image's .cue: an archive's unpacked the first time (the window showing how far), a .bin's made for
+           it (discimage.c) */
+        static DiscJob image;
 
-        if (!PortDiscImage(portConfig.discPath, cue, sizeof(cue), message, sizeof(message))) {
-            SDL_Log("%s", message);
+        image.path = portConfig.discPath;
+        if (PortIsArchive(image.path) && !portConfig.hidden) {
+            RunShowing(ImageJob, &image, "Unpacking the disc image (only this once)...", PortArchiveProgress);
+        } else {
+            ImageJob(&image);
+        }
+        if (!image.ok) {
+            SDL_Log("%s", image.message);
             if (!portConfig.hidden) {
-                SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Wipeout XL", message, NULL);
+                SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Wipeout XL", image.message, NULL);
             }
             return 1;
         }
         portConfig.discGiven = portConfig.discPath;
-        portConfig.discPath = cue;
+        portConfig.discPath = image.result;
     }
     {
         PsxIoConfig io;

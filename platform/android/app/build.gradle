@@ -1,0 +1,80 @@
+// The app: SDL's activity (its Java, from SDL's source) around libmain.so, the game built by the repository's
+// CMakeLists.txt with the NDK. SDL's source is downloaded once (the release CMakeLists.txt builds) into
+// build/sdl and given to CMake too, so the Java and the library are the same SDL.
+plugins {
+    id 'com.android.application'
+}
+
+def sdlVersion = "3.4.18"
+def sdlUrl = "https://github.com/libsdl-org/SDL/releases/download/release-${sdlVersion}/SDL3-${sdlVersion}.tar.gz"
+def sdlSha256 = "9c75cf16330322c217dedd2e0609f1124f1b54b8633e763467b4684d0f4334a3"
+def sdlDir = file("${rootProject.projectDir}/build/sdl/SDL3-${sdlVersion}")
+
+tasks.register('fetchSdl') {
+    outputs.dir sdlDir
+    doLast {
+        if (new File(sdlDir, "android-project").exists()) {
+            return
+        }
+        def archive = file("${rootProject.projectDir}/build/sdl/SDL3-${sdlVersion}.tar.gz")
+        archive.parentFile.mkdirs()
+        if (!archive.exists()) {
+            new URL(sdlUrl).withInputStream { input -> archive.withOutputStream { it << input } }
+        }
+        def digest = java.security.MessageDigest.getInstance("SHA-256").digest(archive.bytes).encodeHex().toString()
+        if (digest != sdlSha256) {
+            archive.delete()
+            throw new GradleException("SDL ${sdlVersion}: the download's SHA-256 is ${digest}, not ${sdlSha256}")
+        }
+        copy {
+            from tarTree(resources.gzip(archive))
+            into sdlDir.parentFile
+        }
+    }
+}
+// (at configuration: the Java sources and CMake's SDL must be there before either is looked at)
+if (!new File(sdlDir, "android-project").exists()) {
+    tasks.named('fetchSdl').get().actions.each { it.execute(tasks.named('fetchSdl').get()) }
+}
+
+android {
+    namespace = "com.example.wipeoutxl"
+    compileSdk = 35
+    ndkVersion = "28.2.13676358"
+
+    defaultConfig {
+        applicationId = "com.example.wipeoutxl"
+        minSdk = 24
+        targetSdk = 35
+        versionCode = 1
+        versionName = "1.0"
+        externalNativeBuild {
+            cmake {
+                arguments "-DANDROID_STL=c++_static", "-DFETCHCONTENT_SOURCE_DIR_SDL3=${sdlDir}",
+                          "-DCMAKE_BUILD_TYPE=Release"
+                targets "wipeoutxl"
+            }
+        }
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled = false
+            signingConfig = signingConfigs.debug // (sign it with your own key to publish it)
+        }
+    }
+    sourceSets.main {
+        java.srcDirs += "${sdlDir}/android-project/app/src/main/java"
+    }
+    externalNativeBuild {
+        cmake {
+            path = file("../../../CMakeLists.txt")
+            buildStagingDirectory = file("${rootProject.projectDir}/build/cxx")
+        }
+    }
+    lint {
+        abortOnError = false
+    }
+}

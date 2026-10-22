@@ -25,11 +25,11 @@
 #include "link.h"
 #include "platform.h"
 
-#ifdef __EMSCRIPTEN__
-/* The web: a page runs one copy of the game and SDL has no processes there, so the second player's game
-   never starts (PortLinkStartSlave fails as when the program cannot be run) and the two-player modes find no
-   partner. */
-#define SDL_CreateProcess(args, pipeStdio) (SDL_SetError("the web has no second program"), (SDL_Process *)NULL)
+#if defined(__EMSCRIPTEN__) || defined(PORT_MOBILE)
+/* The web, a phone or a tablet: a page or an app runs one copy of the game and starts no other program, so the
+   second player's game never starts (PortLinkStartSlave fails as when the program cannot be run) and the
+   two-player modes find no partner. */
+#define SDL_CreateProcess(args, pipeStdio) (SDL_SetError("no second program here"), (SDL_Process *)NULL)
 #define SDL_WaitProcess(process, block, exitCode) true
 #define SDL_KillProcess(process, force) true
 #define SDL_DestroyProcess(process) ((void)(process))
@@ -86,6 +86,12 @@ static LinkShared *MapShared(int create)
         return NULL;
     }
     memory = MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, size);
+#elif defined(SDL_PLATFORM_ANDROID)
+    /* (no named shared memory, and no other program to share it with: the game's own) */
+    memory = create ? mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0) : MAP_FAILED;
+    if (memory == MAP_FAILED) {
+        memory = NULL;
+    }
 #else
     int fd = shm_open(name, create ? (O_CREAT | O_EXCL | O_RDWR) : O_RDWR, 0600);
 
@@ -120,9 +126,11 @@ static void UnmapShared(void)
     CloseHandle(mapping);
 #else
     munmap(shared, sizeof(LinkShared));
+#ifndef SDL_PLATFORM_ANDROID
     if (role == LINK_MASTER) {
         shm_unlink(name);
     }
+#endif
 #endif
     shared = NULL;
 }

@@ -1,7 +1,7 @@
 /* The player's settings (settings.c): a small INI file in the user's data folder, changed from the
    debug console (debug_ui.cpp, the ~ key). Environment variables still override them for a
    run (WIPEOUT_FAR_VIEW, WIPEOUT_FADE, WIPEOUT_WIDESCREEN, WIPEOUT_FRAME_RATE, WIPEOUT_SAVE_DIR, WIPEOUT_RENDER_SCALE,
-   WIPEOUT_HD_PACK, WIPEOUT_MUSIC); the tests' hidden runs ignore the file. */
+   WIPEOUT_HD_PACK, WIPEOUT_MUSIC, WIPEOUT_TOUCH); the tests' hidden runs ignore the file. */
 #ifndef PORT_SETTINGS_H
 #define PORT_SETTINGS_H
 
@@ -32,6 +32,9 @@ typedef struct PortSettings {
     int renderScale;      /* the framebuffer's pixels per console pixel; 0: as many as the window shows (gpu_gl.c) */
     int hdTextures;       /* the HD texture pack is drawn (hdtex.c) */
     char hdPackPath[1024]; /* ... the player's pack: its .zip or folder */
+    int touchControls;    /* the touch controls (touch.h): TOUCH_AUTO, TOUCH_ON or TOUCH_OFF */
+    int touchSize;        /* ... their size, in percent (0: 100) */
+    int touchOpacity;     /* ... how opaque, in percent (0: 60) */
 } PortSettings;
 
 /* PortSettings.recordFrames: what the frame recorder keeps, and what Tab does */

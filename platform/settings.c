@@ -72,6 +72,12 @@ static void Set(const char *key, const char *value)
         portSettings.hdTextures = number != 0;
     } else if (!strcmp(key, "hd_pack")) {
         SDL_strlcpy(portSettings.hdPackPath, value, sizeof(portSettings.hdPackPath));
+    } else if (!strcmp(key, "touch_controls")) {
+        portSettings.touchControls = SDL_clamp(number, 0, 2);
+    } else if (!strcmp(key, "touch_size")) {
+        portSettings.touchSize = SDL_clamp(number, 50, 200);
+    } else if (!strcmp(key, "touch_opacity")) {
+        portSettings.touchOpacity = SDL_clamp(number, 10, 100);
     }
 }
 
@@ -86,6 +92,9 @@ void PortSettingsLoad(void)
         SDL_strlcpy(defaultSaveDir, base, sizeof(defaultSaveDir));
         SDL_free(base);
     }
+#ifdef PORT_MOBILE
+    portSettings.widescreen = 1; /* a phone or tablet: its wide screen filled (until the player says otherwise) */
+#endif
     /* the tests' hidden runs keep the defaults: a player's file must not change them */
     if (path[0] && !portConfig.hidden && (text = SDL_LoadFile(path, NULL))) {
         for (line = text; line && *line; line = next) {
@@ -128,6 +137,9 @@ void PortSettingsLoad(void)
         /* a pack's .zip or folder, drawn ("" not) */
         SDL_strlcpy(portSettings.hdPackPath, value, sizeof(portSettings.hdPackPath));
         portSettings.hdTextures = value[0] != 0;
+    }
+    if ((value = SDL_getenv("WIPEOUT_TOUCH"))) {
+        portSettings.touchControls = SDL_clamp(SDL_atoi(value), 0, 2); /* 0 automatic, 1 on, 2 off */
     }
     if ((value = SDL_getenv("WIPEOUT_WIDESCREEN"))) {
         portSettings.widescreen = SDL_atoi(value) != 0;
@@ -176,7 +188,8 @@ int PortSettingsSave(void)
             "show_fps = %d\nfar_view = %d\nfade = %d\nfade_near = %d\nfade_far = %d\n"
             "widescreen = %d\nframe_rate = %d\nframe_cap = %d\nskip_intro = %d\nrecord_frames = %d\nrecord_replays = %d\nsave_dir = %s\ndisc = %s\noriginal = %s\n"
             "render_scale = %d\nhd_textures = %d\nhd_pack = %s\nwipeout64 = %s\n"
-            "custom_music = %d\nmusic_shuffle = %d\nmusic_folder = %s\nsave_slot = %s\nautosave = %d\n",
+            "custom_music = %d\nmusic_shuffle = %d\nmusic_folder = %s\nsave_slot = %s\nautosave = %d\n"
+            "touch_controls = %d\ntouch_size = %d\ntouch_opacity = %d\n",
             portSettings.showFps, portSettings.farView, portSettings.fade, portSettings.fadeNear, portSettings.fadeFar,
             portSettings.widescreen, portSettings.frameRate,
             portSettings.frameCap, portSettings.skipIntro,
@@ -184,7 +197,9 @@ int PortSettingsSave(void)
             portSettings.recordReplays,
             portSettings.saveDir, portSettings.discPath, portSettings.originalPath, portSettings.renderScale,
             portSettings.hdTextures, portSettings.hdPackPath, portSettings.wipeout64Path, portSettings.customMusic,
-            portSettings.musicShuffle, portSettings.musicFolder, portSettings.saveSlot, !portSettings.noAutoSave);
+            portSettings.musicShuffle, portSettings.musicFolder, portSettings.saveSlot, !portSettings.noAutoSave,
+            portSettings.touchControls, portSettings.touchSize ? portSettings.touchSize : 100,
+            portSettings.touchOpacity ? portSettings.touchOpacity : 60);
     fclose(file);
     return 1;
 }

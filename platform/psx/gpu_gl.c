@@ -32,7 +32,7 @@
    carries where that image is in the atlas (an RGBA texture of the images in use, at the framebuffer's scale)
    and which texels of its page it covers; the shader samples the image there instead of video memory. */
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_opengl.h>
+#include "../port_gl.h"
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
@@ -43,6 +43,7 @@
 #include "../platform.h"
 #include "../settings.h"
 
+#ifndef PORT_GL_LINKED
 #define GL_FUNCTIONS(X) \
     X(PFNGLGENBUFFERSPROC, glGenBuffers) \
     X(PFNGLBINDBUFFERPROC, glBindBuffer) \
@@ -149,6 +150,12 @@ static int LoadFunctions(void)
     GL_FUNCTIONS(LOAD_GL)
     return 1;
 }
+#else
+static int LoadFunctions(void)
+{
+    return 1; /* (the platform's OpenGL ES library is linked) */
+}
+#endif
 
 /* ---- state ---- */
 
@@ -161,6 +168,7 @@ static GLuint program, vertexArray, vertexBuffer;
 static GLint uniformAlphaScale;
 static GLint uniformVram, uniformGlyphs, uniformHdAtlas, uniformPass, uniformTarget;
 static int vramDirty = 1;
+static GLuint windowFramebuffer;     /* the window's own: 0, but on iOS SDL's view has one of its own */
 static int dirtyLeft, dirtyTop, dirtyRight, dirtyBottom;
 static int areaX, areaY, areaW = VRAM_WIDTH, areaH = VRAM_HEIGHT;
 static int initialised;
@@ -361,7 +369,13 @@ int GpuWindowScale(void)
 /* The scale wanted: the settings' resolution, or the window's. */
 static int ChooseScale(void)
 {
+#ifdef PORT_MOBILE
+    /* a phone or tablet: automatic stops at 3 (all of video memory at 3072x1536; its screen's 6 would be 75 MB
+       drawn into); the settings' resolution goes higher */
+    return portSettings.renderScale > 0 ? SDL_min(portSettings.renderScale, GpuMaxScale()) : SDL_min(GpuWindowScale(), 3);
+#else
     return portSettings.renderScale > 0 ? SDL_min(portSettings.renderScale, GpuMaxScale()) : GpuWindowScale();
+#endif
 }
 
 int GpuScale(void)
@@ -1315,7 +1329,7 @@ static void Present(int x, int y, int w, int h, int interpolated)
         PortVideoBetweenFrames();
     }
     PortDrawableSize(&width, &height);
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, windowFramebuffer);
     glDisable(GL_SCISSOR_TEST);
     glViewport(0, 0, width, height);
     glClearColor(0, 0, 0, 1);
@@ -1347,7 +1361,7 @@ static void Present(int x, int y, int w, int h, int interpolated)
         glBlitFramebuffer(left, y * scale, right, (y + h) * scale, outX, outY + outH, outX + outW, outY,
                           GL_COLOR_BUFFER_BIT, GL_LINEAR);
     }
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, windowFramebuffer);
     PortVideoPresent();
     AfterPicture();
 }
@@ -1386,6 +1400,24 @@ static void SetScale(int newScale)
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
     SetWideMargin(margin);
     HdTexSetScale(scale);
+}
+
+void GpuSetWindowFramebuffer(unsigned int number)
+{
+    windowFramebuffer = number;
+}
+
+void GpuClearWindow(float r, float g, float b)
+{
+    int width, height;
+
+    Flush();
+    PortDrawableSize(&width, &height);
+    glBindFramebuffer(GL_FRAMEBUFFER, windowFramebuffer);
+    glDisable(GL_SCISSOR_TEST);
+    glViewport(0, 0, width, height);
+    glClearColor(r, g, b, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
 }
 
 /* After a new picture: the window's shape, the setting or the end of a race may ask for another margin (a
@@ -1435,7 +1467,7 @@ uint8_t *GpuReadArea(int x, int y, int w, int h, int *outW, int *outH)
     glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
     glPixelStorei(GL_PACK_ALIGNMENT, 4);
     glReadPixels(x * scale, y * scale, w * scale, h * scale, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, windowFramebuffer);
     *outW = w * scale;
     *outH = h * scale;
     return pixels;
@@ -1483,7 +1515,7 @@ uint8_t *GpuReadPicture(int x, int y, int w, int h, int margin, int outW, int ou
     glBindFramebuffer(GL_READ_FRAMEBUFFER, small);
     glPixelStorei(GL_PACK_ALIGNMENT, 4);
     glReadPixels(0, 0, outW, outH, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, windowFramebuffer);
     return pixels; /* video memory's rows go up the framebuffer: the first row read is the picture's top */
 }
 
@@ -1504,7 +1536,7 @@ void GpuPresentSplit(int x, int y, int w, int h, const uint8_t *lower, int lower
     PortDrawableSize(&width, &height);
     /* the other game draws the lower half as wide, and hands it over at its size in pixels */
     PortLinkSetBand(GpuShownMargin(x, w), width, height / 2);
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, windowFramebuffer);
     glDisable(GL_SCISSOR_TEST);
     glViewport(0, 0, width, height);
     glClearColor(0, 0, 0, 1);
@@ -1537,7 +1569,7 @@ void GpuPresentSplit(int x, int y, int w, int h, const uint8_t *lower, int lower
         glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
         glBlitFramebuffer(0, 0, lowerW, lowerH, ox, oy + oh, ox + ow, oy, GL_COLOR_BUFFER_BIT, GL_LINEAR);
     }
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, windowFramebuffer);
     PortVideoPresent();
     AfterPicture();
 }
@@ -1579,7 +1611,7 @@ void GpuShowImage(const uint8_t *rgb, int width, int height)
     }
     outX = (windowWidth - outW) / 2;
     outY = (windowHeight - outH) / 2;
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, windowFramebuffer);
     glDisable(GL_SCISSOR_TEST);
     glViewport(0, 0, windowWidth, windowHeight);
     glClearColor(0, 0, 0, 1);
@@ -1588,7 +1620,7 @@ void GpuShowImage(const uint8_t *rgb, int width, int height)
     glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
     /* image row 0 is the top: flip into OpenGL's upward rows */
     glBlitFramebuffer(0, 0, width, height, outX, outY + outH, outX + outW, outY, GL_COLOR_BUFFER_BIT, GL_LINEAR);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, windowFramebuffer);
     PortVideoPresent();
 }
 

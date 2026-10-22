@@ -94,6 +94,10 @@ void GpuWriteFramebuffer(int x, int y, int w, int h);
 void GpuMoveFramebuffer(int x, int y, int w, int h, int toX, int toY);
 /* Finishes the frame's drawing (before presenting). */
 void GpuFlush(void);
+/* The window's framebuffer, when it is not 0 (iOS: SDL's view draws into one of its own). */
+void GpuSetWindowFramebuffer(unsigned int number);
+/* Clears the window to a colour, its framebuffer bound for drawing over (the start-up's messages, DebugUiSplash). */
+void GpuClearWindow(float r, float g, float b);
 /* Shows an RGB image (a movie frame) across the 4:3 picture, letterboxed
    when it is wider (square pixels). */
 void GpuShowImage(const uint8_t *rgb, int width, int height);

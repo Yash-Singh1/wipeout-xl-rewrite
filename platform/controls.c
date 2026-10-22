@@ -68,15 +68,16 @@ char *PortButtonLabel(PortButton button, char *console)
 
 /* ---- scripted input ---- */
 
-typedef enum { STEP_KEY, STEP_ATTACH, STEP_DETACH, STEP_BUTTON, STEP_AXIS, STEP_FOCUS } StepKind;
+typedef enum { STEP_KEY, STEP_ATTACH, STEP_DETACH, STEP_BUTTON, STEP_AXIS, STEP_FOCUS, STEP_TOUCH } StepKind;
 
 typedef struct Step {
     uint64_t field;
     StepKind kind;
     int pad;      /* which virtual gamepad (0 or 1) */
     bool down;
-    int code;     /* scancode, button, axis or pad family */
-    int value;
+    int code;     /* scancode, button, axis or pad family; a finger */
+    int value;    /* a finger: SDL_EVENT_FINGER_DOWN, _MOTION or _UP */
+    float x, y;   /* ... where, in fractions of the window */
 } Step;
 
 static Step *steps;
@@ -116,6 +117,15 @@ static void ParseLine(char *line, int number)
             fprintf(stderr, "keys: line %d: no key called \"%s\"\n", number, rest);
             return;
         }
+    } else if (!strcmp(verb, "touch")) {
+        /* touch down|move ID X Y, touch up ID: a finger on the window (X and Y fractions of its size) */
+        step.kind = STEP_TOUCH;
+        if (sscanf(rest, "%31s %d %f %f", word, &step.code, &step.x, &step.y) < 2 ||
+            (strcmp(word, "down") && strcmp(word, "move") && strcmp(word, "up"))) {
+            fprintf(stderr, "keys: line %d: touch down|move|up ID X Y\n", number);
+            return;
+        }
+        step.value = word[0] == 'd' ? SDL_EVENT_FINGER_DOWN : word[0] == 'm' ? SDL_EVENT_FINGER_MOTION : SDL_EVENT_FINGER_UP;
     } else if (!strcmp(verb, "focus") && (!strcmp(rest, "lost") || !strcmp(rest, "gained"))) {
         step.kind = STEP_FOCUS;
         step.down = rest[0] == 'g';
@@ -204,6 +214,27 @@ static void Run(const Step *step)
         event.key.down = step->down;
         SDL_PushEvent(&event);
         break;
+    case STEP_TOUCH: {
+        static float lastX[16], lastY[16];
+        int windows = 0, finger = step->code & 15;
+        SDL_Window **list = SDL_GetWindows(&windows);
+
+        event.type = (Uint32)step->value;
+        event.tfinger.touchID = 1;
+        event.tfinger.fingerID = (SDL_FingerID)(step->code + 1);
+        if (step->value == SDL_EVENT_FINGER_UP) {
+            event.tfinger.x = lastX[finger];
+            event.tfinger.y = lastY[finger];
+        } else {
+            event.tfinger.x = lastX[finger] = step->x;
+            event.tfinger.y = lastY[finger] = step->y;
+        }
+        event.tfinger.pressure = step->value == SDL_EVENT_FINGER_UP ? 0.0f : 1.0f;
+        event.tfinger.windowID = list && windows ? SDL_GetWindowID(list[0]) : 0;
+        SDL_free(list);
+        SDL_PushEvent(&event);
+        break;
+    }
     case STEP_ATTACH:
         if (!virtualIds[step->pad]) {
             SDL_VirtualJoystickDesc desc;

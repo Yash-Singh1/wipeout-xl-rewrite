@@ -9,7 +9,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 file(GLOB GAME_SOURCES ${CMAKE_SOURCE_DIR}/game/src/*.c)
 list(SORT GAME_SOURCES)
 add_library(game STATIC ${GAME_SOURCES})
-target_include_directories(game PRIVATE ${CMAKE_SOURCE_DIR}/game/include)
+# (its headers for its own quoted includes only: its malloc.h is not the C library's, which Android's stdlib.h
+# includes)
+target_compile_options(game PRIVATE "SHELL:-iquote ${CMAKE_SOURCE_DIR}/game/include")
 # The console's compiler had signed char, no strict-aliasing assumptions and wrapping signed
 # overflow.  Pointer/int conversions and 64->32 truncations stay visible: the port removed every
 # one of them (tools/diag.py), so any new one is a bug.
@@ -43,7 +45,7 @@ endif()
 file(GLOB GAME_DATA_SOURCES ${CMAKE_SOURCE_DIR}/game/data/*.c)
 if(GAME_DATA_SOURCES)
     add_library(gamedata STATIC ${GAME_DATA_SOURCES})
-    target_include_directories(gamedata PRIVATE ${CMAKE_SOURCE_DIR}/game/include)
+    target_compile_options(gamedata PRIVATE "SHELL:-iquote ${CMAKE_SOURCE_DIR}/game/include")
     target_compile_options(gamedata PRIVATE -std=gnu11 -include ${CMAKE_SOURCE_DIR}/platform/include/port.h
         -fsigned-char -fno-strict-aliasing -fwrapv -fno-common -Wno-pointer-sign)
 endif()
@@ -58,7 +60,7 @@ if(EMSCRIPTEN)
     target_link_options(SDL3::SDL3 INTERFACE --use-port=sdl3)
 else()
     option(WIPEOUT_BUILD_SDL "Build SDL3 from source instead of using the system's" OFF)
-    if(NOT WIPEOUT_BUILD_SDL)
+    if(NOT WIPEOUT_BUILD_SDL AND NOT IOS AND NOT ANDROID) # (a phone's: always built for it)
         find_package(SDL3 CONFIG QUIET)
     endif()
     if(NOT TARGET SDL3::SDL3)
@@ -87,7 +89,7 @@ set(PLATFORM_PSX_SOURCES
 list(TRANSFORM PLATFORM_PSX_SOURCES PREPEND ${CMAKE_SOURCE_DIR}/)
 # The debug console: Dear ImGui (platform/third_party/imgui, MIT) over SDL3 and OpenGL 3.
 set(IMGUI_DIR ${CMAKE_SOURCE_DIR}/platform/third_party/imgui)
-set(DEBUG_UI_SOURCES ${CMAKE_SOURCE_DIR}/platform/debug_ui.cpp
+set(DEBUG_UI_SOURCES ${CMAKE_SOURCE_DIR}/platform/debug_ui.cpp ${CMAKE_SOURCE_DIR}/platform/touch.cpp
     ${IMGUI_DIR}/imgui.cpp ${IMGUI_DIR}/imgui_draw.cpp ${IMGUI_DIR}/imgui_tables.cpp ${IMGUI_DIR}/imgui_widgets.cpp
     ${IMGUI_DIR}/backends/imgui_impl_sdl3.cpp ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp)
 set(PLATFORM_SOURCES ${PLATFORM_TOP_SOURCES} ${PLATFORM_PSX_SOURCES} ${DEBUG_UI_SOURCES})
@@ -100,7 +102,7 @@ add_library(lzma7z STATIC ${LZMA_SOURCES})
 # built into the program with the compression libraries the system has. The web has no archives.
 if(NOT EMSCRIPTEN)
     option(WIPEOUT_BUILD_LIBARCHIVE "Build libarchive from source instead of using the system's" OFF)
-    if(NOT WIPEOUT_BUILD_LIBARCHIVE)
+    if(NOT WIPEOUT_BUILD_LIBARCHIVE AND NOT IOS AND NOT ANDROID)
         if(APPLE)
             list(APPEND CMAKE_PREFIX_PATH /opt/homebrew/opt/libarchive /usr/local/opt/libarchive)
         endif()
@@ -137,7 +139,8 @@ endif()   # optional: compressed lockstep traces (platform/trace.c)
 
 function(port_platform_target name)
     target_include_directories(${name} PRIVATE ${CMAKE_SOURCE_DIR}/platform ${CMAKE_SOURCE_DIR}/platform/psx
-        ${CMAKE_SOURCE_DIR}/game/include ${IMGUI_DIR})
+        ${IMGUI_DIR})
+    target_compile_options(${name} PRIVATE "SHELL:-iquote ${CMAKE_SOURCE_DIR}/game/include")
     set_source_files_properties(${DEBUG_UI_SOURCES} PROPERTIES COMPILE_OPTIONS "-std=c++17")
     target_compile_options(${name} PRIVATE -fsigned-char -fno-strict-aliasing)
     target_link_libraries(${name} PRIVATE game psxio lzma7z m)
@@ -155,6 +158,10 @@ function(port_platform_target name)
     endif()
     if(EMSCRIPTEN)
         # WebGL 2 through Emscripten's OpenGL ES 3
+    elseif(IOS)
+        target_link_libraries(${name} PRIVATE "-framework OpenGLES")
+    elseif(ANDROID)
+        target_link_libraries(${name} PRIVATE GLESv3 android log)
     elseif(APPLE)
         target_link_libraries(${name} PRIVATE "-framework OpenGL" objc) # objc: App Nap off for the link (link.c)
     elseif(WIN32)
@@ -171,13 +178,39 @@ function(port_platform_target name)
             target_link_libraries(${name} PRIVATE OpenGL::GL)
         endif()
     endif()
-    if(NOT WIN32 AND NOT EMSCRIPTEN)
+    if(NOT WIN32 AND NOT EMSCRIPTEN AND NOT IOS AND NOT ANDROID)
         set_target_properties(${name} PROPERTIES ENABLE_EXPORTS ON) # the traces' dlsym (platform/trace.c)
     endif()
 endfunction()
 
-add_executable(wipeoutxl ${PLATFORM_SOURCES})
+if(ANDROID)
+    # Android: the library SDL's activity loads (platform/android: the app around it, built with Gradle)
+    add_library(wipeoutxl SHARED ${PLATFORM_SOURCES})
+    set_target_properties(wipeoutxl PROPERTIES OUTPUT_NAME main)
+else()
+    add_executable(wipeoutxl ${PLATFORM_SOURCES})
+endif()
 port_platform_target(wipeoutxl)
+
+# ---- iOS: Wipeout XL.app (cmake -G Xcode -DCMAKE_SYSTEM_NAME=iOS; README.md) ----
+# Landscape and full screen; its Documents folder is in the Files app ("On My iPhone"), where the player puts
+# the disc image. A device build is signed with the player's team (WIPEOUT_IOS_TEAM).
+if(IOS)
+    set(WIPEOUT_IOS_BUNDLE_ID "com.example.wipeoutxl" CACHE STRING "The iOS app's bundle identifier")
+    set(WIPEOUT_IOS_TEAM "" CACHE STRING "The Apple development team that signs the iOS app")
+    set_target_properties(wipeoutxl PROPERTIES
+        MACOSX_BUNDLE TRUE
+        OUTPUT_NAME "Wipeout XL"
+        MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/platform/ios/Info.plist.in
+        MACOSX_BUNDLE_GUI_IDENTIFIER ${WIPEOUT_IOS_BUNDLE_ID}
+        MACOSX_BUNDLE_BUNDLE_NAME "Wipeout XL"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "1.0"
+        MACOSX_BUNDLE_BUNDLE_VERSION "1"
+        XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER ${WIPEOUT_IOS_BUNDLE_ID}
+        XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"
+        XCODE_ATTRIBUTE_DEVELOPMENT_TEAM "${WIPEOUT_IOS_TEAM}"
+        XCODE_ATTRIBUTE_CODE_SIGN_STYLE Automatic)
+endif()
 
 # ---- The web: wipeoutxl.html, .js and .wasm (emcmake cmake; README.md) ----
 # The game's main loop runs as on the desktop: Asyncify lets its waits (the field pacing, the CD, each

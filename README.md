@@ -63,6 +63,42 @@ put a disc there by hand: `disc/Wipeout XL (USA).cue` with its tracks is found
 without a `wipeoutxl-data.json`, and the JSON (`{ "disc": "url/of/the.cue" }`)
 can point anywhere on the site.
 
+## Phones and tablets (iOS, Android)
+
+The same game runs on iPhone, iPad and Android, landscape and full screen (OpenGL ES 3), with touch controls
+(below) and widescreen on from the start. SDL3 and libarchive are downloaded and built into the app.
+
+iOS (Xcode; the simulator needs no signing):
+
+```sh
+cmake -S . -B build-ios -G Ninja -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphonesimulator \
+      -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DCMAKE_BUILD_TYPE=RelWithDebInfo
+ninja -C build-ios wipeoutxl
+codesign --force --sign - "build-ios/Wipeout XL.app"
+xcrun simctl install booted "build-ios/Wipeout XL.app"
+```
+
+For a device, configure with `-G Xcode -DCMAKE_SYSTEM_NAME=iOS -DWIPEOUT_IOS_TEAM=<your team id>
+-DWIPEOUT_IOS_BUNDLE_ID=<an id of yours>`, open the project in Xcode and run it on the device (the first
+configure takes a while: Xcode checks every one of libarchive's tests). Put the disc image (the `.cue` with its
+`.bin` files, or a `.zip`/`.7z` of them) in the Files app, On My iPhone (or iPad) > Wipeout XL; the game finds
+it there, or says where to put it.
+
+Android (the Android SDK with NDK 28 and Gradle 8 with JDK 17 or 21; `platform/android`):
+
+```sh
+cd platform/android
+gradle assembleDebug        # app/build/outputs/apk/debug/app-debug.apk
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+At the first start the game looks for the disc image in its folder on the device's storage
+(`Android/data/com.example.wipeoutxl/files`, reached from a computer over USB, or `adb push`); without one
+it asks, and "Choose files..." picks the `.cue` with its `.bin` files (or a `.zip`/`.7z`) with the system's
+picker and copies them in. On both, the debug console (the button at the top left) changes the disc later; the
+new one is used from the next start. The two-player link modes need a second program, which a phone cannot
+start: they find no partner, as on the web.
+
 ## Play
 
 ```sh
@@ -172,6 +208,14 @@ Keyboard (the Windows release's layout):
 | Left Alt | | drop weapon |
 | A / D | | left / right air brake |
 | F1 | | change view |
+
+Touch controls (a phone or tablet, a touch screen, or the web page on one): a stick on the left that appears
+where the thumb lands (steering, the nose, the menus' cursor); on the right in a race THRUST, FIRE, the L and R
+air brakes, DROP and VIEW (a thumb between two presses both), in the menus the four PlayStation buttons; at
+the top pause (Start) and the debug console. Each race button performs its action whatever button the
+controller screen bound it to. The debug console's Game tab sets them Automatic (on a phone from the start,
+elsewhere from the first touch; a key or gamepad hides them until the next touch), On or Off, and their size
+and opacity (`WIPEOUT_TOUCH=0|1|2` for a run).
 
 Gamepads work as the PlayStation pad, by button position. The on-screen
 buttons follow whatever you used last: key caps for the keyboard, A/B/X/Y for
