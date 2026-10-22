@@ -11,6 +11,8 @@ extern TrackData *track;
 extern Object   **trackObjects;
 extern short      CurrentScreen;
 extern int        ownShip;
+extern int        remoteShip;
+extern int        ghostShip;
 extern int        raceType;
 
 /* The game's ordering table has 0x2000 entries; the sky is linked into the last. Primitives the game
@@ -377,9 +379,6 @@ static void DrawFarShips(ShipData *ships, Object **shipShapes)
 {
     int i;
 
-    if (raceType == 1 || raceType == 3) {
-        return; /* time trial and the two-player race draw only their own ships, always near */
-    }
     for (i = 0; i < 15; i++) {
         ShipData *ship = &ships[i];
         Object   *object;
@@ -388,6 +387,11 @@ static void DrawFarShips(ShipData *ships, Object **shipShapes)
         Face     *face;
         u_char    flags;
 
+        /* a time trial draws its own ship and the ghost, the two-player race the two players' ships (the other may be
+           far ahead or behind) */
+        if ((raceType == 1 && i != ownShip && i != ghostShip) || (raceType == 3 && i != ownShip && i != remoteShip)) {
+            continue;
+        }
         if (shipMarks[i] == frame || (ship->combatAttr & DESTROYED) || !ship->nearTrkSect ||
             (ship->attr & (REMOTE_VIEW | VIEW_IN)) == VIEW_IN) {
             continue;
@@ -411,7 +415,13 @@ static void DrawFarShips(ShipData *ships, Object **shipShapes)
             face++;
         }
         PortInterpInstance(i); /* frame interpolation: the ship's drawing, as DrawShips gives it */
-        PortDrawObjectFar(object, &view, (const CVECTOR *)&face->red);
+        if (raceType == 1 && i == ghostShip) {
+            InitTransShip(object, 1); /* the ghost is see-through, as DrawShips draws it */
+            PortDrawObjectFar(object, &view, (const CVECTOR *)&face->red);
+            InitTransShip(object, 0);
+        } else {
+            PortDrawObjectFar(object, &view, (const CVECTOR *)&face->red);
+        }
         PortInterpInstance(-1);
     }
 }
