@@ -885,6 +885,11 @@ static int hudActive;            /* the HUD element being drawn is moved by HudP
 static int hudFillBand;          /* ... a box over the whole screen covers the band of a split window */
 static float hudMoveX, hudMoveY; /* ... a scaled one goes this far from the band's middle */
 
+/* The HUD's packets are placed in 2D: one whose corners only happen to land on projected pixels is drawn as given,
+   not moved to those projections (a letter would be stretched over the texels beside it). The 3D renderers' own
+   packets there (bound to their projections: a menu's model) keep theirs. */
+static int hudPackets;
+
 static unsigned Vertices(GpuVertex *v, const uint32_t *const *words, int count)
 {
     GtePrecise precise[GTE_RESOLVE_MAX];
@@ -896,8 +901,11 @@ static unsigned Vertices(GpuVertex *v, const uint32_t *const *words, int count)
         xy[i] = *words[i];
     }
     mask = GteResolvePrecise(xy, (const void *const *)words, count, precise);
-    depth = mask == (1u << count) - 1;
     bound = GteResolvedBound();
+    if (hudPackets && !bound) {
+        mask = 0;
+    }
+    depth = mask == (1u << count) - 1;
 
     for (i = 0; i < count; i++) {
         Vertex(&v[i], xy[i], (mask >> i) & 1 ? &precise[i] : NULL);
@@ -1222,6 +1230,32 @@ static u_long *PacketFrom(u_long *node)
     return node;
 }
 
+static u_long *hudEntry, *hudTable;
+static int SceneSprite(const u_long *node);
+
+/* PacketFrom, noting whether the HUD's part of the table (from hudEntry on) was reached. */
+static u_long *PacketFromNoting(u_long *node, int *inHud)
+{
+    while (node && !(*node >> 24)) {
+        if (node == hudEntry) {
+            *inHud = 1;
+        }
+        node = NodeAfter(node);
+    }
+    if (node == hudEntry) {
+        *inHud = 1;
+    }
+    return node;
+}
+
+/* A packet of the table, the HUD's drawn as placed (hudPackets). */
+static void SubmitNode(u_long *node, int inHud)
+{
+    hudPackets = inHud && !SceneSprite(node);
+    Submit((const uint32_t *)(node + 1), (int)(*node >> 24));
+    hudPackets = 0;
+}
+
 /* On the console DrawOTag returns at once and the DMA reads each packet only
    when the GPU is ready for it, while the game goes on building the next
    frame. A packet the game changes meanwhile is drawn as it was or as
@@ -1297,7 +1331,6 @@ static void ReadPendingTables(void)
     pendingCount = 0;
 }
 
-static u_long *hudEntry, *hudTable;
 
 void PsxHudTables(u_long *lastEntry, u_long *secondTable)
 {
@@ -1538,9 +1571,11 @@ static void DrawAnchored(u_long *p, int margin, int half)
             hudActive = HUD_PLAIN;
             hudShift = (float)(side * margin);
         }
+        hudPackets = 1;
         for (i = first; i < last; i++) {
             Submit((const uint32_t *)(hud[i] + 1), (int)(*hud[i] >> 24));
         }
+        hudPackets = 0;
         hudActive = HUD_PLAIN;
         hudShift = 0.0f;
         first = last > first ? last : first + 1;
@@ -1621,6 +1656,7 @@ int PsxCanInterpolate(void)
 static void DrawTableAgain(u_long *p)
 {
     u_long *node;
+    int inHud = p == hudTable;
 
     if (PortLinkSplit()) {
         DrawAnchored(p, PortScreenMargin(), 1);
@@ -1630,8 +1666,8 @@ static void DrawTableAgain(u_long *p)
         DrawAnchored(p, PortScreenMargin(), 0);
         return;
     }
-    for (node = PacketFrom(p); node; node = PacketFrom(NodeAfter(node))) {
-        Submit((const uint32_t *)(node + 1), (int)(*node >> 24));
+    for (node = PacketFromNoting(p, &inHud); node; node = PacketFromNoting(NodeAfter(node), &inHud)) {
+        SubmitNode(node, inHud);
     }
 }
 
@@ -1732,7 +1768,7 @@ void PsxLinkWaiting(void)
 void DrawOTag(u_long *p)
 {
     u_long *node;
-    int tracing = PortTracing() && pendingCount < PENDING_TABLES;
+    int tracing = PortTracing() && pendingCount < PENDING_TABLES, inHud = p == hudTable;
 
     if (p == upcoming.table) {
         /* the frame interpolated towards is drawn: the next starts from here */
@@ -1785,8 +1821,8 @@ void DrawOTag(u_long *p)
         pending[pendingCount].table = p;
         pending[pendingCount].count = 0;
     }
-    for (node = PacketFrom(p); node; node = PacketFrom(NodeAfter(node))) {
-        Submit((const uint32_t *)(node + 1), (int)(*node >> 24));
+    for (node = PacketFromNoting(p, &inHud); node; node = PacketFromNoting(NodeAfter(node), &inHud)) {
+        SubmitNode(node, inHud);
         if (tracing) {
             if (pending[pendingCount].count + 2 > pending[pendingCount].capacity) {
                 pending[pendingCount].capacity = pending[pendingCount].capacity ? pending[pendingCount].capacity * 2 : 4096;
