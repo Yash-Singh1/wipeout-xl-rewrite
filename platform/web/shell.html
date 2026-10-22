@@ -1,9 +1,13 @@
 <!doctype html>
-<!-- The web page around the game (CMakeLists.txt: --shell-file). The player chooses their disc image (the .cue
-     and its .bin tracks); the page reads the tracks into the game's memory once (platform/psx/disc.c finds
-     them there by name), keeps the settings and memory cards in the browser's storage (IndexedDB, under
-     SDL's data folder /libsdl) and starts the game's main(). Gamepads come through the browser's Gamepad
-     API (SDL's joystick driver for the web): press a button on one for the browser to show it. -->
+<!-- The web page around the game (CMakeLists.txt: --shell-file). The disc image (the .cue and its .bin tracks)
+     comes from the page's own server when whoever hosts the page put it there, as wipeout-rewrite's page has its
+     data: wipeoutxl-data.json names it (the build writes it: -DWIPEOUT_WEB_DISC), else disc/Wipeout XL (USA).cue,
+     or the address says (?disc=); only when none is there does the page ask for the player's own files. The
+     page reads the tracks into the game's memory once (platform/psx/disc.c finds them there by name), and keeps
+     a downloaded disc in the browser's cache for the next visit; it keeps the settings and memory cards in the
+     browser's storage (IndexedDB, under SDL's data folder /libsdl) and starts the game's main(). Gamepads come
+     through the browser's Gamepad API (SDL's joystick driver for the web): press a button on one for the
+     browser to show it. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -37,15 +41,18 @@
 <div id="start">
   <div id="panel">
     <h1>WIPEOUT XL</h1>
-    <p>The PlayStation game, running in your browser. It needs your copy of the disc: the
-       <b>.cue</b> file and all of its <b>.bin</b> tracks (Wipeout XL, USA).</p>
-    <div id="drop">Drop the files here, or <button id="choose" type="button">choose them</button>
-      <input id="files" type="file" multiple accept=".cue,.bin" hidden>
+    <p id="intro">The PlayStation game, running in your browser.</p>
+    <div id="chooser" hidden>
+      <p>This site has no copy of the disc: choose your own, the <b>.cue</b> file and all of its <b>.bin</b>
+         tracks (Wipeout XL, USA).</p>
+      <div id="drop">Drop the files here, or <button id="choose" type="button">choose them</button>
+        <input id="files" type="file" multiple accept=".cue,.bin" hidden>
+      </div>
     </div>
     <p id="status"></p>
     <div id="progress"><div id="bar"></div></div>
-    <p class="muted">The disc stays on this computer: it is read into this page's memory and nothing is uploaded.
-      Settings and memory cards are kept in this browser. Keyboard or gamepad; ~ opens the debug console.</p>
+    <p class="muted" id="note">Settings and memory cards are kept in this browser. Keyboard or gamepad; ~ opens the
+      debug console.</p>
   </div>
 </div>
 <script>
@@ -79,17 +86,51 @@ var Module = {
   onExit: function (code) { if (code) showError('The game stopped: ' + Module.output.slice(-3).join(' ')); },
   onAbort: function (what) { showError('The game stopped: ' + what); },
   setStatus: function (text) { if (text) say(text); },
-  onRuntimeInitialized: function () {
+  onRuntimeInitialized: async function () {
     runtimeReady = true;
-    say('Ready for your disc.');
-    var disc = new URLSearchParams(location.search).get('disc');
-    if (disc) startUrl(disc);
+    say('Looking for the disc...');
+    var disc = new URLSearchParams(location.search).get('disc') || await hostedDisc();
+    if (disc) {
+      startUrl(disc);
+    } else {
+      document.getElementById('chooser').hidden = false;
+      document.getElementById('note').textContent = 'Your disc stays on this computer: it is read into this ' +
+        'page\'s memory and nothing is uploaded. Settings and memory cards are kept in this browser. Keyboard ' +
+        'or gamepad; ~ opens the debug console.';
+      say('Ready for your disc.');
+    }
   },
 };
 var runtimeReady = false;
 addEventListener('error', function (e) { Module.keep('error: ' + e.message); });
 addEventListener('unhandledrejection', function (e) { Module.keep('error: ' + (e.reason && e.reason.stack || e.reason)); });
 var started = false;
+
+// The disc the site hosts: wipeoutxl-data.json's ({"disc": "path/to/the.cue"}), else the usual place; null if none
+async function hostedDisc() {
+  try {
+    var response = await fetch('wipeoutxl-data.json', { cache: 'no-cache' });
+    if (response.ok) {
+      var data = await response.json();
+      if (data.disc) return data.disc;
+    }
+  } catch (e) {}
+  var usual = 'disc/' + encodeURIComponent('Wipeout XL (USA).cue');
+  try {
+    if ((await fetch(usual, { method: 'HEAD', cache: 'no-cache' })).ok) return usual;
+  } catch (e) {}
+  return null;
+}
+
+// The browser's cache of downloaded tracks (a disc once downloaded is not downloaded again), or null
+var discCache = null;
+async function openDiscCache() {
+  if (!discCache && self.caches) {
+    try { discCache = await caches.open('wipeoutxl-disc'); } catch (e) { discCache = null; }
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {});
+  }
+  return discCache;
+}
 
 // The .bin files a cue sheet names (FILE "name" BINARY)
 function cueFiles(text) {
@@ -108,9 +149,12 @@ function fileTrack(file) {
 }
 function urlTrack(url) {
   var response;
-  return { name: decodeURIComponent(url.split('/').pop()),
+  var track = { name: decodeURIComponent(url.split('/').pop()), url: url, cached: false,
            size: async function () {
-             response = await fetch(url);
+             var cache = await openDiscCache();
+             response = cache && await cache.match(url).catch(function () { return null; });
+             track.cached = !!response;
+             if (!response) response = await fetch(url);
              if (!response.ok) throw new Error(url + ': ' + response.status);
              return Number(response.headers.get('Content-Length'));
            },
@@ -118,6 +162,7 @@ function urlTrack(url) {
              var reader = response.body.getReader();
              for (;;) { var r = await reader.read(); if (r.done) return; yield r.value; }
            } };
+  return track;
 }
 
 // The cue sheet's text and its tracks (by name), then the game
@@ -144,9 +189,24 @@ async function start(cueName, cueText, trackOf) {
         at += piece.length;
         done += piece.length;
         document.getElementById('bar').style.width = (100 * done / total).toFixed(1) + '%';
-        say('Reading the disc: ' + Math.round(done / 1048576) + ' of ' + Math.round(total / 1048576) + ' MB');
+        say((tracks[i].url && !tracks[i].cached ? 'Downloading' : 'Reading') + ' the disc: ' +
+            Math.round(done / 1048576) + ' of ' + Math.round(total / 1048576) + ' MB');
       }
       Module.discFiles[tracks[i].name] = { data: data, size: at };
+    }
+    // a downloaded disc kept for the next visit (from the game's memory, a track at a time; the cache may refuse)
+    var cache = await openDiscCache();
+    for (i = 0; cache && i < tracks.length; i++) {
+      if (!tracks[i].url || tracks[i].cached) continue;
+      say('Keeping the disc in this browser for next time: ' + tracks[i].name);
+      var file = Module.discFiles[tracks[i].name];
+      try {
+        await cache.put(tracks[i].url, new Response(Module.HEAPU8.slice(file.data, file.data + file.size),
+                        { headers: { 'Content-Length': String(file.size) } }));
+      } catch (e) {
+        console.warn('the disc is not kept: ' + e);
+        break;
+      }
     }
   } catch (e) {
     say('The disc could not be read: ' + e.message, true);

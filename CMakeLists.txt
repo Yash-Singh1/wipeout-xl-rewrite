@@ -154,6 +154,32 @@ if(EMSCRIPTEN)
         -sINVOKE_RUN=0 -sEXIT_RUNTIME=0 -sFORCE_FILESYSTEM=1 -lidbfs.js
         "-sEXPORTED_FUNCTIONS=_main,_malloc,_free"
         "-sEXPORTED_RUNTIME_METHODS=callMain,FS,IDBFS,HEAPU8")
+
+    # The disc the page loads by itself, as wipeout-rewrite's page has its data: the host's own copy, given
+    # here (-DWIPEOUT_WEB_DISC=path/to/Wipeout XL (USA).cue). Its .cue and .bin tracks are linked into disc/
+    # beside the page (copy the folder with the links followed to put it on a server: cp -RL) and
+    # wipeoutxl-data.json names the .cue; the page reads that first, else tries disc/Wipeout XL (USA).cue,
+    # and asks for the player's own files only when neither is there.
+    set(WIPEOUT_WEB_DISC "" CACHE FILEPATH "The disc image (.cue) the web page loads by itself")
+    if(WIPEOUT_WEB_DISC)
+        get_filename_component(webDiscDir "${WIPEOUT_WEB_DISC}" DIRECTORY)
+        get_filename_component(webDiscCue "${WIPEOUT_WEB_DISC}" NAME)
+        file(STRINGS "${WIPEOUT_WEB_DISC}" webDiscLines REGEX "^[ \t]*FILE")
+        set(webDiscFiles "${webDiscCue}")
+        foreach(line IN LISTS webDiscLines)
+            string(REGEX REPLACE "^[ \t]*FILE[ \t]+\"([^\"]+)\".*" "\\1" track "${line}")
+            list(APPEND webDiscFiles "${track}")
+        endforeach()
+        file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/disc)
+        foreach(name IN LISTS webDiscFiles)
+            if(NOT EXISTS "${webDiscDir}/${name}")
+                message(FATAL_ERROR "WIPEOUT_WEB_DISC: ${webDiscDir}/${name} is missing")
+            endif()
+            file(CREATE_LINK "${webDiscDir}/${name}" "${CMAKE_BINARY_DIR}/disc/${name}" SYMBOLIC COPY_ON_ERROR)
+        endforeach()
+        file(WRITE ${CMAKE_BINARY_DIR}/wipeoutxl-data.json "{ \"disc\": \"disc/${webDiscCue}\" }\n")
+        message(STATUS "The web page loads ${webDiscCue} by itself (disc/)")
+    endif()
 endif()
 
 # ---- Link check: which symbols does the game still need from the platform and the data? ----

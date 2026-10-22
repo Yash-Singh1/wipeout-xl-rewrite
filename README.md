@@ -43,13 +43,21 @@ ninja -C build-windows
 The web, with Emscripten:
 
 ```sh
-emcmake cmake -S . -B build-web -G Ninja -DCMAKE_BUILD_TYPE=Release
+emcmake cmake -S . -B build-web -G Ninja -DCMAKE_BUILD_TYPE=Release \
+      -DWIPEOUT_WEB_DISC="path/to/Wipeout XL (USA).cue"
 ninja -C build-web
 ```
 
-This makes `wipeoutxl.html`, `wipeoutxl.js` and `wipeoutxl.wasm`; put the three
-on any web server (or `python3 -m http.server` in `build-web` and open
-`http://localhost:8000/wipeoutxl.html`).
+This makes `wipeoutxl.html`, `wipeoutxl.js` and `wipeoutxl.wasm`, and, as
+wipeout-rewrite's web build has its data beside the page, the disc the page
+loads by itself: `WIPEOUT_WEB_DISC` (your own copy) links the `.cue` and its
+`.bin` tracks into `build-web/disc/` and writes `wipeoutxl-data.json`, which
+names it. Put `build-web` on any web server with the links followed
+(`cp -RL build-web site`), or try it with `python3 -m http.server` in
+`build-web` and open `http://localhost:8000/wipeoutxl.html`. A host can also
+put a disc there by hand: `disc/Wipeout XL (USA).cue` with its tracks is found
+without a `wipeoutxl-data.json`, and the JSON (`{ "disc": "url/of/the.cue" }`)
+can point anywhere on the site.
 
 ## Play
 
@@ -63,12 +71,14 @@ Files tab changes it: Browse... (the system's file picker; where the system has
 none, the console's own) or a typed path, then "Restart with it now"; the game
 starts with that disc from then on.
 
-In the browser, the page asks for the disc: choose or drop the `.cue` together
-with all its `.bin` tracks. They are read into the page's memory (about 750 MB,
-so a desktop browser with WebGL 2: Chrome, Edge, Firefox or Safari) and never
-leave the computer. A disc image on the same server can be given in the
-address instead: `wipeoutxl.html?disc=path/to/Wipeout%20XL%20(USA).cue`, with
-the tracks beside the `.cue`. Gamepads work through the browser's Gamepad API
+In the browser, the page loads the disc the site hosts by itself and the game
+starts: the first visit downloads it (about 700 MB, so a desktop browser with
+WebGL 2: Chrome, Edge, Firefox or Safari), and the browser keeps it, so later
+visits start in a moment. Another disc image on the site can be given in the
+address: `wipeoutxl.html?disc=path/to/Wipeout%20XL%20(USA).cue`, with the
+tracks beside the `.cue`. Only a site without a disc asks for the player's own:
+choose or drop the `.cue` together with all its `.bin` tracks, read into the
+page's memory, never uploaded. Gamepads work through the browser's Gamepad API
 (press a button for the browser to make the gamepad known). Settings and memory
 cards are kept in the browser's storage for the site. The two-player modes need
 the second copy of the game the desktop starts, so the web has one player.
