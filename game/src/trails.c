@@ -233,6 +233,16 @@ void InitTrails(void) {
     int i, j, k, l, m;
     /* Port: was the literal 0x8700 (15 * 2304); sizeof(Trail) is 2304 on both layouts. */
     shipTrails = DAlloc(reserveHeap, 15 * sizeof(Trail));
+    /* Port: the trails, flares and muzzle flashes are the scene's, also when near enough to be put in the HUD's entry
+       of the table (widescreen's and the split window's HUD handling leave them where the scene puts them) */
+    PortSceneRange(shipTrails, 15 * sizeof(Trail));
+    PortSceneRange(Plasma, 4 * sizeof(Trail));
+    PortSceneRange(flare, sizeof(flare));
+    PortSceneRange(muzzletop, sizeof(muzzletop));
+    PortSceneRange(muzzleleft, sizeof(muzzleleft));
+    PortSceneRange(muzzleright, sizeof(muzzleright));
+    PortSceneRange(muzzlebot, sizeof(muzzlebot));
+    PortSceneRange(muzzletrans, sizeof(muzzletrans));
     targetvalid = 0;
     for (i = 0; i < 2; i++) {
         for (l = 0; l < 8; l++) {

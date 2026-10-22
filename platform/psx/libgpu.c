@@ -1394,6 +1394,10 @@ static int PacketBounds(const uint32_t *w, int words, int box[4])
 #define ANCHOR_GAP 10    /* packets this close side by side are one element */
 #define ANCHOR_LEFT 140  /* an element ending left of this goes to the left edge */
 #define ANCHOR_RIGHT 180 /* ... beginning right of this to the right edge */
+#define ANCHOR_OUTER 40  /* ... or within this of the screen's side and not across its middle (the speedometer's
+                            number grows to the left as the speed does: three wide digits begin left of 180) */
+#define ANCHOR_OFF 8     /* a packet reaching this far beyond the screen is the scene's (a trail at the camera, put
+                            in the HUD's entry of the table at depth 0), not the HUD's */
 
 /* The packets PortSceneSprite named (a few static primitives of the game's, so the set stays small). */
 #define SCENE_SPRITES 96
@@ -1414,12 +1418,39 @@ void PortSceneSprite(const void *packet)
     }
 }
 
+/* ... and the memory of whole arrays of them (PortSceneRange). */
+#define SCENE_RANGES 16
+static struct {
+    const char *start, *end;
+} sceneRanges[SCENE_RANGES];
+static int sceneRangeNext;
+
+void PortSceneRange(const void *start, size_t bytes)
+{
+    int i;
+
+    for (i = 0; i < SCENE_RANGES; i++) {
+        if (sceneRanges[i].start == (const char *)start) {
+            sceneRanges[i].end = (const char *)start + bytes;
+            return;
+        }
+    }
+    sceneRanges[sceneRangeNext].start = (const char *)start;
+    sceneRanges[sceneRangeNext].end = (const char *)start + bytes;
+    sceneRangeNext = (sceneRangeNext + 1) % SCENE_RANGES;
+}
+
 static int SceneSprite(const u_long *node)
 {
     int i;
 
     for (i = 0; i < sceneSpriteCount; i++) {
         if (sceneSprites[i] == (const void *)node) {
+            return 1;
+        }
+    }
+    for (i = 0; i < SCENE_RANGES; i++) {
+        if ((const char *)node >= sceneRanges[i].start && (const char *)node < sceneRanges[i].end) {
             return 1;
         }
     }
@@ -1440,15 +1471,21 @@ static void DrawAnchored(u_long *p, int margin, int half)
         if (!(*node >> 24)) {
             continue;
         }
-        if (!inHud || SceneSprite(node)) {
-            Submit((const uint32_t *)(node + 1), (int)(*node >> 24));
-            continue;
+        if (inHud && !SceneSprite(node)) {
+            int box[4];
+
+            if (!PacketBounds((const uint32_t *)(node + 1), (int)(*node >> 24), box) ||
+                (box[0] >= -ANCHOR_OFF && box[1] >= -ANCHOR_OFF && box[2] <= 320 + ANCHOR_OFF &&
+                 box[3] <= 240 + ANCHOR_OFF)) {
+                if (count == capacity) {
+                    capacity = capacity ? capacity * 2 : 1024;
+                    hud = realloc(hud, (size_t)capacity * sizeof(*hud));
+                }
+                hud[count++] = node;
+                continue;
+            }
         }
-        if (count == capacity) {
-            capacity = capacity ? capacity * 2 : 1024;
-            hud = realloc(hud, (size_t)capacity * sizeof(*hud));
-        }
-        hud[count++] = node;
+        Submit((const uint32_t *)(node + 1), (int)(*node >> 24));
     }
     for (first = 0; first < count;) {
         int box[4], group[4], have = 0, last, side, whole;
@@ -1481,7 +1518,10 @@ static void DrawAnchored(u_long *p, int margin, int half)
                 break;
             }
         }
-        side = !have ? 0 : group[2] <= ANCHOR_LEFT ? -1 : group[0] >= ANCHOR_RIGHT ? 1 : 0;
+        side = !have ? 0
+               : group[2] <= ANCHOR_LEFT || (group[2] < 160 && group[0] <= ANCHOR_OUTER) ? -1
+               : group[0] >= ANCHOR_RIGHT || (group[0] > 160 && group[2] >= 320 - ANCHOR_OUTER) ? 1
+               : 0;
         hudShift = 0.0f;
         hudMoveX = hudMoveY = 0.0f;
         if (whole) {

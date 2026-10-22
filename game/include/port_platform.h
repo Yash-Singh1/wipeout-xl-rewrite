@@ -48,6 +48,9 @@ void PortWideLoadScreen(void);
    where the HUD is (the other player's sign over a near ship, the missile lock's boxes): widescreen's and the
    split window's HUD handling leave it where the scene puts it. */
 void PortSceneSprite(const void *packet);
+/* ... the same for every packet in that memory (the trails, the engine flares: near the camera they go in at depth
+   0, the HUD's entry). */
+void PortSceneRange(const void *start, size_t bytes);
 
 /* The original Wipeout's tracks (platform/original.c), raced as guests in Talon's Reach's slot (trackNum 0,
    folder 1): the ones the player's copy of the original has, their names and classes (XL's: 1 Venom,
