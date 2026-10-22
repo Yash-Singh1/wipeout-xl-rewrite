@@ -866,10 +866,12 @@ static void Vertex(GpuVertex *v, uint32_t xy, const GtePrecise *precise)
         v->y = precise->y + (float)state.offsetY;
         v->w = precise->z;
         v->a = (uint8_t)(precise->fade * 255.0f + 0.5f);
+        v->noDepth = precise->background;
     } else {
         v->x = (float)(x + state.offsetX) + hudShift;
         v->y = (float)(y + state.offsetY);
         v->w = 0.0f; /* no depth: affine */
+        v->noDepth = 0;
     }
 }
 
@@ -888,13 +890,14 @@ static unsigned Vertices(GpuVertex *v, const uint32_t *const *words, int count)
     GtePrecise precise[GTE_RESOLVE_MAX];
     uint32_t xy[GTE_RESOLVE_MAX];
     unsigned mask;
-    int i, depth;
+    int i, depth, bound;
 
     for (i = 0; i < count; i++) {
         xy[i] = *words[i];
     }
     mask = GteResolvePrecise(xy, (const void *const *)words, count, precise);
     depth = mask == (1u << count) - 1;
+    bound = GteResolvedBound();
 
     for (i = 0; i < count; i++) {
         Vertex(&v[i], xy[i], (mask >> i) & 1 ? &precise[i] : NULL);
@@ -902,6 +905,9 @@ static unsigned Vertices(GpuVertex *v, const uint32_t *const *words, int count)
     }
     for (i = 0; i < count && !depth; i++) {
         v[i].w = 0.0f;
+    }
+    for (i = 0; i < count && !bound; i++) {
+        v[i].noDepth = 1; /* (the depth buffer: only what the 3D renderers placed) */
     }
     if (hudActive && !mask) {
         for (i = 0; i < count; i++) {
@@ -1721,6 +1727,8 @@ void DrawOTag(u_long *p)
     }
     FrameCapTable(state.offsetX, state.offsetY, state.areaLeft, state.areaTop, state.areaRight - state.areaLeft + 1,
                   state.areaBottom - state.areaTop + 1);
+    /* each table drawn over what is there (the depth buffer: gpu_gl.c) */
+    GpuClearDepth(state.areaLeft, state.areaTop, state.areaRight - state.areaLeft + 1, state.areaBottom - state.areaTop + 1);
     drawnSinceRead = 1;
     if (PortLinkSplit() && !tracing) {
         DrawAnchored(p, PortScreenMargin(), 1);

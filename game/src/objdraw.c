@@ -754,7 +754,9 @@ static void DrawObject(Object *object, DrawKind kind, int roll, const CVECTOR *c
     primitive = (char *)object->primitives;
     count = (u_short)object->primitiveCount;
     ordering = OT[CurrentScreen];
+    GteSetBackground(kind == DRAW_FIXED); /* Port: the sky is behind everything (the depth buffer leaves it out) */
     ProjectVertices(object);
+    GteSetBackground(0);
 
     do {
         Poly  prim;

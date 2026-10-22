@@ -37,6 +37,7 @@ typedef struct GtePrecise {
     float x, y;  /* screen position, in the game's 320x240 units */
     float z;     /* view-space depth (for perspective-correct texturing) */
     float fade;  /* the port's distance fade: 1 opaque .. 0 gone */
+    int background; /* projected while GteSetBackground was on: behind everything (the depth buffer leaves it out) */
     uint64_t key;   /* frame interpolation: what was projected (0: not known), see GteKeyNext */
     float view[3];  /* ... and where it was in view space */
 } GtePrecise;
@@ -45,6 +46,9 @@ typedef struct GtePrecise {
 /* The vertices xy[0..count-1] (GPU packet words) of one primitive: fills
    out[i] for each vertex found and returns the mask of those. */
 unsigned GteResolvePrecise(const uint32_t *xy, const void *const *addresses, int count, GtePrecise *out);
+/* Whether every vertex of the last primitive resolved was bound to its projection by the renderer that built it
+   (not found by its pixel alone, which a 2D shape can match by chance). */
+int GteResolvedBound(void);
 
 /* Exact links. Each projection has a handle (0: none was recorded); GtePreciseHandle gives the handle
    of the projection in SXY0, SXY1 or SXY2 (registers 12-14, 15 for SXY2). A renderer that writes a
@@ -73,6 +77,8 @@ uint32_t GteRecordProjection(uint32_t sxy, float x, float y, float z, float fade
 void GteRecordGrid(const uint32_t corner[4], const void *const cornerAddress[4], const int *x, const int *y, int size,
                    uint32_t *handles);
 void GteClearPrecise(void);
+/* While on, what is projected is the background (the sky), drawn behind everything else whatever its depth. */
+void GteSetBackground(int on);
 
 /* Frame interpolation (the display drawn more often than the game's 30 frames a second): a projection made
    with a key is found again in the next frame by that key, and a vertex drawn between the two frames is placed

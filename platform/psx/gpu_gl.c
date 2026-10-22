@@ -182,12 +182,14 @@ static int LoadFunctions(void)
 
 static int scale = 1;
 static GLuint framebuffer, colour;   /* all of video memory, scaled */
+static GLuint depthBuffer;           /* ... its depth (the depth buffer: Flush) */
 static GLuint vramTexture;           /* the CPU copy, R16UI */
 static GLuint glyphTexture;          /* the glyph page (GpuSetGlyphMemory): RGBA, premultiplied, filtered */
 static GLuint hdAtlas;               /* HD textures: the images in use (HdPlaced) */
 static GLuint program, vertexArray, vertexBuffer;
 static GLint uniformAlphaScale;
 static GLint uniformVram, uniformGlyphs, uniformHdAtlas, uniformPass, uniformTarget;
+static GLint uniformDepthPull, uniformDepthPass;
 static int vramDirty = 1;
 static GLuint windowFramebuffer;     /* the window's own: 0, but on iOS SDL's view has one of its own */
 static int dirtyLeft, dirtyTop, dirtyRight, dirtyBottom;
@@ -197,7 +199,7 @@ static int initialised;
 #define SCREEN_COLUMNS 320
 #define MAX_WIDE_MARGIN 400
 static int wideMargin;                         /* console pixels beyond each side; 0: no wide framebuffer */
-static GLuint wideFramebuffer, wideColour;
+static GLuint wideFramebuffer, wideColour, wideDepth;
 static int wideDirty;                          /* drawn into since its middle was copied to video memory's */
 static int areaWide;                           /* the draw area is in the screen's columns: drawn wide */
 static int sceneWide;                          /* the game built a race's scene since the last new picture */
@@ -246,14 +248,19 @@ static const char *vertexSource =
     "flat out ivec4 vWindow;\n"
     "flat out ivec4 mode;\n"
     "uniform int pass;\n"
+    "uniform float depthPull;\n"       /* the depth buffer (Flush): depth tested this much nearer */
+    "uniform int depthPass;\n"         /* ... 1: depth written, at the true depth */
     "uniform vec2 target;\n"           /* framebuffer size in video-memory pixels */
     "uniform vec2 origin;\n"           /* the video-memory position of its first pixel */
     "out vec4 vColour;\n"
     "out vec3 vTexel;\n"
     "void main() {\n"
-    "    float w = position.z > 0.0 ? position.z : 1.0;\n"
+    /* position.z: the depth (perspective), negative when left out of the depth buffer, 0 in 2D. The depth buffer
+       holds 1 - 1/depth; what is left out and 2D are in front of it (always drawn) and never written. */
+    "    float w = position.z != 0.0 ? abs(position.z) : 1.0;\n"
     "    vec2 ndc = (position.xy - origin) / target * 2.0 - 1.0;\n"
-    "    gl_Position = vec4(ndc * w, position.z > 0.0 ? w - 2.0 : 0.0, w);\n"
+    "    float z = position.z > 0.0 ? w - 2.0 * (depthPass == 1 ? 1.0 : depthPull) : (depthPass == 1 ? w : -w);\n"
+    "    gl_Position = vec4(ndc * w, z, w);\n"
     "    vColour = colour;\n"
     "    texturePage = ivec4(texture.xy, 0, 0);\n"
     "    clut = ivec4(texture.zw, 0, 0);\n"
@@ -405,6 +412,21 @@ int GpuScale(void)
 }
 
 /* Video memory's framebuffer at the scale. */
+/* A depth buffer of that size, attached to the framebuffer bound, cleared. */
+static GLuint DepthFor(int width, int height)
+{
+    GLuint depth;
+
+    glGenRenderbuffers(1, &depth);
+    glBindRenderbuffer(GL_RENDERBUFFER, depth);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depth);
+    glDisable(GL_SCISSOR_TEST);
+    glDepthMask(GL_TRUE);
+    glClear(GL_DEPTH_BUFFER_BIT);
+    return depth;
+}
+
 static int CreateFramebuffer(void)
 {
     glGenTextures(1, &colour);
@@ -416,6 +438,7 @@ static int CreateFramebuffer(void)
     glGenFramebuffers(1, &framebuffer);
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colour, 0);
+    depthBuffer = DepthFor(VRAM_WIDTH * scale, VRAM_HEIGHT * scale);
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         SDL_Log("framebuffer incomplete at scale %d", scale);
         return 0;
@@ -457,6 +480,8 @@ int GpuInit(void)
     uniformHdAtlas = glGetUniformLocation(program, "hdAtlas");
     uniformAlphaScale = glGetUniformLocation(program, "alphaScale");
     uniformPass = glGetUniformLocation(program, "pass");
+    uniformDepthPull = glGetUniformLocation(program, "depthPull");
+    uniformDepthPass = glGetUniformLocation(program, "depthPass");
     uniformTarget = glGetUniformLocation(program, "target");
     uniformOrigin = glGetUniformLocation(program, "origin");
     /* each sampler its own unit from the start (an integer and a float texture may not share one) */
@@ -687,7 +712,8 @@ static void SetWideMargin(int margin)
     if (wideFramebuffer) {
         glDeleteFramebuffers(1, &wideFramebuffer);
         glDeleteTextures(1, &wideColour);
-        wideFramebuffer = wideColour = 0;
+        glDeleteRenderbuffers(1, &wideDepth);
+        wideFramebuffer = wideColour = wideDepth = 0;
     }
     wideMargin = margin;
     if (margin) {
@@ -700,6 +726,7 @@ static void SetWideMargin(int margin)
         glGenFramebuffers(1, &wideFramebuffer);
         glBindFramebuffer(GL_FRAMEBUFFER, wideFramebuffer);
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, wideColour, 0);
+        wideDepth = DepthFor(WideWidth() * scale, VRAM_HEIGHT * scale);
         glDisable(GL_SCISSOR_TEST);
         glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT);
@@ -831,6 +858,10 @@ static void SetBlend(int semi)
     }
 }
 
+/* The depth buffer's slack: what is drawn after may be this much farther (a fraction of its depth) than what is
+   drawn before at that pixel and still be drawn over it, as in the game's order. */
+#define DEPTH_SLACK 0.02f
+
 static void DrawBatch(int pass)
 {
     const GpuDrawState *s = &batchState;
@@ -874,6 +905,18 @@ static void Flush(void)
     glBindTexture(GL_TEXTURE_2D, hdAtlas);
     glUniform1i(uniformHdAtlas, 2);
     glActiveTexture(GL_TEXTURE0);
+    /* The depth buffer: what has a depth is drawn where nothing nearer was drawn, give or take DEPTH_SLACK (the
+       game's own order decides among things at about the same depth: a shadow or a pad on the track), and the
+       opaque write their depth once drawn. Without it (the console's look) the game's order alone decides. */
+    if (!portSettings.consoleDepth) {
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LEQUAL);
+        glDepthMask(GL_FALSE);
+        glUniform1f(uniformDepthPull, 1.0f / (1.0f - DEPTH_SLACK));
+        glUniform1i(uniformDepthPass, 0);
+    } else {
+        glDisable(GL_DEPTH_TEST);
+    }
     if (s->textured && s->semi >= 0) {
         /* Texels without the semi-transparency bit are drawn opaque, the
            others blended: two passes, each discarding the other's texels. */
@@ -882,6 +925,18 @@ static void Flush(void)
     } else {
         DrawBatch(0);
     }
+    if (!portSettings.consoleDepth && !s->fade && (s->semi < 0 || s->textured) && !(s->textured && s->depth == 3)) {
+        /* the depth of what was drawn opaque (its opaque texels) */
+        glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+        glDepthMask(GL_TRUE);
+        glDepthFunc(GL_LESS);
+        glUniform1i(uniformDepthPass, 1);
+        glUniform1i(uniformPass, s->textured && s->semi >= 0 ? 1 : 0);
+        glDrawArrays(GL_TRIANGLES, 0, batchCount);
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        glDepthMask(GL_FALSE);
+    }
+    glDisable(GL_DEPTH_TEST);
     batchCount = 0;
 }
 
@@ -1045,7 +1100,7 @@ static void Add(const GpuVertex *v)
 
     out->x = v->x;
     out->y = v->y;
-    out->w = v->w;
+    out->w = v->w > 0.0f && v->noDepth ? -v->w : v->w; /* (the vertex shader's position.z) */
     out->r = v->r / 255.0f;
     out->g = v->g / 255.0f;
     out->b = v->b / 255.0f;
@@ -1204,25 +1259,37 @@ void GpuFill(int x, int y, int w, int h, uint8_t r, uint8_t g, uint8_t b)
     GpuClearArea(x, y, w, h, r, g, b);
 }
 
-void GpuClearArea(int x, int y, int w, int h, uint8_t r, uint8_t g, uint8_t b)
+/* Clears (x, y, w, h) of the framebuffers: `buffers` (colour to r, g, b, depth to the farthest). */
+static void Clear(int x, int y, int w, int h, GLbitfield buffers, uint8_t r, uint8_t g, uint8_t b)
 {
     Flush();
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
     glEnable(GL_SCISSOR_TEST);
     glScissor(x * scale, y * scale, w * scale, h * scale);
     glClearColor(r / 255.0f, g / 255.0f, b / 255.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-    if (InScreenColumns(x, w)) {
+    glDepthMask(GL_TRUE);
+    glClear(buffers);
+    if (InScreenColumns(x, w) && wideFramebuffer) {
         /* across the whole screen: the sides too */
         int left = x <= 0 && x + w >= SCREEN_COLUMNS ? 0 : SDL_max(x, 0) + wideMargin;
         int right = x <= 0 && x + w >= SCREEN_COLUMNS ? WideWidth() : SDL_min(x + w, SCREEN_COLUMNS) + wideMargin;
 
         glBindFramebuffer(GL_FRAMEBUFFER, wideFramebuffer);
         glScissor(left * scale, y * scale, (right - left) * scale, h * scale);
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClear(buffers);
         glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
     }
     glDisable(GL_SCISSOR_TEST);
+}
+
+void GpuClearArea(int x, int y, int w, int h, uint8_t r, uint8_t g, uint8_t b)
+{
+    Clear(x, y, w, h, GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT, r, g, b);
+}
+
+void GpuClearDepth(int x, int y, int w, int h)
+{
+    Clear(x, y, w, h, GL_DEPTH_BUFFER_BIT, 0, 0, 0);
 }
 
 /* Reads drawn pixels back into video memory (15-bit, each the framebuffer's
@@ -1402,7 +1469,7 @@ void GpuPictureHandedOver(void)
    is drawn at the new scale). */
 static void SetScale(int newScale)
 {
-    GLuint oldColour = colour, oldFramebuffer = framebuffer;
+    GLuint oldColour = colour, oldFramebuffer = framebuffer, oldDepth = depthBuffer;
     int oldScale = scale, margin = wideMargin;
 
     Flush();
@@ -1411,8 +1478,10 @@ static void SetScale(int newScale)
     if (!CreateFramebuffer()) {
         glDeleteFramebuffers(1, &framebuffer);
         glDeleteTextures(1, &colour);
+        glDeleteRenderbuffers(1, &depthBuffer);
         colour = oldColour;
         framebuffer = oldFramebuffer;
+        depthBuffer = oldDepth;
         scale = oldScale;
     } else {
         glBindFramebuffer(GL_READ_FRAMEBUFFER, oldFramebuffer);
@@ -1422,6 +1491,7 @@ static void SetScale(int newScale)
                           VRAM_HEIGHT * scale, GL_COLOR_BUFFER_BIT, scale < oldScale ? GL_LINEAR : GL_NEAREST);
         glDeleteFramebuffers(1, &oldFramebuffer);
         glDeleteTextures(1, &oldColour);
+        glDeleteRenderbuffers(1, &oldDepth);
     }
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
     SetWideMargin(margin);

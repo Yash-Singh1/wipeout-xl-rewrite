@@ -35,6 +35,7 @@ typedef struct PortSettings {
     int touchControls;    /* the touch controls (touch.h): TOUCH_AUTO, TOUCH_ON or TOUCH_OFF */
     int touchSize;        /* ... their size, in percent (0: 100) */
     int touchOpacity;     /* ... how opaque, in percent (0: 60) */
+    int consoleDepth;     /* no depth buffer: the game's ordering tables alone decide what is in front (gpu_gl.c) */
 } PortSettings;
 
 /* PortSettings.recordFrames: what the frame recorder keeps, and what Tab does */

@@ -44,6 +44,7 @@ typedef struct GpuVertex {
     float x, y, w;
     uint8_t r, g, b, a;
     float u, v;
+    int noDepth;    /* with a depth (w): left out of the depth buffer (the sky; corners only found by their pixels) */
 } GpuVertex;
 
 /* How a primitive is drawn. */
@@ -88,6 +89,8 @@ void GpuPresentSplit(int x, int y, int w, int h, const uint8_t *lower, int lower
 #define GPU_SPLIT_TOP 76
 #define GPU_SPLIT_ROWS 136
 uint8_t *GpuReadArea(int x, int y, int w, int h, int *outW, int *outH);
+/* The depth buffer in that area of video memory starts afresh (each ordering table: libgpu's DrawOTag). */
+void GpuClearDepth(int x, int y, int w, int h);
 /* Brings psxVram up to date with what was drawn into the rectangle (before
    the CPU reads or copies it). */
 void GpuReadBack(int x, int y, int w, int h);

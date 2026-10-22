@@ -36,6 +36,8 @@ static void Set(const char *key, const char *value)
         portSettings.fadeNear = number;
     } else if (!strcmp(key, "fade_far") && number > 0) {
         portSettings.fadeFar = number;
+    } else if (!strcmp(key, "depth_buffer")) {
+        portSettings.consoleDepth = number == 0;
     } else if (!strcmp(key, "widescreen")) {
         portSettings.widescreen = number != 0;
     } else if (!strcmp(key, "frame_rate")) {
@@ -141,6 +143,9 @@ void PortSettingsLoad(void)
     if ((value = SDL_getenv("WIPEOUT_TOUCH"))) {
         portSettings.touchControls = SDL_clamp(SDL_atoi(value), 0, 2); /* 0 automatic, 1 on, 2 off */
     }
+    if ((value = SDL_getenv("WIPEOUT_DEPTH_BUFFER"))) {
+        portSettings.consoleDepth = SDL_atoi(value) == 0;
+    }
     if ((value = SDL_getenv("WIPEOUT_WIDESCREEN"))) {
         portSettings.widescreen = SDL_atoi(value) != 0;
     }
@@ -189,7 +194,7 @@ int PortSettingsSave(void)
             "widescreen = %d\nframe_rate = %d\nframe_cap = %d\nskip_intro = %d\nrecord_frames = %d\nrecord_replays = %d\nsave_dir = %s\ndisc = %s\noriginal = %s\n"
             "render_scale = %d\nhd_textures = %d\nhd_pack = %s\nwipeout64 = %s\n"
             "custom_music = %d\nmusic_shuffle = %d\nmusic_folder = %s\nsave_slot = %s\nautosave = %d\n"
-            "touch_controls = %d\ntouch_size = %d\ntouch_opacity = %d\n",
+            "touch_controls = %d\ntouch_size = %d\ntouch_opacity = %d\ndepth_buffer = %d\n",
             portSettings.showFps, portSettings.farView, portSettings.fade, portSettings.fadeNear, portSettings.fadeFar,
             portSettings.widescreen, portSettings.frameRate,
             portSettings.frameCap, portSettings.skipIntro,
@@ -199,7 +204,7 @@ int PortSettingsSave(void)
             portSettings.hdTextures, portSettings.hdPackPath, portSettings.wipeout64Path, portSettings.customMusic,
             portSettings.musicShuffle, portSettings.musicFolder, portSettings.saveSlot, !portSettings.noAutoSave,
             portSettings.touchControls, portSettings.touchSize ? portSettings.touchSize : 100,
-            portSettings.touchOpacity ? portSettings.touchOpacity : 60);
+            portSettings.touchOpacity ? portSettings.touchOpacity : 60, !portSettings.consoleDepth);
     fclose(file);
     return 1;
 }

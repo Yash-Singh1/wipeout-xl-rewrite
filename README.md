@@ -165,6 +165,13 @@ Graphics tab sets the frame rate: uncapped (the default), the display's refresh
 (VSync), a cap in pictures a second, or the console's 60 fields a second
 without the frames in between (`WIPEOUT_FRAME_RATE=uncapped|vsync|console|N`).
 
+A depth buffer (on by default; the Graphics tab's Depth buffer, or
+`WIPEOUT_DEPTH_BUFFER=0|1`) keeps far polygons from being drawn over nearer
+ones: the console sorted each polygon by its average depth, so a long wall or
+a hillside could show through the track in front of it. Polygons at about the
+same depth (a shadow or a pad on the track, a sign on its board) keep the
+game's own order.
+
 Widescreen (the debug console's Graphics tab, or `WIPEOUT_WIDESCREEN=1`): in a
 window wider than 4:3 a race fills the whole width, showing more of the scene at
 the sides, with the HUD at the window's edges. In the menus the backdrop is

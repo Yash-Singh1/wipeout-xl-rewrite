@@ -599,6 +599,13 @@ void GteRecordView(uint32_t handle, double x, double y, double z)
     }
 }
 
+static int backgroundOn; /* (GteSetBackground) */
+
+void GteSetBackground(int on)
+{
+    backgroundOn = on;
+}
+
 static uint32_t RecordPrecise(uint32_t sxy, float x, float y, float z)
 {
     PreciseSlot *slot;
@@ -616,6 +623,7 @@ static uint32_t RecordPrecise(uint32_t sxy, float x, float y, float z)
     record->value.y = y;
     record->value.z = z;
     record->value.fade = 1.0f;
+    record->value.background = backgroundOn;
     record->value.key = 0;
     record->value.view[0] = record->value.view[1] = record->value.view[2] = 0.0f;
     record->key = sxy;
@@ -749,6 +757,13 @@ static int32_t Distance(int32_t a, int32_t b)
     return a > b ? a - b : b - a;
 }
 
+static int resolvedBound; /* (GteResolvedBound) */
+
+int GteResolvedBound(void)
+{
+    return resolvedBound;
+}
+
 unsigned GteResolvePrecise(const uint32_t *xy, const void *const *addresses, int count, GtePrecise *out)
 {
     int32_t candidates[GTE_RESOLVE_MAX][PRECISE_CANDIDATES], chosen[GTE_RESOLVE_MAX];
@@ -756,6 +771,7 @@ unsigned GteResolvePrecise(const uint32_t *xy, const void *const *addresses, int
     int32_t sorted[GTE_RESOLVE_MAX], middle;
     unsigned mask = 0;
 
+    resolvedBound = 0;
     for (i = 0; addresses && i < count; i++) {
         if (BoundFlat(addresses[i])) {
             return 0;
@@ -849,6 +865,7 @@ unsigned GteResolvePrecise(const uint32_t *xy, const void *const *addresses, int
     if (!bound && j < count) {
         return 0; /* only some corners of an unbound primitive match: by chance (a 2D shape) */
     }
+    resolvedBound = bound == count;
     middle = sorted[(j - 1) / 2];
     for (i = 0; i < count; i++) {
         if (chosen[i] >= 0 && (j == 1 || Distance(chosen[i], middle) <= PRECISE_SPREAD)) {

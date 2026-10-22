@@ -1640,6 +1640,12 @@ static void Console(void)
                 Changed();
             }
             ImGui::EndDisabled();
+            bool depthBuffer = !portSettings.consoleDepth;
+            if (ImGui::Checkbox("Depth buffer", &depthBuffer)) {
+                portSettings.consoleDepth = !depthBuffer;
+                Changed();
+            }
+            ImGui::TextDisabled("Off: the console's sorting, where a far polygon can be drawn over a nearer one.");
             ImGui::Separator();
             static const char *const rates[] = {"Uncapped", "Display refresh (VSync)", "Capped", "Console (60 fields a second)"};
             int rate = portSettings.frameRate;
