@@ -2,7 +2,8 @@
 """Reads a frame recording saved by the frame recorder (Tab in the game, platform/psx/framecap.h).
 
   framecap.py DIR                      the frames: game frame, primitives, shown or not
-  framecap.py DIR pixel FRAME X Y      every primitive at picture pixel X, Y of FRAME, topmost last, and
+  framecap.py DIR pixel FRAME X Y      every primitive at pixel X, Y of FRAME (the console's columns: with
+                                       widescreen the sides are left of 0 and beyond 319), topmost last, and
                                        what each writes there
   framecap.py DIR flicker              pixels that turn dark for a frame or two and back, with the
                                        primitives on top there before, during and after
@@ -39,6 +40,10 @@ def load(folder):
     for index in range(count):
         game, shown, ox, oy, ax, ay, aw, ah, vram, n = FRAME.unpack_from(data, pos)
         pos += FRAME.size
+        picture_x = 0  # the column of the picture's left edge (version 2: widescreen's pictures start left of 0)
+        if version >= 2:
+            picture_x, = struct.unpack_from('<i', data, pos)
+            pos += 4
         prims = []
         for _ in range(n):
             p = Prim()
@@ -57,7 +62,7 @@ def load(folder):
             p.tag = tag.split(b'\0')[0].decode('latin-1')
             prims.append(p)
         frames.append(dict(index=index, game=game, shown=shown, offset=(ox, oy), area=(ax, ay, aw, ah), vram=vram,
-                           prims=prims, folder=folder))
+                           prims=prims, folder=folder, picture_x=picture_x))
     return frames
 
 
@@ -91,10 +96,14 @@ def picture(frame):
 
 
 def pixel_rgb(frame, x, y):
+    """The picture's colour at the console's column x, row y."""
     pic = picture(frame)
     if not pic:
         return None
     w, h, data = pic
+    x -= frame['picture_x']
+    if not (0 <= x < w and 0 <= y < h):
+        return None
     i = (y * w + x) * 3
     return tuple(data[i:i + 3])
 
@@ -242,12 +251,12 @@ def flicker(frames, threshold=40):
         w, h, _ = picture(b)
         spots = []
         for y in range(0, h, 2):
-            for x in range(0, w, 2):
+            for x in range(b['picture_x'], b['picture_x'] + w, 2):
                 pb = pixel_rgb(b, x, y)
                 if sum(pb) > threshold:
                     continue
                 pa, pc = pixel_rgb(a, x, y), pixel_rgb(c, x, y)
-                if sum(pa) > threshold * 3 and sum(pc) > threshold * 3:
+                if pa and pc and sum(pa) > threshold * 3 and sum(pc) > threshold * 3:
                     spots.append((x, y))
         if len(spots) < 8:
             continue

@@ -45,7 +45,7 @@ static void Set(const char *key, const char *value)
     } else if (!strcmp(key, "skip_intro")) {
         portSettings.skipIntro = number != 0;
     } else if (!strcmp(key, "record_frames")) {
-        portSettings.recordFrames = number != 0;
+        portSettings.recordFrames = SDL_clamp(number, RECORD_OFF, RECORD_WITH_TAB);
     } else if (!strcmp(key, "record_replays")) {
         portSettings.recordReplays = number != 0;
     } else if (!strcmp(key, "save_dir")) {

@@ -17,10 +17,17 @@ typedef struct PortSettings {
     int frameRate;        /* the display: FRAME_RATE_*; the game itself keeps its 30 frames a second */
     int frameCap;         /* pictures a second with FRAME_RATE_CAPPED */
     int skipIntro;        /* no intro movie at start-up */
-    int recordFrames;     /* the frame recorder keeps the last seconds of drawing (Tab, psx/framecap.h) */
+    int recordFrames;     /* the frame recorder (psx/framecap.h): RECORD_* */
     int recordReplays;    /* every session is recorded as a replay (trace.c, --record) */
     char saveDir[1024];   /* memory cards ("" = the user's data folder); takes effect at the next start */
 } PortSettings;
+
+/* PortSettings.recordFrames: what the frame recorder keeps, and what Tab does */
+enum {
+    RECORD_OFF,
+    RECORD_LAST_SECONDS, /* the last 3 seconds; Tab freezes the game to look at them */
+    RECORD_WITH_TAB      /* from one Tab to the next (up to the last 10 seconds); the game goes on */
+};
 
 enum {
     FRAME_RATE_UNCAPPED, /* as many pictures as the computer draws, moving between the game's frames */

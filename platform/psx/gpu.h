@@ -87,6 +87,11 @@ int PortScreenMargin(void);
 /* Widescreen: the picture being drawn is a race's (everything reaches the sides, the HUD goes to its edges), not
    a menu's. */
 int GpuRaceWide(void);
+/* Widescreen: how far the picture shown from (x, w) reaches beyond each side (0: it is 4:3). */
+int GpuShownMargin(int x, int w);
+/* The picture at (x, y, w, h) of video memory, with `margin` columns beyond each side (GpuShownMargin), as
+   outW x outH RGBA, top row first (the frame recorder's). */
+uint8_t *GpuReadPicture(int x, int y, int w, int h, int margin, int outW, int outH);
 /* A menu's backdrop was built this frame (PortWideBackdrop in libgpu): the menu is shown wide. */
 void GpuWideMenu(void);
 /* The primitives that follow are (1) or are not (0) a menu's backdrop, which widescreen enlarges to fill the

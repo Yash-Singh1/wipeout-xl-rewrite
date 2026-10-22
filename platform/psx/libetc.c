@@ -126,6 +126,26 @@ static void Field(void)
             DebugUiShowRecorder();
         }
     }
+    {
+        /* tests: WIPEOUT_FRAMECAP_TAB_AT=a,b presses Tab at pictures a and b (and with WIPEOUT_DEBUG_UI opens the
+           console after b, as ~ would) */
+        static int tabAt[2] = {-1, -1};
+
+        if (tabAt[0] < 0) {
+            const char *value = SDL_getenv("WIPEOUT_FRAMECAP_TAB_AT");
+
+            tabAt[0] = tabAt[1] = 0;
+            if (value) {
+                SDL_sscanf(value, "%d,%d", &tabAt[0], &tabAt[1]);
+            }
+        }
+        if ((tabAt[0] > 0 && PortShownFrames() == tabAt[0]) || (tabAt[1] > 0 && PortShownFrames() == tabAt[1])) {
+            DebugUiTab();
+            if (PortShownFrames() == tabAt[1] && SDL_getenv("WIPEOUT_DEBUG_UI")) {
+                DebugUiShowRecorder();
+            }
+        }
+    }
     /* Tab (the frame recorder): the game waits here, silent, while the window and the debug console go on */
     if (FrameCapFrozen()) {
         PsxAudioDevicePause(true);

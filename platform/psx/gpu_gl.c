@@ -1150,11 +1150,17 @@ uint8_t *GpuReadArea(int x, int y, int w, int h, int *outW, int *outH)
 
 /* The frame recorder (framecap.c): an area of video memory as shown, scaled to outW x outH, RGBA, top row
    first. */
-uint8_t *GpuReadPicture(int x, int y, int w, int h, int outW, int outH)
+int GpuShownMargin(int x, int w)
+{
+    return wideMargin && x == 0 && w == SCREEN_COLUMNS ? wideMargin : 0;
+}
+
+uint8_t *GpuReadPicture(int x, int y, int w, int h, int margin, int outW, int outH)
 {
     static GLuint small, smallTexture;
     static int smallW, smallH;
     static uint8_t *pixels;
+    int wide = margin && margin == GpuShownMargin(x, w);
 
     Flush();
     SyncWide();
@@ -1172,10 +1178,15 @@ uint8_t *GpuReadPicture(int x, int y, int w, int h, int outW, int outH)
         pixels = realloc(pixels, (size_t)outW * outH * 4);
     }
     glDisable(GL_SCISSOR_TEST);
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, wide ? wideFramebuffer : framebuffer);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, small);
-    glBlitFramebuffer(x * scale, y * scale, (x + w) * scale, (y + h) * scale, 0, 0, outW, outH, GL_COLOR_BUFFER_BIT,
-                      GL_LINEAR);
+    if (wide) {
+        glBlitFramebuffer(0, y * scale, WideWidth() * scale, (y + h) * scale, 0, 0, outW, outH, GL_COLOR_BUFFER_BIT,
+                          GL_LINEAR);
+    } else {
+        glBlitFramebuffer(x * scale, y * scale, (x + w) * scale, (y + h) * scale, 0, 0, outW, outH, GL_COLOR_BUFFER_BIT,
+                          GL_LINEAR);
+    }
     glBindFramebuffer(GL_READ_FRAMEBUFFER, small);
     glPixelStorei(GL_PACK_ALIGNMENT, 4);
     glReadPixels(0, 0, outW, outH, GL_RGBA, GL_UNSIGNED_BYTE, pixels);

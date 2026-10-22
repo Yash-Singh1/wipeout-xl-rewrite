@@ -13,17 +13,19 @@
 #include "../platform.h"
 #include "../settings.h"
 
-#define FRAMES 90 /* three seconds of the game's 30 frames a second */
+#define LAST_FRAMES 90 /* RECORD_LAST_SECONDS: three seconds of the game's 30 frames a second */
+#define TAB_FRAMES 300 /* RECORD_WITH_TAB: up to the last ten */
+#define FRAMES TAB_FRAMES
 #define PICTURE_W 320
 #define PICTURE_H 240
-
-uint8_t *GpuReadPicture(int x, int y, int w, int h, int outW, int outH); /* gpu_gl.c */
 
 static FrameCapFrame frames[FRAMES];
 static int first, count; /* the ring: frames[first], ... count of them */
 static int current = -1; /* the frame being recorded */
 static int newFrame = 1; /* a picture was shown since the last table: the next table starts a frame */
 static int frozen;
+static int taking;       /* RECORD_WITH_TAB: between the Tab that started a recording and the one that stops it */
+static int generation;
 static char savedDir[1024];
 
 /* Video-memory snapshots, shared by the frames drawn while it did not change. */
@@ -44,14 +46,38 @@ typedef struct Tag {
 static Tag *tags;
 static int tagCount, tagCapacity, tagsSorted, tagsStale;
 
-int FrameCapRecording(void)
+/* RECORD_*: the settings', or the tests' (WIPEOUT_FRAMECAP: the last seconds, =tab recording with Tab; the
+   hidden runs have none otherwise) */
+int FrameCapMode(void)
 {
     static int forced = -1;
 
     if (forced < 0) {
-        forced = SDL_getenv("WIPEOUT_FRAMECAP") != NULL;
+        const char *value = SDL_getenv("WIPEOUT_FRAMECAP");
+
+        forced = !value ? RECORD_OFF : !SDL_strcasecmp(value, "tab") ? RECORD_WITH_TAB : RECORD_LAST_SECONDS;
     }
-    return !frozen && (forced || (!portConfig.hidden && portSettings.recordFrames));
+    return forced ? forced : portConfig.hidden ? RECORD_OFF : portSettings.recordFrames;
+}
+
+int FrameCapRecording(void)
+{
+    return FrameCapMode() == RECORD_LAST_SECONDS ? !frozen : FrameCapMode() == RECORD_WITH_TAB && taking;
+}
+
+int FrameCapTaking(void)
+{
+    return FrameCapMode() == RECORD_WITH_TAB && taking;
+}
+
+int FrameCapViewable(void)
+{
+    return count > 0 && (frozen || (FrameCapMode() == RECORD_WITH_TAB && !taking));
+}
+
+int FrameCapGeneration(void)
+{
+    return generation;
 }
 
 int FrameCapFrozen(void)
@@ -130,7 +156,7 @@ void FrameCapTable(int offsetX, int offsetY, int areaX, int areaY, int areaW, in
         return; /* the second table (the HUD) of the same frame */
     }
     newFrame = 0;
-    if (count == FRAMES) {
+    while (count >= (FrameCapMode() == RECORD_WITH_TAB ? TAB_FRAMES : LAST_FRAMES)) {
         f = &frames[first];
         Release(f->vram);
         first = (first + 1) % FRAMES;
@@ -261,14 +287,17 @@ void FrameCapShown(int x, int y, int w, int h)
 
         if (x >= f->areaX && x < f->areaX + f->areaW && y >= f->areaY && y < f->areaY + f->areaH) {
             if (!f->shown) {
-                uint8_t *pixels = GpuReadPicture(x, y, w, h, PICTURE_W, PICTURE_H);
+                /* the console's pixels, and with widescreen the sides as well */
+                int margin = GpuShownMargin(x, w), width = PICTURE_W + 2 * margin;
+                uint8_t *pixels = GpuReadPicture(x, y, w, h, margin, width, PICTURE_H);
 
-                if (!f->picture) {
-                    f->picture = malloc(PICTURE_W * PICTURE_H * 4);
+                if (!f->picture || f->pictureW != width) {
+                    f->picture = realloc(f->picture, (size_t)width * PICTURE_H * 4);
                 }
-                f->pictureW = PICTURE_W;
+                f->pictureW = width;
                 f->pictureH = PICTURE_H;
-                memcpy(f->picture, pixels, PICTURE_W * PICTURE_H * 4);
+                f->pictureX = -margin;
+                memcpy(f->picture, pixels, (size_t)width * PICTURE_H * 4);
                 f->shown = PortShownFrames() + 1;
             }
             return;
@@ -441,7 +470,7 @@ static void Save(void)
     }
     /* header: magic, version, frames; per frame its fields, then its primitives (see tools/framecap.py) */
     Put(file, "XLFC", 4);
-    PutI32(file, 1);
+    PutI32(file, 2);
     PutI32(file, count);
     for (i = 0; i < count; i++) {
         const FrameCapFrame *f = FrameCapFrameAt(i);
@@ -457,6 +486,7 @@ static void Save(void)
         PutI32(file, f->areaH);
         PutI32(file, f->vram);
         PutI32(file, f->count);
+        PutI32(file, f->pictureX); /* version 2 */
         for (k = 0; k < f->count; k++) {
             const FrameCapPrim *p = &f->prims[k];
             int j;
@@ -542,5 +572,35 @@ void FrameCapToggleFreeze(void)
         return;
     }
     frozen = 1;
+    generation++;
     Save();
+}
+
+void FrameCapClear(void)
+{
+    int i;
+
+    for (i = 0; i < count; i++) {
+        Release(frames[(first + i) % FRAMES].vram);
+    }
+    first = count = 0;
+    current = -1;
+    newFrame = 1;
+    frozen = taking = 0;
+    savedDir[0] = 0;
+    generation++;
+}
+
+void FrameCapTab(void)
+{
+    if (FrameCapMode() != RECORD_WITH_TAB) {
+        FrameCapToggleFreeze();
+    } else if (taking) {
+        taking = 0;
+        current = -1;
+        generation++;
+    } else {
+        FrameCapClear();
+        taking = 1;
+    }
 }

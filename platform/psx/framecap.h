@@ -2,9 +2,10 @@
    a glitch can be taken apart after it was seen. For every frame: each primitive libgpu was given, in the
    order drawn, as drawn (its corners with their precise positions and depths, colours, texture, blending,
    whether the GPU's size limit skipped it) and which game code built it (FrameCapTag); the video memory
-   it textured from; and the picture shown. Tab (debug_ui.cpp) freezes the game and saves the recording;
-   the debug console's Recorder tab steps back through it and explains any pixel. tools/framecap.py reads
-   the saved recordings. */
+   it textured from; and the picture shown (with widescreen, the whole wide picture). The settings choose
+   what it keeps (RECORD_*): the last 3 seconds, which Tab (debug_ui.cpp) freezes the game on and saves, or
+   what is drawn from one Tab to the next while the game goes on. The debug console's Recorder tab steps
+   through a recording and explains any pixel. tools/framecap.py reads the saved recordings. */
 #ifndef PSX_FRAMECAP_H
 #define PSX_FRAMECAP_H
 
@@ -51,6 +52,7 @@ typedef struct FrameCapFrame {
     int count, capacity;
     uint8_t *picture;     /* RGBA, pictureW x pictureH, top row first: the picture shown */
     int pictureW, pictureH;
+    int pictureX;         /* the column of the picture's left edge, from the area's (widescreen: -the margin) */
 } FrameCapFrame;
 
 /* Recording (libgpu). */
@@ -64,11 +66,18 @@ void FrameCapTagRecord(FrameCapPrim *prim); /* its tag, from its address */
 void FrameCapTag(const void *start, const void *end, const char *what, const char *name, int index);
 
 int FrameCapRecording(void);
+int FrameCapMode(void); /* RECORD_*: the settings' (the tests': WIPEOUT_FRAMECAP) */
 int FrameCapFrozen(void);
-/* Tab: freezes the game (libetc's fields wait) and saves the recording; again: resumes. */
+/* Tab: with RECORD_LAST_SECONDS freezes the game (libetc's fields wait) and saves the recording, again
+   resumes (FrameCapToggleFreeze); with RECORD_WITH_TAB starts a new recording, again stops it. */
+void FrameCapTab(void);
 void FrameCapToggleFreeze(void);
+int FrameCapTaking(void);   /* RECORD_WITH_TAB: a recording is being made */
+int FrameCapViewable(void); /* the recording holds still: frozen, or a stopped RECORD_WITH_TAB recording */
+int FrameCapGeneration(void); /* changes when the recording held changes (a new one held, or cleared) */
+void FrameCapClear(void);   /* forgets the recording (and resumes a frozen game): the settings changed */
 const char *FrameCapSavedDir(void);
-void FrameCapSave(void); /* tests (WIPEOUT_FRAMECAP_SAVE_AT): saves without freezing */
+void FrameCapSave(void);
 
 /* The recording, oldest first. */
 int FrameCapFrameCount(void);

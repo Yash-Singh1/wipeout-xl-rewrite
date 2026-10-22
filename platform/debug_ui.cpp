@@ -25,8 +25,12 @@ static ImGuiStyle baseStyle; /* the style at a scale of 1 (FitToWindow) */
 static bool ready, open;
 static char saveDirEdit[1024];
 static bool showRecorder; // Tab brings the Recorder tab up
-static int pickX = -1, pickY = -1; // the frame viewer's pixel
-static int testHoverX = -1, testHoverY = -1; // tests: where the pointer is taken to be over the picture
+// the frame viewer's pixel, in the console's columns and rows (left of 0 and beyond 319: widescreen's sides)
+static bool picked;
+static int pickX, pickY;
+static bool testHover; // tests: where the pointer is taken to be over the picture
+static int testHoverX, testHoverY;
+static uint64_t recordingStopped; // when a RECORD_WITH_TAB recording stopped: the overlay says so a while
 
 // the rates, over the last half second
 static uint64_t rateStart, presents, swapsAtStart;
@@ -73,12 +77,27 @@ extern "C" void DebugUiShowRecorder(void)
     // tests: WIPEOUT_FRAMECAP_PICK=x,y picks a pixel of the newest shown frame
     const char *pick = SDL_getenv("WIPEOUT_FRAMECAP_PICK");
     if (pick) {
-        SDL_sscanf(pick, "%d,%d", &pickX, &pickY);
+        picked = SDL_sscanf(pick, "%d,%d", &pickX, &pickY) == 2;
     }
     // and WIPEOUT_FRAMECAP_HOVER=x,y shows the magnifier at a pixel
     const char *hover = SDL_getenv("WIPEOUT_FRAMECAP_HOVER");
     if (hover) {
-        SDL_sscanf(hover, "%d,%d", &testHoverX, &testHoverY);
+        testHover = SDL_sscanf(hover, "%d,%d", &testHoverX, &testHoverY) == 2;
+    }
+}
+
+// Tab: the frame recorder freezes the game on the last seconds of drawing, or resumes; or starts and stops a
+// recording (the settings say which)
+extern "C" void DebugUiTab(void)
+{
+    bool wasTaking = FrameCapTaking();
+
+    FrameCapTab();
+    if (FrameCapFrozen()) {
+        DebugUiShowRecorder();
+    } else if (wasTaking && !FrameCapTaking()) {
+        showRecorder = true; // the console opens on the recording
+        recordingStopped = SDL_GetTicks();
     }
 }
 
@@ -97,11 +116,7 @@ extern "C" int DebugUiEvent(const SDL_Event *event)
         return 1;
     }
     if (event->type == SDL_EVENT_KEY_DOWN && event->key.scancode == SDL_SCANCODE_TAB && !event->key.repeat) {
-        // the frame recorder: freezes the game and saves the last seconds of drawing, or resumes
-        FrameCapToggleFreeze();
-        if (FrameCapFrozen()) {
-            DebugUiShowRecorder();
-        }
+        DebugUiTab();
         return 1;
     }
     if (!open) {
@@ -168,6 +183,32 @@ static void FpsOverlay(void)
                  ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs |
                      ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav);
     ImGui::Text("%.0f fps  (game %.0f)", presentRate, gameRate);
+    ImGui::End();
+}
+
+// While a RECORD_WITH_TAB recording is made (and a while after it stops), with the console closed: in the corner.
+static bool RecorderNoteWanted(void)
+{
+    return !open && (FrameCapTaking() || (recordingStopped && SDL_GetTicks() - recordingStopped < 4000));
+}
+
+static void RecorderNote(void)
+{
+    const ImGuiViewport *view = ImGui::GetMainViewport();
+
+    ImGui::SetNextWindowPos(ImVec2(view->WorkPos.x + view->WorkSize.x - 8, view->WorkPos.y + 8), ImGuiCond_Always,
+                            ImVec2(1.0f, 0.0f));
+    ImGui::SetNextWindowBgAlpha(0.55f);
+    ImGui::Begin("##recording", nullptr,
+                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs |
+                     ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav);
+    if (FrameCapTaking()) {
+        ImGui::TextColored(ImVec4(1.0f, 0.25f, 0.25f, 1.0f), "REC");
+        ImGui::SameLine();
+        ImGui::Text("%.1f s   (Tab stops)", FrameCapFrameCount() / 30.0f);
+    } else {
+        ImGui::Text("Recorded %.1f s: ~ shows it (the console's Recorder tab)", FrameCapFrameCount() / 30.0f);
+    }
     ImGui::End();
 }
 
@@ -243,7 +284,7 @@ static void Pick(int frame)
 
     hitCount = 0;
     pickHit = -1;
-    if (f && pickX >= 0) {
+    if (f && picked) {
         hitCount = FrameCapHits(frame, f->areaX + pickX, f->areaY + pickY, hits, IM_ARRAYSIZE(hits));
         pickHit = hitCount - 1; // the topmost
     }
@@ -251,20 +292,33 @@ static void Pick(int frame)
 
 static void RecorderTab(void)
 {
-    bool record = portSettings.recordFrames != 0;
+    static const char *const modes[] = {"Off", "Keep the last 3 seconds (Tab freezes the game)",
+                                        "Record with Tab (Tab starts and stops; the game goes on)"};
+    static int shownGeneration = -1;
+    int mode = FrameCapMode();
     int total = FrameCapFrameCount();
     float ui = ImGui::GetIO().FontGlobalScale;
+    const ImVec4 note(1.0f, 0.8f, 0.3f, 1.0f);
 
-    if (ImGui::Checkbox("Record the last 3 seconds of drawing", &record)) {
-        portSettings.recordFrames = record;
+    if (ImGui::Combo("Frame recorder", &mode, modes, IM_ARRAYSIZE(modes))) {
+        portSettings.recordFrames = mode;
+        FrameCapClear();
         Changed();
     }
-    if (!FrameCapFrozen()) {
-        ImGui::TextWrapped("Tab freezes the game and saves the recorded frames; here you can then step back through "
+    if (mode == RECORD_LAST_SECONDS && !FrameCapFrozen()) {
+        ImGui::TextWrapped("Tab freezes the game and saves the last 3 seconds; here you can then step back through "
                            "them and click a pixel to see every primitive drawn there.");
-        frameShown = -1;
-    } else {
-        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Frozen. Tab resumes the game.");
+    } else if (mode == RECORD_LAST_SECONDS) {
+        ImGui::TextColored(note, "Frozen. Tab resumes the game.");
+    } else if (mode == RECORD_WITH_TAB && FrameCapTaking()) {
+        ImGui::TextColored(note, "Recording: %d frames so far. Tab stops.", total);
+    } else if (mode == RECORD_WITH_TAB) {
+        ImGui::TextWrapped("Tab starts recording and Tab again stops it (it keeps up to the last 10 seconds). The game "
+                           "goes on meanwhile: pause it yourself to look at the recording here, frame by frame, and "
+                           "click a pixel to see every primitive drawn there.");
+        if (FrameCapViewable() && ImGui::Button("Save this recording")) {
+            FrameCapSave();
+        }
     }
     if (FrameCapSavedDir()) {
         ImGui::TextWrapped("Saved to %s", FrameCapSavedDir());
@@ -272,8 +326,14 @@ static void RecorderTab(void)
             OpenFolder(FrameCapSavedDir());
         }
     }
-    if (!FrameCapFrozen() || !total) {
+    if (!FrameCapViewable()) {
+        frameShown = -1;
         return;
+    }
+    if (shownGeneration != FrameCapGeneration()) {
+        // another recording: from its newest frame, its picture uploaded afresh
+        shownGeneration = FrameCapGeneration();
+        frameShown = frameUploaded = -1;
     }
     ImGui::Separator();
     if (frameShown < 0 || frameShown >= total) {
@@ -306,12 +366,15 @@ static void RecorderTab(void)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     }
+    // the picture: the console's 320 columns, and with widescreen the sides (from column `pictureX`)
+    bool hasPicture = f->picture && f->shown;
+    int pictureW = hasPicture ? f->pictureW : 320, pictureX = hasPicture ? f->pictureX : 0;
     if (frameUploaded != frameShown || changed) {
         static uint8_t black[320 * 240 * 4];
         glBindTexture(GL_TEXTURE_2D, frameTexture);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 320, 240, 0, GL_RGBA, GL_UNSIGNED_BYTE,
-                     f->picture && f->shown ? f->picture : black);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, pictureW, 240, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+                     hasPicture ? f->picture : black);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
         frameUploaded = frameShown;
         Pick(frameShown);
@@ -319,18 +382,23 @@ static void RecorderTab(void)
     // the picture as large as fits, the picked pixel's primitives beside it (in a narrow window below it)
     ImVec2 room = ImGui::GetContentRegionAvail();
     bool beside = room.x > 1000 * ui;
-    float zoom = beside ? SDL_min(room.x * 0.5f / 320.0f, room.y / 240.0f)
-                        : SDL_min(room.x / 320.0f, (room.y - 300 * ui) / 240.0f);
+    float zoom = beside ? SDL_min(room.x * 0.5f / pictureW, room.y / 240.0f)
+                        : SDL_min(room.x / pictureW, (room.y - 300 * ui) / 240.0f);
     zoom = SDL_max(1.0f, zoom);
     ImVec2 origin = ImGui::GetCursorScreenPos();
-    PixelImage(ImVec2(320 * zoom, 240 * zoom), ImVec2(0, 0), ImVec2(1, 1));
+    PixelImage(ImVec2(pictureW * zoom, 240 * zoom), ImVec2(0, 0), ImVec2(1, 1));
     bool hovered = ImGui::IsItemHovered();
-    if (hovered || testHoverX >= 0) {
+    if (hovered || testHover) {
         ImVec2 m = ImGui::GetMousePos();
-        int x = hovered ? SDL_clamp((int)((m.x - origin.x) / zoom), 0, 319) : SDL_clamp(testHoverX, 0, 319);
-        int y = hovered ? SDL_clamp((int)((m.y - origin.y) / zoom), 0, 239) : SDL_clamp(testHoverY, 0, 239);
+        // the picture's column and row, then the console's
+        int px = hovered ? (int)((m.x - origin.x) / zoom) : testHoverX - pictureX;
+        int py = hovered ? (int)((m.y - origin.y) / zoom) : testHoverY;
+        px = SDL_clamp(px, 0, pictureW - 1);
+        py = SDL_clamp(py, 0, 239);
+        int x = px + pictureX, y = py;
 
         if (ImGui::IsItemClicked()) {
+            picked = true;
             pickX = x;
             pickY = y;
             Pick(frameShown);
@@ -338,20 +406,20 @@ static void RecorderTab(void)
         // the magnifier: the pixels about the pointer, ten times over, the one under it outlined
         const int span = 17;
         const float cell = 10.0f * ui;
-        int left = SDL_clamp(x - span / 2, 0, 320 - span), top = SDL_clamp(y - span / 2, 0, 240 - span);
+        int left = SDL_clamp(px - span / 2, 0, pictureW - span), top = SDL_clamp(py - span / 2, 0, 240 - span);
         if (!hovered) {
-            ImGui::SetNextWindowPos(ImVec2(origin.x + (x + 2) * zoom, origin.y + (y + 2) * zoom));
+            ImGui::SetNextWindowPos(ImVec2(origin.x + (px + 2) * zoom, origin.y + (py + 2) * zoom));
         }
         ImGui::BeginTooltip();
         ImVec2 corner = ImGui::GetCursorScreenPos();
-        PixelImage(ImVec2(span * cell, span * cell), ImVec2(left / 320.0f, top / 240.0f),
-                   ImVec2((left + span) / 320.0f, (top + span) / 240.0f));
-        ImVec2 a(corner.x + (x - left) * cell, corner.y + (y - top) * cell);
+        PixelImage(ImVec2(span * cell, span * cell), ImVec2((float)left / pictureW, top / 240.0f),
+                   ImVec2((float)(left + span) / pictureW, (top + span) / 240.0f));
+        ImVec2 a(corner.x + (px - left) * cell, corner.y + (py - top) * cell);
         ImGui::GetWindowDrawList()->AddRect(ImVec2(a.x - 1, a.y - 1), ImVec2(a.x + cell + 1, a.y + cell + 1),
                                             IM_COL32(0, 0, 0, 255), 0.0f, 0, 3.0f);
         ImGui::GetWindowDrawList()->AddRect(a, ImVec2(a.x + cell, a.y + cell), IM_COL32(255, 0, 255, 255), 0.0f, 0, 1.5f);
-        if (f->picture && f->shown) {
-            const uint8_t *rgb = &f->picture[(y * 320 + x) * 4];
+        if (hasPicture) {
+            const uint8_t *rgb = &f->picture[(py * pictureW + px) * 4];
             ImGui::Text("pixel %d, %d   colour %d, %d, %d", x, y, rgb[0], rgb[1], rgb[2]);
         } else {
             ImGui::Text("pixel %d, %d", x, y);
@@ -359,7 +427,7 @@ static void RecorderTab(void)
         ImGui::EndTooltip();
     }
     ImDrawList *draw = ImGui::GetWindowDrawList();
-    draw->PushClipRect(origin, ImVec2(origin.x + 320 * zoom, origin.y + 240 * zoom), true);
+    draw->PushClipRect(origin, ImVec2(origin.x + pictureW * zoom, origin.y + 240 * zoom), true);
     if (pickHit >= 0 && pickHit < hitCount) {
         const FrameCapPrim *p = &f->prims[hits[pickHit].prim];
         int corners = p->kind == FRAMECAP_FILL ? 0 : p->count;
@@ -368,14 +436,14 @@ static void RecorderTab(void)
         ImVec2 points[4];
         for (int i = 0; i < corners; i++) {
             const GpuVertex *v = &p->v[corners == 4 ? quadOrder[i] : i];
-            points[i] = ImVec2(origin.x + (v->x - f->areaX) * zoom, origin.y + (v->y - f->areaY) * zoom);
+            points[i] = ImVec2(origin.x + (v->x - f->areaX - pictureX) * zoom, origin.y + (v->y - f->areaY) * zoom);
         }
         if (corners >= 2) {
             draw->AddPolyline(points, corners, IM_COL32(0, 255, 0, 255), ImDrawFlags_Closed, 2.0f);
         }
     }
-    if (pickX >= 0) {
-        ImVec2 c(origin.x + (pickX + 0.5f) * zoom, origin.y + (pickY + 0.5f) * zoom);
+    if (picked) {
+        ImVec2 c(origin.x + (pickX - pictureX + 0.5f) * zoom, origin.y + (pickY + 0.5f) * zoom);
         draw->AddCircle(c, 6.0f * ui, IM_COL32(255, 0, 255, 255), 0, 2.0f);
     }
     draw->PopClipRect();
@@ -383,7 +451,7 @@ static void RecorderTab(void)
         ImGui::SameLine();
     }
     ImGui::BeginChild("##pixel", ImVec2(0, 0), ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar);
-    if (pickX >= 0) {
+    if (picked) {
         // wrapped at the pane's edge (the pane scrolls sideways for the details' long lines)
         ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x);
         ImGui::TextWrapped("Pixel %d, %d: %d primitives there (topmost first). Click one for its details.", pickX,
@@ -629,7 +697,7 @@ extern "C" void DebugUiRender(void)
         return;
     }
     Rates();
-    if (!open && !portSettings.showFps) {
+    if (!open && !portSettings.showFps && !RecorderNoteWanted()) {
         return;
     }
     int width, height;
@@ -640,6 +708,9 @@ extern "C" void DebugUiRender(void)
     ImGui::NewFrame();
     if (portSettings.showFps) {
         FpsOverlay();
+    }
+    if (RecorderNoteWanted()) {
+        RecorderNote();
     }
     if (open) {
         Console();

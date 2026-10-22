@@ -60,8 +60,9 @@ The environment variable `WIPEOUT_XL_DISC` can stand in for the disc's path.
 
 The ~ key (below Esc) opens a console over the whole game window: frame rates and a
 frame-rate overlay, the draw distance (the console's or the whole track) and
-its fade, the frame rate, widescreen, skipping the intro movie, full screen, and where
-the settings and the memory cards are. Changes are saved at once to
+its fade, the frame rate, widescreen, skipping the intro movie, full screen, the
+frame recorder (Tab: the last 3 seconds, or from one Tab to the next, with every
+primitive behind any pixel), and where the settings and the memory cards are. Changes are saved at once to
 `wipeoutxl.ini` in the user's data folder; a new saves folder takes effect at
 the next start. Dear ImGui (`platform/third_party/imgui`, MIT) draws it.
 

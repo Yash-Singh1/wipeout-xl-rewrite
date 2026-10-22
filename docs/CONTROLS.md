@@ -85,8 +85,9 @@ pause) is ignored until released, so it does not also accept the first menu entr
 
 Alt+Enter and F11 switch between window and full screen (the window handles them, the game never
 sees them). So do the port's own keys: the ~ key (below Esc) opens and closes the debug console, and Tab
-freezes the game and saves the frame recorder's last seconds of drawing (the console's Recorder tab), or
-resumes it.
+works the frame recorder (the console's Recorder tab chooses how): it freezes the game on the last 3
+seconds of drawing and saves them, or resumes it; or it starts a recording and, pressed again, stops it
+while the game goes on.
 
 Text entry (names, passwords) uses the directional pad and Cross as on the console; typed letters
 are not read.
