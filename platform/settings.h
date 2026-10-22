@@ -23,6 +23,7 @@ typedef struct PortSettings {
     char saveDir[1024];   /* memory cards ("" = the user's data folder); takes effect at the next start */
     char discPath[1024];  /* the disc's .cue chosen last (main.c), for a start without --disc */
     char originalPath[1024]; /* the original Wipeout's disc image or data folder: its tracks (original.c) */
+    char wipeout64Path[1024]; /* Wipeout 64's cartridge image: its tracks too (original.c) */
     int renderScale;      /* the framebuffer's pixels per console pixel; 0: as many as the window shows (gpu_gl.c) */
     int hdTextures;       /* the HD texture pack is drawn (hdtex.c) */
     char hdPackPath[1024]; /* ... the player's pack: its .zip or folder */

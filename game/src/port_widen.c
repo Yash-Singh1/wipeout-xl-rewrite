@@ -179,6 +179,60 @@ int PortWidenPrm(const char *file, int length, char *destination)
     return out;
 }
 
+/* The file offset of a primitive's texture number (0: untextured). */
+static int TextureOffset(int type)
+{
+    switch (type) {
+    case TypeFT3: return offsetof(FT3, texture);
+    case TypeFT4: return offsetof(FT4, texture);
+    case TypeGT3: return offsetof(GT3, texture);
+    case TypeGT4: return offsetof(GT4, texture);
+    case TypeLSFT3: return offsetof(LSFT3, texture);
+    case TypeLSFT4: return offsetof(LSFT4, texture);
+    case TypeLSGT3: return offsetof(LSGT3, texture);
+    case TypeLSGT4: return offsetof(LSGT4, texture);
+    case TypeTSPR:
+    case TypeBSPR: return offsetof(SPR, texture);
+    }
+    return 0;
+}
+
+int PortPrmShiftTextures(char *file, int length, int shift)
+{
+    unsigned char *in = (unsigned char *)file;
+    const PortRecordTable *objectTable = &PortRecord_Object;
+    const PortRecordField *vertexCountField = FindField(objectTable, "vertexCount");
+    const PortRecordField *primitiveCountField = FindField(objectTable, "primitiveCount");
+    int fixed = objectTable->fileSize + PortRecord_Skeleton.fileSize;
+    int pos = 0, i;
+
+    while (length - pos >= fixed) {
+        int vertexCount = ReadBigShort(in + pos + vertexCountField->fileOffset);
+        int primitiveCount = ReadBigShort(in + pos + primitiveCountField->fileOffset);
+        int end = pos + fixed;
+
+        if (vertexCount < 0 || primitiveCount < 0 || vertexCount > (length - end) / (int)sizeof(SVECTOR))
+            return 0;
+        end += vertexCount * sizeof(SVECTOR);
+        for (i = 0; i < primitiveCount; i++) {
+            int type = length - end >= 2 ? ReadBigShort(in + end) : -1;
+            int size = type >= 0 ? PrimitiveSize(type) : 0;
+            int at = TextureOffset(type);
+
+            if (size == 0 || size > length - end)
+                return 0;
+            if (at) {
+                int texture = ReadBigShort(in + end + at) + shift;
+                in[end + at] = (unsigned char)(texture >> 8);
+                in[end + at + 1] = (unsigned char)texture;
+            }
+            end += size;
+        }
+        pos = end;
+    }
+    return pos == length;
+}
+
 int portLastPrmImageLength;
 
 char *PortWidenPrmImage(HeapBlock *heap, char *file, int *length)

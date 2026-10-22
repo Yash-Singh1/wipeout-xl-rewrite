@@ -54,6 +54,8 @@ static void Set(const char *key, const char *value)
         SDL_strlcpy(portSettings.discPath, value, sizeof(portSettings.discPath));
     } else if (!strcmp(key, "original")) {
         SDL_strlcpy(portSettings.originalPath, value, sizeof(portSettings.originalPath));
+    } else if (!strcmp(key, "wipeout64")) {
+        SDL_strlcpy(portSettings.wipeout64Path, value, sizeof(portSettings.wipeout64Path));
     } else if (!strcmp(key, "render_scale")) {
         portSettings.renderScale = SDL_clamp(number, 0, 16);
     } else if (!strcmp(key, "hd_textures")) {
@@ -159,14 +161,14 @@ int PortSettingsSave(void)
             "# Wipeout XL settings (the ~ key opens the debug console that changes them)\n"
             "show_fps = %d\nfar_view = %d\nfade = %d\nfade_near = %d\nfade_far = %d\n"
             "widescreen = %d\nframe_rate = %d\nframe_cap = %d\nskip_intro = %d\nrecord_frames = %d\nrecord_replays = %d\nsave_dir = %s\ndisc = %s\noriginal = %s\n"
-            "render_scale = %d\nhd_textures = %d\nhd_pack = %s\n",
+            "render_scale = %d\nhd_textures = %d\nhd_pack = %s\nwipeout64 = %s\n",
             portSettings.showFps, portSettings.farView, portSettings.fade, portSettings.fadeNear, portSettings.fadeFar,
             portSettings.widescreen, portSettings.frameRate,
             portSettings.frameCap, portSettings.skipIntro,
             portSettings.recordFrames,
             portSettings.recordReplays,
             portSettings.saveDir, portSettings.discPath, portSettings.originalPath, portSettings.renderScale,
-            portSettings.hdTextures, portSettings.hdPackPath);
+            portSettings.hdTextures, portSettings.hdPackPath, portSettings.wipeout64Path);
     fclose(file);
     return 1;
 }

@@ -52,6 +52,7 @@ void PortSceneSprite(const void *packet);
    2 Rapier); the one chosen (-1: an XL track); its start line's section and its sky's height. */
 int PortOriginalTrackCount(void);
 const char *PortOriginalTrackName(int index);
+const char *PortOriginalTrackGame(int index); /* "THE ORIGINAL WIPEOUT" or "WIPEOUT 64" */
 int PortOriginalTrackClass(int index);
 void PortOriginalTrackSelect(int index);
 int PortOriginalTrack(void);

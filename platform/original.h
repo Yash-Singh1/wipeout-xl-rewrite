@@ -12,7 +12,14 @@ extern "C" {
 int PortOriginalOpen(const char *path, char *message, int messageSize);
 void PortOriginalClose(void);
 const char *PortOriginalSource(void); /* the path opened, "" when none */
-int PortOriginalTrackCount(void);
+int PortOriginalTrackCount(void);   /* the guests: the original's tracks found, then Wipeout 64's */
+int PortOriginalFoundCount(void);   /* ... the original's */
+
+/* Wipeout 64's tracks (the player's cartridge image: .z64, .n64 or .v64), raced the same way. */
+int PortWipeout64Open(const char *path, char *message, int messageSize);
+void PortWipeout64Close(void);
+const char *PortWipeout64Source(void); /* "" when none */
+int PortWipeout64TrackCount(void);
 
 #ifdef __cplusplus
 }

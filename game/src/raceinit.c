@@ -524,7 +524,9 @@ void InitRaceLine(TrackData *track, ConfigData *game)
             section++;
         } while (i < count);
     }
-    offset = PortOriginalTrack() >= 0 ? PortOriginalStartLine() : start[game->actTrackNum]; /* Port: an original track's start line */
+    /* Port: a guest track's start line: its own distance along the line (the table holds that distance for
+       XL's tracks: Talon's Reach's 20 is its start line's, section 5) */
+    offset = PortOriginalTrack() >= 0 ? raceLines[PortOriginalStartLine()].distance : start[game->actTrackNum];
     for (i = 0; i < weaponGridSections; i++) {
         value = raceLines[i].distance - offset;
         if (value >= numTrackSections) value -= numTrackSections;

@@ -30,6 +30,8 @@ static bool ready, open;
 static char saveDirEdit[1024];
 static char originalEdit[1024];     // the original Wipeout's disc image or folder, as typed or chosen
 static char originalMessage[300];   // what opening it found
+static char n64Edit[1024];          // Wipeout 64's cartridge image, as typed or chosen
+static char n64Message[300];        // what opening it found
 static char packEdit[1024];         // the HD texture pack, as typed or chosen
 static char packMessage[300];       // what opening it found
 static char discEdit[1024];         // the Wipeout XL disc image, as typed or chosen
@@ -649,12 +651,14 @@ static void FitToWindow(void)
 
 struct Picker {
     char *chosen;     // the answer, until taken
-    bool folder;      // a folder is wanted, else a disc image (.cue)
-    bool zip;         // ... or else a .zip (a texture pack)
+    bool folder;      // a folder is wanted, else a file of the kind:
+    int kind;         // PICK_*
     bool browse;      // the system had no dialog: the console's browser
     char start[1024]; // the folder it starts in
 };
-static Picker discPicker, originalPicker, packPicker = {nullptr, false, true, false, ""};
+enum { PICK_DISC, PICK_ZIP, PICK_N64 }; // a disc image (.cue), a texture pack (.zip), a cartridge image
+static Picker discPicker, originalPicker, packPicker = {nullptr, false, PICK_ZIP, false, ""},
+    n64Picker = {nullptr, false, PICK_N64, false, ""};
 static Picker *browsing;            // the picker the console's browser is open for
 static char browseDir[1024];
 static char **browseNames;          // its entries: disc images first, then folders (with a trailing /)
@@ -704,12 +708,14 @@ static void PickerOpen(Picker *picker, bool folder, const char *current)
 {
     static const SDL_DialogFileFilter cue[] = {{"PlayStation disc image (.cue)", "cue"}};
     static const SDL_DialogFileFilter zip[] = {{"Texture pack (.zip)", "zip"}};
+    static const SDL_DialogFileFilter n64[] = {{"Nintendo 64 cartridge image (.z64, .n64, .v64)", "z64;n64;v64"}};
 
     picker->folder = folder;
     StartFolder(current, picker->start, sizeof(picker->start));
 #ifdef __EMSCRIPTEN__
     (void)cue;
     (void)zip;
+    (void)n64;
     picker->browse = true;
 #else
     if (SDL_getenv("WIPEOUT_CONSOLE_BROWSER")) {
@@ -719,7 +725,9 @@ static void PickerOpen(Picker *picker, bool folder, const char *current)
     if (folder) {
         SDL_ShowOpenFolderDialog(PickerAnswer, picker, window, picker->start, false);
     } else {
-        SDL_ShowOpenFileDialog(PickerAnswer, picker, window, picker->zip ? zip : cue, 1, picker->start, false);
+        SDL_ShowOpenFileDialog(PickerAnswer, picker, window,
+                               picker->kind == PICK_ZIP ? zip : picker->kind == PICK_N64 ? n64 : cue, 1, picker->start,
+                               false);
     }
 #endif
 }
@@ -749,6 +757,20 @@ static int CompareNames(const void *a, const void *b)
     return xd != yd ? (xd ? 1 : -1) : SDL_strcasecmp(x, y); /* the disc images first, then the folders */
 }
 
+// Whether a file's extension is of the kind a picker wants.
+static bool Wanted(int kind, const char *extension)
+{
+    switch (kind) {
+    case PICK_ZIP:
+        return !SDL_strcasecmp(extension, ".zip");
+    case PICK_N64:
+        return !SDL_strcasecmp(extension, ".z64") || !SDL_strcasecmp(extension, ".n64") ||
+               !SDL_strcasecmp(extension, ".v64");
+    default:
+        return !SDL_strcasecmp(extension, ".cue");
+    }
+}
+
 // One entry of the folder (not what is inside its folders): folders, and disc images unless a folder is wanted.
 static SDL_EnumerationResult SDLCALL BrowseEntry(void *user, const char *dir, const char *name)
 {
@@ -767,7 +789,7 @@ static SDL_EnumerationResult SDLCALL BrowseEntry(void *user, const char *dir, co
     }
     if (info.type == SDL_PATHTYPE_DIRECTORY) {
         SDL_snprintf(named, sizeof(named), "%s/", name);
-    } else if (!browsing->folder && length > 4 && !SDL_strcasecmp(name + length - 4, browsing->zip ? ".zip" : ".cue")) {
+    } else if (!browsing->folder && length > 4 && Wanted(browsing->kind, name + length - 4)) {
         SDL_strlcpy(named, name, sizeof(named));
     } else {
         return SDL_ENUM_CONTINUE;
@@ -975,7 +997,7 @@ static void OriginalWipeout(void)
     ImGui::TextWrapped("Your copy of the original game: its disc image (a .cue with its .bin), or a folder of its "
                        "data (the disc's WIPEOUT folder). Its tracks are then on the RACING CLASS menu, on the "
                        "WIPEOUT line under the classes (arcade races and time trials): left and right go through them.");
-    int tracks = PortOriginalTrackCount();
+    int tracks = PortOriginalFoundCount();
     if (!originalEdit[0] && PortOriginalSource()[0]) {
         SDL_strlcpy(originalEdit, PortOriginalSource(), sizeof(originalEdit));
     }
@@ -1007,6 +1029,59 @@ static void OriginalWipeout(void)
     ImGui::SameLine();
     if (ImGui::Button("Use this")) {
         UseOriginal(originalEdit);
+    }
+}
+
+// Wipeout 64's tracks (platform/original.c): the player's cartridge image, its tracks on the same WIPEOUT line.
+
+static void UseWipeout64(const char *path)
+{
+    SDL_strlcpy(n64Edit, path, sizeof(n64Edit));
+    if (PortWipeout64Open(path, n64Message, sizeof(n64Message)) > 0 || !path[0]) {
+        SDL_strlcpy(portSettings.wipeout64Path, path, sizeof(portSettings.wipeout64Path));
+        Changed();
+    }
+}
+
+static void Wipeout64(void)
+{
+    char *chosen = PickerTake(&n64Picker);
+
+    if (chosen) {
+        UseWipeout64(chosen);
+        SDL_free(chosen);
+    }
+    ImGui::TextUnformatted("Wipeout 64 (Nintendo 64)");
+    ImGui::TextWrapped("Your copy of Wipeout 64: its cartridge image (.z64, .n64 or .v64). Its seven tracks are then on "
+                       "the RACING CLASS menu's WIPEOUT line too, after the original's, at Rapier class.");
+    int tracks = PortWipeout64TrackCount();
+    if (!n64Edit[0] && PortWipeout64Source()[0]) {
+        SDL_strlcpy(n64Edit, PortWipeout64Source(), sizeof(n64Edit));
+    }
+    if (tracks > 0) {
+        ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "%d tracks from %s", tracks, PortWipeout64Source());
+    } else {
+        ImGui::TextDisabled("None chosen.");
+    }
+    if (n64Message[0] && tracks == 0) {
+        ImGui::TextWrapped("%s", n64Message);
+    }
+#ifndef __EMSCRIPTEN__
+    if (ImGui::Button("Browse for its cartridge image...")) {
+        PickerOpen(&n64Picker, false, n64Edit);
+    }
+    ImGui::SameLine();
+#endif
+    if (ImGui::Button("Forget it##n64")) {
+        UseWipeout64("");
+        n64Message[0] = 0;
+    }
+    ImGui::SetNextItemWidth(-ImGui::CalcTextSize("Use this").x - ImGui::GetStyle().ItemSpacing.x -
+                            ImGui::GetStyle().FramePadding.x * 2);
+    ImGui::InputText("##n64", n64Edit, sizeof(n64Edit));
+    ImGui::SameLine();
+    if (ImGui::Button("Use this##n64")) {
+        UseWipeout64(n64Edit);
     }
 }
 
@@ -1257,6 +1332,8 @@ static void Console(void)
             }
             ImGui::Separator();
             OriginalWipeout();
+            ImGui::Separator();
+            Wipeout64();
             ImGui::EndTabItem();
         }
         ImGui::EndTabBar();

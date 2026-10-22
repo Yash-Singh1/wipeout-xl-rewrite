@@ -49,6 +49,10 @@ int PortWidenPrm(const char *file, int length, char *destination);
    returns the image; *length becomes the widened length. */
 char *PortWidenPrmImage(HeapBlock *heap, char *file, int *length);
 
+/* Adds shift to the texture numbers of a prm file's textured primitives (the file as on disc: big-endian), when
+   two scenery files are made one (platform/original.c); 0 if the walk does not reach the file's end. */
+int PortPrmShiftTextures(char *file, int length, int shift);
+
 /* Length of the widened image PortWidenPrmImage built last (the weapon code copies whole images). */
 extern int portLastPrmImageLength;
 

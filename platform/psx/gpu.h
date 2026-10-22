@@ -19,9 +19,10 @@ extern uint16_t psxVram[VRAM_HEIGHT][VRAM_WIDTH];
 void GpuVramChanged(int x, int y, int w, int h);
 
 /* The second half of video memory, as the PlayStation's 2 MB development GPU had: rows 512 to 1023, textures
-   only (nothing is drawn there, palettes stay in the first half), reached with bit 11 of a texture page (its
+   only (nothing is drawn there), reached with bit 11 of a texture page (its
    "Y base 2"). The console game never uses it; the original Wipeout's textures do when its tracks are raced
-   (platform/original.c), as they do not fit beside XL's own. */
+   (platform/original.c), as they do not fit beside XL's own. Wipeout 64's palettes go there too, reached with
+   bit 15 of a palette's address (the row's tenth bit: rows 512 on), which the console's GPU ignores. */
 extern uint16_t psxVramHigh[VRAM_HEIGHT][VRAM_WIDTH];
 void GpuVramHighChanged(void);
 

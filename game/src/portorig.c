@@ -1,8 +1,10 @@
-/* Port: the original Wipeout's tracks, raced as guests in Talon's Reach's slot (see platform/original.c).
+/* Port: the original Wipeout's tracks and Wipeout 64's, raced as guests in Talon's Reach's slot (see
+   platform/original.c).
 
-   The RACING CLASS menu has a fifth line, WIPEOUT, when the player's copy of the original has been found
-   (the debug console's Files tab) and the race is an arcade race or a time trial. On it LEFT and RIGHT go
-   through the original's tracks, each raced at the class it was made for (Venom or Rapier). A chosen
+   The RACING CLASS menu has a fifth line, WIPEOUT, when the player's copy of the original or of Wipeout 64
+   has been found (the debug console's Files tab) and the race is an arcade race or a time trial. On it LEFT
+   and RIGHT go through their tracks (the original's each raced at the class it was made for, Venom or
+   Rapier; Wipeout 64's at Rapier). A chosen
    track takes the place of Talon's Reach (trackNum 0, folder 1): the platform answers the game's reads of
    that track's files with ones made from the original's, and the slot's start line, sky height and
    droid section are the guest's until an XL track is chosen again. Its times are not records: the
@@ -119,7 +121,8 @@ int PortOriginalClassMenu(MenuSelection *selection, short *trackCount, int draw)
     selection->actTrackNum = HOST_FOLDER;
     selection->shipClass = (char)PortOriginalTrackClass(selection->trackSelection);
     PrintCX((u_char *)"ORIGINAL", 68, 186);
-    Print((u_char *)"FROM THE ORIGINAL WIPEOUT", 120, 182, 8);
+    sprintf(text, "FROM %s", PortOriginalTrackGame(selection->trackSelection));
+    Print((u_char *)text, 120, 182, 8);
     sprintf(text, "%s CLASS  TRACK %d OF %d", selection->shipClass == 2 ? "RAPIER" : "VENOM",
             selection->trackSelection + 1, *trackCount);
     Print((u_char *)text, 120, 189, 8);

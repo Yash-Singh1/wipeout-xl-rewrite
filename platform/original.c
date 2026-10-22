@@ -46,7 +46,31 @@ static Disc *disc;              /* when the source is a disc image */
 static char folder[1100];       /* when it is a folder: the one holding track01 .. track14 */
 static int present[ORIGINALS];  /* the tracks the source has */
 static int presentCount;
-static int chosen = -1;         /* the track raced, an index of originals[], or -1 */
+
+/* Wipeout 64 (the player's cartridge image): each track a wad of the same files, its scenery in three
+   (common, and for one player or several), and after it a copy of its faces' textures and flags. */
+#define MAX_WADS 16
+static uint8_t *rom;            /* the cartridge, in its own (big-endian) byte order */
+static size_t romSize;
+static char romSource[1024];
+static size_t wads[MAX_WADS];   /* where each track's wad starts */
+static int wadCount;
+static const char *const n64Names[] = {"KLIES BRIDGE", "SOKANA", "DYRONESS", "MACHAON II", "TERAFUMOS",
+                                       "VELOCITAR", "SUPER COMBO"};
+
+/* The guests the class menu offers: the original's tracks the source has, then Wipeout 64's. */
+enum { FROM_ORIGINAL, FROM_64 };
+typedef struct Guest {
+    int from;
+    int track;                  /* an index of originals[], or of wads[] */
+    const char *name;
+    int shipClass;              /* XL's: 1 Venom, 2 Rapier */
+    int startLine;              /* in XL's section numbers */
+    int skyY;
+} Guest;
+static Guest guests[ORIGINALS + MAX_WADS];
+static int guestCount;
+static int chosen = -1;         /* the track raced, an index of guests[], or -1 */
 
 /* The files made for the chosen track, as the game asks for them in Talon's Reach's folder. */
 enum { FILE_WAD, FILE_TEX, FILE_CHK0, FILE_CHK1, FILE_CHK2, FILE_CHK3, FILES };
@@ -55,6 +79,7 @@ static const char *const fileNames[FILES] = {"track.wad", "track.tex", "cpoint0.
 static uint8_t *files[FILES];
 static size_t fileSizes[FILES];
 static int builtFor = -1;
+static void ListGuests(void);
 #define VIRTUAL_LOC 0x40000000  /* the sectors the files are read at: beyond any disc */
 #define VIRTUAL_SPAN 0x10000    /* ... 128 MB apart */
 
@@ -113,8 +138,8 @@ void PortOriginalClose(void)
     }
     source[0] = folder[0] = 0;
     presentCount = 0;
-    chosen = -1;
-    builtFor = -1;
+    memset(present, 0, sizeof(present));
+    ListGuests();
 }
 
 int PortOriginalOpen(const char *path, char *message, int messageSize)
@@ -163,6 +188,7 @@ int PortOriginalOpen(const char *path, char *message, int messageSize)
         return 0;
     }
     SDL_strlcpy(source, path, sizeof(source));
+    ListGuests();
     SDL_snprintf(message, (size_t)messageSize, "%d of the original's %d tracks found.", presentCount, ORIGINALS);
     return presentCount;
 }
@@ -174,81 +200,104 @@ const char *PortOriginalSource(void)
 
 /* ---- the tracks, for the game ---- */
 
-/* The game's list of the original's tracks: the ones the source has, in the original's order. */
-static int Nth(int index)
+static void Wipeout64Guests(void);
+
+/* The guests: the original's tracks the source has, in the original's order, then Wipeout 64's. */
+static void ListGuests(void)
 {
     int i;
 
+    guestCount = 0;
+    chosen = -1;
+    builtFor = -1;
     for (i = 0; i < ORIGINALS; i++) {
-        if (present[i] && index-- == 0) {
-            return i;
+        if (present[i]) {
+            Guest *g = &guests[guestCount++];
+
+            g->from = FROM_ORIGINAL;
+            g->track = i;
+            g->name = originals[i].name;
+            g->shipClass = originals[i].shipClass;
+            g->startLine = originals[i].startLine;
+            g->skyY = originals[i].skyY;
         }
     }
-    return -1;
+    Wipeout64Guests();
+}
+
+/* The settings' copies (or the tests': WIPEOUT_ORIGINAL, WIPEOUT_64; their hidden runs read no settings),
+   opened the first time the game asks. */
+static void OpenSettings(void)
+{
+    static int tried;
+    char message[256];
+    const char *path;
+
+    if (tried) {
+        return;
+    }
+    tried = 1;
+    path = SDL_getenv("WIPEOUT_ORIGINAL");
+    if (!path && !portConfig.hidden) {
+        path = portSettings.originalPath;
+    }
+    if (!source[0] && path && path[0]) {
+        PortOriginalOpen(path, message, sizeof(message));
+    }
+    path = SDL_getenv("WIPEOUT_64");
+    if (!path && !portConfig.hidden) {
+        path = portSettings.wipeout64Path;
+    }
+    if (!romSource[0] && path && path[0]) {
+        PortWipeout64Open(path, message, sizeof(message));
+    }
 }
 
 int PortOriginalTrackCount(void)
 {
-    static int tried;
+    OpenSettings();
+    return guestCount;
+}
 
-    if (!tried) {
-        /* the settings' copy, opened the first time the game asks */
-        char message[256];
-
-        tried = 1;
-        /* WIPEOUT_ORIGINAL (tests, whose hidden runs read no settings) */
-        const char *path = SDL_getenv("WIPEOUT_ORIGINAL");
-
-        if (!path && !portConfig.hidden) {
-            path = portSettings.originalPath;
-        }
-        if (!source[0] && path && path[0]) {
-            PortOriginalOpen(path, message, sizeof(message));
-        }
-    }
+int PortOriginalFoundCount(void)
+{
+    OpenSettings();
     return presentCount;
 }
 
 const char *PortOriginalTrackName(int index)
 {
-    int i = Nth(index);
+    return index >= 0 && index < guestCount ? guests[index].name : "";
+}
 
-    return i < 0 ? "" : originals[i].name;
+const char *PortOriginalTrackGame(int index)
+{
+    return index >= 0 && index < guestCount && guests[index].from == FROM_64 ? "WIPEOUT 64" : "THE ORIGINAL WIPEOUT";
 }
 
 int PortOriginalTrackClass(int index)
 {
-    int i = Nth(index);
-
-    return i < 0 ? 1 : originals[i].shipClass;
+    return index >= 0 && index < guestCount ? guests[index].shipClass : 1;
 }
 
 void PortOriginalTrackSelect(int index)
 {
-    chosen = index < 0 ? -1 : Nth(index);
+    chosen = index >= 0 && index < guestCount ? index : -1;
 }
 
 int PortOriginalTrack(void)
 {
-    int i, index = 0;
-
-    if (chosen < 0) {
-        return -1;
-    }
-    for (i = 0; i < chosen; i++) {
-        index += present[i];
-    }
-    return index;
+    return chosen;
 }
 
 int PortOriginalStartLine(void)
 {
-    return chosen < 0 ? 0 : originals[chosen].startLine;
+    return chosen < 0 ? 0 : guests[chosen].startLine;
 }
 
 int PortOriginalSkyY(void)
 {
-    return chosen < 0 ? 0 : originals[chosen].skyY;
+    return chosen < 0 ? 0 : guests[chosen].skyY;
 }
 
 /* ---- XL's files from the original's ---- */
@@ -364,22 +413,22 @@ static int32_t Be32(const uint8_t *p)
    main loop from the first section, and where a branch starts (its first section says JunctionStart) the
    branch's sections, then on along the main loop after them. Then the gates: the start line and a third and
    two thirds of the main loop on. */
-static int NumberSections(uint8_t *sections, int count)
-{
-    int *numbers = SDL_malloc(sizeof(int) * (size_t)count);
-    int section = 0, number = 0, start = -1, steps, i, guard;
-
 #define FIELD32(s, at) Be32(sections + (size_t)(s) * SECTION_BYTES + (at))
 #define FLAGS(s) Be16(sections + (size_t)(s) * SECTION_BYTES + 150)
+
+/* numbers[] for each section; returns the length of the main loop (in sections). */
+static int Number(const uint8_t *sections, int count, int *numbers)
+{
+    int section = 0, number = 0, guard, i, main = 0;
+
     for (i = 0; i < count; i++) {
         numbers[i] = 0;
     }
-    mainSections = 0;
     for (guard = 0; guard < count * 2; guard++) {
         int junction = FIELD32(section, 0);
 
         numbers[section] = number;
-        mainSections++;
+        main++;
         if (junction >= 0 && junction < count && (FLAGS(junction) & 16)) {
             int original = section, branch = junction, k;
 
@@ -395,7 +444,7 @@ static int NumberSections(uint8_t *sections, int count)
                 break;
             }
             numbers[section] = ++number;
-            mainSections++;
+            main++;
             if (section == 0) {
                 break;
             }
@@ -406,12 +455,21 @@ static int NumberSections(uint8_t *sections, int count)
             break;
         }
     }
+    return main;
+}
+
+static int NumberSections(uint8_t *sections, int count)
+{
+    int *numbers = SDL_malloc(sizeof(int) * (size_t)(count ? count : 1));
+    int section, start = -1, steps, i, guard;
+
+    mainSections = Number(sections, count, numbers);
     for (i = 0; i < count; i++) {
         PutBe16(sections + (size_t)i * SECTION_BYTES + 152, numbers[i]);
     }
     /* the start line on the main loop, and the gates along it */
     for (section = 0, guard = 0; guard < mainSections; guard++, section = FIELD32(section, 8)) {
-        if (numbers[section] == originals[chosen].startLine) {
+        if (numbers[section] == guests[chosen].startLine) {
             start = section;
             break;
         }
@@ -425,13 +483,18 @@ static int NumberSections(uint8_t *sections, int count)
             gates[i] = numbers[section];
         }
     }
-#undef FIELD32
-#undef FLAGS
     SDL_free(numbers);
     return start >= 0 && mainSections >= 3;
 }
 
 static uint8_t *Relocate(const uint8_t *cmp, size_t length, int *paletteSlot, size_t *size);
+static int Wipeout64Parts(int index, uint8_t **parts, size_t *sizes);
+int PortPrmShiftTextures(char *file, int length, int shift); /* (game/src/port_widen.c) */
+
+static int CompareInts(const void *a, const void *b)
+{
+    return *(const int *)a - *(const int *)b;
+}
 
 static int Build(void)
 {
@@ -440,29 +503,35 @@ static int Build(void)
     enum { PARTS = (int)SDL_arraysize(wadParts) };
     uint8_t *parts[PARTS] = {0};
     size_t sizes[PARTS] = {0}, total;
-    int folderNumber = originals[chosen].folder, i, sectionCount, ok = 1;
+    const Guest *guest = &guests[chosen];
+    int from64 = guest->from == FROM_64;
+    int folderNumber = from64 ? 0 : originals[guest->track].folder, i, sectionCount, ok = 1;
     uint8_t *wad, *at;
 
     if (builtFor == chosen) {
         return 1;
     }
     FreeFiles();
-    for (i = 0; i < PARTS; i++) {
-        parts[i] = ReadOriginal(folderNumber, wadParts[i], &sizes[i]);
-        if (!parts[i] && i != 3) {
-            fprintf(stderr, "original Wipeout: track%02d has no %s\n", folderNumber, wadParts[i]);
-            ok = 0;
+    if (from64) {
+        ok = Wipeout64Parts(guest->track, parts, sizes);
+    } else {
+        for (i = 0; i < PARTS; i++) {
+            parts[i] = ReadOriginal(folderNumber, wadParts[i], &sizes[i]);
+            if (!parts[i] && i != 3) {
+                fprintf(stderr, "original Wipeout: track%02d has no %s\n", folderNumber, wadParts[i]);
+                ok = 0;
+            }
         }
     }
     sectionCount = ok ? (int)(sizes[2] / SECTION_BYTES) : 0;
     if (ok && !NumberSections(parts[2], sectionCount)) {
-        fprintf(stderr, "original Wipeout: track%02d's sections make no loop\n", folderNumber);
+        fprintf(stderr, "guest track %s: its sections make no loop\n", guest->name);
         ok = 0;
     }
     if (ok && !parts[3]) {
         parts[3] = MakeViewLists(parts[2], sectionCount, &sizes[3]);
     }
-    if (ok) {
+    if (ok && !from64) {
         int paletteSlot = 0;
 
         for (i = 6; i <= 7; i++) {
@@ -479,8 +548,9 @@ static int Build(void)
         }
     }
     if (ok) {
-        /* XL's two bytes after the original's section record (bump, snow): none */
-        for (i = 0; i < sectionCount; i++) {
+        /* XL's two bytes after the original's section record (bump, snow): none (Wipeout 64's records are
+           XL's) */
+        for (i = 0; i < sectionCount && !from64; i++) {
             parts[2][(size_t)i * SECTION_BYTES + 154] = 0;
             parts[2][(size_t)i * SECTION_BYTES + 155] = 0;
         }
@@ -517,6 +587,10 @@ static int Build(void)
 
                 for (face = first; face < first + count && (size_t)(face + 1) * FACE_BYTES <= sizes[1]; face++) {
                     uint8_t flags = parts[1][(size_t)face * FACE_BYTES + 15];
+
+                    if (from64) {
+                        flags &= 0x3F; /* (its own start grid and gates, which XL does not know) */
+                    }
 
                     if (gate && (flags & 1)) {
                         flags |= 0x80; /* CHECKPOINT: on the section's track faces */
@@ -714,7 +788,7 @@ int PortOriginalFileInfo(const char *pathname, int *loc, int *size)
     const char *name;
     int i;
 
-    if (chosen < 0 || !presentCount) {
+    if (chosen < 0 || !guestCount) {
         return 0;
     }
     /* Talon's Reach's folder: ...\track01\NAME */
@@ -751,4 +825,537 @@ int PortOriginalRead(int loc, int sectors, void *buffer)
         memcpy(buffer, files[file] + from, SDL_min(length, fileSizes[file] - from));
     }
     return 1;
+}
+
+/* ---- Wipeout 64 ----
+
+   The Nintendo 64 game keeps the PlayStation's formats: each of its tracks is a wad (as XL's track.wad: a count,
+   then for each file its name, size twice and a flag, then the files) of the same files as XL's, its sections
+   XL's records, its textures compressed TIMs. What differs: the scenery comes in three (sceneCom common to all,
+   sceneSin for one player, sceneMul for several), made one here, Com then Sin; the TIMs have no places in video
+   memory (the N64 has none), so they get places here, in the second half of video memory, palettes too (rows
+   512 on, gpu.h); the track's surface is whole 64x64 tiles where XL draws each tile from 21 pieces (4x4 near,
+   2x2 at middle distance, one far), so each tile becomes 21 TIMs, windows onto its one image; and its faces
+   mark the starting grid (0x40), behind the start line. */
+
+static const char *const parts64[] = {"track.trv", "track.trf", "track.trs", "track.vew", "library.cmp", "library.ttf",
+                                      "sceneSin.cmp", "sceneMul.cmp", "sceneCom.cmp", "sky.cmp", "sceneSin.prm",
+                                      "sceneMul.prm", "sceneCom.prm", "sky.prm"};
+#define PARTS64 ((int)SDL_arraysize(parts64))
+
+static uint32_t Le32(const uint8_t *p)
+{
+    return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
+}
+
+static void PutLe32(uint8_t *p, uint32_t v)
+{
+    p[0] = (uint8_t)v;
+    p[1] = (uint8_t)(v >> 8);
+    p[2] = (uint8_t)(v >> 16);
+    p[3] = (uint8_t)(v >> 24);
+}
+
+/* A file of the wad at `at` (NULL when it has none). */
+static const uint8_t *WadPart(size_t at, const char *name, size_t *size)
+{
+    int count, i;
+    size_t data;
+
+    if (at + 2 > romSize) {
+        return NULL;
+    }
+    count = rom[at] | rom[at + 1] << 8;
+    data = at + 2 + (size_t)count * 25;
+    for (i = 0; i < count && data <= romSize; i++) {
+        const uint8_t *entry = rom + at + 2 + (size_t)i * 25;
+        uint32_t length = Le32(entry + 16);
+
+        if (!strncmp((const char *)entry, name, 16)) {
+            if (data + length > romSize) {
+                return NULL;
+            }
+            *size = length;
+            return rom + data;
+        }
+        data += length;
+    }
+    return NULL;
+}
+
+/* A track's wad at `at`: the fourteen files, all there. */
+static int IsWad(size_t at)
+{
+    size_t size;
+    int i;
+
+    if (at + 2 > romSize || (rom[at] | rom[at + 1] << 8) != PARTS64) {
+        return 0;
+    }
+    for (i = 0; i < PARTS64; i++) {
+        if (strncmp((const char *)rom + at + 2 + (size_t)i * 25, parts64[i], 16) || !WadPart(at, parts64[i], &size)) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int Wipeout64Track(int index, int *startLine, int *skyY);
+
+static void Wipeout64Guests(void)
+{
+    int i;
+
+    for (i = 0; i < wadCount && guestCount < (int)SDL_arraysize(guests); i++) {
+        Guest *g = &guests[guestCount];
+
+        g->from = FROM_64;
+        g->track = i;
+        g->name = i < (int)SDL_arraysize(n64Names) ? n64Names[i] : "WIPEOUT 64";
+        g->shipClass = 2; /* (Rapier: the pace of Wipeout 64's own races) */
+        if (Wipeout64Track(i, &g->startLine, &g->skyY)) {
+            guestCount++;
+        }
+    }
+}
+
+void PortWipeout64Close(void)
+{
+    SDL_free(rom);
+    rom = NULL;
+    romSize = 0;
+    romSource[0] = 0;
+    wadCount = 0;
+    ListGuests();
+}
+
+int PortWipeout64Open(const char *path, char *message, int messageSize)
+{
+    size_t i;
+
+    PortWipeout64Close();
+    if (!path || !path[0]) {
+        SDL_snprintf(message, (size_t)messageSize, "No Wipeout 64 chosen.");
+        return 0;
+    }
+    rom = SDL_LoadFile(path, &romSize);
+    if (!rom || romSize < 0x1000) {
+        SDL_snprintf(message, (size_t)messageSize, "%s could not be read.", path);
+        PortWipeout64Close();
+        return 0;
+    }
+    /* the cartridge's own byte order (.z64), from the swapped ones of .v64 (in 16 bits) and .n64 (in 32) */
+    if (rom[0] == 0x37 && rom[1] == 0x80) {
+        for (i = 0; i + 1 < romSize; i += 2) {
+            uint8_t t = rom[i];
+            rom[i] = rom[i + 1];
+            rom[i + 1] = t;
+        }
+    } else if (rom[0] == 0x40 && rom[1] == 0x12) {
+        for (i = 0; i + 3 < romSize; i += 4) {
+            uint8_t a = rom[i], b = rom[i + 1];
+            rom[i] = rom[i + 3];
+            rom[i + 1] = rom[i + 2];
+            rom[i + 2] = b;
+            rom[i + 3] = a;
+        }
+    }
+    if (rom[0] != 0x80 || rom[1] != 0x37 || SDL_strncasecmp((const char *)rom + 0x20, "WIPEOUT 64", 10)) {
+        SDL_snprintf(message, (size_t)messageSize, "That is not Wipeout 64 (a Nintendo 64 cartridge image: .z64, .n64 or .v64).");
+        PortWipeout64Close();
+        return 0;
+    }
+    /* the wads: found by their first file's name */
+    for (i = 2; i + 10 < romSize && wadCount < MAX_WADS; i++) {
+        if (rom[i] == 't' && !memcmp(rom + i, "track.trv", 10) && IsWad(i - 2)) {
+            wads[wadCount++] = i - 2;
+        }
+    }
+    if (!wadCount) {
+        SDL_snprintf(message, (size_t)messageSize, "No tracks found in that copy of Wipeout 64.");
+        PortWipeout64Close();
+        return 0;
+    }
+    SDL_strlcpy(romSource, path, sizeof(romSource));
+    ListGuests();
+    SDL_snprintf(message, (size_t)messageSize, "Wipeout 64's %d tracks found.", wadCount);
+    return wadCount;
+}
+
+const char *PortWipeout64Source(void)
+{
+    return romSource;
+}
+
+int PortWipeout64TrackCount(void)
+{
+    OpenSettings();
+    return wadCount;
+}
+
+/* A track's start line (the section after its starting grid, in XL's numbers) and sky height (the middle of
+   the track's heights: Wipeout 64's own heights are in its code, not its data). */
+static int Wipeout64Track(int index, int *startLine, int *skyY)
+{
+    size_t trsSize, trfSize, trvSize;
+    const uint8_t *sections = WadPart(wads[index], "track.trs", &trsSize);
+    const uint8_t *faces = WadPart(wads[index], "track.trf", &trfSize);
+    const uint8_t *vertices = WadPart(wads[index], "track.trv", &trvSize);
+    int count = (int)(trsSize / SECTION_BYTES), *numbers, *heights, i, found = 0;
+    int vertexCount = (int)(trvSize / 16);
+
+    if (!sections || !faces || !vertices || count < 3 || !vertexCount) {
+        return 0;
+    }
+    numbers = SDL_malloc(sizeof(int) * (size_t)count * 2);
+    Number(sections, count, numbers);
+    /* the grid's sections: those with faces marked 0x40; the line, after the last of them */
+    for (i = 0; i < count; i++) {
+        int first = (int16_t)Be16(sections + (size_t)i * SECTION_BYTES + 142);
+        int n = (int16_t)Be16(sections + (size_t)i * SECTION_BYTES + 144), face, grid = 0;
+
+        for (face = first; face < first + n && (size_t)(face + 1) * FACE_BYTES <= trfSize; face++) {
+            grid |= faces[(size_t)face * FACE_BYTES + 15] & 0x40;
+        }
+        numbers[count + i] = grid != 0;
+    }
+    *startLine = 0;
+    for (i = 0; i < count && !found; i++) {
+        int next = FIELD32(i, 8);
+
+        if (numbers[count + i] && next >= 0 && next < count && !numbers[count + next]) {
+            *startLine = numbers[next];
+            found = 1;
+        }
+    }
+    SDL_free(numbers);
+    heights = SDL_malloc(sizeof(int) * (size_t)vertexCount);
+    for (i = 0; i < vertexCount; i++) {
+        heights[i] = Be32(vertices + (size_t)i * 16 + 4);
+    }
+    SDL_qsort(heights, (size_t)vertexCount, sizeof(int), CompareInts);
+    *skyY = heights[vertexCount / 2];
+    SDL_free(heights);
+    return found;
+}
+
+/* ---- Wipeout 64's textures ---- */
+
+typedef struct TimList {
+    uint8_t **tims;
+    size_t *sizes;
+    int count;
+} TimList;
+
+static void TimAdd(TimList *list, uint8_t *tim, size_t size)
+{
+    list->tims = SDL_realloc(list->tims, sizeof(uint8_t *) * (size_t)(list->count + 1));
+    list->sizes = SDL_realloc(list->sizes, sizeof(size_t) * (size_t)(list->count + 1));
+    list->tims[list->count] = tim;
+    list->sizes[list->count++] = size;
+}
+
+static void TimFree(TimList *list)
+{
+    int i;
+
+    for (i = 0; i < list->count; i++) {
+        SDL_free(list->tims[i]);
+    }
+    SDL_free(list->tims);
+    SDL_free(list->sizes);
+    memset(list, 0, sizeof(*list));
+}
+
+/* A texture sequence's TIMs (each a copy of its own), added to the list. */
+static int Unpack(const uint8_t *cmp, size_t length, TimList *list)
+{
+    int count, i;
+    size_t total = 0, header, at = 0;
+    uint8_t *all;
+
+    if (length < 4) {
+        return 0;
+    }
+    count = (int)Le32(cmp);
+    header = 4 + (size_t)count * 4;
+    if (count <= 0 || count > 4096 || header > length) {
+        return 0;
+    }
+    for (i = 0; i < count; i++) {
+        total += Le32(cmp + 4 + i * 4);
+    }
+    all = SDL_malloc(total + 1);
+    if (LzssDecompress(cmp + header, length - header, all, total) != total) {
+        SDL_free(all);
+        return 0;
+    }
+    for (i = 0; i < count; i++) {
+        size_t size = Le32(cmp + 4 + i * 4);
+        uint8_t *tim = SDL_malloc(size);
+
+        memcpy(tim, all + at, size);
+        TimAdd(list, tim, size);
+        at += size;
+    }
+    SDL_free(all);
+    return 1;
+}
+
+/* The list as a texture sequence (stored, not compressed). */
+static uint8_t *Pack(const TimList *list, size_t *size)
+{
+    size_t total = 0, header = 4 + (size_t)list->count * 4, packedSize, at = 0;
+    uint8_t *all, *packed, *out;
+    int i;
+
+    for (i = 0; i < list->count; i++) {
+        total += list->sizes[i];
+    }
+    all = SDL_malloc(total + 1);
+    for (i = 0; i < list->count; i++) {
+        memcpy(all + at, list->tims[i], list->sizes[i]);
+        at += list->sizes[i];
+    }
+    packed = LzssStore(all, total, &packedSize);
+    out = SDL_malloc(header + packedSize);
+    PutLe32(out, (uint32_t)list->count);
+    for (i = 0; i < list->count; i++) {
+        PutLe32(out + 4 + i * 4, (uint32_t)list->sizes[i]);
+    }
+    memcpy(out + header, packed, packedSize);
+    SDL_free(packed);
+    SDL_free(all);
+    *size = header + packedSize;
+    return out;
+}
+
+/* Places in the second half of video memory: images page by page (64 pixels of video memory across, 256 rows,
+   as a texture page holds them), shelf by shelf; palettes in a block of their own at the bottom right (x 768 on,
+   rows 768 on), the 16-colour ones from its top, the 256-colour ones from its bottom. */
+typedef struct Layout {
+    int page, shelfX, shelfY, shelfH;
+    int small, large;           /* palettes placed */
+    uint8_t (*palettes)[512];   /* ... their colours, to place each different one once */
+    int *paletteX, *paletteY, *paletteSize, paletteCount;
+} Layout;
+#define PALETTE_X 768
+#define PALETTE_Y (512 + 256)
+#define IMAGE_PAGES 28          /* (the last four hold the palettes) */
+
+static int PlaceImage(Layout *l, int w, int h, int *x, int *y)
+{
+    if (w > 64 || h > 256) {
+        return 0;
+    }
+    if (l->shelfX + w > 64) {
+        l->shelfY += l->shelfH;
+        l->shelfX = l->shelfH = 0;
+    }
+    if (l->shelfY + h > 256) {
+        l->page++;
+        l->shelfX = l->shelfY = l->shelfH = 0;
+    }
+    if (l->page >= IMAGE_PAGES) {
+        return 0;
+    }
+    *x = (l->page % 16) * 64 + l->shelfX;
+    *y = 512 + (l->page / 16) * 256 + l->shelfY;
+    l->shelfX += w;
+    l->shelfH = SDL_max(l->shelfH, h);
+    return 1;
+}
+
+static int PlacePalette(Layout *l, const uint8_t *colours, int count, int *x, int *y)
+{
+    int i;
+
+    for (i = 0; i < l->paletteCount; i++) {
+        if (l->paletteSize[i] == count && !memcmp(l->palettes[i], colours, (size_t)count * 2)) {
+            *x = l->paletteX[i];
+            *y = l->paletteY[i];
+            return 1;
+        }
+    }
+    if (count == 16) {
+        *x = PALETTE_X + (l->small % 16) * 16;
+        *y = PALETTE_Y + l->small / 16;
+        l->small++;
+    } else {
+        *x = PALETTE_X;
+        *y = 1023 - l->large;
+        l->large++;
+    }
+    if (PALETTE_Y + (l->small + 15) / 16 > 1023 - l->large + 1) {
+        return 0; /* (the block is full) */
+    }
+    l->palettes = SDL_realloc(l->palettes, sizeof(*l->palettes) * (size_t)(l->paletteCount + 1));
+    l->paletteX = SDL_realloc(l->paletteX, sizeof(int) * (size_t)(l->paletteCount + 1));
+    l->paletteY = SDL_realloc(l->paletteY, sizeof(int) * (size_t)(l->paletteCount + 1));
+    l->paletteSize = SDL_realloc(l->paletteSize, sizeof(int) * (size_t)(l->paletteCount + 1));
+    memcpy(l->palettes[l->paletteCount], colours, (size_t)count * 2);
+    l->paletteX[l->paletteCount] = *x;
+    l->paletteY[l->paletteCount] = *y;
+    l->paletteSize[l->paletteCount++] = count;
+    return 1;
+}
+
+static void LayoutFree(Layout *l)
+{
+    SDL_free(l->palettes);
+    SDL_free(l->paletteX);
+    SDL_free(l->paletteY);
+    SDL_free(l->paletteSize);
+}
+
+/* A TIM's palette and image blocks (4- or 8-bit, with a palette): NULL when it is not such a TIM. */
+static uint8_t *TimBlocks(uint8_t *tim, size_t size, uint8_t **image)
+{
+    uint8_t *clut = tim + 8;
+    uint32_t clutLength;
+
+    if (size < 20 || !(tim[4] & 8) || (tim[4] & 7) > 1) {
+        return NULL;
+    }
+    clutLength = Le32(clut);
+    if (clutLength < 12 || 8 + (size_t)clutLength + 12 > size) {
+        return NULL;
+    }
+    *image = clut + clutLength;
+    if ((size_t)(*image - tim) + 12 + (size_t)Le16(*image + 8) * Le16(*image + 10) * 2 > size) {
+        return NULL;
+    }
+    return clut;
+}
+
+/* Each TIM of the list given places for its image and palette. */
+static int PlaceTims(Layout *l, TimList *list)
+{
+    int i, x, y;
+
+    for (i = 0; i < list->count; i++) {
+        uint8_t *image, *clut = TimBlocks(list->tims[i], list->sizes[i], &image);
+
+        if (!clut || !PlaceImage(l, Le16(image + 8), Le16(image + 10), &x, &y)) {
+            return 0;
+        }
+        list->tims[i][4] &= 0x0F; /* (the N64's own flags above the mode) */
+        PutLe16(image + 4, x);
+        PutLe16(image + 6, y);
+        if (!PlacePalette(l, clut + 12, Le16(clut + 8), &x, &y)) {
+            return 0;
+        }
+        PutLe16(clut + 4, x);
+        PutLe16(clut + 6, y);
+    }
+    return 1;
+}
+
+/* A TIM of part of an image: w x h of video memory's pixels from (fromX, fromY) of the image, at (x, y). */
+static uint8_t *Window(const uint8_t *clut, const uint8_t *image, int fromX, int fromY, int w, int h, int x, int y,
+                       int flags, size_t *size)
+{
+    uint32_t clutLength = Le32(clut), imageLength = 12 + (uint32_t)(w * h * 2);
+    int imageW = Le16(image + 8), row;
+    uint8_t *tim;
+
+    *size = 8 + clutLength + imageLength;
+    tim = SDL_calloc(1, *size);
+    tim[0] = 0x10;
+    tim[4] = (uint8_t)flags;
+    memcpy(tim + 8, clut, clutLength);
+    PutLe32(tim + 8 + clutLength, imageLength);
+    PutLe16(tim + 8 + clutLength + 4, x);
+    PutLe16(tim + 8 + clutLength + 6, y);
+    PutLe16(tim + 8 + clutLength + 8, w);
+    PutLe16(tim + 8 + clutLength + 10, h);
+    for (row = 0; row < h; row++) {
+        memcpy(tim + 8 + clutLength + 12 + (size_t)row * w * 2, image + 12 + ((size_t)(fromY + row) * imageW + fromX) * 2,
+               (size_t)w * 2);
+    }
+    return tim;
+}
+
+/* The track's surface tiles as XL's: for each, 16 near pieces (4x4), 4 middle (2x2) and the whole tile far, all
+   windows onto its one image; and the template file (library.ttf) naming them. */
+static int MakeLibrary(const uint8_t *cmp, size_t length, Layout *l, uint8_t **library, size_t *librarySize,
+                       uint8_t **templates, size_t *templatesSize)
+{
+    TimList tiles = {0}, pieces = {0};
+    int t, k, ok = Unpack(cmp, length, &tiles) && PlaceTims(l, &tiles);
+
+    *templates = SDL_malloc((size_t)(tiles.count ? tiles.count : 1) * 21 * 2);
+    for (t = 0; ok && t < tiles.count; t++) {
+        uint8_t *image, *clut = TimBlocks(tiles.tims[t], tiles.sizes[t], &image);
+        int w = Le16(image + 8), h = Le16(image + 10), x = Le16(image + 4), y = Le16(image + 6);
+        size_t size;
+
+        for (k = 0; k < 21; k++) {
+            int across = k < 16 ? 4 : k < 20 ? 2 : 1, n = k < 16 ? k : k < 20 ? k - 16 : 0;
+            int pw = w / across, ph = h / across, px = (n % across) * pw, py = (n / across) * ph;
+
+            if (w % 4 || h % 4) {
+                pw = w;
+                ph = h;
+                px = py = 0;
+            }
+            TimAdd(&pieces, Window(clut, image, px, py, pw, ph, x + px, y + py, tiles.tims[t][4], &size), size);
+            PutBe16(*templates + ((size_t)t * 21 + k) * 2, t * 21 + k);
+        }
+    }
+    *templatesSize = (size_t)tiles.count * 21 * 2;
+    *library = ok ? Pack(&pieces, librarySize) : NULL;
+    TimFree(&tiles);
+    TimFree(&pieces);
+    return ok;
+}
+
+/* XL's ten files of a Wipeout 64 track. */
+static int Wipeout64Parts(int index, uint8_t **parts, size_t *sizes)
+{
+    static const char *const copied[] = {"track.trv", "track.trf", "track.trs", "track.vew"};
+    size_t at = wads[index], size, comSize, sinSize;
+    Layout layout = {0};
+    TimList scene = {0}, sky = {0};
+    const uint8_t *data, *com, *sin;
+    int i, comCount, ok = 1;
+
+    for (i = 0; i < 4; i++) {
+        data = WadPart(at, copied[i], &size);
+        parts[i] = SDL_malloc(size + 1);
+        memcpy(parts[i], data, size);
+        sizes[i] = size;
+    }
+    data = WadPart(at, "library.cmp", &size);
+    ok = MakeLibrary(data, size, &layout, &parts[4], &sizes[4], &parts[5], &sizes[5]);
+    /* the scenery: common, then for one player */
+    com = WadPart(at, "sceneCom.cmp", &comSize);
+    sin = WadPart(at, "sceneSin.cmp", &sinSize);
+    ok = ok && Unpack(com, comSize, &scene);
+    comCount = scene.count;
+    ok = ok && Unpack(sin, sinSize, &scene) && PlaceTims(&layout, &scene);
+    data = WadPart(at, "sky.cmp", &size);
+    ok = ok && Unpack(data, size, &sky) && PlaceTims(&layout, &sky);
+    if (ok) {
+        parts[6] = Pack(&scene, &sizes[6]);
+        parts[7] = Pack(&sky, &sizes[7]);
+        com = WadPart(at, "sceneCom.prm", &comSize);
+        sin = WadPart(at, "sceneSin.prm", &sinSize);
+        parts[8] = SDL_malloc(comSize + sinSize + 1);
+        memcpy(parts[8], com, comSize);
+        memcpy(parts[8] + comSize, sin, sinSize);
+        sizes[8] = comSize + sinSize;
+        ok = PortPrmShiftTextures((char *)parts[8] + comSize, (int)sinSize, comCount);
+        data = WadPart(at, "sky.prm", &size);
+        parts[9] = SDL_malloc(size + 1);
+        memcpy(parts[9], data, size);
+        sizes[9] = size;
+    }
+    if (!ok) {
+        fprintf(stderr, "Wipeout 64: %s's textures or scenery could not be made XL's\n", guests[chosen].name);
+    }
+    TimFree(&scene);
+    TimFree(&sky);
+    LayoutFree(&layout);
+    return ok;
 }

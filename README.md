@@ -197,6 +197,22 @@ pack has in other formats (WebP, DDS) are not read. The pack's fonts carry the
 console's own tiny ® marks inside some letters, drawn as crisply as the rest;
 DuckStation shows them the same way.
 
+## Wipeout 64's tracks
+
+Wipeout 64's seven tracks (Klies Bridge, Sokana, Dyroness, Machaon II, Terafumos,
+Velocitar and Super Combo) can be raced too. In the debug console's Files tab,
+choose your Wipeout 64 cartridge image (`.z64`, `.n64` or `.v64`; nothing of it
+comes with the game). Its tracks follow the original's on the RACING CLASS menu's
+WIPEOUT line, at Rapier class. The Nintendo 64 game kept the PlayStation's file
+formats, so each track's files come from the cartridge almost as they are
+(`platform/original.c`): its two scenery parts (common, and for one player) are
+made one, its textures get places in video memory (the N64 has none) in the
+second half, palettes too, and each 64x64 surface tile becomes the 21 pieces XL
+draws a tile from. The start line is the end of the track's starting grid; the
+sky's height, which the N64 game keeps in its code, is the middle of the track's
+heights. Which name goes with which track is assumed from the order the
+cartridge holds them in.
+
 ## Saves
 
 The game saves to memory cards, as on the console. Card 1 is

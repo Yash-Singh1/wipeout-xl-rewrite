@@ -256,9 +256,9 @@ static const char *fragmentSource =
     "flat in ivec4 vWindow;\n"
     "flat in ivec4 mode;\n"
     "out vec4 fragment;\n"
-    /* texels from either half of video memory (rows to 1023), palettes from the first */
+    /* texels and palettes from either half of video memory (rows to 1023) */
     "uint Fetch(ivec2 p) { return texelFetch(vram, ivec2(p.x & 1023, p.y & 1023), 0).r; }\n"
-    "uint FetchClut(ivec2 p) { return texelFetch(vram, ivec2(p.x & 1023, p.y & 511), 0).r; }\n"
+    "uint FetchClut(ivec2 p) { return texelFetch(vram, ivec2(p.x & 1023, p.y & 1023), 0).r; }\n"
     "void main() {\n"
     "    vec3 c = vColour.rgb;\n"
     "    float fade = vColour.a;\n"

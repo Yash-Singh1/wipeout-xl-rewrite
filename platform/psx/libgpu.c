@@ -967,7 +967,7 @@ static void Polygon(const uint32_t *w, uint32_t code)
     if (textured) {
         TextureFromPage(&draw, page);
         draw.clutX = (int)(clut & 0x3F) * 16;
-        draw.clutY = (int)((clut >> 6) & 0x1FF);
+        draw.clutY = (int)((clut >> 6) & 0x3FF); /* (bit 15: a palette in the second half, gpu.h) */
     }
     if (!gouraud && !textured) {
         for (i = 1; i < count; i++) {
@@ -1062,7 +1062,7 @@ static void Rectangle(const uint32_t *w, uint32_t code)
     StateFor(&draw, textured, semi, raw);
     if (textured) {
         draw.clutX = (int)((uv >> 16) & 0x3F) * 16;
-        draw.clutY = (int)((uv >> 22) & 0x1FF);
+        draw.clutY = (int)((uv >> 22) & 0x3FF); /* (as a polygon's) */
     }
     memset(v, 0, sizeof(v));
     for (k = 0; k < 4; k++) {
