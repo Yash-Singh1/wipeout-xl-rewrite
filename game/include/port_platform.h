@@ -61,6 +61,14 @@ int PortOriginalSkyY(void);
 /* The game's file layer (iso9660.c): a file of the chosen track's (where, and how long), and its sectors. */
 int PortOriginalFileInfo(const char *pathname, int *loc, int *size);
 int PortOriginalRead(int loc, int sectors, void *buffer);
+/* The saves (platform/saves.c): the save in use (its card, 0 or 1, and the name after BASCUS-94351; -1 when
+   none), remembered for the next start; whether the game saves itself; a save the debug console imported, to
+   load now (its card, -1 when none); the outcome of the last autosave. */
+int PortSaveSlot(char name[9]);
+void PortSaveSlotSet(int card, const char *name);
+int PortAutoSaveEnabled(void);
+int PortSaveTakeImport(char name[9]);
+void PortSaveWritten(int ok);
 /* The distance fade's range in world units; whether it is on (the settings, platform/settings.c). */
 int PortFadeRange(int *nearDistance, int *farDistance);
 

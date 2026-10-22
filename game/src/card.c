@@ -295,77 +295,86 @@ int CreateFile(char *fileName)
 }
 
 
-/* Writes a save file: the 512-byte header, the 1536-byte block and the 256-byte settings block. */
-int WriteFile(void *header, char *filename, ConfigData *settings)
+/* The 256-byte settings block of a save file: volumes, screen position, the key configuration, the options,
+   progress, name, cheats and medals. (Port: built apart from WriteFile, for the autosave's comparison too.) */
+void BuildSaveBlock(u_long *block, ConfigData *settings)
 {
-    u_long    block[64];
-    int       fd;
     short     i, j;
     u_short   a, b, c, d, e, f;
     u_short  *keys;
     u_char   *out;
 
+    keys = (u_short *)&block[3];
+    a = *(u_short *)&settings->musicVolume;
+    b = *(u_short *)&settings->effectVolume;
+    c = *(u_short *)&settings->otherMusicVolume;
+    d = *(u_short *)&settings->otherEffectVolume;
+    e = *(u_short *)&settings->screenX;
+    f = *(u_short *)&settings->screenY;
+    i = 0;
+    ((u_short *)block)[0] = a;
+    ((u_short *)block)[1] = b;
+    ((u_short *)block)[2] = c;
+    ((u_short *)block)[3] = d;
+    ((u_short *)block)[4] = e;
+    ((u_short *)block)[5] = f;
+    for (; i < 2; i++) {
+        for (j = 0; j < 9; j++) {
+            *keys = savedKeyConfig.pad[i][j];
+            keys++;
+        }
+        for (j = 0; j < 6; j++) {
+            *keys = savedKeyConfig.other[i][j];
+            keys++;
+        }
+    }
+    out = (u_char *)keys;
+    *out = settings->cdTrack;           out++;
+    *out = settings->soundMode;         out++;
+    *out = settings->negconMin;         out++;
+    *out = settings->negconCentre;      out++;
+    *out = settings->negconType;        out++;
+    *out = settings->screenOffsetState; out++;
+    *out = settings->weaponsOn;         out++;
+    *out = settings->moveScreen;        out++;
+    *out = settings->internalView;      out++;
+    *out = settings->venomComplete;     out++;
+    *out = settings->rapierComplete;    out++;
+    *out = settings->venomChallengeDone;       out++;
+    *out = settings->rapierChallengeDone;       out++;
+    *out = settings->teamCheatActive; out++;
+    *out = settings->class1Unlocked;    out++;
+    *out = settings->class2Unlocked;    out++;
+    *out = settings->trackCheatActive; out++;
+    *out = settings->phantomTrackCheatActive; out++;
+    for (i = 0; i < 9; i++) {
+        *out = settings->name[i];
+        out++;
+    }
+    for (i = 0; i < 15; i++) {
+        *out = ((u_char *)settings + i)[0x45];
+        out++;
+    }
+    for (i = 0; i < 13; i++) {
+        *out = settings->entered.digits[i];
+        out++;
+    }
+    for (i = 0; i < 8; i++) {
+        *out = trackMedals[i];
+        out++;
+    }
+}
+
+
+/* Writes a save file: the 512-byte header, the 1536-byte block and the 256-byte settings block. */
+int WriteFile(void *header, char *filename, ConfigData *settings)
+{
+    u_long    block[64];
+    int       fd;
+
     fd = open(filename, 2);
     if (fd >= 0 && write(fd, header, 0x200) == 0x200 && write(fd, hiScoreTable, 0x600) == 0x600) {
-        keys = (u_short *)&block[3];
-        a = *(u_short *)&settings->musicVolume;
-        b = *(u_short *)&settings->effectVolume;
-        c = *(u_short *)&settings->otherMusicVolume;
-        d = *(u_short *)&settings->otherEffectVolume;
-        e = *(u_short *)&settings->screenX;
-        f = *(u_short *)&settings->screenY;
-        i = 0;
-        ((u_short *)block)[0] = a;
-        ((u_short *)block)[1] = b;
-        ((u_short *)block)[2] = c;
-        ((u_short *)block)[3] = d;
-        ((u_short *)block)[4] = e;
-        ((u_short *)block)[5] = f;
-        for (; i < 2; i++) {
-            for (j = 0; j < 9; j++) {
-                *keys = savedKeyConfig.pad[i][j];
-                keys++;
-            }
-            for (j = 0; j < 6; j++) {
-                *keys = savedKeyConfig.other[i][j];
-                keys++;
-            }
-        }
-        out = (u_char *)keys;
-        *out = settings->cdTrack;           out++;
-        *out = settings->soundMode;         out++;
-        *out = settings->negconMin;         out++;
-        *out = settings->negconCentre;      out++;
-        *out = settings->negconType;        out++;
-        *out = settings->screenOffsetState; out++;
-        *out = settings->weaponsOn;         out++;
-        *out = settings->moveScreen;        out++;
-        *out = settings->internalView;      out++;
-        *out = settings->venomComplete;     out++;
-        *out = settings->rapierComplete;    out++;
-        *out = settings->venomChallengeDone;       out++;
-        *out = settings->rapierChallengeDone;       out++;
-        *out = settings->teamCheatActive; out++;
-        *out = settings->class1Unlocked;    out++;
-        *out = settings->class2Unlocked;    out++;
-        *out = settings->trackCheatActive; out++;
-        *out = settings->phantomTrackCheatActive; out++;
-        for (i = 0; i < 9; i++) {
-            *out = settings->name[i];
-            out++;
-        }
-        for (i = 0; i < 15; i++) {
-            *out = ((u_char *)settings + i)[0x45];
-            out++;
-        }
-        for (i = 0; i < 13; i++) {
-            *out = settings->entered.digits[i];
-            out++;
-        }
-        for (i = 0; i < 8; i++) {
-            *out = trackMedals[i];
-            out++;
-        }
+        BuildSaveBlock(block, settings);
         if (write(fd, block, 0x100) == 0x100) {
             close(fd);
             return 1;
@@ -373,6 +382,25 @@ int WriteFile(void *header, char *filename, ConfigData *settings)
     }
     close(fd);
     return 0;
+}
+
+
+/* Port: writes a save file anew, keeping its own header (title and icon): the autosave's, which may run where
+   the card's icon is not in video memory (GetHeader needs it). */
+int RewriteCardFile(char *name, int slot, ConfigData *settings)
+{
+    char   fileName[0x20];
+    u_char header[0x200];
+    int    fd;
+
+    MakeFileName(name, fileName, slot);
+    fd = open(fileName, 1);
+    if (fd < 0 || read(fd, header, 0x200) != 0x200) {
+        close(fd);
+        return 0;
+    }
+    close(fd);
+    return WriteFile(header, fileName, settings);
 }
 
 
@@ -633,7 +661,9 @@ next:
         if (slot != -1) {
             LoadFirstFile(&count, slot, name);
             if (count != 0) {
-                LoadCardInitData(name, slot, data);
+                if (LoadCardInitData(name, slot, data)) {
+                    PortSaveSlotSet(slot, name); /* Port: the save in use (portsave.c) */
+                }
                 return;
             }
         }

@@ -27,6 +27,8 @@ typedef struct PortSettings {
     int customMusic;      /* the player's music folder in place of the disc's soundtrack (music.c) */
     int musicShuffle;     /* ... its songs in a random order */
     char musicFolder[1024];
+    char saveSlot[16];    /* the save in use: "card:name" (game/src/portsave.c), "" when none */
+    int noAutoSave;       /* the game does not save itself */
     int renderScale;      /* the framebuffer's pixels per console pixel; 0: as many as the window shows (gpu_gl.c) */
     int hdTextures;       /* the HD texture pack is drawn (hdtex.c) */
     char hdPackPath[1024]; /* ... the player's pack: its .zip or folder */

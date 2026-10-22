@@ -186,7 +186,7 @@ int PsxMain(void) { /* Port: was void main(void), noreturn; the platform owns th
     gameData->initMagic = 0x88387887;
     _init_cont();
     InitPadSettings();
-    FirstSavedGame(gameData);
+    PortLoadSavedGame(gameData); /* Port: the save in use last time, else the first (portsave.c) */
     raceContext = 1;
     InitResident();
     InitResidentMenu();

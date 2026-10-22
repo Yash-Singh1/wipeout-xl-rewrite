@@ -58,6 +58,11 @@ void PsxSetExecHook(PsxExecHook hook);
 void PsxLock(void);
 void PsxUnlock(void);
 
+/* The memory cards (libcard.c), for the debug console's saves: the files on a card (port 0 or 1; names of 20
+   characters), and a file put onto one (replacing one of the same name; 1 when written). */
+int PsxCardList(int port, char names[15][21], int sizes[15]);
+int PsxCardWriteFile(int port, const char *name, const void *data, int size);
+
 /* The disc image (disc.h), for the movie player; NULL before PsxIoInit. */
 struct Disc;
 const struct Disc *PsxIoDisc(void);

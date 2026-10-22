@@ -16,6 +16,7 @@ extern "C" {
 #include "debug_ui.h"
 #include "hdtex.h"
 #include "music.h"
+#include "saves.h"
 #include "original.h"
 #include "platform.h"
 #include "settings.h"
@@ -23,6 +24,7 @@ extern "C" {
 #include "psx/framecap.h"
 #include "psx/disc.h"
 #include "psx/gpu.h"
+#include "psx/psx_io.h"
 }
 
 static SDL_Window *window;
@@ -659,9 +661,10 @@ struct Picker {
     bool browse;      // the system had no dialog: the console's browser
     char start[1024]; // the folder it starts in
 };
-enum { PICK_DISC, PICK_ZIP, PICK_N64 }; // a disc image (.cue), a texture pack (.zip), a cartridge image
+enum { PICK_DISC, PICK_ZIP, PICK_N64, PICK_CARD }; // a disc image (.cue), a texture pack (.zip), a cartridge
+                                                    // image, a memory card or save
 static Picker discPicker, originalPicker, packPicker = {nullptr, false, PICK_ZIP, false, ""},
-    n64Picker = {nullptr, false, PICK_N64, false, ""}, musicPicker;
+    n64Picker = {nullptr, false, PICK_N64, false, ""}, musicPicker, cardPicker = {nullptr, false, PICK_CARD, false, ""};
 static Picker *browsing;            // the picker the console's browser is open for
 static char browseDir[1024];
 static char **browseNames;          // its entries: disc images first, then folders (with a trailing /)
@@ -712,6 +715,8 @@ static void PickerOpen(Picker *picker, bool folder, const char *current)
     static const SDL_DialogFileFilter cue[] = {{"PlayStation disc image (.cue)", "cue"}};
     static const SDL_DialogFileFilter zip[] = {{"Texture pack (.zip)", "zip"}};
     static const SDL_DialogFileFilter n64[] = {{"Nintendo 64 cartridge image (.z64, .n64, .v64)", "z64;n64;v64"}};
+    static const SDL_DialogFileFilter card[] = {
+        {"Memory card or save", "mcd;mcr;srm;mc;gme;mem;vgs;vmp;mcs;mcb;psx;ddf;vm1;ps;bin;sav;card"}, {"All files", "*"}};
 
     picker->folder = folder;
     StartFolder(current, picker->start, sizeof(picker->start));
@@ -719,6 +724,7 @@ static void PickerOpen(Picker *picker, bool folder, const char *current)
     (void)cue;
     (void)zip;
     (void)n64;
+    (void)card;
     picker->browse = true;
 #else
     if (SDL_getenv("WIPEOUT_CONSOLE_BROWSER")) {
@@ -728,9 +734,13 @@ static void PickerOpen(Picker *picker, bool folder, const char *current)
     if (folder) {
         SDL_ShowOpenFolderDialog(PickerAnswer, picker, window, picker->start, false);
     } else {
-        SDL_ShowOpenFileDialog(PickerAnswer, picker, window,
-                               picker->kind == PICK_ZIP ? zip : picker->kind == PICK_N64 ? n64 : cue, 1, picker->start,
-                               false);
+        if (picker->kind == PICK_CARD) {
+            SDL_ShowOpenFileDialog(PickerAnswer, picker, window, card, 2, picker->start, false);
+        } else {
+            SDL_ShowOpenFileDialog(PickerAnswer, picker, window,
+                                   picker->kind == PICK_ZIP ? zip : picker->kind == PICK_N64 ? n64 : cue, 1,
+                                   picker->start, false);
+        }
     }
 #endif
 }
@@ -769,6 +779,8 @@ static bool Wanted(int kind, const char *extension)
     case PICK_N64:
         return !SDL_strcasecmp(extension, ".z64") || !SDL_strcasecmp(extension, ".n64") ||
                !SDL_strcasecmp(extension, ".v64");
+    case PICK_CARD:
+        return true;
     default:
         return !SDL_strcasecmp(extension, ".cue");
     }
@@ -1166,6 +1178,139 @@ static void Music(void)
     }
 }
 
+// Saves (saves.c, game/src/portsave.c): the save in use, the game's cards, and other emulators' saves to import.
+
+static void SavesTab(void)
+{
+    static bool scanned;
+    static char message[300];
+    static char extra[1024];
+    char *chosen = PickerTake(&cardPicker);
+
+    if (chosen) {
+        SDL_strlcpy(extra, chosen, sizeof(extra));
+        SDL_free(chosen);
+        scanned = false;
+    }
+    if (!scanned) {
+        if (!extra[0] && SDL_getenv("WIPEOUT_SAVES_FROM")) {
+            SDL_strlcpy(extra, SDL_getenv("WIPEOUT_SAVES_FROM"), sizeof(extra)); /* (tests: a folder of cards) */
+        }
+        PortSavesScan(extra);
+        scanned = true;
+        if (SDL_getenv("WIPEOUT_TEST_IMPORT")) {
+            /* tests: the found save of that name, imported at once */
+            for (int i = 0; i < PortSavesCount(); i++) {
+                if (!strcmp(PortSavesFound()[i].name, SDL_getenv("WIPEOUT_TEST_IMPORT"))) {
+                    PortSavesImport(i, message, sizeof(message));
+                    break;
+                }
+            }
+            SDL_UnsetEnvironmentVariable(SDL_GetEnvironment(), "WIPEOUT_TEST_IMPORT");
+        }
+    }
+    bool autosave = !portSettings.noAutoSave;
+    if (ImGui::Checkbox("The game saves itself", &autosave)) {
+        portSettings.noAutoSave = !autosave;
+        Changed();
+    }
+    ImGui::TextWrapped("The save in use is loaded at start-up, and whenever your records, options or progress change it "
+                       "is written again (made, as AUTOSAVE, if there is none). The game's LOAD/SAVE screen still "
+                       "changes the save in use: load one, or save under a new name.");
+    if (portSettings.saveSlot[0]) {
+        ImGui::Text("In use: %.8s on memory card %c", portSettings.saveSlot + 2, portSettings.saveSlot[0] == '0' ? '1' : '2');
+    } else {
+        ImGui::TextDisabled("No save in use yet.");
+    }
+    uint64_t when;
+    int last = PortSavesLastWrite(&when);
+    if (last) {
+        ImGui::SameLine();
+        if (last > 0) {
+            ImGui::TextDisabled("  (saved %llu s ago)", (unsigned long long)((SDL_GetTicks() - when) / 1000));
+        } else {
+            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.4f, 1.0f), "  (could not save: is the memory card full?)");
+        }
+    }
+    ImGui::Separator();
+    // the game's own cards
+    for (int port = 0; port < 2; port++) {
+        char names[15][21];
+        int sizes[15], count = PsxCardList(port, names, sizes), shown = 0;
+
+        ImGui::Text("Memory card %d", port + 1);
+        for (int i = 0; i < count; i++) {
+            if (strncmp(names[i], "BASCUS-94351", 12)) {
+                continue;
+            }
+            const char *name = names[i] + 12;
+            bool inUse = portSettings.saveSlot[0] == '0' + port && !strncmp(portSettings.saveSlot + 2, name, 8);
+            ImGui::BulletText("%s%s", name, inUse ? "  (in use)" : "");
+            if (!inUse) {
+                char label[48];
+                ImGui::SameLine();
+                SDL_snprintf(label, sizeof(label), "Use this one##%d%d", port, i);
+                if (ImGui::SmallButton(label)) {
+                    PortSavesUse(port, name);
+                    SDL_snprintf(message, sizeof(message), "%s: the game loads it (in the menus).", name);
+                }
+            }
+            shown++;
+        }
+        if (!shown) {
+            ImGui::TextDisabled("   no saves of Wipeout XL");
+        }
+    }
+    ImGui::Separator();
+    // other emulators'
+    ImGui::TextUnformatted("Saves in other emulators");
+    ImGui::TextWrapped("Wipeout XL saves (and WipEout 2097's) found in DuckStation's, RetroArch's, OpenEmu's, Mednafen's, "
+                       "ePSXe's and PCSX's memory cards, or in a card or save file you choose (.mcd, .mcr, .srm, .gme, "
+                       ".mem, .vgs, .vmp, .mcs ...). Import copies one onto memory card 1 and loads it.");
+    if (ImGui::Button("Look again")) {
+        scanned = false;
+    }
+#ifndef __EMSCRIPTEN__
+    ImGui::SameLine();
+    if (ImGui::Button("Choose a memory card or save file...")) {
+        PickerOpen(&cardPicker, false, extra);
+    }
+#endif
+    if (message[0]) {
+        ImGui::TextWrapped("%s", message);
+    }
+    const FoundSave *saves = PortSavesFound();
+    int count = PortSavesCount();
+    if (!count) {
+        ImGui::TextDisabled("None found.");
+    } else if (ImGui::BeginTable("found", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_ScrollY,
+                                 ImVec2(-1, 260 * ImGui::GetIO().FontGlobalScale))) {
+        ImGui::TableSetupColumn("save", ImGuiTableColumnFlags_WidthFixed, 160 * ImGui::GetIO().FontGlobalScale);
+        ImGui::TableSetupColumn("from", ImGuiTableColumnFlags_WidthFixed, 200 * ImGui::GetIO().FontGlobalScale);
+        ImGui::TableSetupColumn("file");
+        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 80 * ImGui::GetIO().FontGlobalScale);
+        ImGui::TableHeadersRow();
+        for (int i = 0; i < count; i++) {
+            const FoundSave *s = &saves[i];
+            char label[32];
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::Text("%s (%s)", s->name, s->region);
+            ImGui::TableNextColumn();
+            ImGui::Text("%s, %s", s->program, s->format);
+            ImGui::TableNextColumn();
+            ImGui::TextWrapped("%s", s->file);
+            ImGui::TableNextColumn();
+            SDL_snprintf(label, sizeof(label), "Import##%d", i);
+            if (ImGui::SmallButton(label)) {
+                PortSavesImport(i, message, sizeof(message));
+            }
+        }
+        ImGui::EndTable();
+    }
+}
+
 // The resolution: the framebuffer's scale (gpu_gl.c), the window's or the player's.
 static void Resolution(void)
 {
@@ -1377,6 +1522,11 @@ static void Console(void)
                                 FirstTab("recorder") | (showRecorder ? ImGuiTabItemFlags_SetSelected : 0))) {
             showRecorder = false;
             RecorderTab();
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Saves", nullptr, FirstTab("saves"))) {
+            SavesTab();
+            Browser(); /* (a picker's, where the system has no file dialog) */
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Files", nullptr, FirstTab("files"))) {

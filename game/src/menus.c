@@ -617,6 +617,9 @@ int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMem
         cardNum -= steps * 30;
         heading -= steps * 15;
         Swap();
+        if (cardPending.timer <= 0 && cardNotice.timer <= 0) {
+            PortAutoSave(gameData, 1); /* Port: the game saves itself (portsave.c) */
+        }
         if (menuEditor) goto serial;
         if (((GetMenuKey(5) || PortLinkMenuSelect(screenCount)) && !screenCount && currMenu != 19) || (currMenu == 19 && ((linked && linkState == 5) || linkTimedOut == 1))) { /* Port: the linked players' way through the menus (portlink.c) */
             if (linkTimedOut) {
@@ -2403,6 +2406,8 @@ void LoadSave(ConfigData *gameData, MenuPolys *polys, SaveSelection *selection)
                 if (!LoadCardData(SelectedCard()->name, myFinished, gameData)) {
                     cardNotice.timer = 60;
                     cardNotice.id = 6;
+                } else {
+                    PortSaveChosen(myFinished, SelectedCard()->name, gameData); /* Port: the save in use */
                 }
                 cardPending.id = 0;
             }
@@ -2413,6 +2418,7 @@ void LoadSave(ConfigData *gameData, MenuPolys *polys, SaveSelection *selection)
                     cardNotice.timer = 60;
                     cardNotice.id = 7;
                 } else {
+                    PortSaveChosen(myFinished, selection->fileName, gameData); /* Port: the save in use */
                     if (!myFinished) {
                         setupBackgrndPolys(0, 1);
                     } else {
@@ -2435,6 +2441,7 @@ void LoadSave(ConfigData *gameData, MenuPolys *polys, SaveSelection *selection)
                     cardNotice.timer = 60;
                     cardNotice.id = 7;
                 } else {
+                    PortSaveChosen(myFinished, selection->fileName, gameData); /* Port: the save in use */
                     if (!myFinished) {
                         setupBackgrndPolys(0, 1);
                     } else {
@@ -2456,6 +2463,7 @@ void LoadSave(ConfigData *gameData, MenuPolys *polys, SaveSelection *selection)
                     cardNotice.timer = 60;
                     cardNotice.id = 8;
                 } else {
+                    PortSaveDeleted(myFinished, SelectedCard()->name); /* Port: (if it was the save in use) */
                     if (!myFinished) {
                         setupBackgrndPolys(0, 1);
                     } else {

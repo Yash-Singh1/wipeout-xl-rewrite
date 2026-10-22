@@ -228,7 +228,22 @@ cartridge holds them in.
 
 ## Saves
 
-The game saves to memory cards, as on the console. Card 1 is
+The game saves itself. The save in use is loaded at start-up (the one used
+last; the first time, the first save on the cards, as the console did), and
+whenever what a save holds changes (records and medals at the end of a race or
+a lap, options, progress, unlocked classes) it is written again; with no save
+yet the first change makes one, AUTOSAVE (`game/src/portsave.c`). The game's
+LOAD/SAVE screen still chooses the save in use: load one, or save under a new
+name. The debug console's Saves tab turns the autosave off and on, lists the
+cards' saves (with "Use this one"), and imports saves from other emulators:
+it finds Wipeout XL saves (and WipEout 2097's) in DuckStation's, RetroArch's
+cores', OpenEmu's, Mednafen's, ePSXe's, PCSX-R's and PCSX-Redux's memory cards
+(macOS, Linux and Windows places), or in a card or save file you choose: raw
+images (.mcd, .mcr, .srm ...), DexDrive .gme, Connectix .mem/.vgs, the PSP's
+.vmp, single saves (.mcs); an import copies the save onto card 1 and loads it
+(`platform/saves.c`).
+
+The memory cards themselves are as on the console. Card 1 is
 `memcard0.mcr` in the user's data folder (macOS:
 `~/Library/Application Support/Psygnosis/WipeoutXL/`, Linux:
 `~/.local/share/Psygnosis/WipeoutXL/`, Windows:

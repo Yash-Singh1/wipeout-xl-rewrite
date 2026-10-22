@@ -249,6 +249,8 @@ int PortWindowFocused(void)
     return window && (SDL_GetWindowFlags(window) & SDL_WINDOW_INPUT_FOCUS);
 }
 
+void PortAutoSaveAtExit(void); /* (game/src/portsave.c) */
+
 int PortPumpEvents(void)
 {
     SDL_Event event;
@@ -259,6 +261,7 @@ int PortPumpEvents(void)
     }
     while (SDL_PollEvent(&event)) {
         if (event.type == SDL_EVENT_QUIT) {
+            PortAutoSaveAtExit(); /* what changed since the last save (game/src/portsave.c) */
             return 0;
         }
         /* Alt+Enter and F11 switch between window and full screen */

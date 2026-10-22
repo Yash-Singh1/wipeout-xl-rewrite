@@ -644,3 +644,47 @@ void _card_write(int channel, int sector, void *buffer)
         PsxDeliverEvent(EVCLASS_HW, EV_DONE);
     }
 }
+
+/* ---- for the platform (psx_io.h): the files on a card, and a file put onto one ---- */
+
+int PsxCardList(int port, char names[15][21], int sizes[15])
+{
+    Card *c;
+    int block, count = 0;
+
+    if (port < 0 || port >= PORTS || !cards[port].present || !is_formatted(&cards[port])) {
+        return 0;
+    }
+    c = &cards[port];
+    for (block = 0; block < BLOCKS; block++) {
+        if (state_of(c, block) == STATE_FIRST) {
+            entry_name(c, block, names[count]);
+            sizes[count++] = entry_size(c, block);
+        }
+    }
+    return count;
+}
+
+int PsxCardWriteFile(int port, const char *name, const void *data, int size)
+{
+    char path[40];
+    int blocks = (size + BLOCK_BYTES - 1) / BLOCK_BYTES, fd, written;
+
+    if (port < 0 || port >= PORTS || blocks < 1 || strlen(name) > NAME_LENGTH) {
+        return 0;
+    }
+    snprintf(path, sizeof(path), "bu%d0:%s", port, name);
+    delete(path);
+    fd = PsyqOpen(path, FCREAT | blocks << 16);
+    if (fd < 0) {
+        return 0;
+    }
+    PsyqClose(fd);
+    fd = PsyqOpen(path, 2);
+    if (fd < 0) {
+        return 0;
+    }
+    written = PsyqWrite(fd, (void *)data, size);
+    PsyqClose(fd);
+    return written == size;
+}

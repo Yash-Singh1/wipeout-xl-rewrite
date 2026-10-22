@@ -531,6 +531,13 @@ int UnFormat(int slot);
 /* Port: linked under a name of its own, not kernel32's WriteFile (a Windows build links both) */
 #define WriteFile CardWriteFile
 int WriteFile(void *header, char *filename, ConfigData *settings);
+void BuildSaveBlock(u_long *block, ConfigData *settings);
+int RewriteCardFile(char *name, int slot, ConfigData *settings);
+/* Port: the autosave (portsave.c) */
+void PortLoadSavedGame(ConfigData *settings);
+void PortAutoSave(ConfigData *settings, int inMenus);
+void PortSaveChosen(int slot, char *name, ConfigData *settings);
+void PortSaveDeleted(int slot, char *name);
 void CloseCardEvents(void);
 int GetCardInfo(int slot);
 void InitCardEvents(void);

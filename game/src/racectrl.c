@@ -520,6 +520,7 @@ frame:
     if(gameType!=one) advance=menuSendFlags;else advance=menuRecvFlags;
     cardNum-=advance*30;heading-=advance*15;
     Swap();firstTimeIn=0;UpdateNotes(0);
+    PortAutoSave(gameData,0); /* Port: the game saves itself: records, medals (portsave.c) */
     if(!linkRaceDone) goto frame;
     if(gameType!=2 && !remoteRaceDone) goto frame;
     context=0;goto restart;
