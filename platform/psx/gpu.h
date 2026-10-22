@@ -113,6 +113,8 @@ uint8_t *GpuReadPicture(int x, int y, int w, int h, int margin, int outW, int ou
 void GpuPictureHandedOver(void);
 /* A menu's backdrop was built this frame (PortWideBackdrop in libgpu): the menu is shown wide. */
 void GpuWideMenu(void);
+/* A loading screen is being built (PortWideLoadScreen): shown wide, from this picture on. */
+void GpuWideLoadScreen(void);
 /* The primitives that follow are (1) or are not (0) a menu's backdrop, which widescreen enlarges to fill the
    sides. */
 void GpuBackdrop(int on);

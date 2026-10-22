@@ -552,6 +552,7 @@ printShipName:
             waveIndex += 1;
         } while (nextX < 0x100);
         AddPrim(OT[CurrentScreen] + 0x1FFF, screenFills[CurrentScreen]);
+        PortWideLoadScreen(); /* Port: widescreen shows the loading screen wide */
         CallbackSwap();
         vsyncBusy = 0;
     }

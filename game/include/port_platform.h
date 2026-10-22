@@ -37,11 +37,13 @@ int PortFarViewEnabled(void);
 /* Widescreen (the settings): how far the picture reaches beyond each side of the console's 320 columns, in
    console pixels; 0 for the console's 4:3. A race's scene is shown wide (the game says so every frame it
    draws one, PortWideScene); a menu is too, its backdrop enlarged to fill the sides (PortWideBackdrop, each
-   frame, for each of the backdrop's packets) while the rest stays in the console's 4:3. The loading screens
-   and the other pictures keep the console's shape. */
+   frame, for each of the backdrop's packets) while the rest stays in the console's 4:3. A loading screen is
+   shown wide as well (PortWideLoadScreen, each picture it draws): its fills across the screen reach the sides,
+   what is drawn on them stays in the middle. The other pictures keep the console's shape. */
 int PortScreenMargin(void);
 void PortWideScene(void);
 void PortWideBackdrop(const void *packet);
+void PortWideLoadScreen(void);
 /* A packet the game places at a projected point of the scene but links into the ordering table's front entry,
    where the HUD is (the other player's sign over a near ship, the missile lock's boxes): widescreen's and the
    split window's HUD handling leave it where the scene puts it. */

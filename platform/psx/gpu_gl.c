@@ -616,7 +616,8 @@ static void CopyToWide(int x, int y, int w, int h)
     }
 }
 
-/* The margin the window asks for: the console's 240 lines across its height, the width it leaves. */
+/* The margin the window asks for: the console's 240 lines across its height, the width it leaves (rounded up:
+   the picture covers the window, the part of a column left over is cut off its sides when shown). */
 static int WantedMargin(void)
 {
     int width, height, margin;
@@ -632,7 +633,7 @@ static int WantedMargin(void)
     if (height <= 0) {
         return 0;
     }
-    margin = (int)((240.0 * width / height - SCREEN_COLUMNS) / 2);
+    margin = (int)SDL_ceil((240.0 * width / height - SCREEN_COLUMNS) / 2);
     return SDL_clamp(margin, 0, MAX_WIDE_MARGIN);
 }
 
@@ -681,6 +682,19 @@ void PortWideScene(void)
 void GpuWideMenu(void)
 {
     menuWide = 1;
+}
+
+static void Flush(void);
+
+void GpuWideLoadScreen(void)
+{
+    menuWide = 1;
+    if (!wideMargin) {
+        /* at once, before its first picture is drawn: the screen before it (the title) was 4:3 */
+        Flush();
+        picturesWithoutMenu = 0;
+        SetWideMargin(WantedMargin());
+    }
 }
 
 int GpuRaceWide(void)
@@ -1310,8 +1324,12 @@ static void Present(int x, int y, int w, int h, int interpolated)
         /* The console shows its picture at 4:3 whatever the width in pixels; the wide one is as much wider
            as its sides add. */
         int wide = wideMargin && x == 0 && w == SCREEN_COLUMNS;
-        int across = wide ? WideWidth() : w;
+        double across = wide ? WideWidth() : w;
+        int left, right;
 
+        if (wide && 240.0 * width / height < across) {
+            across = 240.0 * width / height; /* the columns the window shows: the rest is cut off the sides */
+        }
         outH = height;
         outW = (int)((double)height * 4 / 3 * across / w);
         if (outW > width) {
@@ -1323,9 +1341,11 @@ static void Present(int x, int y, int w, int h, int interpolated)
         if (!wide) {
             SyncWide();
         }
+        left = wide ? (int)SDL_lround((WideWidth() - across) / 2 * scale) : x * scale;
+        right = wide ? WideWidth() * scale - left : (x + w) * scale;
         glBindFramebuffer(GL_READ_FRAMEBUFFER, wide ? wideFramebuffer : framebuffer);
-        glBlitFramebuffer(wide ? 0 : x * scale, y * scale, wide ? WideWidth() * scale : (x + w) * scale, (y + h) * scale,
-                          outX, outY + outH, outX + outW, outY, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+        glBlitFramebuffer(left, y * scale, right, (y + h) * scale, outX, outY + outH, outX + outW, outY,
+                          GL_COLOR_BUFFER_BIT, GL_LINEAR);
     }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     PortVideoPresent();

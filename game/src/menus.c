@@ -6442,6 +6442,7 @@ void ShowLoadMessage(void)
         quadIndex = CurrentScreen * 0x12C;
         CentreText(loadMessage, 0, 0x80, 0x10, 0);
         AddPrim(OT[CurrentScreen], fills[CurrentScreen]);
+        PortWideLoadScreen(); /* Port: widescreen shows the loading screen wide */
         Swap();
         i++;
     } while (i < 2);
@@ -6463,6 +6464,7 @@ void InitRaceLoad(void)
         DisplayTexture(textureTable[6 + menuTextures], 0x19, 0x26, loadPolys0);
         DisplayTexture(textureTable[6 + (menuTextures + 2)], 0x28, 0xBE, loadPolys1);
         AddPrim(OT[CurrentScreen], fills[CurrentScreen]);
+        PortWideLoadScreen(); /* Port: widescreen shows the loading screen wide */
         Swap();
         i++;
     } while (i < 2);
