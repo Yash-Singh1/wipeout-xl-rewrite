@@ -122,7 +122,7 @@ static void Field(void)
         }
         if (freezeAt > 0 && PortShownFrames() == freezeAt) {
             FrameCapToggleFreeze();
-            DebugUiShowFrames();
+            DebugUiShowRecorder();
         }
     }
     /* Tab (the frame recorder): the game waits here while the window and the debug console go on */

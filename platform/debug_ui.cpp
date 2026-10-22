@@ -24,7 +24,7 @@ static SDL_Window *window;
 static ImGuiStyle baseStyle; /* the style at a scale of 1 (FitToWindow) */
 static bool ready, open;
 static char saveDirEdit[1024];
-static bool showFrames; // Tab brings the Frames tab up
+static bool showRecorder; // Tab brings the Recorder tab up
 static int pickX = -1, pickY = -1; // the frame viewer's pixel
 static int testHoverX = -1, testHoverY = -1; // tests: where the pointer is taken to be over the picture
 
@@ -66,10 +66,10 @@ extern "C" void DebugUiShutdown(void)
     ready = false;
 }
 
-extern "C" void DebugUiShowFrames(void)
+extern "C" void DebugUiShowRecorder(void)
 {
     open = true;
-    showFrames = true;
+    showRecorder = true;
     // tests: WIPEOUT_FRAMECAP_PICK=x,y picks a pixel of the newest shown frame
     const char *pick = SDL_getenv("WIPEOUT_FRAMECAP_PICK");
     if (pick) {
@@ -100,7 +100,7 @@ extern "C" int DebugUiEvent(const SDL_Event *event)
         // the frame recorder: freezes the game and saves the last seconds of drawing, or resumes
         FrameCapToggleFreeze();
         if (FrameCapFrozen()) {
-            DebugUiShowFrames();
+            DebugUiShowRecorder();
         }
         return 1;
     }
@@ -249,7 +249,7 @@ static void Pick(int frame)
     }
 }
 
-static void FramesTab(void)
+static void RecorderTab(void)
 {
     bool record = portSettings.recordFrames != 0;
     int total = FrameCapFrameCount();
@@ -430,7 +430,7 @@ static void FramesTab(void)
     }
 }
 
-/* WIPEOUT_DEBUG_UI=stats|graphics|game|files|frames (tests): the tab shown first */
+/* WIPEOUT_DEBUG_UI=stats|graphics|game|recorder|files (tests): the tab shown first */
 static ImGuiTabItemFlags FirstTab(const char *name)
 {
     static int done;
@@ -469,7 +469,7 @@ static void Console(void)
 {
     const ImGuiViewport *view = ImGui::GetMainViewport();
 
-    if (showFrames) {
+    if (showRecorder) {
         // the frame viewer is tall: from the top of the window
         ImGui::SetNextWindowPos(ImVec2(view->WorkPos.x + view->WorkSize.x * 0.5f, view->WorkPos.y + 8),
                                 ImGuiCond_Always, ImVec2(0.5f, 0.0f));
@@ -577,10 +577,10 @@ static void Console(void)
             }
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem("Frames", nullptr,
-                                FirstTab("frames") | (showFrames ? ImGuiTabItemFlags_SetSelected : 0))) {
-            showFrames = false;
-            FramesTab();
+        if (ImGui::BeginTabItem("Recorder", nullptr,
+                                FirstTab("recorder") | (showRecorder ? ImGuiTabItemFlags_SetSelected : 0))) {
+            showRecorder = false;
+            RecorderTab();
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Files", nullptr, FirstTab("files"))) {

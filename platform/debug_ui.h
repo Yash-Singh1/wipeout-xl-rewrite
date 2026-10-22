@@ -15,7 +15,7 @@ void DebugUiShutdown(void);
 int DebugUiEvent(const SDL_Event *event);
 int DebugUiOpen(void);
 /* Opens the console at the frame recorder's tab (F9, or a test's WIPEOUT_FRAMECAP_FREEZE_AT). */
-void DebugUiShowFrames(void);
+void DebugUiShowRecorder(void);
 /* Draws the console and the frame-rate overlay into the window's framebuffer, before it is shown. */
 void DebugUiRender(void);
 

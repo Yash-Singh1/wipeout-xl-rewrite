@@ -3,7 +3,7 @@
    order drawn, as drawn (its corners with their precise positions and depths, colours, texture, blending,
    whether the GPU's size limit skipped it) and which game code built it (FrameCapTag); the video memory
    it textured from; and the picture shown. Tab (debug_ui.cpp) freezes the game and saves the recording;
-   the debug console's Frames tab steps back through it and explains any pixel. tools/framecap.py reads
+   the debug console's Recorder tab steps back through it and explains any pixel. tools/framecap.py reads
    the saved recordings. */
 #ifndef PSX_FRAMECAP_H
 #define PSX_FRAMECAP_H
