@@ -272,17 +272,21 @@ char *PortFarAlloc(int bytes)
     return p;
 }
 
-/* Apart from the far view's arena: the game draws before PortFarDraw, which starts that afresh. */
+/* Apart from the far view's arena: the game draws before PortFarDraw, which starts that afresh. It starts
+   afresh with the game's next frame (GteFrameNumber), not with PortFarDraw: the game goes on drawing objects
+   after PortFarDraw (explosions, rings, birds), and starting over there took packets already linked into the
+   frame's table for new ones, which could link the table into a loop that never ends. */
 char *PortNearAlloc(int bytes)
 {
-    int   screen = CurrentScreen & 1;
-    char *p;
+    int      screen = CurrentScreen & 1;
+    uint32_t now = GteFrameNumber();
+    char    *p;
 
     if (!Enabled()) {
         return NULL;
     }
-    if (nearFrame[screen] != frame) {
-        nearFrame[screen] = frame;
+    if (nearFrame[screen] != now) {
+        nearFrame[screen] = now;
         nearUsed[screen] = 0;
     }
     if (nearUsed[screen] + bytes > NEAR_BYTES) {
