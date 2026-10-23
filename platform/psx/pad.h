@@ -60,7 +60,7 @@ uint16_t PsxPadActionButton(int action);
 /* The device the player used last, which decides the button glyphs and names the game shows. */
 typedef enum {
     PAD_DEVICE_NONE, PAD_DEVICE_KEYBOARD, PAD_DEVICE_PLAYSTATION, PAD_DEVICE_XBOX, PAD_DEVICE_NINTENDO,
-    PAD_DEVICE_GENERIC
+    PAD_DEVICE_GENERIC, PAD_DEVICE_SATURN /* (after the others: the link sends the number) */
 } PadDevice;
 void PsxPadNoteDevice(PadDevice device);
 PadDevice PsxPadLastDevice(void);

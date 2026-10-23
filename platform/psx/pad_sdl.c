@@ -464,9 +464,38 @@ void PsxPadSdlShutdown(void)
     }
 }
 
+/* Sega Saturn pads and adapters for them (SDL has no type for them), and 8BitDo's M30 with the same six buttons
+   (A B C below X Y Z): by name, or by the vendor and product the gamepad database lists them under. */
+static bool saturn_pad(SDL_Gamepad *g)
+{
+    static const struct { uint16_t vendor, product; } known[] = {
+        {0x04B4, 0x010A}, /* Sega Saturn USB Gamepad */
+        {0x1781, 0x057E}, /* Sega Saturn */
+        {0x0E8F, 0x3010}, /* Mayflash adapter for the original pad */
+        {0x0500, 0x9B28}, {0x289B, 0x0005}, /* Saturn_Adapter_2.0 */
+        {0x2DC8, 0x0650}, {0x2DC8, 0x5006}, {0x2DC8, 0x5106}, /* 8BitDo M30 */
+    };
+    const char *name = SDL_GetGamepadName(g);
+    uint16_t vendor = SDL_GetGamepadVendor(g), product = SDL_GetGamepadProduct(g);
+    size_t i;
+
+    if (name && SDL_strcasestr(name, "saturn")) {
+        return true;
+    }
+    for (i = 0; i < SDL_arraysize(known); i++) {
+        if (known[i].vendor == vendor && known[i].product == product) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* The family a gamepad belongs to, for its button glyphs. */
 static PadDevice gamepad_device(SDL_Gamepad *g)
 {
+    if (saturn_pad(g)) {
+        return PAD_DEVICE_SATURN;
+    }
     switch (SDL_GetGamepadType(g)) {
     case SDL_GAMEPAD_TYPE_PS3:
     case SDL_GAMEPAD_TYPE_PS4:

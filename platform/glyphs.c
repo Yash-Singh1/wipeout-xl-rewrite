@@ -1,7 +1,7 @@
 /* The button glyphs of the player's input device, in place of the console's icons.
 
    The game draws every glyph through DoButton, as a 16x16 quad of the console's 4-bit icons. For a
-   keyboard and for Xbox and Nintendo gamepads the platform keeps its own glyphs in a page of texture
+   keyboard and for Xbox, Nintendo and Saturn gamepads the platform keeps its own glyphs in a page of texture
    memory beyond the console's (the glyph page of gpu_gl.c, selected by colour depth 3), and
    PortButtonGlyph rewrites the quad to show one of them:
 
@@ -10,6 +10,8 @@
                  pieces), at the size it draws them.
      Xbox        A B X Y buttons in the colours of the pad's buttons, by position (south is A).
      Nintendo    B A Y X buttons by position (south is B).
+     Saturn      A B X Y buttons by position (south is A, west X: the pad's lower and upper rows), black with
+                 light letters as the American and European pads have them.
 
    The gamepad buttons are drawn here at four times the page's resolution with smooth edges (distance
    fields and a stroke face of their letters), so they stay sharp at any window size.
@@ -37,7 +39,7 @@ typedef struct Glyph {
 
 enum { ICON_CIRCLE, ICON_CROSS, ICON_SQUARE, ICON_TRIANGLE, ICON_LEFT, ICON_RIGHT, ICON_COUNT };
 enum { FACE_COUNT = 4 };
-enum { SET_XBOX, SET_NINTENDO, SET_COUNT };
+enum { SET_XBOX, SET_NINTENDO, SET_SATURN, SET_COUNT };
 enum { ROW_COUNT = 6 }; /* the controller screen's rows: thrust, fire, view, drop weapon, left and right air brake */
 
 static bool built;
@@ -307,6 +309,7 @@ static void Build(void)
     /* the glyph named by (face icon, ...): circle east, cross south, square west, triangle north */
     static const char xboxLetters[FACE_COUNT] = {'B', 'A', 'X', 'Y'};
     static const char nintendoLetters[FACE_COUNT] = {'A', 'B', 'Y', 'X'};
+    static const char saturnLetters[FACE_COUNT] = {'B', 'A', 'X', 'Y'};
     const Colour xboxColours[FACE_COUNT] = {Rgb(236, 64, 52), Rgb(110, 196, 52), Rgb(52, 136, 240), Rgb(248, 196, 20)};
     static const int rowKeys[ROW_COUNT] = {KEY_ART_S, KEY_ART_SPACE, KEY_ART_F1, KEY_ART_ALT, KEY_ART_A, KEY_ART_D};
     int i;
@@ -330,6 +333,7 @@ static void Build(void)
     for (i = 0; i < FACE_COUNT; i++) {
         MakeDisc(xboxLetters[i], xboxColours[i], &faceIcons[SET_XBOX][i]);
         MakeDisc(nintendoLetters[i], Rgb(236, 236, 236), &faceIcons[SET_NINTENDO][i]);
+        MakeDisc(saturnLetters[i], Rgb(200, 202, 208), &faceIcons[SET_SATURN][i]);
     }
     GpuSetGlyphMemory(atlas);
     {
@@ -373,8 +377,11 @@ static const Glyph *Find(int icon)
     case PAD_DEVICE_KEYBOARD:
         return icon < ICON_COUNT ? &keyIcons[icon] : NULL;
     case PAD_DEVICE_XBOX:
+        return icon < FACE_COUNT ? &faceIcons[SET_XBOX][icon] : NULL;
     case PAD_DEVICE_NINTENDO:
-        return icon < FACE_COUNT ? &faceIcons[device == PAD_DEVICE_XBOX ? SET_XBOX : SET_NINTENDO][icon] : NULL;
+        return icon < FACE_COUNT ? &faceIcons[SET_NINTENDO][icon] : NULL;
+    case PAD_DEVICE_SATURN:
+        return icon < FACE_COUNT ? &faceIcons[SET_SATURN][icon] : NULL;
     default:
         return NULL;
     }

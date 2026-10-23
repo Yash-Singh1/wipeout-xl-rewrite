@@ -4,7 +4,7 @@
    WIPEOUT_KEYS=file replays input through SDL's own event queue, so the keys and gamepad buttons
    take the path real ones do. Lines, from the video field given on, keys by SDL's names:
        120 down Return          125 up Return           (a key; "Left Alt", "Escape", "F1", ...)
-       200 pad attach xbox      (a virtual gamepad: xbox, ps5, switch or generic)
+       200 pad attach xbox      (a virtual gamepad: xbox, ps5, switch, saturn or generic)
        210 pad down a           215 pad up a            (an SDL gamepad button: a is the south one, then
                                                           b east, x west, y north, start, back, dpup, ...)
        220 pad axis leftx 30000                          (an axis; triggers 0..32767)
@@ -43,6 +43,8 @@ typedef struct ButtonNames {
 static const ButtonNames keyboardNames = {"ENTER", "Q", "A", "E", "D"};
 static const ButtonNames xboxNames = {"MENU", "LB", "LT", "RB", "RT"};
 static const ButtonNames nintendoNames = {"PLUS", "L", "ZL", "R", "ZR"};
+/* (a Saturn pad's C and Z go to different places on each adapter: those keep the console's names) */
+static const ButtonNames saturnNames = {"START", "L", NULL, "R", NULL};
 
 char *PortButtonLabel(PortButton button, char *console)
 {
@@ -53,6 +55,7 @@ char *PortButtonLabel(PortButton button, char *console)
     case PAD_DEVICE_KEYBOARD: names = &keyboardNames; break;
     case PAD_DEVICE_XBOX: names = &xboxNames; break;
     case PAD_DEVICE_NINTENDO: names = &nintendoNames; break;
+    case PAD_DEVICE_SATURN: names = &saturnNames; break;
     default: return console;
     }
     switch (button) {
@@ -63,7 +66,7 @@ char *PortButtonLabel(PortButton button, char *console)
     case PORT_BUTTON_R2: name = names->r2; break;
     default: return console;
     }
-    return (char *)name;
+    return name ? (char *)name : console;
 }
 
 /* ---- scripted input ---- */
@@ -87,7 +90,8 @@ static SDL_JoystickID virtualIds[2];
 static SDL_Joystick *virtualJoysticks[2];
 
 static const struct { const char *name; uint16_t vendor, product; } families[] = {
-    {"xbox", 0x045E, 0x02EA}, {"ps5", 0x054C, 0x0CE6}, {"switch", 0x057E, 0x2009}, {"generic", 0x1234, 0x5678}};
+    {"xbox", 0x045E, 0x02EA}, {"ps5", 0x054C, 0x0CE6}, {"switch", 0x057E, 0x2009}, {"generic", 0x1234, 0x5678},
+    {"saturn", 0x04B4, 0x010A}};
 
 static void AddStep(Step step)
 {
