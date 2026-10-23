@@ -33,12 +33,15 @@ static const struct {
     int shipClass; /* XL's: 1 Venom, 2 Rapier */
     int startLine;
     int skyY;
+    const char *model; /* its circuit's model in the original's common/track.prm (its track menu's) */
 } originals[] = {
-    {2, "ALTIMA VII", 1, 27, -2520},   {3, "ALTIMA VII", 2, 27, -1930},  {4, "KARBONIS V", 1, 16, -5000},
-    {5, "KARBONIS V", 2, 16, -5000},   {1, "TERRAMAX", 1, 27, -820},     {6, "TERRAMAX", 2, 27, 0},
-    {12, "KORODERA", 1, 16, -2120},    {7, "KORODERA", 2, 16, -2260},    {8, "ARRIDOS IV", 1, 16, -40},
-    {11, "ARRIDOS IV", 2, 16, -240},   {9, "SILVERSTREAM", 1, 16, -2700}, {13, "SILVERSTREAM", 2, 16, -2700},
-    {10, "FIRESTAR", 1, 27, 0},        {14, "FIRESTAR", 2, 27, 0},
+    {2, "ALTIMA VII", 1, 27, -2520, "altima"},       {3, "ALTIMA VII", 2, 27, -1930, "altima"},
+    {4, "KARBONIS V", 1, 16, -5000, "karbonis"},     {5, "KARBONIS V", 2, 16, -5000, "karbonis"},
+    {1, "TERRAMAX", 1, 27, -820, "terramax"},        {6, "TERRAMAX", 2, 27, 0, "terramax"},
+    {12, "KORODERA", 1, 16, -2120, "korrodera"},     {7, "KORODERA", 2, 16, -2260, "korrodera"},
+    {8, "ARRIDOS IV", 1, 16, -40, "arridos"},        {11, "ARRIDOS IV", 2, 16, -240, "arridos"},
+    {9, "SILVERSTREAM", 1, 16, -2700, "silverstream"}, {13, "SILVERSTREAM", 2, 16, -2700, "silverstream"},
+    {10, "FIRESTAR", 1, 27, 0, "firestar"},          {14, "FIRESTAR", 2, 27, 0, "firestar"},
 };
 #define ORIGINALS ((int)SDL_arraysize(originals))
 
@@ -79,12 +82,78 @@ static const char *const fileNames[FILES] = {"track.wad", "track.tex", "cpoint0.
                                              "cpoint3.chk"};
 static uint8_t *files[FILES];
 static size_t fileSizes[FILES];
+/* The original's track models (its common/track.prm), asked for as the menus' MODELS_NAME in XL's common
+   folder: read at the first ask, read at the virtual sector after the guest's files. */
+#define MODELS_NAME "\\origtrk.prm"
+static uint8_t *modelsFile;
+static size_t modelsSize;
 static int builtFor = -1;
 static void ListGuests(void);
 #define VIRTUAL_LOC 0x40000000  /* the sectors the files are read at: beyond any disc */
 #define VIRTUAL_SPAN 0x10000    /* ... 128 MB apart */
 
 /* ---- reading the original's files ---- */
+
+static uint8_t *ReadOriginal(int folderNumber, const char *name, size_t *size);
+
+/* The original's track menu models (common/track.prm) in XL's model format. That file has flat and gouraud quads
+   only (F4, G4), in a record of their own: the type, the four corners, two bytes left over from the tool that
+   wrote it, and each colour as eight bytes (four of nothing, then red, green, blue); after each the two
+   PlayStation packets its menu drew it with (double-buffered, left over too). They become XL's F4 and G4 (type,
+   flag, corners, colours). NULL when the file is not one of those. */
+static uint8_t *MenuModels(size_t *size)
+{
+    /* by type (3 F4, 7 G4): the menu file's record (with its packets) and XL's, the colours */
+    static const int record[9] = {0, 0, 0, 16 + 2 * 24, 0, 0, 0, 28 + 2 * 36, 0};
+    static const int xlRecord[9] = {0, 0, 0, 16, 0, 0, 0, 28, 0};
+    static const int colours[9] = {0, 0, 0, 1, 0, 0, 0, 4, 0};
+    size_t length, in = 0, out = 0;
+    uint8_t *file = ReadOriginal(0, "track.prm", &length), *models;
+
+    if (!file || !(models = SDL_malloc(length))) {
+        SDL_free(file);
+        return NULL;
+    }
+    while (in + 144 <= length) {
+        /* the object and its skeleton (144 bytes), its vertices and normals, its primitives (big-endian) */
+        int vertices = (int16_t)(file[in + 16] << 8 | file[in + 17]);
+        int normals = (int16_t)(file[in + 24] << 8 | file[in + 25]);
+        int primitives = (int16_t)(file[in + 32] << 8 | file[in + 33]), i;
+        size_t fixed = 144 + (size_t)SDL_max(vertices, 0) * 8 + (size_t)SDL_max(normals, 0) * 8;
+
+        if (vertices < 0 || normals < 0 || primitives < 0 || in + fixed > length) {
+            break;
+        }
+        memcpy(models + out, file + in, fixed);
+        in += fixed;
+        out += fixed;
+        for (i = 0; i < primitives; i++) {
+            int type = in + 2 <= length ? (file[in] << 8 | file[in + 1]) : 0, k;
+            uint8_t *to = models + out;
+
+            if (type < 1 || type > 8 || !record[type] || in + (size_t)record[type] > length) {
+                SDL_free(file);
+                SDL_free(models);
+                return NULL;
+            }
+            memset(to, 0, (size_t)xlRecord[type]);
+            memcpy(to, file + in, 2);              /* the type (the flag 0: drawn from either side) */
+            memcpy(to + 4, file + in + 2, 8);      /* the corners */
+            for (k = 0; k < colours[type]; k++) {
+                memcpy(to + 12 + 4 * k, file + in + 16 + 8 * k, 3); /* red, green, blue */
+            }
+            in += (size_t)record[type];
+            out += (size_t)xlRecord[type];
+        }
+    }
+    SDL_free(file);
+    if (in != length) {
+        SDL_free(models);
+        return NULL;
+    }
+    *size = out;
+    return models;
+}
 
 static uint8_t *ReadOriginal(int folderNumber, const char *name, size_t *size)
 {
@@ -95,7 +164,11 @@ static uint8_t *ReadOriginal(int folderNumber, const char *name, size_t *size)
         int32_t lba;
         uint32_t length;
 
-        SDL_snprintf(path, sizeof(path), "\\WIPEOUT\\TRACK%02d\\%s", folderNumber, name);
+        if (folderNumber) {
+            SDL_snprintf(path, sizeof(path), "\\WIPEOUT\\TRACK%02d\\%s", folderNumber, name);
+        } else {
+            SDL_snprintf(path, sizeof(path), "\\WIPEOUT\\COMMON\\%s", name); /* (folder 0: the common files) */
+        }
         for (char *c = path; *c; c++) {
             *c = (char)SDL_toupper((unsigned char)*c);
         }
@@ -111,11 +184,19 @@ static uint8_t *ReadOriginal(int folderNumber, const char *name, size_t *size)
         return data;
     }
     /* a folder: the names as the disc has them or in lower case */
-    SDL_snprintf(path, sizeof(path), "%s/track%02d/%s", folder, folderNumber, name);
+    if (folderNumber) {
+        SDL_snprintf(path, sizeof(path), "%s/track%02d/%s", folder, folderNumber, name);
+    } else {
+        SDL_snprintf(path, sizeof(path), "%s/common/%s", folder, name);
+    }
     if ((data = SDL_LoadFile(path, size))) {
         return data;
     }
-    SDL_snprintf(path, sizeof(path), "%s/TRACK%02d/%s", folder, folderNumber, name);
+    if (folderNumber) {
+        SDL_snprintf(path, sizeof(path), "%s/TRACK%02d/%s", folder, folderNumber, name);
+    } else {
+        SDL_snprintf(path, sizeof(path), "%s/COMMON/%s", folder, name);
+    }
     for (char *c = path + strlen(folder); *c; c++) {
         *c = (char)SDL_toupper((unsigned char)*c);
     }
@@ -140,6 +221,9 @@ void PortOriginalClose(void)
     source[0] = folder[0] = 0;
     presentCount = 0;
     memset(present, 0, sizeof(present));
+    SDL_free(modelsFile);
+    modelsFile = NULL;
+    modelsSize = 0;
     ListGuests();
 }
 
@@ -275,6 +359,21 @@ int PortOriginalFoundCount(void)
 const char *PortOriginalTrackName(int index)
 {
     return index >= 0 && index < guestCount ? guests[index].name : "";
+}
+
+int PortOriginalHasModels(void)
+{
+    OpenSettings();
+    if (!modelsFile && presentCount) {
+        modelsFile = MenuModels(&modelsSize);
+    }
+    return modelsFile != NULL;
+}
+
+const char *PortOriginalTrackModel(int index)
+{
+    return index >= 0 && index < guestCount && guests[index].from == FROM_ORIGINAL ? originals[guests[index].track].model
+                                                                                   : NULL;
 }
 
 const char *PortOriginalTrackGame(int index)
@@ -795,6 +894,14 @@ int PortOriginalFileInfo(const char *pathname, int *loc, int *size)
     const char *name;
     int i;
 
+    if (SDL_strcasestr(pathname, MODELS_NAME)) {
+        if (!PortOriginalHasModels()) {
+            return 0;
+        }
+        *loc = VIRTUAL_LOC + FILES * VIRTUAL_SPAN;
+        *size = (int)modelsSize;
+        return 1;
+    }
     if (chosen < 0 || !guestCount) {
         return 0;
     }
@@ -822,14 +929,19 @@ int PortOriginalRead(int loc, int sectors, void *buffer)
     int file = (loc - VIRTUAL_LOC) / VIRTUAL_SPAN, sector = (loc - VIRTUAL_LOC) % VIRTUAL_SPAN;
     size_t from, length;
 
-    if (loc < VIRTUAL_LOC || file >= FILES || !files[file]) {
+    const uint8_t *data;
+    size_t size;
+
+    if (loc < VIRTUAL_LOC || file > FILES || (file < FILES && !files[file]) || (file == FILES && !modelsFile)) {
         return 0;
     }
+    data = file == FILES ? modelsFile : files[file];
+    size = file == FILES ? modelsSize : fileSizes[file];
     from = (size_t)sector * 2048;
     length = (size_t)sectors * 2048;
     memset(buffer, 0, length);
-    if (from < fileSizes[file]) {
-        memcpy(buffer, files[file] + from, SDL_min(length, fileSizes[file] - from));
+    if (from < size) {
+        memcpy(buffer, data + from, SDL_min(length, size - from));
     }
     return 1;
 }

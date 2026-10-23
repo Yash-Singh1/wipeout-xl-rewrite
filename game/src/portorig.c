@@ -129,6 +129,41 @@ int PortOriginalClassMenu(MenuSelection *selection, short *trackCount, int draw)
     return 1;
 }
 
+/* The original's track menu models (its common/track.prm, served as origtrk.prm: platform/original.c), loaded
+   with the menus' own models when the player's copy of the original is in use. */
+static Object *originalModels[16];
+static int originalModelCount;
+void LoadModel(Object **modelShapes, char *fileName);
+
+void PortOriginalModelsLoad(void)
+{
+    int i;
+
+    originalModelCount = 0;
+    memset(originalModels, 0, sizeof(originalModels));
+    if (!PortOriginalHasModels()) {
+        return;
+    }
+    LoadModel(originalModels, "origtrk");
+    for (i = 0; i < 16 && originalModels[i]; i++) {
+        originalModelCount++;
+    }
+}
+
+/* The model of the WIPEOUT line's track, or NULL. */
+Object *PortOriginalModel(int index)
+{
+    const char *name = PortOriginalTrackModel(index);
+    int i;
+
+    for (i = 0; name && i < originalModelCount; i++) {
+        if (!strncmp(originalModels[i]->name, name, 15)) {
+            return originalModels[i];
+        }
+    }
+    return NULL;
+}
+
 /* Back in the class menu after a race on an original track: its line and track again. */
 void PortOriginalMenuRestore(MenuSelection *selection)
 {

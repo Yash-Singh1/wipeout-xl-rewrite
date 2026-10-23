@@ -540,6 +540,7 @@ int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMem
     LoadMenuLineData();
     LoadModel(menuModels, modelNameHarry);
     LoadModel(shipModels, modelNameJune);
+    PortOriginalModelsLoad(); /* Port: the original's track models, for the WIPEOUT line's tracks */
     if (raceType == 4) {
         gameData->shipClass = gameData->savedClass;
         gameData->actTrackNum = gameData->savedActTrackNum;
@@ -4653,7 +4654,15 @@ afterTrackDescription:
         DoButton(125, 165, 4, numTex);
     }
     if (original) {
-        /* Port: no model of the original's track; its name; no medals (its races keep no records) */
+        /* Port: the original's track: its model from the original's track menu (Wipeout 64's tracks have none), its
+           name; no medals (its races keep no records) */
+        Object *model = PortOriginalModel(selection->trackSelection);
+
+        if (model) {
+            PortTwoSided(1);
+            DrawTeamShips(330, -170, 1350, heading, 220, model); /* (smaller than XL's models: nearer) */
+            PortTwoSided(0);
+        }
         PrintCX((u_char *)PortRaceTrackName(selection->actTrackNum), 160, 90);
         DrawTeamShips(-780, 40, 1400, heading, 0, menuModels[classOrder.order[selection->shipClass]]);
         classBlink += 1;

@@ -11,5 +11,7 @@ int   PortClassMove(int current, int step, int classCount);
 int   PortOriginalClassMenu(MenuSelection *selection, short *trackCount, int draw);
 void  PortOriginalMenuRestore(MenuSelection *selection);
 char *PortRaceTrackName(short actTrackNum);
+void  PortOriginalModelsLoad(void);      /* the original's track models, with the menus' (in its reserve heap) */
+Object *PortOriginalModel(int index);    /* ... the model of a WIPEOUT line's track, or NULL */
 
 #endif
