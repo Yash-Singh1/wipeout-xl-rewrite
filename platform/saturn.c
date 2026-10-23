@@ -28,6 +28,7 @@
 #include "original.h"
 #include "platform.h"
 #include "saturn.h"
+#include "saturn_shapes.h"
 #include "psx/disc.h"
 #include "psx/psx_io.h"
 
@@ -36,6 +37,7 @@
 
 static int checked;
 static int saturn;          /* the disc is the Saturn's */
+static int europe;          /* ... WipEout 2097 (Europe) */
 static int32_t archiveLba;  /* CDIMAGE.ELF */
 static uint32_t archiveSize;
 static uint8_t *archive;    /* its entries after a 16-byte head: key, sector, size, sectors (big-endian) */
@@ -123,6 +125,12 @@ static void Check(void)
     }
     saturn = 1;
     {
+        uint8_t header[2048];
+
+        /* the header's areas: J, or E for Europe */
+        europe = DiscReadData(disc, 0, 1, header) && memchr(header + 0x40, 'E', 16) != NULL;
+    }
+    {
         const char *path = SDL_getenv("WIPEOUT_SATURN_BORROW");
         char error[256];
 
@@ -136,6 +144,11 @@ int PortSaturnDisc(void)
 {
     Check();
     return saturn;
+}
+
+const char *PortSaturnTitle(void)
+{
+    return europe ? "WipEout 2097 (Europe, Sega Saturn)" : "Wipeout XL (Japan, Sega Saturn)";
 }
 
 /* An archive entry by its path (art\track01\course01.rbh), read whole (the caller frees). */
@@ -584,6 +597,157 @@ static void MakeLibrary(const Course *c, Buffer *cmp, Buffer *ttf)
     SDL_free(opaque);
 }
 
+/* ---- stand-ins ---- */
+
+static void PutTim(Buffer *b, const Shape *s)
+{
+    uint8_t head[20];
+    int depth = s->a & 7, pixels = s->r2[2] * 2 * s->r2[3];
+    uint8_t *zeros;
+
+    if (s->a == 15) {
+        return; /* an empty one of a sequence */
+    }
+    PutLe32(head, 0x10);
+    PutLe32(head + 4, (uint32_t)s->a);
+    Put(b, head, 8);
+    if (s->a & 8) {
+        int bytes = s->r1[2] * s->r1[3] * 2;
+
+        PutLe32(head, (uint32_t)(12 + bytes));
+        PutLe16(head + 4, s->r1[0]);
+        PutLe16(head + 6, s->r1[1]);
+        PutLe16(head + 8, s->r1[2]);
+        PutLe16(head + 10, s->r1[3]);
+        Put(b, head, 12);
+        zeros = SDL_calloc(1, (size_t)bytes + 1);
+        Put(b, zeros, (size_t)bytes); /* see-through */
+        SDL_free(zeros);
+    }
+    (void)depth;
+    PutLe32(head, (uint32_t)(12 + pixels));
+    PutLe16(head + 4, s->r2[0]);
+    PutLe16(head + 6, s->r2[1]);
+    PutLe16(head + 8, s->r2[2]);
+    PutLe16(head + 10, s->r2[3]);
+    Put(b, head, 12);
+    zeros = SDL_calloc(1, (size_t)pixels + 1);
+    Put(b, zeros, (size_t)pixels);
+    SDL_free(zeros);
+}
+
+/* A file of a shape, nothing in it: images see-through, models without polygons, sounds silent. */
+static void PutStandIn(Buffer *b, const Shape *s)
+{
+    int i;
+
+    switch (s->kind) {
+    case SHAPE_TIM:
+        PutTim(b, s);
+        break;
+    case SHAPE_CMP: {
+        Buffer tims = {0};
+        uint8_t word[4];
+        size_t packedSize;
+        uint8_t *packed;
+
+        PutLe32(word, (uint32_t)s->count);
+        Put(b, word, 4);
+        for (i = 0; i < s->count; i++) {
+            size_t before = tims.size;
+
+            PutTim(&tims, &s->list[i]);
+            PutLe32(word, (uint32_t)(tims.size - before));
+            Put(b, word, 4);
+        }
+        packed = PortLzssStore(tims.data, tims.size, &packedSize);
+        Put(b, packed, packedSize);
+        SDL_free(packed);
+        SDL_free(tims.data);
+        break;
+    }
+    case SHAPE_PRM:
+        for (i = 0; i < s->count; i++) {
+            const Shape *o = &s->list[i];
+            uint8_t object[64 + 80] = {0};
+            uint8_t *zeros = SDL_calloc(1, (size_t)(o->r1[0] + o->r1[1]) * 8 + 1);
+            int k;
+
+            SDL_strlcpy((char *)object, o->name, 16);
+            PutBe16(object + 16, o->r1[0]);
+            PutBe16(object + 24, o->r1[1]);
+            PutBe32(object + 52, 1);    /* the extent */
+            PutBe16(object + 56, o->a); /* the flags */
+            for (k = 0; k < 3; k++) {
+                PutBe16(object + 64 + k * 8, 4096);      /* the skeleton: identity */
+                PutBe16(object + 64 + 32 + k * 8, 4096);
+            }
+            Put(b, object, sizeof(object));
+            Put(b, zeros, (size_t)(o->r1[0] + o->r1[1]) * 8); /* the vertices and normals, no primitives */
+            SDL_free(zeros);
+        }
+        break;
+    case SHAPE_VAG: {
+        uint8_t *v = SDL_calloc(1, (size_t)s->count + 16);
+
+        if (s->count >= 64) {
+            memcpy(v, "VAGp", 4);
+            PutBe32(v + 4, 3);
+            PutBe32(v + 12, (uint32_t)(s->count - 48));
+            PutBe32(v + 16, (uint32_t)s->r2[0]);
+            v[s->count - 16 + 1] = 1; /* the last block ends it */
+        }
+        Put(b, v, (size_t)s->count);
+        SDL_free(v);
+        break;
+    }
+    case SHAPE_WAD: {
+        Buffer *parts = SDL_calloc((size_t)s->count, sizeof(Buffer));
+        uint8_t count[2];
+
+        for (i = 0; i < s->count; i++) {
+            PutStandIn(&parts[i], s->list[i].part);
+        }
+        PutLe16(count, s->count);
+        Put(b, count, 2);
+        for (i = 0; i < s->count; i++) {
+            uint8_t e[25] = {0};
+
+            SDL_strlcpy((char *)e, s->list[i].name, 16);
+            PutLe32(e + 20, (uint32_t)parts[i].size);
+            Put(b, e, 25);
+        }
+        for (i = 0; i < s->count; i++) {
+            Put(b, parts[i].data, parts[i].size);
+            SDL_free(parts[i].data);
+        }
+        SDL_free(parts);
+        break;
+    }
+    case SHAPE_RAW: {
+        uint8_t *zeros = SDL_calloc(1, (size_t)s->count + 1);
+
+        Put(b, zeros, (size_t)s->count);
+        SDL_free(zeros);
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static const Shape *ShapeOf(const char *path)
+{
+    int i;
+
+    for (i = 0; saturnShapes[i].path; i++) {
+        if (!strcmp(saturnShapes[i].path, path)) {
+            return saturnShapes[i].shape;
+        }
+    }
+    return NULL;
+}
+
 /* ---- the files ---- */
 
 /* A file of the borrowed PlayStation disc (WIPEOUT_SATURN_BORROW), by the game's path (\wipeout2\...). */
@@ -674,6 +838,19 @@ static uint8_t *MakeTrackWad(int track, size_t *size, uint8_t **texFile, size_t 
         if (part) {
             Put(&parts[i], part, length);
             SDL_free(part);
+        } else {
+            /* not made yet: a stand-in */
+            char path[64];
+            const Shape *wadShape;
+            int k;
+
+            SDL_snprintf(path, sizeof(path), "\\wipeout2\\track%02d\\track.wad", track);
+            wadShape = ShapeOf(path);
+            for (k = 0; wadShape && k < wadShape->count; k++) {
+                if (!strcmp(wadShape->list[k].name, wadParts[i])) {
+                    PutStandIn(&parts[i], wadShape->list[k].part);
+                }
+            }
         }
     }
     {
@@ -751,9 +928,18 @@ static int Find(const char *path)
     {
         size_t size = 0;
         uint8_t *data = Borrowed(path, &size);
+        const Shape *shape;
 
         if (data) {
             return Remember(path, data, size);
+        }
+        shape = ShapeOf(path);
+        if (shape) {
+            Buffer b = {0};
+
+            PutStandIn(&b, shape);
+            printf("saturn.c: %s stands in\n", path);
+            return Remember(path, b.data ? b.data : SDL_calloc(1, 1), b.size);
         }
     }
     return -1;

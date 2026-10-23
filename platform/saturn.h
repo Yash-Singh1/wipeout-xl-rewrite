@@ -11,8 +11,9 @@ struct Disc;
 
 /* Whether a disc image is the Saturn's Wipeout XL (Japan) or WipEout 2097 (Europe). */
 int PortSaturnDiscIs(const struct Disc *disc);
-/* Whether the disc in use is. */
+/* Whether the disc in use is; its name. */
 int PortSaturnDisc(void);
+const char *PortSaturnTitle(void);
 
 #ifdef __cplusplus
 }
