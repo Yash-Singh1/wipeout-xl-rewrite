@@ -951,40 +951,25 @@ static unsigned Vertices(GpuVertex *v, const uint32_t *const *words, int count)
 /* A polygon with a corner nearer than the GTE projects (the far view's faces beside and just behind the camera; in a
    picture between two frames, what the camera was nearer to or had not yet passed) is placed from its corners' view-
    space positions, cut at a plane just in front of the camera (the far view's, portfar.h) with its texture coordinates
-   and colours, and the part in front drawn. 1 when it was (or was wholly behind), 0 when it needs none of this or its
-   corners have no view-space positions. */
+   and colours, and the part in front drawn. A quad is cut as the two triangles the GPU draws of it (corners 0 1 2 and
+   1 2 3): a face that is not flat, seen edge on beside the camera, is not convex on the screen, and its other diagonal
+   left a hole in the wall. 1 when it was (or was wholly behind), 0 when it needs none of this or its corners have no
+   view-space positions. */
 #define CUT_NEAR 16.0
-static int NearCut(const GpuDrawState *draw, const GpuVertex *v, int count)
+typedef struct {
+    double view[3], depth; /* view space; the depth drawn per view-space depth (the far view's is a hair more) */
+    GpuVertex v;
+} CutCorner;
+
+/* back: 1 when the triangle's corners as given wind as a polygon's seen from behind do */
+static void CutTriangle(const GpuDrawState *draw, const CutCorner *in, int back)
 {
-    static const int quadOutline[4] = {0, 1, 3, 2}; /* (a quad's packet corners around its edge) */
-    struct {
-        double view[3], depth; /* view space; the depth drawn per view-space depth (the far view's is a hair more) */
-        GpuVertex v;
-    } in[4], out[8];
-    double near = GteNearPlane();
-    float along = interpolating ? interpolationAlong : 1.0f;
+    CutCorner out[4];
     const double plane = CUT_NEAR;
-    int i, k, behind = 0, cut = 0;
+    int i, k, cut = 0, turn;
 
-    if (count < 3 || resolvedMask != (1u << count) - 1) {
-        return 0;
-    }
-    for (i = 0; i < count; i++) {
-        int c = count == 4 ? quadOutline[i] : i;
-
-        if (!GteViewAt(&resolved[c], along, in[i].view)) {
-            return 0;
-        }
-        in[i].depth = resolved[c].view[2] != 0.0f ? resolved[c].z / resolved[c].view[2] : 1.0;
-        in[i].v = v[c];
-        /* (what GteInterpolate cannot place: behind the camera in this frame, or nearer than it projects) */
-        behind += resolved[c].view[2] < near || in[i].view[2] < near;
-    }
-    if (!behind) {
-        return 0;
-    }
-    for (i = 0; i < count; i++) {
-        const int j = (i + 1) % count;
+    for (i = 0; i < 3; i++) {
+        const int j = (i + 1) % 3;
         const int aIn = in[i].view[2] >= plane, bIn = in[j].view[2] >= plane;
 
         if (aIn) {
@@ -1009,7 +994,7 @@ static int NearCut(const GpuDrawState *draw, const GpuVertex *v, int count)
         }
     }
     if (cut < 3) {
-        return 1; /* wholly behind the camera */
+        return; /* wholly behind the camera */
     }
     for (i = 0; i < cut; i++) {
         float x, y;
@@ -1019,19 +1004,44 @@ static int NearCut(const GpuDrawState *draw, const GpuVertex *v, int count)
         out[i].v.y = y + (float)state.offsetY;
         out[i].v.w = (float)(out[i].view[2] * out[i].depth);
     }
-    {
-        /* seen from behind: its outline winds the other way on screen (as Vertices judges a whole one) */
-        int back = (out[1].v.x - out[0].v.x) * (out[2].v.y - out[0].v.y) -
-                       (out[1].v.y - out[0].v.y) * (out[2].v.x - out[0].v.x) <= 0.0f;
-
-        for (i = 0; i < cut; i++) {
-            out[i].v.backFacing = back;
-        }
+    /* seen from behind: the winding on screen (as Vertices judges a whole polygon by its first three corners) */
+    turn = (out[1].v.x - out[0].v.x) * (out[2].v.y - out[0].v.y) -
+               (out[1].v.y - out[0].v.y) * (out[2].v.x - out[0].v.x) <= 0.0f;
+    for (i = 0; i < cut; i++) {
+        out[i].v.backFacing = turn != back;
     }
     for (i = 1; i + 1 < cut; i++) {
         GpuVertex triangle[3] = {out[0].v, out[i].v, out[i + 1].v};
 
         GpuTriangles(draw, triangle, 3);
+    }
+}
+
+static int NearCut(const GpuDrawState *draw, const GpuVertex *v, int count)
+{
+    CutCorner in[4];
+    double near = GteNearPlane();
+    float along = interpolating ? interpolationAlong : 1.0f;
+    int i, behind = 0;
+
+    if (count < 3 || resolvedMask != (1u << count) - 1) {
+        return 0;
+    }
+    for (i = 0; i < count; i++) {
+        if (!GteViewAt(&resolved[i], along, in[i].view)) {
+            return 0;
+        }
+        in[i].depth = resolved[i].view[2] != 0.0f ? resolved[i].z / resolved[i].view[2] : 1.0;
+        in[i].v = v[i];
+        /* (what GteInterpolate cannot place: behind the camera in this frame, or nearer than it projects) */
+        behind += resolved[i].view[2] < near || in[i].view[2] < near;
+    }
+    if (!behind) {
+        return 0;
+    }
+    CutTriangle(draw, &in[0], 0);
+    if (count == 4) {
+        CutTriangle(draw, &in[1], 1); /* (corners 1 2 3 wind the other way round) */
     }
     return 1;
 }
