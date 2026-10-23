@@ -449,6 +449,8 @@ int DisplayCardBack(MenuPolys *polys, int cursorArg, int cardArg, SaveSelection 
 void DisplayConfig(ConfigData *gameData, MenuSelection *selection, HiScoreData *score, MenuPolys *polys);
 void DisplayPassword(ConfigData *gameData);
 void DisplayTexture(Texture *texture, s32 left, s32 top, POLY_FT4 *polys);
+/* y of the button at the foot of the race result and high score screens. */
+#define RESULT_BUTTON_Y REGION(210, 220)
 void DoButton(short x, short y, int requestedIcon, char *text);
 void DoConfirm(SaveSelection *selection, MenuPolys *polys, short messageType);
 void DrawDrBox(Texture *unused, DrBox *box);
@@ -574,6 +576,10 @@ void anim(char *fileName);
 
 /* credits.c */
 void InitCredits(void);
+/* The credits scroll one line per frame while an attract-mode countdown of CREDITS_FRAMES runs
+   down; ShowCredits(frames left) draws them starting CREDITS_SCROLL_LENGTH lines above. */
+#define CREDITS_FRAMES        REGION(3300, 3492)
+#define CREDITS_SCROLL_LENGTH REGION(3000, 3132)
 void ShowCredits(int y);
 
 /* display.c */

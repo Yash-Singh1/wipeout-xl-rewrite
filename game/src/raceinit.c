@@ -287,10 +287,10 @@ void InitAttractMode(int mode, ShipData *ships)
         attributes &= ~0x40;
         ship->attr = attributes;
         if (nextAttract == (quotient * 3)) {
-            attractDelayFrames = 0xCE4;
+            attractDelayFrames = CREDITS_FRAMES;
             attractModeFlag = mode;
         } else {
-            attractDelayFrames = 0x384;
+            attractDelayFrames = PAL_TIME(900);
         }
         if (attractModeFlag == 1) {
             InitCredits();

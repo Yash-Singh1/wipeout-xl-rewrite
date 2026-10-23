@@ -78,7 +78,7 @@ void InGameReset(struct PauseMenu *pause, ConfigData *game, struct InGameMenu *p
             CentreText(msgPaused, 107, 70, 12, 0);
         }
     }
-    if (gameType == 1) {
+    if (!portPal && gameType == 1) { /* the European program waits in race() instead */
         VSync(0);
     }
     if (pause->selection != 3) {
