@@ -32,6 +32,9 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
 ninja -C build
 ```
 
+On macOS the build also makes `build/Wipeout XL.app`, with the Mac version's
+icon and the Homebrew libraries it uses inside (copy it to `/Applications`).
+
 Windows, with MSYS2's MinGW-w64 (UCRT64 or CLANG64 shell, packages `cmake`
 `ninja` `gcc` or `clang`): the same two commands. From macOS or Linux, with the
 MinGW-w64 cross compiler, use the toolchain file:
@@ -42,7 +45,8 @@ cmake -S . -B build-windows -G Ninja -DCMAKE_BUILD_TYPE=Release \
 ninja -C build-windows
 ```
 
-`wipeoutxl.exe` is a single file, with SDL3 and the C runtime linked in.
+`wipeoutxl.exe` is a single file, with SDL3 and the C runtime linked in and the
+PC version's icon.
 
 The web, with Emscripten:
 

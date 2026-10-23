@@ -122,6 +122,9 @@ if(NOT EMSCRIPTEN)
             set(${off} OFF CACHE BOOL "" FORCE)
         endforeach()
         set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+        # no regular expressions (its tools' only): without a POSIX regex library (MinGW) libarchive goes on to
+        # look for PCRE, which stops its configuration while ENABLE_LIBGCC is off ("libgcc not found")
+        set(POSIX_REGEX_LIB NONE CACHE STRING "" FORCE)
         FetchContent_Declare(libarchive
             URL https://github.com/libarchive/libarchive/releases/download/v3.8.10/libarchive-3.8.10.tar.xz
             URL_HASH SHA256=56cad765459d5ee25a3b761f90c47d99379d28297fbfb72d908880d6b875fb96)
@@ -187,10 +190,29 @@ if(ANDROID)
     # Android: the library SDL's activity loads (platform/android: the app around it, built with Gradle)
     add_library(wipeoutxl SHARED ${PLATFORM_SOURCES})
     set_target_properties(wipeoutxl PROPERTIES OUTPUT_NAME main)
+elseif(WIN32)
+    # the PC version's icon (platform/windows)
+    enable_language(RC)
+    add_executable(wipeoutxl ${PLATFORM_SOURCES} ${CMAKE_SOURCE_DIR}/platform/windows/wipeoutxl.rc)
 else()
     add_executable(wipeoutxl ${PLATFORM_SOURCES})
 endif()
 port_platform_target(wipeoutxl)
+
+# ---- macOS: Wipeout XL.app beside the program, after each build ----
+# The program with the Mac version's icon, and the libraries it uses from Homebrew inside (it runs on a Mac
+# without them). build/wipeoutxl stays as it is (the tests run it).
+if(APPLE AND NOT IOS)
+    set(MAC_APP "${CMAKE_BINARY_DIR}/Wipeout XL.app")
+    add_custom_command(OUTPUT "${MAC_APP}/Contents/Info.plist"
+        COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/macos_app.py $<TARGET_FILE:wipeoutxl> "${MAC_APP}"
+                ${CMAKE_SOURCE_DIR}/platform/macos/Info.plist ${CMAKE_SOURCE_DIR}/platform/macos/wipeoutxl.icns
+        DEPENDS wipeoutxl ${CMAKE_SOURCE_DIR}/tools/macos_app.py ${CMAKE_SOURCE_DIR}/platform/macos/Info.plist
+                ${CMAKE_SOURCE_DIR}/platform/macos/wipeoutxl.icns
+        COMMENT "Wipeout XL.app"
+        VERBATIM)
+    add_custom_target(macos_app ALL DEPENDS "${MAC_APP}/Contents/Info.plist")
+endif()
 
 # ---- iOS: Wipeout XL.app (cmake -G Xcode -DCMAKE_SYSTEM_NAME=iOS; README.md) ----
 # Landscape and full screen; its Documents folder is in the Files app ("On My iPhone"), where the player puts
