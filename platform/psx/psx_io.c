@@ -237,7 +237,7 @@ int PsxIoInit(const PsxIoConfig *config, char *error, int errorSize)
         }
     }
     PsxPadInit(config->padScript);
-    PsxCardInit(g_io.savePath);
+    PsxCardInit(g_io.savePath, config->oneCard);
     g_io.initialized = true;
     if (!g_io.fixedStep && !config->noDevice && config->queueAudio) {
         g_io.queuedAudio = PsxAudioDeviceOpen(true);

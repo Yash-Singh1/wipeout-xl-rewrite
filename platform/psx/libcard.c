@@ -12,8 +12,9 @@
      class 0xF4000001 (software, _card_info / _card_load)   class 0xF0000011 (hardware, _card_write / _card_clear)
      spec 0x0004 done   0x8000 error   0x0100 no card   0x2000 new or unformatted card
 
-   Port 0 always has a card (created formatted on first use); port 1 has one only if its image
-   file exists. Events are posted before the call returns. */
+   Both ports always have a card: a new one is formatted, and its file made when the game first writes to
+   it (port 0's at once). With oneCard (the console recordings, made with one card) port 1 has a card only if
+   its image file exists. Events are posted before the call returns. */
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
@@ -171,7 +172,7 @@ static void flush(Card *c)
     c->dirty = false;
 }
 
-static void load_card(int port, bool create)
+static void load_card(int port, bool create, bool keepFile)
 {
     Card *c = &cards[port];
     FILE *f;
@@ -187,11 +188,15 @@ static void load_card(int port, bool create)
     } else if (create) {
         format_image(c);
         c->present = true;
-        flush(c);
+        if (keepFile) {
+            flush(c);
+        } else {
+            c->dirty = false; /* (written when the game writes to it) */
+        }
     }
 }
 
-void PsxCardInit(const char *directory)
+void PsxCardInit(const char *directory, int oneCard)
 {
     int port;
 
@@ -199,7 +204,7 @@ void PsxCardInit(const char *directory)
     memset(fds, 0, sizeof(fds));
     snprintf(saveDirectory, sizeof(saveDirectory), "%s", directory);
     for (port = 0; port < PORTS; port++) {
-        load_card(port, port == 0);
+        load_card(port, port == 0 || !oneCard, port == 0);
         cards[port].newCard = true;
     }
 }

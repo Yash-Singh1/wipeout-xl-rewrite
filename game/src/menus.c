@@ -2356,6 +2356,7 @@ void LoadSave(ConfigData *gameData, MenuPolys *polys, SaveSelection *selection)
             Popup();
             if (selection->timer == 1) {
                 setupBackgrndPolys(0, 2);
+                PortSaveCursor(&myFinished, &fadescreen); /* Port: at the save in use */
             }
             selection->timer--;
         } else {

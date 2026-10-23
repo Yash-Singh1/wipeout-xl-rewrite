@@ -67,6 +67,26 @@ void PortSaveDeleted(int slot, char *name)
     }
 }
 
+/* The LOAD/SAVE screen has read the cards: its cursor starts on the save in use (so the name under the card is
+   that save's), where the console's started on the first card's first block. */
+void PortSaveCursor(s32 *card, s32 *block)
+{
+    extern CardSlot cardSlots[];
+    char name[9];
+    int  slot = PortSaveSlot(name), i;
+
+    if (slot < 0 || slot > 1) {
+        return;
+    }
+    for (i = 0; i < 15; i++) {
+        if (cardSlots[slot].entry[i].type == 4 && !strncmp(cardSlots[slot].entry[i].name, name, 8)) {
+            *card = slot;
+            *block = i;
+            return;
+        }
+    }
+}
+
 /* Writes the save in use when what it holds has changed (inMenus: a new one can be made). */
 void PortAutoSave(ConfigData *settings, int inMenus)
 {

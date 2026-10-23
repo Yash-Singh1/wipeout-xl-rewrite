@@ -87,7 +87,7 @@ void PsxPadShutdown(void);
 
 /* ---- memory card (libcard.c) ----------------------------------------------------------- */
 
-void PsxCardInit(const char *directory);
+void PsxCardInit(const char *directory, int oneCard);
 void PsxCardShutdown(void);
 
 #endif

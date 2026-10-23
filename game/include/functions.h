@@ -538,6 +538,7 @@ void PortLoadSavedGame(ConfigData *settings);
 void PortAutoSave(ConfigData *settings, int inMenus);
 void PortSaveChosen(int slot, char *name, ConfigData *settings);
 void PortSaveDeleted(int slot, char *name);
+void PortSaveCursor(s32 *card, s32 *block);
 void CloseCardEvents(void);
 int GetCardInfo(int slot);
 void InitCardEvents(void);

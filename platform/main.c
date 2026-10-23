@@ -379,6 +379,7 @@ int main(int argc, char **argv)
         io.fixedStep = portConfig.fixedStep;
         io.muted = portConfig.muted;
         io.noCdAudio = portConfig.linkName != NULL;
+        io.oneCard = SDL_getenv("WIPEOUT_TRACE") != NULL; /* (the console recordings were made with one card) */
         io.wavPath = SDL_getenv("WIPEOUT_WAV"); /* tests: the mixed audio of a fixed-step run */
 #ifdef __EMSCRIPTEN__
         io.queueAudio = 1; /* the page's audio callback runs only while the game waits (psx_io.h) */

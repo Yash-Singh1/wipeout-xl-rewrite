@@ -28,6 +28,7 @@ typedef struct PsxIoConfig {
     const char *padScript;  /* scripted pad input file (see pad.c); NULL for live input */
     const char *wavPath;    /* write the mixed audio here (fixed-step runs) */
     int noCdAudio;          /* the disc's audio tracks are not heard (the second player's game) */
+    int oneCard;            /* no card in the second slot unless its image exists (the console recordings') */
     int queueAudio;         /* time follows the video fields and their samples are queued for the device, which
                                then never sets the time (the web, where the device's callback can only run while
                                the game waits) */

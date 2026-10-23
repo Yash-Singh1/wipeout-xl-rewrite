@@ -121,7 +121,7 @@ static int save_file(const char *name, const uint8_t *header, const uint8_t *sco
 int main(void)
 {
     uint8_t header[0x200], scores[0x600], settings[0x100], back[0x900];
-    char image[1100];
+    char image[1100], image2[1100];
     DIRENTRY entry;
     int fd, i;
     const char *dir;
@@ -132,6 +132,7 @@ int main(void)
     }
     dir = test_save_dir();
     snprintf(image, sizeof(image), "%s/memcard0.mcr", dir);
+    snprintf(image2, sizeof(image2), "%s/memcard1.mcr", dir);
     for (i = 0; i < 0x200; i++) header[i] = (uint8_t)(i * 7);
     for (i = 0; i < 0x600; i++) scores[i] = (uint8_t)(i * 13 + 1);
     for (i = 0; i < 0x100; i++) settings[i] = (uint8_t)(i * 29 + 5);
@@ -141,13 +142,16 @@ int main(void)
     StartCARD();
     _bu_init();
 
-    /* port 1 holds a formatted card; port 2 is empty; both have been seen already */
+    /* both ports hold a formatted card, port 2's not written to its file until the game writes to it; both
+       have been seen already */
     CHECK_EQ_INT(file_size(image), 128 * 1024);
+    CHECK_EQ_INT(file_size(image2), -1);
     CHECK_EQ_INT(card_info(0), 0);
-    CHECK_EQ_INT(card_info(0x10), 2);
+    CHECK_EQ_INT(card_info(0x10), 0);
     CHECK_EQ_INT(card_load(0), 0);
-    CHECK_EQ_INT(card_load(0x10), 2);
+    CHECK_EQ_INT(card_load(0x10), 0);
     CHECK(firstfile("bu00:*", &entry) == NULL);
+    CHECK(firstfile("bu10:*", &entry) == NULL);
     CHECK(PsyqOpen("bu10:BASCUS-94351X", 1) < 0);
 
     /* a save */
@@ -239,6 +243,12 @@ int main(void)
         delete("bu00:BASCUS-94351FULL");
     }
 
+    /* a save on the second card makes its file */
+    CHECK_EQ_INT(save_file("bu10:BASCUS-94351SAVE0002", header, scores, settings), 1);
+    CHECK_EQ_INT(file_size(image2), 128 * 1024);
+    CHECK(firstfile("bu10:*", &entry) == &entry);
+    CHECK(!strncmp(entry.name, "BASCUS-94351SAVE0002", 20));
+
     /* the image is a real card: header "MC", each directory frame checksummed */
     {
         FILE *f = fopen(image, "rb");
@@ -278,7 +288,7 @@ int main(void)
         CHECK(fd >= 0);
         PsyqClose(fd);
     }
-    /* _card_clear, and a write to a card that is not there */
+    /* _card_clear, a write to the second card, and one beyond a card's end */
     {
         uint8_t zero[128] = {0};
 
@@ -286,7 +296,7 @@ int main(void)
         _card_clear(0);
         CHECK_EQ_INT(which(hwEvents), 0);
         _card_write(0x10, 0, zero);
-        CHECK_EQ_INT(which(hwEvents), 2);
+        CHECK_EQ_INT(which(hwEvents), 0);
         _card_write(0, 5000, zero);
         CHECK_EQ_INT(which(hwEvents), 1);
     }
