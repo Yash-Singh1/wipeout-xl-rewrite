@@ -220,8 +220,7 @@ static int ReadBlocks(const char *path, Blocks *b)
         b->data[b->count] = b->file + at + 8;
         b->size[b->count] = size;
         b->count++;
-        at += 8 + size;
-        at += at & 1;
+        at += 8 + size; /* (no padding: a packed chunk can be of an odd size) */
     }
     return b->count;
 }
@@ -597,6 +596,187 @@ static void MakeLibrary(const Course *c, Buffer *cmp, Buffer *ttf)
     SDL_free(opaque);
 }
 
+/* ---- the Saturn's compression and video memory images ---- */
+
+/* A number of the packed stream: a byte (0x40 negative, 0x3f the value), 0x80 more bytes of 7 bits, low first. */
+static int Number(const uint8_t *in, size_t length, size_t *at)
+{
+    int value, shift = 6, b;
+
+    if (*at >= length) {
+        return 0;
+    }
+    b = in[(*at)++];
+    value = b & 0x3f;
+    {
+        int negative = b & 0x40;
+
+        while ((b & 0x80) && *at < length && shift < 31) {
+            b = in[(*at)++];
+            value |= (b & 0x7f) << shift;
+            shift += 7;
+        }
+        return negative ? -value : value;
+    }
+}
+
+/* The program's unpacking (0x06048654): a number n; n > 0: n bytes as they are; n < 0: an offset, then -n bytes
+   from the output there. */
+static size_t Unpack(const uint8_t *in, size_t length, uint8_t *out, size_t size)
+{
+    size_t at = 0, done = 0;
+
+    while (done < size && at < length) {
+        int n = Number(in, length, &at);
+
+        if (n < 0) {
+            int from = Number(in, length, &at), k;
+
+            for (k = 0; k < -n && done < size; k++) {
+                out[done] = from + k >= 0 && (size_t)(from + k) < done ? out[from + k] : 0;
+                done++;
+            }
+        } else if (n > 0) {
+            size_t take = SDL_min((size_t)n, SDL_min(size - done, length - at));
+
+            memcpy(out + done, in + at, take);
+            done += take;
+            at += take;
+        }
+    }
+    return done;
+}
+
+/* A video memory image (.vri, the program's 0x0604f2e4): chunks of a Saturn address and a size (bit 31: packed,
+   then the unpacked size), padded to 4 bytes, until address 0. Laid out here in one copy of the Saturn's VDP1 and
+   VDP2 memories and colour RAM. */
+#define VDP1_RAM 0x25C00000u
+#define VDP2_RAM 0x25E00000u
+#define COLOUR_RAM 0x25F00000u
+typedef struct Video {
+    uint8_t vdp1[0x80000], vdp2[0x80000], cram[0x1000];
+} Video;
+
+static uint8_t *VideoAt(Video *v, uint32_t address, size_t bytes)
+{
+    if (address >= VDP1_RAM && address + bytes <= VDP1_RAM + sizeof(v->vdp1)) {
+        return v->vdp1 + (address - VDP1_RAM);
+    }
+    if (address >= VDP2_RAM && address + bytes <= VDP2_RAM + sizeof(v->vdp2)) {
+        return v->vdp2 + (address - VDP2_RAM);
+    }
+    if (address >= COLOUR_RAM && address + bytes <= COLOUR_RAM + sizeof(v->cram)) {
+        return v->cram + (address - COLOUR_RAM);
+    }
+    return NULL;
+}
+
+static int LoadVri(Video *v, const char *path)
+{
+    size_t length, at = 0;
+    uint8_t *data = Entry(path, &length);
+
+    if (!data) {
+        return 0;
+    }
+    while (at + 8 <= length) {
+        uint32_t address = Be32(data + at), size = Be32(data + at + 4) & 0x7FFFFFFFu;
+        int packed = (Be32(data + at + 4) >> 31) != 0;
+
+        at += 8;
+        if (!address || at + size > length) {
+            break;
+        }
+        if (packed && size >= 4) {
+            uint32_t unpacked = Be32(data + at);
+            uint8_t *to = VideoAt(v, address, unpacked);
+
+            if (to) {
+                Unpack(data + at + 4, size - 4, to, unpacked);
+            }
+            at += size;
+            at = (at + 3) & ~(size_t)3;
+        } else {
+            uint8_t *to = VideoAt(v, address, size);
+
+            if (to) {
+                memcpy(to, data + at, size);
+            }
+            at += size;
+        }
+    }
+    SDL_free(data);
+    return 1;
+}
+
+/* A container's block as it is loaded: a PACK chunk is a packed block (u16 unpacked size, u16 packed size). The caller
+   frees. */
+static uint8_t *BlockData(const char *path, int block, size_t *size)
+{
+    size_t length;
+    uint8_t *file = Entry(path, &length), *out = NULL;
+    uint32_t header, at, i;
+
+    if (!file || length < 20 || memcmp(file, "BIFF", 4)) {
+        SDL_free(file);
+        return NULL;
+    }
+    header = Be32(file + 16);
+    at = 20 + header;
+    for (i = 0; i < header / 12 && at + 8 <= length; i++) {
+        uint32_t chunk = Be32(file + at + 4);
+
+        if ((int)i == block && at + 8 + chunk <= length) {
+            if (!memcmp(file + at, "PACK", 4) && chunk >= 4) {
+                size_t unpacked = Be16(file + at + 8), packed = Be16(file + at + 10);
+
+                out = SDL_calloc(1, unpacked + 1);
+                *size = Unpack(file + at + 12, SDL_min(packed, chunk - 4), out, unpacked);
+            } else {
+                out = SDL_malloc(chunk + 1);
+                memcpy(out, file + at + 8, chunk);
+                *size = chunk;
+            }
+            break;
+        }
+        at += 8 + chunk;
+    }
+    SDL_free(file);
+    return out;
+}
+
+/* A VDP2 background as 15-bit pixels (the Saturn's colours are laid out as the PlayStation's): a map of 1-word
+   pattern names (12 bits of character number, in 0x20-byte units, 4 of palette: 256 colours of colour RAM each),
+   8-bit cells of 8x8 from `cells` (the lowest character number of the map is its first). 40x28 cells: 320x224. */
+static void RenderBackground(Video *v, const uint8_t *map, size_t mapSize, uint32_t cells, uint16_t *pixels)
+{
+    int first = 0xfff, x, y, i;
+
+    for (i = 0; i + 1 < (int)mapSize; i += 2) {
+        int w = Be16(map + i) & 0xfff;
+
+        first = w && w < first ? w : first;
+    }
+    for (y = 0; y < 224; y++) {
+        for (x = 0; x < 320; x++) {
+            int at = ((y / 8) * 64 + x / 8) * 2, w, colour = 0;
+            const uint8_t *cell;
+
+            if (at + 1 >= (int)mapSize) {
+                continue;
+            }
+            w = Be16(map + at);
+            cell = VideoAt(v, cells + (uint32_t)((w & 0xfff) - first) * 0x20, 64);
+            if (cell) {
+                int index = ((w >> 12) & 15) * 256 + cell[(y % 8) * 8 + x % 8];
+
+                colour = index * 2 + 1 < (int)sizeof(v->cram) ? Be16(v->cram + index * 2) & 0x7FFF : 0;
+            }
+            pixels[y * 320 + x] = (uint16_t)colour;
+        }
+    }
+}
+
 /* ---- stand-ins ---- */
 
 static void PutTim(Buffer *b, const Shape *s)
@@ -746,6 +926,76 @@ static const Shape *ShapeOf(const char *path)
         }
     }
     return NULL;
+}
+
+/* ---- pictures ---- */
+
+/* The PlayStation's 16-bit pictures the Saturn has: its title screen (Wipeout XL's on the Japanese disc, WipEout
+   2097's on the European) and copyright screen, centred in the PlayStation's (320x240 or 256 for the Saturn's
+   320x224). */
+static uint8_t *MakePicture(const char *path, size_t *size)
+{
+    const char *art = NULL;
+    uint32_t cells = 0;
+    int block = 0;
+    const Shape *shape = ShapeOf(path);
+    Video *v;
+    uint8_t *map, *tim;
+    size_t mapSize;
+    uint16_t *pixels;
+    int w, h, x, y, top;
+
+    if (strstr(path, "\\rstartxl.tim") || strstr(path, "\\startpal.tim")) {
+        art = europe ? "art\\title\\title2" : "art\\title\\title";
+        cells = 0x25E6E000u;
+    } else if (strstr(path, "\\rcopyxl.tim") || strstr(path, "\\copy2097.tim")) {
+        art = "art\\title\\logos";
+        block = europe ? 0 : 1;
+        cells = europe ? 0x25E28000u : 0x25E08000u;
+    }
+    if (!art || !shape || shape->kind != SHAPE_TIM || (shape->a & 7) != 2) {
+        return NULL;
+    }
+    v = SDL_calloc(1, sizeof(Video));
+    {
+        char file[64];
+
+        SDL_snprintf(file, sizeof(file), "%s.vri", art);
+        LoadVri(v, file);
+        SDL_snprintf(file, sizeof(file), "%s.rbh", art);
+        map = BlockData(file, block, &mapSize);
+    }
+    if (!map) {
+        SDL_free(v);
+        return NULL;
+    }
+    pixels = SDL_calloc(320 * 224, sizeof(uint16_t));
+    RenderBackground(v, map, mapSize, cells, pixels);
+    w = shape->r2[2];
+    h = shape->r2[3];
+    top = (h - 224) / 2;
+    *size = 20 + (size_t)w * h * 2;
+    tim = SDL_calloc(1, *size);
+    PutLe32(tim, 0x10);
+    PutLe32(tim + 4, 2);
+    PutLe32(tim + 8, (uint32_t)(12 + w * h * 2));
+    PutLe16(tim + 12, shape->r2[0]);
+    PutLe16(tim + 14, shape->r2[1]);
+    PutLe16(tim + 16, w);
+    PutLe16(tim + 18, h);
+    for (y = 0; y < h; y++) {
+        for (x = 0; x < w; x++) {
+            int sy = y - top, sx = x - (w - 320) / 2;
+
+            if (sy >= 0 && sy < 224 && sx >= 0 && sx < 320) {
+                PutLe16(tim + 20 + ((size_t)y * w + x) * 2, pixels[sy * 320 + sx]);
+            }
+        }
+    }
+    SDL_free(pixels);
+    SDL_free(map);
+    SDL_free(v);
+    return tim;
 }
 
 /* ---- the files ---- */
@@ -927,8 +1177,13 @@ static int Find(const char *path)
     }
     {
         size_t size = 0;
-        uint8_t *data = Borrowed(path, &size);
+        uint8_t *data = MakePicture(path, &size);
         const Shape *shape;
+
+        if (data) {
+            return Remember(path, data, size);
+        }
+        data = Borrowed(path, &size);
 
         if (data) {
             return Remember(path, data, size);
