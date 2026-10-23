@@ -381,26 +381,17 @@ static void RecorderTab(void)
     }
     if (mode != RECORD_OFF) {
         int rate = portSettings.recordRate ? portSettings.recordRate : 60;
-        if (ImGui::SliderInt("Pictures a second, up to", &rate, 30, 240)) {
+        if (ImGui::SliderInt("Frames per second, up to", &rate, 30, 240)) {
             portSettings.recordRate = rate;
             FrameCapClear();
             Changed();
         }
-        if (rate > 30) {
-            ImGui::TextDisabled("The game makes 30 frames a second; the rest are the pictures drawn between them.");
-        }
     }
-    if (mode == RECORD_LAST_SECONDS && !FrameCapFrozen()) {
-        ImGui::TextWrapped("Tab freezes the game and saves the last 3 seconds; here you can then step back through "
-                           "them and click a pixel to see every primitive drawn there.");
-    } else if (mode == RECORD_LAST_SECONDS) {
+    if (mode == RECORD_LAST_SECONDS && FrameCapFrozen()) {
         ImGui::TextColored(note, "Frozen. Tab resumes the game.");
     } else if (mode == RECORD_WITH_TAB && FrameCapTaking()) {
         ImGui::TextColored(note, "Recording: %d frames so far. Tab stops.", total);
     } else if (mode == RECORD_WITH_TAB) {
-        ImGui::TextWrapped("Tab starts recording and Tab again stops it (it keeps up to the last 10 seconds). The game "
-                           "goes on meanwhile: pause it yourself to look at the recording here, frame by frame, and "
-                           "click a pixel to see every primitive drawn there.");
         if (FrameCapViewable() && ImGui::Button("Save this recording")) {
             FrameCapSave();
         }
@@ -1591,7 +1582,7 @@ static void Resolution(void)
     items[0] = auto_;
     for (i = 1; i <= count && i <= 16; i++) {
         SDL_snprintf(labels[i - 1], sizeof(labels[i - 1]), "%dx%d%s", columns * i, 240 * i,
-                     i == 1 ? " (the console's)" : "");
+                     i == 1 ? " (PS1 original resolution)" : "");
         items[i] = labels[i - 1];
     }
     if (ImGui::Combo("Resolution", &choice, items, SDL_min(count, 16) + 1)) {
@@ -1733,7 +1724,7 @@ static void Console(void)
             }
             ImGui::TextDisabled("Off: far polygons can be drawn over nearer ones, as on the console.");
             ImGui::Separator();
-            static const char *const rates[] = {"Uncapped", "Display refresh (VSync)", "Capped", "Console (60 fields a second)"};
+            static const char *const rates[] = {"Uncapped", "Display refresh (VSync)", "Capped", "PS1 original (30 fps)"};
             int rate = portSettings.frameRate;
             if (ImGui::Combo("Frame rate", &rate, rates, IM_ARRAYSIZE(rates))) {
                 portSettings.frameRate = rate;
@@ -1741,7 +1732,7 @@ static void Console(void)
             }
             if (portSettings.frameRate == FRAME_RATE_CAPPED) {
                 int cap = portSettings.frameCap;
-                if (ImGui::DragInt("Pictures a second", &cap, 1.0f, 30, 1000)) {
+                if (ImGui::DragInt("Frames per second", &cap, 1.0f, 30, 1000)) {
                     portSettings.frameCap = SDL_clamp(cap, 30, 1000);
                     Changed();
                 }

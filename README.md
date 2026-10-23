@@ -162,7 +162,7 @@ drawn as often as the computer can: between two of the game's frames every
 model, the track and the camera move smoothly from one to the next (the game's
 own frames are not changed, only shown more often). The debug console's
 Graphics tab sets the frame rate: uncapped (the default), the display's refresh
-(VSync), a cap in pictures a second, or the console's 60 fields a second
+(VSync), a cap in frames per second, or the PS1's original 30 frames a second
 without the frames in between (`WIPEOUT_FRAME_RATE=uncapped|vsync|console|N`).
 
 A depth buffer (on by default; the Graphics tab's Depth buffer, or
