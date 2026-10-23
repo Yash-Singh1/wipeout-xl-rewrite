@@ -91,7 +91,9 @@ names it. Put `build/web` on any web server with the links followed
 `build/web` and open `http://localhost:8000/wipeoutxl.html`. A host can also
 put a disc there by hand: `disc/Wipeout XL (USA).cue` with its tracks is found
 without a `wipeoutxl-data.json`, and the JSON (`{ "disc": "url/of/the.cue" }`)
-can point anywhere on the site.
+can point anywhere on the site. With `-DWIPEOUT_WEB_DISC_MUSIC=OFF` only the
+data track goes into `disc/` (about 86 MB in place of about 700): the game
+plays, without its music.
 
 ## Phones and tablets (iOS, Android)
 

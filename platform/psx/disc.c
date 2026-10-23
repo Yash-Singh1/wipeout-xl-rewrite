@@ -33,6 +33,10 @@ typedef struct DiscFile {
     void *handle; /* platform mapping handle */
 } DiscFile;
 
+/* A disc image with its data track alone gets the original's eleven music tracks, silent, of three minutes each. */
+#define SILENT_TRACKS 11
+#define SILENT_TRACK_SECTORS (3 * 60 * 75)
+
 struct Disc {
     DiscFile files[DISC_MAX_TRACKS];
     int fileCount;
@@ -277,6 +281,21 @@ Disc *DiscOpen(const char *cuePath, char *error, int errorSize)
         }
     }
     disc->leadOut = disc->tracks[disc->trackCount - 1].end;
+    if (disc->trackCount == 1 && !disc->tracks[0].audio) {
+        /* its data track alone (many copies leave the music out): the music tracks are there, silent (the game
+           counts and plays them as the disc's; with fewer it would divide by none, and play past the disc) */
+        for (i = 1; i <= SILENT_TRACKS; i++) {
+            DiscTrack *t = &disc->tracks[disc->trackCount++];
+
+            t->number = i + 1;
+            t->audio = true;
+            t->data_offset = 0;
+            t->index0 = disc->leadOut;
+            t->index1 = disc->leadOut + 150;
+            t->end = t->index1 + SILENT_TRACK_SECTORS;
+            disc->leadOut = t->end;
+        }
+    }
     return disc;
 bad:
     if (cue) {
@@ -303,10 +322,15 @@ int32_t DiscLeadOut(const Disc *disc)
 
 const uint8_t *DiscRawSector(const Disc *disc, int32_t lba)
 {
+    static const uint8_t silence[DISC_RAW_SECTOR];
+    const DiscFile *last = &disc->files[disc->fileCount - 1];
     int i;
 
     if (lba < 0) {
         return NULL;
+    }
+    if (lba >= last->start + last->sectors && lba < disc->leadOut) {
+        return silence; /* (the silent music tracks of a disc with its data track alone) */
     }
     for (i = disc->fileCount - 1; i >= 0; i--) {
         const DiscFile *f = &disc->files[i];
