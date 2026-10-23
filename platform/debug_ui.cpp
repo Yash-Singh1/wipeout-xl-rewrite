@@ -1672,10 +1672,11 @@ static void HdTextures(void)
         portSettings.hdTextures = on;
         Changed();
     }
-    ImGui::TextWrapped("NR74W's pack (not included: download it from its page) or any DuckStation texture pack for "
-                       "SCUS-94351.");
-    if (ImGui::Button("Open the pack's page")) {
-        SDL_OpenURL("https://github.com/NR74W/WipEout-Mods");
+    ImGui::TextWrapped("NR74W's pack (a copy is kept with the port's source, in texture-packs) or any DuckStation "
+                       "texture pack for SCUS-94351.");
+    if (ImGui::Button("Download NR74W's pack")) {
+        SDL_OpenURL("https://github.com/Yash-Singh1/wipeout-xl-rewrite/raw/main/texture-packs/"
+                    "WipEout%202097-XL%20-%20DuckStation%20Pack%20(2026-04-18).zip");
     }
     if (HdTexCount() > 0) {
         ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "%d replacement textures", HdTexCount());
