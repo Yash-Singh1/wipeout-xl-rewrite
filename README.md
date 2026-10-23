@@ -175,7 +175,8 @@ game's own order.
 Widescreen (the debug console's Graphics tab, or `WIPEOUT_WIDESCREEN=1`): in a
 window wider than 4:3 a race fills the whole width, showing more of the scene at
 the sides, with the HUD at the window's edges. In the menus the backdrop is
-enlarged to fill the width while the menus themselves keep the console's 4:3.
+enlarged to fill the width; the menus keep the console's 4:3 layout, and their
+panels slide out to the window's edges and back between screens.
 The loading screens fill the width with their background, their text and
 pictures in the middle; the title screens and movies stay 4:3. The game
 computes exactly what it did.

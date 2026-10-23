@@ -209,7 +209,6 @@ static int picturesWithoutScene = 1000;        /* new pictures in a row that wer
 static int menuWide;                           /* the game built a menu's backdrop since the last new picture */
 static int picturesWithoutMenu = 1000;         /* ... and new pictures in a row that were not a menu's */
 static int backdropNext;                       /* the primitive being drawn is a menu's backdrop (GpuBackdrop) */
-static int primitiveSides, batchSides;         /* in a menu: the primitive, the batch reach the sides */
 static GLint uniformOrigin;
 
 /* A batch of triangles drawn with one blending state. What else a primitive's draw state says
@@ -779,8 +778,9 @@ void GpuBackdrop(int on)
 static void BindTarget(void)
 {
     if (areaWide) {
-        /* a draw area across the screen reaches over the sides as well (in a menu only for what fills them) */
-        int full = areaX == 0 && areaW == SCREEN_COLUMNS && (GpuRaceWide() || batchSides);
+        /* a draw area across the screen reaches over the sides as well: a race's scene, and in a menu what fills
+           them and the panels that slide out to the window's edges and back */
+        int full = areaX == 0 && areaW == SCREEN_COLUMNS;
 
         glBindFramebuffer(GL_FRAMEBUFFER, wideFramebuffer);
         glViewport(0, 0, WideWidth() * scale, VRAM_HEIGHT * scale);
@@ -1084,12 +1084,11 @@ static void FindHd(const GpuDrawState *state, const GpuVertex *vertices, int cou
 static void Begin(const GpuDrawState *state, int vertices)
 {
     if (batchCount && (!SameState(state, &batchState) || batchCount + vertices > BATCH_VERTICES ||
-                       (state->textured && state->semi >= 0) || primitiveSides != batchSides)) {
+                       (state->textured && state->semi >= 0))) {
         Flush();
     }
     if (!batchCount) {
         batchState = *state;
-        batchSides = primitiveSides;
     }
     primitiveState = *state;
 }
@@ -1188,10 +1187,8 @@ void GpuTriangles(const GpuDrawState *given, const GpuVertex *vertices, int coun
               maxX >= (float)SCREEN_COLUMNS;
     /* ... and a menu's backdrop is enlarged about the middle of the draw area to fill them, keeping its shape */
     backdrop = backdropNext && areaWide && areaX == 0 && areaW == SCREEN_COLUMNS && !perspective && !GpuRaceWide();
-    primitiveSides = stretch || backdrop;
     FindHd(state, vertices, count);
     Begin(state, count);
-    primitiveSides = 0;
     for (i = 0; i < count; i++) {
         GpuVertex v = vertices[i];
         if (!perspective) {
