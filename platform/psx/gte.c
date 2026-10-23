@@ -407,113 +407,188 @@ static float Moved(const float a[3], const float b[3])
 
 #define CUT_DISTANCE 6000.0f /* view-space units a vertex cannot move in one frame of the game */
 
-/* The view's motion between the two frames, fitted to what both projected: cur = R past + T (small rotations:
-   the rotation vector w solved linearly, R made from it), refitted without the projections that do not follow it
-   (moving ships). What one frame projects and the other did not (track coming into view) moves by it. */
+/* The view's motion between the two frames, fitted to what both projected: cur = M past + T. What one frame projects
+   and the other did not (track coming into view, a face newly cut finer) moves by it, while what both projected moves
+   on its own; where the two meet (a face cut finer beside one cut coarser), any error in the fit opens a crack.
+   Each step solves a correction to the motion found so far linearly, from the second step on without the projections
+   that do not follow it (moving ships): first a turn (a rotation vector w and a translation, d = w x q + T, q where the
+   motion so far brings the past; one step alone is off by about the square of the view's turn in a frame, a third of a
+   pixel), then any linear map, as the console's fixed-point matrices are not quite rotations (a few hundredths of a
+   pixel). */
+#define MOTION_TURNS 5
+#define MOTION_STEPS (MOTION_TURNS + 1)
+/* the view-space distance from the motion found so far beyond which a projection moves on its own, by step (the
+   first steps' motion is rougher) */
+static const double motionOwn[MOTION_STEPS] = { 0.0, 150.0, 30.0, 8.0, 8.0, 8.0 };
 static double motionR[3][3], motionT[3];
 static int motionValid;
 
-static int Solve6(double a[6][7], double x[6])
+/* Solves the n equations of the n x width rows of a (row-major) for each of the width - n columns on the right, in
+   place: the solution of column c, unknown i, is a[i][c] / a[i][i]. */
+static int Solve(double *a, int n, int width)
 {
     int i, j, k;
 
-    for (i = 0; i < 6; i++) {
+    for (i = 0; i < n; i++) {
         int best = i;
 
-        for (j = i + 1; j < 6; j++) {
-            best = fabs(a[j][i]) > fabs(a[best][i]) ? j : best;
+        for (j = i + 1; j < n; j++) {
+            best = fabs(a[j * width + i]) > fabs(a[best * width + i]) ? j : best;
         }
-        if (fabs(a[best][i]) < 1e-9) {
+        if (fabs(a[best * width + i]) < 1e-9) {
             return 0;
         }
-        for (k = 0; k < 7; k++) {
-            double t = a[i][k];
+        for (k = 0; k < width; k++) {
+            double t = a[i * width + k];
 
-            a[i][k] = a[best][k];
-            a[best][k] = t;
+            a[i * width + k] = a[best * width + k];
+            a[best * width + k] = t;
         }
-        for (j = 0; j < 6; j++) {
+        for (j = 0; j < n; j++) {
             if (j != i) {
-                double f = a[j][i] / a[i][i];
+                double f = a[j * width + i] / a[i * width + i];
 
-                for (k = i; k < 7; k++) {
-                    a[j][k] -= f * a[i][k];
+                for (k = i; k < width; k++) {
+                    a[j * width + k] -= f * a[i * width + k];
                 }
             }
         }
     }
-    for (i = 0; i < 6; i++) {
-        x[i] = a[i][6] / a[i][i];
-    }
     return 1;
 }
 
-static void FitMotion(int pass)
+/* Applies a correction after the motion found so far: M = turn M, T = turn T + move. */
+static void CorrectMotion(const double turn[3][3], const double move[3])
 {
-    double a[6][7] = {{0}}, x[6], angle, k[3], c, s;
-    int i, r, n = 0;
+    double m[3][3], t[3];
+    int r, i, j;
+
+    for (r = 0; r < 3; r++) {
+        t[r] = move[r];
+        for (i = 0; i < 3; i++) {
+            m[r][i] = 0.0;
+            for (j = 0; j < 3; j++) {
+                m[r][i] += turn[r][j] * motionR[j][i];
+            }
+            t[r] += turn[r][i] * motionT[i];
+        }
+    }
+    memcpy(motionR, m, sizeof(motionR));
+    memcpy(motionT, t, sizeof(motionT));
+}
+
+static int FitMotionStep(int step)
+{
+    /* a turn: the rows [-[q]x | I] of 6 unknowns (w, T); any linear map: [q 1] of 4 unknowns, 3 columns at once */
+    double turnRows[6][7] = {{0}}, linearRows[4][7] = {{0}}, turn[3][3], move[3];
+    int linear = step >= MOTION_TURNS, i, r, n = 0;
 
     for (i = 0; i < recordCount; i++) {
         PastEntry *entry = records[i].value.key ? PastSlot(records[i].value.key, 0) : NULL;
-        double p[3], d[3], row[3][6];
+        double q[3], d[3], e = 0.0;
 
         if (!entry || records[i].value.view[2] <= 0.0f) {
             continue;
         }
         for (r = 0; r < 3; r++) {
-            p[r] = entry->view[r];
-            d[r] = records[i].value.view[r] - p[r];
+            q[r] = motionR[r][0] * entry->view[0] + motionR[r][1] * entry->view[1] + motionR[r][2] * entry->view[2] +
+                   motionT[r];
+            d[r] = records[i].value.view[r] - q[r];
+            e += d[r] * d[r];
         }
-        if (pass) {
-            double e = 0.0;
-
-            for (r = 0; r < 3; r++) {
-                double moved = motionR[r][0] * p[0] + motionR[r][1] * p[1] + motionR[r][2] * p[2] + motionT[r];
-
-                e += (moved - records[i].value.view[r]) * (moved - records[i].value.view[r]);
-            }
-            if (e > 150.0 * 150.0) {
-                continue; /* it moves on its own */
-            }
+        if (step && e > motionOwn[step] * motionOwn[step]) {
+            continue; /* it moves on its own */
         }
-        /* d = w x p + T: rows of [-[p]x | I] */
-        memset(row, 0, sizeof(row));
-        row[0][1] = p[2], row[0][2] = -p[1];
-        row[1][0] = -p[2], row[1][2] = p[0];
-        row[2][0] = p[1], row[2][1] = -p[0];
-        row[0][3] = row[1][4] = row[2][5] = 1.0;
-        for (r = 0; r < 3; r++) {
+        if (linear) {
+            double row[4] = { q[0], q[1], q[2], 1.0 };
             int u, v;
 
-            for (u = 0; u < 6; u++) {
-                for (v = 0; v < 6; v++) {
-                    a[u][v] += row[r][u] * row[r][v];
+            for (u = 0; u < 4; u++) {
+                for (v = 0; v < 4; v++) {
+                    linearRows[u][v] += row[u] * row[v];
                 }
-                a[u][6] += row[r][u] * d[r];
+                for (r = 0; r < 3; r++) {
+                    linearRows[u][4 + r] += row[u] * d[r];
+                }
+            }
+        } else {
+            double row[3][6] = {{0}};
+            int u, v;
+
+            row[0][1] = q[2], row[0][2] = -q[1];
+            row[1][0] = -q[2], row[1][2] = q[0];
+            row[2][0] = q[1], row[2][1] = -q[0];
+            row[0][3] = row[1][4] = row[2][5] = 1.0;
+            for (r = 0; r < 3; r++) {
+                for (u = 0; u < 6; u++) {
+                    for (v = 0; v < 6; v++) {
+                        turnRows[u][v] += row[r][u] * row[r][v];
+                    }
+                    turnRows[u][6] += row[r][u] * d[r];
+                }
             }
         }
         n++;
     }
-    if (n < 16 || !Solve6(a, x)) {
-        motionValid = 0;
-        return;
-    }
-    angle = sqrt(x[0] * x[0] + x[1] * x[1] + x[2] * x[2]);
-    for (r = 0; r < 3; r++) {
-        k[r] = angle > 1e-12 ? x[r] / angle : 0.0;
-        motionT[r] = x[3 + r];
-    }
-    c = cos(angle), s = sin(angle);
-    /* Rodrigues: R = cI + s[k]x + (1 - c)kk' */
-    for (r = 0; r < 3; r++) {
-        for (i = 0; i < 3; i++) {
-            motionR[r][i] = (r == i ? c : 0.0) + (1.0 - c) * k[r] * k[i];
+    if (linear) {
+        /* (too few to say more than the turn did, or all on a plane: the turn stands; a hair of damping keeps a
+           direction they barely span from being made up) */
+        double damping = (linearRows[0][0] + linearRows[1][1] + linearRows[2][2]) * 1e-7;
+
+        for (r = 0; r < 3; r++) {
+            linearRows[r][r] += damping;
         }
+        if (n < 64 || !Solve(&linearRows[0][0], 4, 7)) {
+            return 1;
+        }
+        for (r = 0; r < 3; r++) {
+            for (i = 0; i < 3; i++) {
+                turn[r][i] = (r == i ? 1.0 : 0.0) + linearRows[i][4 + r] / linearRows[i][i];
+            }
+            move[r] = linearRows[3][4 + r] / linearRows[3][3];
+        }
+    } else {
+        double w[3], angle, k[3], c, s;
+
+        if (n < 16 || !Solve(&turnRows[0][0], 6, 7)) {
+            return 0;
+        }
+        for (r = 0; r < 3; r++) {
+            w[r] = turnRows[r][6] / turnRows[r][r];
+            move[r] = turnRows[3 + r][6] / turnRows[3 + r][3 + r];
+        }
+        angle = sqrt(w[0] * w[0] + w[1] * w[1] + w[2] * w[2]);
+        for (r = 0; r < 3; r++) {
+            k[r] = angle > 1e-12 ? w[r] / angle : 0.0;
+        }
+        c = cos(angle), s = sin(angle);
+        /* Rodrigues: turn = cI + s[k]x + (1 - c)kk' */
+        for (r = 0; r < 3; r++) {
+            for (i = 0; i < 3; i++) {
+                turn[r][i] = (r == i ? c : 0.0) + (1.0 - c) * k[r] * k[i];
+            }
+        }
+        turn[0][1] -= s * k[2], turn[0][2] += s * k[1];
+        turn[1][0] += s * k[2], turn[1][2] -= s * k[0];
+        turn[2][0] -= s * k[1], turn[2][1] += s * k[0];
     }
-    motionR[0][1] -= s * k[2], motionR[0][2] += s * k[1];
-    motionR[1][0] += s * k[2], motionR[1][2] -= s * k[0];
-    motionR[2][0] -= s * k[1], motionR[2][1] += s * k[0];
+    CorrectMotion(turn, move);
+    return 1;
+}
+
+static void FitMotion(void)
+{
+    int step, r;
+
+    memset(motionR, 0, sizeof(motionR));
+    memset(motionT, 0, sizeof(motionT));
+    for (r = 0; r < 3; r++) {
+        motionR[r][r] = 1.0;
+    }
     motionValid = 1;
+    for (step = 0; step < MOTION_STEPS && motionValid; step++) {
+        motionValid = FitMotionStep(step);
+    }
 }
 
 /* Whether the view jumped between the two frames (a cut to another camera, a restart): most of what both
@@ -536,10 +611,7 @@ static int CameraCut(void)
     }
     cut = matched < 8 || far * 3 > matched;
     if (!cut) {
-        FitMotion(0);
-        if (motionValid) {
-            FitMotion(1);
-        }
+        FitMotion();
     }
     return cut;
 }
