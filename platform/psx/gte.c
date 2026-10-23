@@ -410,8 +410,11 @@ static float Moved(const float a[3], const float b[3])
 /* The view's motion between the two frames, fitted to what both projected: cur = M past + T. What one frame projects
    and the other did not (track coming into view, a face newly cut finer) moves by it, while what both projected moves
    on its own; where the two meet (a face cut finer beside one cut coarser), any error in the fit opens a crack.
-   Each step solves a correction to the motion found so far linearly, from the second step on without the projections
-   that do not follow it (moving ships): first a turn (a rotation vector w and a translation, d = w x q + T, q where the
+   It starts from a guess that the projections moving on their own cannot pull off (GuessMotion: the other ships
+   about the camera, a tenth of what both frames projected and more with the far view, dragged a plain fit a turn of
+   degrees off, and the fit then gave up, leaving what was new in the frame where the frame has it: a wedge of sky
+   between a face cut finer and its neighbour). Each step solves a correction to the motion found so far linearly,
+   without the projections that do not follow it: first a turn (a rotation vector w and a translation, d = w x q + T, q where the
    motion so far brings the past; one step alone is off by about the square of the view's turn in a frame, a third of a
    pixel), then any linear map, as the console's fixed-point matrices are not quite rotations (a few hundredths of a
    pixel). */
@@ -576,6 +579,117 @@ static int FitMotionStep(int step)
     return 1;
 }
 
+/* The rigid motion that brings three past positions onto the current ones: the frames they span, one turned onto the
+   other, and their middles. 0 when they are too near a line to span one. */
+static int MotionThrough(const double past[3][3], const double cur[3][3], double m[3][3], double t[3])
+{
+    double frames[2][3][3];
+    int f, r, i, j;
+
+    for (f = 0; f < 2; f++) {
+        const double (*p)[3] = f ? cur : past;
+        double a[3], b[3], *e1 = frames[f][0], *e2 = frames[f][1], *e3 = frames[f][2], la, l3;
+
+        for (r = 0; r < 3; r++) {
+            a[r] = p[1][r] - p[0][r];
+            b[r] = p[2][r] - p[0][r];
+        }
+        e3[0] = a[1] * b[2] - a[2] * b[1];
+        e3[1] = a[2] * b[0] - a[0] * b[2];
+        e3[2] = a[0] * b[1] - a[1] * b[0];
+        la = sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
+        l3 = sqrt(e3[0] * e3[0] + e3[1] * e3[1] + e3[2] * e3[2]);
+        if (la < 64.0 || l3 < la * 64.0) {
+            return 0;
+        }
+        for (r = 0; r < 3; r++) {
+            e1[r] = a[r] / la;
+            e3[r] /= l3;
+        }
+        e2[0] = e3[1] * e1[2] - e3[2] * e1[1];
+        e2[1] = e3[2] * e1[0] - e3[0] * e1[2];
+        e2[2] = e3[0] * e1[1] - e3[1] * e1[0];
+    }
+    for (r = 0; r < 3; r++) {
+        for (i = 0; i < 3; i++) {
+            m[r][i] = 0.0;
+            for (j = 0; j < 3; j++) {
+                m[r][i] += frames[1][j][r] * frames[0][j][i];
+            }
+        }
+    }
+    for (r = 0; r < 3; r++) {
+        t[r] = (cur[0][r] + cur[1][r] + cur[2][r]) / 3.0;
+        for (i = 0; i < 3; i++) {
+            t[r] -= m[r][i] * (past[0][i] + past[1][i] + past[2][i]) / 3.0;
+        }
+    }
+    return 1;
+}
+
+/* Of the rigid motions through three projections both frames have (picked the same way each time), the one most of a
+   sample of them follow (within GUESS_NEAR, and a little more far off, as three points place a turn roughly): the
+   motion the fit starts from. 0 when there are too few. */
+#define GUESS_SAMPLES 512
+#define GUESS_TRIES 64
+#define GUESS_NEAR 64.0
+static int GuessMotion(void)
+{
+    static double past[GUESS_SAMPLES][3], cur[GUESS_SAMPLES][3];
+    int i, r, n = 0, matched = 0, every, try, most = 0;
+    uint32_t random = 0x9E3779B9u;
+
+    for (i = 0; i < recordCount; i++) {
+        matched += records[i].value.key && records[i].value.view[2] > 0.0f && PastSlot(records[i].value.key, 0);
+    }
+    every = matched / GUESS_SAMPLES + 1;
+    for (i = 0, matched = 0; i < recordCount && n < GUESS_SAMPLES; i++) {
+        PastEntry *entry = records[i].value.key ? PastSlot(records[i].value.key, 0) : NULL;
+
+        if (!entry || records[i].value.view[2] <= 0.0f || matched++ % every) {
+            continue;
+        }
+        for (r = 0; r < 3; r++) {
+            past[n][r] = entry->view[r];
+            cur[n][r] = records[i].value.view[r];
+        }
+        n++;
+    }
+    if (n < 16) {
+        return 0;
+    }
+    for (try = 0; try < GUESS_TRIES; try++) {
+        double three[2][3][3], m[3][3], t[3];
+        int k, follow = 0;
+
+        for (k = 0; k < 3; k++) {
+            random = random * 1664525u + 1013904223u;
+            i = (int)((random >> 8) % (uint32_t)n);
+            memcpy(three[0][k], past[i], sizeof(past[i]));
+            memcpy(three[1][k], cur[i], sizeof(cur[i]));
+        }
+        if (!MotionThrough(three[0], three[1], m, t)) {
+            continue;
+        }
+        for (i = 0; i < n; i++) {
+            double e = 0.0, near = GUESS_NEAR + 0.004 * fabs(cur[i][2]);
+
+            for (r = 0; r < 3; r++) {
+                double d = cur[i][r] - (m[r][0] * past[i][0] + m[r][1] * past[i][1] + m[r][2] * past[i][2] + t[r]);
+
+                e += d * d;
+            }
+            follow += e < near * near;
+        }
+        if (follow > most) {
+            most = follow;
+            memcpy(motionR, m, sizeof(motionR));
+            memcpy(motionT, t, sizeof(motionT));
+        }
+    }
+    return most >= 16;
+}
+
 static void FitMotion(void)
 {
     int step, r;
@@ -586,7 +700,8 @@ static void FitMotion(void)
         motionR[r][r] = 1.0;
     }
     motionValid = 1;
-    for (step = 0; step < MOTION_STEPS && motionValid; step++) {
+    /* (without a guess, the first step's plain fit is the guess) */
+    for (step = GuessMotion() ? 1 : 0; step < MOTION_STEPS && motionValid; step++) {
         motionValid = FitMotionStep(step);
     }
 }
