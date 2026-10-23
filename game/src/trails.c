@@ -1,10 +1,10 @@
 #include "functions.h"
 #include "trails.h"
+#include "portfar.h"
 #include "include_asm_g8.h"
 #include "../../platform/psx/gte.h" /* Port: the flare is placed in 2D */
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
-extern Trail *shipTrails;
 extern int    plasmaPhaseA;
 extern int    plasmaPhaseB;
 extern int    plasmaPhaseC;
@@ -35,6 +35,8 @@ void DrawFlare(int x, int y, int distance, int ship) {
     POLY_G4 *p;
     int offset;
     int k; /* Port */
+    u_long *slot = PortFlareSlot(distance); /* Port: OT[CurrentScreen] + (distance >> 1), or the far view's */
+    PortFarFlared(ship);
     if (ship < 15) {
         s = &shipIndex[ship];
         if (s->combatAttr & DESTROYED) return;
@@ -159,10 +161,10 @@ void DrawFlare(int x, int y, int distance, int ship) {
         p->y2 = y;
         p->x3 = x;
         p->y3 = y + quarter;
-        AddPrim(OT[CurrentScreen] + (distance >> 1), &flare[0][0][0] + ship * 24 + CurrentScreen);
-        AddPrim(OT[CurrentScreen] + (distance >> 1), &flare[0][1][0] + ship * 24 + CurrentScreen);
-        AddPrim(OT[CurrentScreen] + (distance >> 1), &flare[0][2][0] + ship * 24 + CurrentScreen);
-        AddPrim(OT[CurrentScreen] + (distance >> 1), &flare[0][3][0] + ship * 24 + CurrentScreen);
+        AddPrim(slot, &flare[0][0][0] + ship * 24 + CurrentScreen);
+        AddPrim(slot, &flare[0][1][0] + ship * 24 + CurrentScreen);
+        AddPrim(slot, &flare[0][2][0] + ship * 24 + CurrentScreen);
+        AddPrim(slot, &flare[0][3][0] + ship * 24 + CurrentScreen);
     }
     for (k = 0; k < 12; k++) {
         /* Port: the flare's corners are placed in 2D about one projected point: drawn as given, not matched to
@@ -173,14 +175,14 @@ void DrawFlare(int x, int y, int distance, int ship) {
         GteBindFlat(&p->x2);
         GteBindFlat(&p->x3);
     }
-    AddPrim(OT[CurrentScreen] + (distance >> 1), &flare[0][4][0] + ship * 24 + CurrentScreen);
-    AddPrim(OT[CurrentScreen] + (distance >> 1), &flare[0][5][0] + ship * 24 + CurrentScreen);
-    AddPrim(OT[CurrentScreen] + (distance >> 1), &flare[0][6][0] + ship * 24 + CurrentScreen);
-    AddPrim(OT[CurrentScreen] + (distance >> 1), &flare[0][7][0] + ship * 24 + CurrentScreen);
-    AddPrim(OT[CurrentScreen] + (distance >> 1), &flare[0][8][0] + ship * 24 + CurrentScreen);
-    AddPrim(OT[CurrentScreen] + (distance >> 1), &flare[0][9][0] + ship * 24 + CurrentScreen);
-    AddPrim(OT[CurrentScreen] + (distance >> 1), &flare[0][10][0] + ship * 24 + CurrentScreen);
-    AddPrim(OT[CurrentScreen] + (distance >> 1), &flare[0][11][0] + ship * 24 + CurrentScreen);
+    AddPrim(slot, &flare[0][4][0] + ship * 24 + CurrentScreen);
+    AddPrim(slot, &flare[0][5][0] + ship * 24 + CurrentScreen);
+    AddPrim(slot, &flare[0][6][0] + ship * 24 + CurrentScreen);
+    AddPrim(slot, &flare[0][7][0] + ship * 24 + CurrentScreen);
+    AddPrim(slot, &flare[0][8][0] + ship * 24 + CurrentScreen);
+    AddPrim(slot, &flare[0][9][0] + ship * 24 + CurrentScreen);
+    AddPrim(slot, &flare[0][10][0] + ship * 24 + CurrentScreen);
+    AddPrim(slot, &flare[0][11][0] + ship * 24 + CurrentScreen);
 }
 
 
@@ -775,6 +777,7 @@ void DrawShipTrails(TrackCamera *camera) {
         DrawFlashNozzle(flashNozzleShip, camera);
     }
     flashNozzleShip = -1;
+    PortFarFlares(camera); /* Port: the engine flares of the far view's ships (portfar.h) */
 }
 
 

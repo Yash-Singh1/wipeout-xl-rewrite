@@ -44,6 +44,12 @@ void PortFarMarkShip(int ship);
 /* The pass, after the game's scenery (racectrl.c). */
 void PortFarDraw(TrackCamera *camera, ShipData *ships, Object **shipShapes);
 
+/* The engine flares of the ships the far view drew (after DrawShipTrails, which draws the near ones'): DrawFlare
+   says which it drew (PortFarFlared) and links them where PortFlareSlot says. */
+void PortFarFlares(TrackCamera *camera);
+void PortFarFlared(int ship);
+u_long *PortFlareSlot(int distance);
+
 /* For the renderers' far modes (trackdraw.c, objdraw.c). */
 void PortFarProject(const PortView *view, double x, double y, double z, PortFarVertex *out);
 /* A camera-space point in front of the near plane (PORT_FAR_NEAR), wherever it lands on the screen: the

@@ -23,4 +23,6 @@ struct Trail {
     TrailSegment segment[TRAIL_SEGMENTS];
 };
 
+extern Trail *shipTrails; /* one for each ship */
+
 #endif

@@ -4,6 +4,7 @@
 
 #include "functions.h"
 #include "portfar.h"
+#include "trails.h"
 #include "port_platform.h"
 #include "../../platform/psx/gte.h"
 
@@ -37,6 +38,8 @@ static uint32_t frame = 1;
 static uint32_t *faceMarks;      /* the frame each track face was last drawn by the game */
 static int      faceMarkCount;
 static uint32_t shipMarks[15];
+static int      farShips;        /* the ships the far view drew this frame, until their engine flares are drawn */
+static u_long  *flareSlot;       /* where DrawFlare links the flare it draws for the far view (PortFlareSlot) */
 /* The objects the game drew this frame, and which of their primitives it handled (drew, or culled as
    facing away): the GTE rejects every polygon with a vertex deeper than 32767 (IR3 saturates) while the
    game draws objects to 38200, so objects in between are "drawn" with nothing on screen. */
@@ -323,18 +326,26 @@ static int MaybeVisible(const double c[3], double radius)
     return fabs(c[0]) - radius < z * ((200.0 + PortScreenMargin()) / h) && fabs(c[1]) - radius < z * (160.0 / h);
 }
 
+/* The view of world positions, as the track renderers have it: SetSkeletonTransform(camera->super), points +
+   camera->relative.t. */
+static void CameraView(TrackCamera *camera, PortView *view)
+{
+    Skeleton *camPos = camera->camPos;
+    int i;
+
+    SkeletonView(camPos->super, view);
+    for (i = 0; i < 3; i++) {
+        view->t[i] += view->m[i][0] * camPos->relative.t[0] + view->m[i][1] * camPos->relative.t[1] +
+                      view->m[i][2] * camPos->relative.t[2];
+    }
+}
+
 static void DrawFarTrack(TrackCamera *camera)
 {
     PortView view;
-    Skeleton *camPos = camera->camPos;
     int i, k;
 
-    /* the track renderers: SetSkeletonTransform(camera->super), corners + camera->relative.t */
-    SkeletonView(camPos->super, &view);
-    for (i = 0; i < 3; i++) {
-        view.t[i] += view.m[i][0] * camPos->relative.t[0] + view.m[i][1] * camPos->relative.t[1] +
-                     view.m[i][2] * camPos->relative.t[2];
-    }
+    CameraView(camera, &view);
     for (i = 0; i < track->sectionCount; i++) {
         TrackSection *section = track->sections + i;
         double c[3];
@@ -414,6 +425,7 @@ static void DrawFarShips(ShipData *ships, Object **shipShapes)
         if (!(ship->attr & LSIDE)) {
             face++;
         }
+        farShips |= 1 << i;
         PortInterpInstance(i); /* frame interpolation: the ship's drawing, as DrawShips gives it */
         if (raceType == 1 && i == ghostShip) {
             InitTransShip(object, 1); /* the ghost is see-through, as DrawShips draws it */
@@ -434,11 +446,61 @@ void PortFarDraw(TrackCamera *camera, ShipData *ships, Object **shipShapes)
     }
     ClearOTagR(farTable[CurrentScreen], FAR_BUCKETS);
     arenaUsed = 0;
+    farShips = 0;
     DrawFarTrack(camera);
     DrawFarScenery();
     DrawFarShips(ships, shipShapes);
     AddPrims(OT[CurrentScreen] + FAR_ENTRY, farTable[CurrentScreen] + FAR_BUCKETS - 1, farTable[CurrentScreen]);
     frame++;
+}
+
+void PortFarFlared(int ship)
+{
+    if (ship >= 0 && ship < 15) {
+        farShips &= ~(1 << ship);
+    }
+}
+
+u_long *PortFlareSlot(int distance)
+{
+    return flareSlot ? flareSlot : OT[CurrentScreen] + (distance >> 1);
+}
+
+/* The engine flares of the ships the far view drew, where DrawTrail puts a near ship's: the middle of its trail's
+   newest segment, the size and the table entry from the GTE's average depth of that segment's corners less 160. */
+void PortFarFlares(TrackCamera *camera)
+{
+    PortView view;
+    int      i;
+
+    if (!farShips || sillyShips) {
+        farShips = 0;
+        return;
+    }
+    CameraView(camera, &view);
+    for (i = 0; i < 15; i++) {
+        Trail         *trail = &shipTrails[i];
+        TrailSegment  *now = &trail->segment[trail->current];
+        PortFarVertex  centre;
+        int            distance;
+
+        if (!(farShips & (1 << i)) || !now->active || !trail->segment[(trail->current + 1) % TRAIL_SEGMENTS].active) {
+            continue;
+        }
+        PortFarProject(&view, (now->left.vx + now->right.vx) / 2.0, (now->left.vy + now->right.vy) / 2.0,
+                       (now->left.vz + now->right.vz) / 2.0, &centre);
+        if (centre.rejected) {
+            continue;
+        }
+        distance = (int)(centre.z * 3.0 * (short)GteReadControl(29) / 4096.0) - 160; /* ZSF3: RotTransPers3's OTZ */
+        if (distance < 0) {
+            distance = 0;
+        }
+        flareSlot = PortFarSlot(distance >> 1, (distance >> 1) * 4.0);
+        DrawFlare((short)(centre.screen & 0xFFFF), (short)(centre.screen >> 16), distance, i);
+        flareSlot = NULL;
+    }
+    farShips = 0;
 }
 
 /* The distance fade: the settings' range (WIPEOUT_FADE "near,far" in world units, or 0 for none),
