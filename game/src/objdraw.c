@@ -494,6 +494,22 @@ static int PackScreen(int x, int y)
     return (x & 0xFFFF) | (int)((u_int)y << 16);
 }
 
+/* Port: a billboard's corner, placed in 2D about its vertex's projection, recorded where it stands in view space
+   (beside the vertex, at its depth), so that the pictures between two frames move it with the vertex and the view
+   (it stayed put, then jumped with each frame, while the scenery around it moved). Recorded without a depth: the
+   billboard is drawn as before, affine and outside the depth buffer. */
+static void BindSpriteCorner(short *corner, const GtePrecise *centre, int x, int y, int k)
+{
+    double scale = centre->view[2] / (double)(u_short)GteReadControl(26);
+    int    dx = corner[0] - x, dy = corner[1] - y;
+    uint32_t handle;
+
+    GteKeyNext(0, GteKeyMix(centre->key, (uint64_t)k + 1));
+    handle = GteRecordProjection(*(u_int *)corner, centre->x + (float)dx, centre->y + (float)dy, 0.0f, 1.0f);
+    GteRecordView(handle, centre->view[0] + dx * scale, centre->view[1] + dy * scale, centre->view[2]);
+    GteBindPrecise(corner, handle);
+}
+
 /* A billboard: a textured quad about the vertex's screen position, its size scaled by the distance (sprites
    nearer than 0x800 are not drawn) and turned by `roll`.  `top` selects the two ways the corners are laid
    out (types TSPR and BSPR).  Linked by the vertex's depth. */
@@ -540,6 +556,16 @@ static char *DrawSprite(DrawKind kind, char *out, u_long *ordering, int roll, co
         *(int *)&poly->x0 = PackScreen(x - dx1 + dx2, y - dy1 - dy2);
         *(int *)&poly->x3 = PackScreen(x + dx1, y + dy1);
         *(int *)&poly->x1 = PackScreen(x + dx1 + dx2, y + dy1 - dy2);
+    }
+    {
+        GtePrecise centre;
+
+        if (GtePreciseOf(projectedHandle[v - projected], &centre) && centre.key && centre.view[2] > 0.0f) {
+            BindSpriteCorner(&poly->x0, &centre, x, y, 0); /* Port: frame interpolation */
+            BindSpriteCorner(&poly->x1, &centre, x, y, 1);
+            BindSpriteCorner(&poly->x2, &centre, x, y, 2);
+            BindSpriteCorner(&poly->x3, &centre, x, y, 3);
+        }
     }
     SetRgb(&poly->r0, &poly->g0, &poly->b0, &prim->colour);
     texture = textureTable[prim->texture];
