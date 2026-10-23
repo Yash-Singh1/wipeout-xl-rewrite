@@ -823,8 +823,9 @@ static int Build(void)
    upper half, where XL keeps textures of its own for the whole race (the ships', for one): loaded together
    the two would overwrite each other. So the images go to the same places in the second half of video
    memory (platform/psx/gpu.h: rows 512 on, which XL never uses), keeping the original's layout, and their
-   palettes, which must stay in the first half, to a block of their own where XL's own scenery would be
-   (x 704 to 895 of the upper rows). The track's tiles (library.cmp) are placed by the game itself, as XL's. */
+   palettes of 16 colours to a block of their own where XL's own scenery would be (x 704 to 895 of the upper rows);
+   the others (256 colours) to their own places in the second half as well. The track's tiles (library.cmp) are
+   placed by the game itself, as XL's. */
 
 static int LzssBit(const uint8_t *in, size_t length, size_t *at, int *mask, int *rack)
 {
@@ -967,6 +968,11 @@ static uint8_t *Relocate(const uint8_t *cmp, size_t length, int *paletteSlot, si
                     PutLe16(clut + 4, 880 - (*paletteSlot % 12) * 16);
                     PutLe16(clut + 6, *paletteSlot / 12);
                     (*paletteSlot)++;
+                } else if ((size_t)(image - tims) + 12 <= total && (Le16(image + 4) || Le16(image + 6))) {
+                    /* a palette the block has no room for (256 colours; the block full): in the second half too, at
+                       its own place there (gpu.h: a palette's row 512 on; XL's HUD has one of 256 where the
+                       original put some of its own) */
+                    PutLe16(clut + 6, (Le16(clut + 6) & 0x1FF) + 512);
                 }
             }
             if ((size_t)(image - tims) + 12 <= total && (Le16(image + 4) || Le16(image + 6))) {

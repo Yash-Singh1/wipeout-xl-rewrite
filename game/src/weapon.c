@@ -2728,6 +2728,9 @@ void DamageCollide(int damageType, int shipNo)
         if ((shipIndex[shipNo].attr & SHIELDED) && (scaledDamage > 0)) {
             scaledDamage = 0;
         }
+        if (PortOriginalTrack() >= 0 && scaledDamage > 0) {
+            scaledDamage = 0; /* Port: on a guest's track (the original's, Wipeout 64's) the shields stay full */
+        }
         fracdamage[shipNo] += scaledDamage;
         if (fracdamage[shipNo] < 0) fracdamage[shipNo] = 0;
         shipDamage[shipNo] = fracdamage[shipNo] >> 8;
