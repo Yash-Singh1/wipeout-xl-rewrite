@@ -426,6 +426,13 @@ int main(int argc, char **argv)
 
 /* The debug console's choice of disc: the game starts again with it (a running game cannot change discs), in a
    window of the same size. Returns only when the new game could not be started. */
+#ifdef __EMSCRIPTEN__
+int PortRestart(const char *discPath)
+{
+    (void)discPath;
+    return 0; /* (a page cannot start a program: it is reloaded) */
+}
+#else
 int PortRestart(const char *discPath)
 {
     const char *args[8];
@@ -452,6 +459,7 @@ int PortRestart(const char *discPath)
     SDL_DestroyProcess(process); /* (the object only: the new game goes on) */
     exit(0);
 }
+#endif
 
 int PortLogoFields(int fields)
 {

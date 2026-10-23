@@ -1591,8 +1591,10 @@ static void VideoStandard(void)
     bool wanted = portSettings.videoStandard == VIDEO_PAL ||
                   (portSettings.videoStandard == VIDEO_BY_DISC && PortRegionEurope());
     if (wanted != (portPal != 0)) {
-#ifdef PORT_MOBILE
+#if defined(PORT_MOBILE)
         ImGui::TextDisabled("From the game's next start.");
+#elif defined(__EMSCRIPTEN__)
+        ImGui::TextDisabled("Reload the page to use it.");
 #else
         const char *disc = portConfig.discGiven ? portConfig.discGiven : portSettings.discPath;
         if (ImGui::Button("Restart to use it") && !PortRestart(disc)) {
