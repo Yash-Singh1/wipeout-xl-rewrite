@@ -196,7 +196,7 @@ static void Rates(void)
         rateStart = now;
         swapsAtStart = PortGameFrames();
         presents = 0;
-    } else if (now - rateStart >= 500000000ull) {
+    } else if (now - rateStart >= 1000000000ull) { // (a whole second: PAL's 25 frames are 12.5 in half of one)
         double seconds = (now - rateStart) / 1e9;
         presentRate = (float)(presents / seconds);
         gameRate = (float)((PortGameFrames() - swapsAtStart) / seconds);
@@ -1721,7 +1721,7 @@ static void Console(void)
             }
             ImGui::Separator();
             ImGui::Text("Display: %.1f frames a second", presentRate);
-            ImGui::Text("Game:    %.1f frames a second (the console's rate is 30)", gameRate);
+            ImGui::Text("Game:    %.1f frames a second (the console's rate is %d)", gameRate, portPal ? 25 : 30);
             ImGui::Text("Video fields: %llu", (unsigned long long)PsxFieldCount());
             float worst = 0;
             for (float t : frameTimes) {
