@@ -251,17 +251,42 @@ static bool followNewest = true;    // while recording: the newest frame, as eac
 static bool uploaded;               // the picture in frameTexture: of game frame uploadedGame, as uploadedShown
 static uint64_t uploadedGame;
 static int uploadedShown;
+static bool uploadedHad;            // ... and whether it had its picture then (a recording being made: compressed later)
 static float pictureZoom;           // the picture's pixels per console pixel; 0: as large as fits
 static GLuint frameTexture;
 static int pickHit = -1;
 
-// The recorded picture, its pixels sharp (the backend samples linearly unless told otherwise).
-static void PixelImage(ImVec2 size, ImVec2 uv0, ImVec2 uv1)
+// The texture's own sampling (its mipmaps), not the backend's sampler.
+typedef void (*BindSamplerFunction)(GLuint unit, GLuint sampler);
+typedef void (*GenerateMipmapFunction)(GLenum target);
+static BindSamplerFunction bindSampler;
+static GenerateMipmapFunction generateMipmap;
+
+static void LoadMipmapFunctions(void)
+{
+    if (!generateMipmap) {
+        bindSampler = (BindSamplerFunction)SDL_GL_GetProcAddress("glBindSampler");
+        generateMipmap = (GenerateMipmapFunction)SDL_GL_GetProcAddress("glGenerateMipmap");
+    }
+}
+
+static void TextureSampling(const ImDrawList *, const ImDrawCmd *)
+{
+    if (bindSampler) {
+        bindSampler(0, 0);
+    }
+}
+
+// The recorded picture: its pixels sharp when larger than the screen's, else smoothed through its mipmaps (the
+// backend samples linearly unless told otherwise).
+static void PixelImage(ImVec2 size, ImVec2 uv0, ImVec2 uv1, bool smooth)
 {
     ImGuiPlatformIO &io = ImGui::GetPlatformIO();
     ImDrawList *draw = ImGui::GetWindowDrawList();
 
-    if (io.DrawCallback_SetSamplerNearest) {
+    if (smooth) {
+        draw->AddCallback(TextureSampling, nullptr);
+    } else if (io.DrawCallback_SetSamplerNearest) {
         draw->AddCallback(io.DrawCallback_SetSamplerNearest, nullptr);
     }
     ImGui::Image((ImTextureID)(intptr_t)frameTexture, size, uv0, uv1);
@@ -439,7 +464,9 @@ static void RecorderTab(void)
     ImVec2 room = ImGui::GetContentRegionAvail();
     room.y -= ImGui::GetFrameHeightWithSpacing();
     bool beside = room.x > 1000 * ui;
-    bool hasPicture = f->picture && f->shown;
+    int picturePixelsW = 0, picturePixelsH = 0;
+    const uint8_t *picture = f->shown ? FrameCapPicture(frameShown, &picturePixelsW, &picturePixelsH) : nullptr;
+    bool hasPicture = picture != nullptr;
     // pictureW: the picture's console columns (its pixels are pictureScale times as many each way)
     int pictureScale = hasPicture ? SDL_max(f->pictureScale, 1) : 1;
     int pictureW = hasPicture ? f->pictureW / pictureScale : 320, pictureX = hasPicture ? f->pictureX : 0;
@@ -485,16 +512,22 @@ static void RecorderTab(void)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     }
     // the picture: the console's 320 columns, and with widescreen the sides (from column `pictureX`)
-    if (!uploaded || uploadedGame != f->gameFrame || uploadedShown != f->shown) {
+    if (!uploaded || uploadedGame != f->gameFrame || uploadedShown != f->shown || uploadedHad != hasPicture) {
         static uint8_t black[320 * 240 * 3];
         glBindTexture(GL_TEXTURE_2D, frameTexture);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, hasPicture ? f->pictureW : 320, hasPicture ? f->pictureH : 240, 0,
-                     GL_RGB, GL_UNSIGNED_BYTE, hasPicture ? f->picture : black);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, hasPicture ? picturePixelsW : 320, hasPicture ? picturePixelsH : 240, 0,
+                     GL_RGB, GL_UNSIGNED_BYTE, hasPicture ? picture : black);
+        LoadMipmapFunctions();
+        if (generateMipmap) {
+            generateMipmap(GL_TEXTURE_2D); // (for the picture shown smaller than it is)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        }
         glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
         uploaded = true;
         uploadedGame = f->gameFrame;
         uploadedShown = f->shown;
+        uploadedHad = hasPicture;
         Pick(frameShown);
     }
     // the picture as large as fits or as zoomed (in a pane of its own that scrolls when it is larger), the picked
@@ -510,7 +543,7 @@ static void RecorderTab(void)
                       ImVec2(across ? paneW : imageSize.x + (down ? bar : 0), down ? paneH : imageSize.y + (across ? bar : 0)),
                       ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar);
     ImVec2 origin = ImGui::GetCursorScreenPos();
-    PixelImage(ImVec2(pictureW * zoom, 240 * zoom), ImVec2(0, 0), ImVec2(1, 1));
+    PixelImage(ImVec2(pictureW * zoom, 240 * zoom), ImVec2(0, 0), ImVec2(1, 1), zoom < pictureScale);
     bool hovered = ImGui::IsItemHovered();
     if (hovered || testHover) {
         ImVec2 m = ImGui::GetMousePos();
@@ -537,15 +570,15 @@ static void RecorderTab(void)
         ImGui::BeginTooltip();
         ImVec2 corner = ImGui::GetCursorScreenPos();
         PixelImage(ImVec2(span * cell, span * cell), ImVec2((float)left / pictureW, top / 240.0f),
-                   ImVec2((float)(left + span) / pictureW, (top + span) / 240.0f));
+                   ImVec2((float)(left + span) / pictureW, (top + span) / 240.0f), cell < pictureScale);
         ImVec2 a(corner.x + (px - left) * cell, corner.y + (py - top) * cell);
         ImGui::GetWindowDrawList()->AddRect(ImVec2(a.x - 1, a.y - 1), ImVec2(a.x + cell + 1, a.y + cell + 1),
                                             IM_COL32(0, 0, 0, 255), 0.0f, 0, 3.0f);
         ImGui::GetWindowDrawList()->AddRect(a, ImVec2(a.x + cell, a.y + cell), IM_COL32(255, 0, 255, 255), 0.0f, 0, 1.5f);
         if (hasPicture) {
             // (the middle of the console pixel's picture pixels)
-            const uint8_t *rgb = &f->picture[((size_t)(py * pictureScale + pictureScale / 2) * f->pictureW +
-                                              (size_t)(px * pictureScale + pictureScale / 2)) * 3];
+            const uint8_t *rgb = &picture[((size_t)(py * pictureScale + pictureScale / 2) * picturePixelsW +
+                                           (size_t)(px * pictureScale + pictureScale / 2)) * 3];
             ImGui::Text("pixel %d, %d   colour %d, %d, %d", x, y, rgb[0], rgb[1], rgb[2]);
         } else {
             ImGui::Text("pixel %d, %d", x, y);

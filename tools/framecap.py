@@ -82,17 +82,20 @@ _pictures = {}
 
 
 def picture(frame):
-    """RGB rows of the picture shown, or None."""
-    path = os.path.join(frame['folder'], 'picture_%03d.ppm' % frame['index'])
-    if path not in _pictures:
-        if not os.path.exists(path):
-            _pictures[path] = None
-        else:
-            raw = open(path, 'rb').read()
+    """RGB rows of the picture shown, or None (picture_NNN.jpg; older recordings: .ppm)."""
+    base = os.path.join(frame['folder'], 'picture_%03d' % frame['index'])
+    if base not in _pictures:
+        _pictures[base] = None
+        if os.path.exists(base + '.jpg'):
+            from PIL import Image  # (the pictures are JPEGs at the framebuffer's scale)
+            image = Image.open(base + '.jpg').convert('RGB')
+            _pictures[base] = (image.width, image.height, image.tobytes())
+        elif os.path.exists(base + '.ppm'):
+            raw = open(base + '.ppm', 'rb').read()
             parts = raw.split(b'\n', 3)
             w, h = map(int, parts[1].split())
-            _pictures[path] = (w, h, parts[3])
-    return _pictures[path]
+            _pictures[base] = (w, h, parts[3])
+    return _pictures[base]
 
 
 def pixel_rgb(frame, x, y):

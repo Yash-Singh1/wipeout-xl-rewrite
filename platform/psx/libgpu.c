@@ -590,8 +590,9 @@ static int SplitSize(int x, int *w, int *h)
     return *w > 0 && *h > 0;
 }
 
-static void PutSplit(const uint8_t *pixels, int w, int h)
+static void PutSplit(const uint8_t *pixels, int w, int h, void *user)
 {
+    (void)user;
     PortLinkPutFrame(pixels, w, h);
     GpuPictureHandedOver();
 }
@@ -604,7 +605,7 @@ static int HandOverSplitOf(int x, int y)
     if (!SplitSize(x, &w, &h)) {
         return 0;
     }
-    PutSplit(GpuReadPicture(x, y + GPU_SPLIT_TOP, 320, GPU_SPLIT_ROWS, GpuShownMargin(x, 320), w, h), w, h);
+    PutSplit(GpuReadPicture(x, y + GPU_SPLIT_TOP, 320, GPU_SPLIT_ROWS, GpuShownMargin(x, 320), w, h), w, h, NULL);
     return 1;
 }
 
@@ -1746,9 +1747,9 @@ void PsxLinkWaiting(void)
     if (PortLinkRole() != LINK_SLAVE || !PortLinkSplit()) {
         return;
     }
-    GpuReadPictureDone(PutSplit); /* (read back while the game went on) */
+    GpuReadPictureDone(GPU_READ_LINK, 0, PutSplit, NULL); /* (read back while the game went on) */
     period = (uint64_t)PortLinkPresentPeriod() * 900; /* (a little sooner: a picture is ready when it is shown) */
-    if (!shownTables.table || !drawnFrame.pending || shownComplete || GpuReadPictureBusy() || !PsxInterpolationOn() ||
+    if (!shownTables.table || !drawnFrame.pending || shownComplete || GpuReadPictureBusy(GPU_READ_LINK) || !PsxInterpolationOn() ||
         GteFrameRecorded() != shownGteFrame || now - lastPicture < (period ? period : 8000000ull) ||
         !SplitSize(shownTables.left, &w, &h)) {
         return;
@@ -1759,7 +1760,7 @@ void PsxLinkWaiting(void)
     upcoming = shownTables;
     DrawInterpolated(along);
     upcoming = saved;
-    GpuReadPictureStart(shownTables.left, shownTables.top + GPU_SPLIT_TOP, 320, GPU_SPLIT_ROWS,
+    GpuReadPictureStart(GPU_READ_LINK, shownTables.left, shownTables.top + GPU_SPLIT_TOP, 320, GPU_SPLIT_ROWS,
                         GpuShownMargin(shownTables.left, 320), w, h);
     drawnSinceRead = 0;
     shownComplete = along >= 1.0f;

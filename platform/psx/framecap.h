@@ -50,7 +50,9 @@ typedef struct FrameCapFrame {
     int vram;             /* its video-memory snapshot (FrameCapVram) */
     FrameCapPrim *prims;
     int count, capacity;
-    uint8_t *picture;     /* RGB, pictureW x pictureH, top row first: the picture shown */
+    uint8_t *jpeg;        /* the picture shown, at the framebuffer's scale, compressed (FrameCapPicture) */
+    size_t jpegSize;
+    unsigned pictureToken; /* (its compression on the way: framecap.c) */
     int pictureW, pictureH;
     int pictureScale;     /* ... its pixels per console pixel (pictureW is the columns times this) */
     int pictureX;         /* the column of the picture's left edge, from the area's (widescreen: -the margin) */
@@ -84,6 +86,9 @@ void FrameCapSave(void);
 int FrameCapFrameCount(void);
 const FrameCapFrame *FrameCapFrameAt(int index);
 const uint16_t *FrameCapVram(int snapshot);
+/* The picture frame `index` showed: RGB, top row first, *w x *h (the frame's pictureW x pictureH), or NULL (not
+   shown, or still being compressed). Valid until the next call. */
+const uint8_t *FrameCapPicture(int index, int *w, int *h);
 
 /* A primitive's triangle that covers a pixel, and what it puts there. */
 typedef struct FrameCapHit {

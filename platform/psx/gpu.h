@@ -120,11 +120,13 @@ int GpuShownMargin(int x, int w);
 /* The picture at (x, y, w, h) of video memory, with `margin` columns beyond each side (GpuShownMargin), as
    outW x outH RGBA, top row first (the frame recorder's). */
 uint8_t *GpuReadPicture(int x, int y, int w, int h, int margin, int outW, int outH);
-/* ... the same, without waiting for the GPU to finish the picture (one at a time: 0 while one is on its way);
-   GpuReadPictureDone gives it to `use` once it is back (1), else 0. */
-int GpuReadPictureStart(int x, int y, int w, int h, int margin, int outW, int outH);
-int GpuReadPictureDone(void (*use)(const uint8_t *pixels, int width, int height));
-int GpuReadPictureBusy(void);
+/* ... the same, without waiting for the GPU to finish the picture: one at a time for each reader (0 while one is on
+   its way); GpuReadPictureDone gives it to `use` once it is back (1; with `wait`, waiting for it), else 0. */
+enum { GPU_READ_LINK, GPU_READ_RECORDER, GPU_READERS };
+int GpuReadPictureStart(int reader, int x, int y, int w, int h, int margin, int outW, int outH);
+int GpuReadPictureDone(int reader, int wait, void (*use)(const uint8_t *pixels, int width, int height, void *user),
+                       void *user);
+int GpuReadPictureBusy(int reader);
 /* The second player's game handed its picture over (the split window) instead of showing it. */
 void GpuPictureHandedOver(void);
 /* A menu's backdrop was built this frame (PortWideBackdrop in libgpu): the menu is shown wide. */

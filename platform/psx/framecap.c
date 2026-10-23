@@ -9,6 +9,12 @@
 #include <SDL3/SDL.h>
 
 #include "framecap.h"
+
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#define STBI_WRITE_NO_STDIO
+#include "../third_party/stb/stb_image_write.h"
+#define STBI_NO_STDIO
+#include "../third_party/stb/stb_image.h" /* (its implementation is hdtex.c's) */
 #include "../debug_ui.h"
 #include "../platform.h"
 #include "../settings.h"
@@ -18,9 +24,10 @@
 #define FRAMES TAB_FRAMES
 #define PICTURE_W 320
 #define PICTURE_H 240
-/* The picture is kept at the framebuffer's scale up to this (the drawn pixels, not the console's: thin lines
-   and seams of a sharper picture show), RGB: about 1.2 MB a frame, 100 MB for the last three seconds. */
-#define PICTURE_MAX_SCALE 2
+/* The picture is kept at the framebuffer's scale (the pixels drawn, not the console's: thin lines and seams
+   show), read back without waiting for the GPU (gpu.h's GPU_READ_RECORDER) and compressed as a JPEG of this
+   quality (above 90: colours not subsampled) by worker threads: 1 to 3 MB a frame at 4K. */
+#define PICTURE_QUALITY 95
 
 static FrameCapFrame frames[FRAMES];
 static int first, count; /* the ring: frames[first], ... count of them */
@@ -147,6 +154,215 @@ static int TakeSnapshot(void)
     return i;
 }
 
+/* ---- the pictures: read back, compressed by worker threads ---- */
+
+typedef struct Job {
+    uint8_t *pixels; /* RGBA */
+    int w, h, slot;
+    unsigned token;
+} Job;
+#define JOBS 3 /* (each a whole picture uncompressed: 24 MB at 8x) */
+static Job jobs[JOBS];
+static int jobFirst, jobCount, jobsRunning;
+static SDL_Mutex *lockMutex;
+static SDL_Condition *jobWaiting, *jobDone;
+static int workersStarted, workerCount;
+static unsigned nextToken;
+static int readSlot = -1;
+static unsigned readToken;
+
+static SDL_Mutex *Lock(void)
+{
+    if (!lockMutex) {
+        lockMutex = SDL_CreateMutex();
+        jobWaiting = SDL_CreateCondition();
+        jobDone = SDL_CreateCondition();
+    }
+    return lockMutex;
+}
+
+typedef struct Output {
+    uint8_t *data;
+    size_t size, capacity;
+} Output;
+
+static void Write(void *context, void *data, int size)
+{
+    Output *o = (Output *)context;
+
+    if (o->size + (size_t)size > o->capacity) {
+        o->capacity = SDL_max(o->capacity * 2, o->size + (size_t)size + 65536);
+        o->data = realloc(o->data, o->capacity);
+    }
+    memcpy(o->data + o->size, data, (size_t)size);
+    o->size += (size_t)size;
+}
+
+/* A job's picture compressed, and given to its frame if that is still the frame it was taken for. */
+static void Encode(Job *job)
+{
+    Output out = {NULL, 0, 0};
+    FrameCapFrame *f = &frames[job->slot];
+
+    if (!stbi_write_jpg_to_func(Write, &out, job->w, job->h, 4, job->pixels, PICTURE_QUALITY)) {
+        free(out.data);
+        out.data = NULL;
+    } else {
+        uint8_t *fitted = realloc(out.data, out.size); /* (no room to grow kept) */
+
+        out.data = fitted ? fitted : out.data;
+    }
+    free(job->pixels);
+    SDL_LockMutex(Lock());
+    if (f->pictureToken == job->token && out.data) {
+        free(f->jpeg);
+        f->jpeg = out.data;
+        f->jpegSize = out.size;
+    } else {
+        free(out.data);
+    }
+    SDL_UnlockMutex(lockMutex);
+}
+
+static int SDLCALL Worker(void *unused)
+{
+    (void)unused;
+    SDL_LockMutex(lockMutex);
+    for (;;) {
+        Job job;
+
+        while (!jobCount) {
+            SDL_WaitCondition(jobWaiting, lockMutex);
+        }
+        job = jobs[jobFirst];
+        jobFirst = (jobFirst + 1) % JOBS;
+        jobCount--;
+        jobsRunning++;
+        SDL_UnlockMutex(lockMutex);
+        Encode(&job);
+        SDL_LockMutex(lockMutex);
+        jobsRunning--;
+        SDL_BroadcastCondition(jobDone);
+    }
+    return 0;
+}
+
+/* The picture read back: a copy queued for the workers (or compressed here when there are none). */
+static void ReadBack(const uint8_t *pixels, int w, int h, void *user)
+{
+    Job job;
+
+    (void)user;
+    if (readSlot < 0) {
+        return;
+    }
+    job.pixels = malloc((size_t)w * h * 4);
+    if (!job.pixels) {
+        return;
+    }
+    memcpy(job.pixels, pixels, (size_t)w * h * 4);
+    job.w = w;
+    job.h = h;
+    job.slot = readSlot;
+    job.token = readToken;
+    readSlot = -1;
+    Lock();
+    if (!workersStarted) {
+        int i, cores = SDL_GetNumLogicalCPUCores();
+
+        workersStarted = 1;
+        for (i = 0; i < SDL_clamp(cores - 2, 1, 4); i++) {
+            SDL_Thread *thread = SDL_CreateThread(Worker, "framecap", NULL);
+
+            if (thread) {
+                SDL_DetachThread(thread);
+                workerCount++;
+            }
+        }
+    }
+    if (!workerCount) {
+        Encode(&job);
+        return;
+    }
+    SDL_LockMutex(lockMutex);
+    while (jobCount == JOBS) {
+        SDL_WaitCondition(jobDone, lockMutex); /* (the workers are behind: the game waits) */
+    }
+    jobs[(jobFirst + jobCount) % JOBS] = job;
+    jobCount++;
+    SDL_SignalCondition(jobWaiting);
+    SDL_UnlockMutex(lockMutex);
+}
+
+/* The picture on its way back from the GPU (with `wait`, waiting for it). */
+static void FinishRead(int wait)
+{
+    GpuReadPictureDone(GPU_READ_RECORDER, wait, ReadBack, NULL);
+}
+
+/* Every picture read back and compressed (before the recording is looked at or saved). */
+static void FinishPictures(void)
+{
+    FinishRead(1);
+    if (!lockMutex) {
+        return;
+    }
+    SDL_LockMutex(lockMutex);
+    while (jobCount || jobsRunning) {
+        SDL_WaitCondition(jobDone, lockMutex);
+    }
+    SDL_UnlockMutex(lockMutex);
+}
+
+/* A frame's picture forgotten (its slot is used again, or the recording cleared). */
+static void ForgetPicture(FrameCapFrame *f)
+{
+    SDL_LockMutex(Lock());
+    free(f->jpeg);
+    f->jpeg = NULL;
+    f->jpegSize = 0;
+    f->pictureToken = 0;
+    SDL_UnlockMutex(lockMutex);
+}
+
+const uint8_t *FrameCapPicture(int index, int *w, int *h)
+{
+    static uint8_t *decoded;
+    static unsigned decodedToken;
+    const FrameCapFrame *f;
+    const uint8_t *jpeg;
+    size_t size;
+    unsigned token;
+    int n;
+
+    if (index < 0 || index >= count) {
+        return NULL;
+    }
+    f = FrameCapFrameAt(index);
+    SDL_LockMutex(Lock());
+    jpeg = f->jpeg;
+    size = f->jpegSize;
+    token = f->pictureToken;
+    SDL_UnlockMutex(lockMutex);
+    if (!jpeg || !f->shown) {
+        return NULL;
+    }
+    if (!decoded || decodedToken != token) {
+        int dw, dh;
+
+        stbi_image_free(decoded);
+        decoded = stbi_load_from_memory(jpeg, (int)size, &dw, &dh, &n, 3);
+        decodedToken = token;
+        if (decoded && (dw != f->pictureW || dh != f->pictureH)) {
+            stbi_image_free(decoded);
+            decoded = NULL;
+        }
+    }
+    *w = f->pictureW;
+    *h = f->pictureH;
+    return decoded;
+}
+
 void FrameCapTable(int offsetX, int offsetY, int areaX, int areaY, int areaW, int areaH)
 {
     FrameCapFrame *f;
@@ -183,9 +399,7 @@ void FrameCapTable(int offsetX, int offsetY, int areaX, int areaY, int areaW, in
     f->areaH = areaH;
     f->count = 0;
     f->vram = TakeSnapshot();
-    if (f->picture) {
-        memset(f->picture, 0, (size_t)f->pictureW * f->pictureH * 3);
-    }
+    ForgetPicture(f);
 }
 
 static int CompareTags(const void *a, const void *b)
@@ -296,21 +510,21 @@ void FrameCapShown(int x, int y, int w, int h)
         if (x >= f->areaX && x < f->areaX + f->areaW && y >= f->areaY && y < f->areaY + f->areaH) {
             if (!f->shown) {
                 /* the console's pixels, and with widescreen the sides as well */
-                int margin = GpuShownMargin(x, w), scale = SDL_clamp(GpuScale(), 1, PICTURE_MAX_SCALE);
+                int margin = GpuShownMargin(x, w), scale = SDL_max(GpuScale(), 1);
                 int width = (PICTURE_W + 2 * margin) * scale, height = PICTURE_H * scale;
-                uint8_t *pixels = GpuReadPicture(x, y, w, h, margin, width, height);
-                size_t i, n = (size_t)width * height;
 
-                if (!f->picture || f->pictureW != width || f->pictureH != height) {
-                    f->picture = realloc(f->picture, n * 3);
-                }
+                FinishRead(1); /* (the frame before's: back by now) */
+                ForgetPicture(f);
                 f->pictureW = width;
                 f->pictureH = height;
                 f->pictureScale = scale;
                 f->pictureX = -margin;
-                for (i = 0; i < n; i++) {
-                    memcpy(f->picture + i * 3, pixels + i * 4, 3);
-                }
+                SDL_LockMutex(Lock());
+                f->pictureToken = ++nextToken;
+                SDL_UnlockMutex(lockMutex);
+                readSlot = (int)(f - frames);
+                readToken = f->pictureToken;
+                GpuReadPictureStart(GPU_READ_RECORDER, x, y, w, h, margin, width, height);
                 f->shown = PortShownFrames() + 1;
             }
             return;
@@ -456,6 +670,7 @@ static void PutI32(FILE *f, int32_t v)
 
 static void Save(void)
 {
+    FinishPictures();
     char *base = SDL_GetPrefPath("Psygnosis", "WipeoutXL");
     const char *forced = SDL_getenv("WIPEOUT_FRAMECAP_DIR");
     char path[1200];
@@ -551,17 +766,13 @@ static void Save(void)
     }
     for (i = 0; i < count; i++) {
         const FrameCapFrame *f = FrameCapFrameAt(i);
-        int y;
 
-        if (!f->picture || !f->shown) {
+        if (!f->jpeg || !f->shown) {
             continue;
         }
-        SDL_snprintf(path, sizeof(path), "%s/picture_%03d.ppm", savedDir, i);
+        SDL_snprintf(path, sizeof(path), "%s/picture_%03d.jpg", savedDir, i);
         if ((file = fopen(path, "wb"))) {
-            fprintf(file, "P6\n%d %d\n255\n", f->pictureW, f->pictureH);
-            for (y = 0; y < f->pictureH; y++) {
-                Put(file, f->picture + (size_t)y * f->pictureW * 3, (size_t)f->pictureW * 3);
-            }
+            Put(file, f->jpeg, f->jpegSize);
             fclose(file);
         }
     }
@@ -603,8 +814,10 @@ void FrameCapClear(void)
 {
     int i;
 
+    FinishPictures();
     for (i = 0; i < count; i++) {
         Release(frames[(first + i) % FRAMES].vram);
+        ForgetPicture(&frames[(first + i) % FRAMES]); /* (the memory back) */
     }
     first = count = 0;
     current = -1;
@@ -622,6 +835,7 @@ void FrameCapTab(void)
     } else if (taking) {
         taking = 0;
         DropUnfinished();
+        FinishPictures();
         generation++;
     } else {
         FrameCapClear();

@@ -1624,81 +1624,99 @@ uint8_t *GpuReadPicture(int x, int y, int w, int h, int margin, int outW, int ou
     return pixels; /* video memory's rows go up the framebuffer: the first row read is the picture's top */
 }
 
-/* One picture at a time on its way back (GPU_READ_ASYNC: into a buffer, done when the fence is passed). */
+/* Pictures on their way back, one at a time for each reader (GpuRead*; GPU_READ_ASYNC: into a buffer, done
+   when the fence is passed). */
 static struct {
     int busy, w, h;
 #ifdef GPU_READ_ASYNC
     GLuint buffer;
+    GLsizeiptr bufferSize; /* (made again only for a larger picture: a driver may keep every one given up) */
     GLsync fence;
 #else
     uint8_t *pixels;
+    size_t size;
 #endif
-} reading;
+} reading[GPU_READERS];
 
-int GpuReadPictureBusy(void)
+int GpuReadPictureBusy(int reader)
 {
-    return reading.busy;
+    return reading[reader].busy;
 }
 
-int GpuReadPictureStart(int x, int y, int w, int h, int margin, int outW, int outH)
+int GpuReadPictureStart(int reader, int x, int y, int w, int h, int margin, int outW, int outH)
 {
-    if (reading.busy) {
+    if (reading[reader].busy) {
         return 0;
     }
 #ifdef GPU_READ_ASYNC
     ScalePicture(x, y, w, h, margin, outW, outH);
-    if (!reading.buffer) {
-        glGenBuffers(1, &reading.buffer);
+    if (!reading[reader].buffer) {
+        glGenBuffers(1, &reading[reader].buffer);
     }
-    glBindBuffer(GL_PIXEL_PACK_BUFFER, reading.buffer);
-    glBufferData(GL_PIXEL_PACK_BUFFER, (GLsizeiptr)outW * outH * 4, NULL, GL_STREAM_READ);
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, reading[reader].buffer);
+    if ((GLsizeiptr)outW * outH * 4 > reading[reader].bufferSize) {
+        reading[reader].bufferSize = (GLsizeiptr)outW * outH * 4;
+        glBufferData(GL_PIXEL_PACK_BUFFER, reading[reader].bufferSize, NULL, GL_STREAM_READ);
+    }
     glReadPixels(0, 0, outW, outH, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
     glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-    reading.fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+    reading[reader].fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
     glFlush();
     glBindFramebuffer(GL_FRAMEBUFFER, windowFramebuffer);
 #else
-    reading.pixels = GpuReadPicture(x, y, w, h, margin, outW, outH);
+    {
+        /* (read at once: a copy of its own, as GpuReadPicture's buffer is shared) */
+        size_t need = (size_t)outW * outH * 4;
+        const uint8_t *pixels = GpuReadPicture(x, y, w, h, margin, outW, outH);
+
+        if (need > reading[reader].size) {
+            reading[reader].pixels = realloc(reading[reader].pixels, need);
+            reading[reader].size = need;
+        }
+        memcpy(reading[reader].pixels, pixels, need);
+    }
 #endif
-    reading.w = outW;
-    reading.h = outH;
-    reading.busy = 1;
+    reading[reader].w = outW;
+    reading[reader].h = outH;
+    reading[reader].busy = 1;
     return 1;
 }
 
-int GpuReadPictureDone(void (*use)(const uint8_t *pixels, int width, int height))
+int GpuReadPictureDone(int reader, int wait, void (*use)(const uint8_t *pixels, int width, int height, void *user),
+                       void *user)
 {
+    if (!reading[reader].busy) {
+        return 0;
+    }
 #ifdef GPU_READ_ASYNC
-    GLenum status;
-    void *pixels;
+    {
+        GLenum status = glClientWaitSync(reading[reader].fence, wait ? GL_SYNC_FLUSH_COMMANDS_BIT : 0,
+                                         wait ? 1000000000ull : 0);
+        void *pixels;
 
-    if (!reading.busy) {
-        return 0;
+        if (status == GL_TIMEOUT_EXPIRED) {
+            return 0;
+        }
+        glDeleteSync(reading[reader].fence);
+        reading[reader].fence = NULL;
+        reading[reader].busy = 0;
+        if (status == GL_WAIT_FAILED) {
+            return 0;
+        }
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, reading[reader].buffer);
+        pixels = glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0, (GLsizeiptr)reading[reader].w * reading[reader].h * 4,
+                                  GL_MAP_READ_BIT);
+        if (pixels) {
+            use((const uint8_t *)pixels, reading[reader].w, reading[reader].h, user);
+            glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+        }
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+        return pixels != NULL;
     }
-    status = glClientWaitSync(reading.fence, 0, 0);
-    if (status == GL_TIMEOUT_EXPIRED) {
-        return 0;
-    }
-    glDeleteSync(reading.fence);
-    reading.fence = NULL;
-    reading.busy = 0;
-    if (status == GL_WAIT_FAILED) {
-        return 0;
-    }
-    glBindBuffer(GL_PIXEL_PACK_BUFFER, reading.buffer);
-    pixels = glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0, (GLsizeiptr)reading.w * reading.h * 4, GL_MAP_READ_BIT);
-    if (pixels) {
-        use((const uint8_t *)pixels, reading.w, reading.h);
-        glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
-    }
-    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-    return pixels != NULL;
 #else
-    if (!reading.busy) {
-        return 0;
-    }
-    reading.busy = 0;
-    use(reading.pixels, reading.w, reading.h);
+    (void)wait;
+    reading[reader].busy = 0;
+    use(reading[reader].pixels, reading[reader].w, reading[reader].h, user);
     return 1;
 #endif
 }

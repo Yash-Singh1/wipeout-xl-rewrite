@@ -7,7 +7,7 @@
 #include "platform.h"
 #include "settings.h"
 
-PortSettings portSettings = {0, 1, 1, 64000, 96000, 0, FRAME_RATE_UNCAPPED, 144, 0, 1, 0, ""};
+PortSettings portSettings = {0, 1, 1, 64000, 96000, 0, FRAME_RATE_UNCAPPED, 144, 0, RECORD_OFF, 0, ""};
 
 static char path[1024];
 static char defaultSaveDir[1024];
