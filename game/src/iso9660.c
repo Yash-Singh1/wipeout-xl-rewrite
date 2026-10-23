@@ -307,6 +307,9 @@ int iso_get_file_info(char *pathname, IsoFileInfo *fi)
     if (PortRegionFileInfo(pathname, &fi->loc, &fi->size)) {
         return 1; /* Port: WipEout 2097's piece in place of Wipeout XL's (platform/region.c) */
     }
+    if (PortSaturnFileInfo(pathname, &fi->loc, &fi->size)) {
+        return 1; /* Port: made from the Sega Saturn's disc (platform/saturn.c) */
+    }
     tmpS = tmpString;
     c = pathname;
     while (*c != '\\') {
@@ -414,8 +417,9 @@ int iso_read(void *buffer, int nsec, int fd)
     if ((fd_tab[fd].fp - fd_tab[fd].fi.loc + ((fd_tab[fd].fi.size + 2047) >> 11)) < nsec) {
         return 0;
     }
-    if (PortOriginalRead(fd_tab[fd].fp, nsec, buffer) || PortRegionRead(fd_tab[fd].fp, nsec, buffer)) {
-        fd_tab[fd].fp += nsec; /* Port: a file made in memory (PortOriginalFileInfo, PortRegionFileInfo) */
+    if (PortOriginalRead(fd_tab[fd].fp, nsec, buffer) || PortRegionRead(fd_tab[fd].fp, nsec, buffer) ||
+        PortSaturnRead(fd_tab[fd].fp, nsec, buffer)) {
+        fd_tab[fd].fp += nsec; /* Port: a file made in memory (PortOriginalFileInfo, PortRegionFileInfo, PortSaturn...) */
         return nsec;
     }
     LogicalSectorToLoc(fd_tab[fd].fp, &cdLoc);
