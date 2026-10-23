@@ -1205,13 +1205,16 @@ static void OriginalWipeout(void)
     if (!originalEdit[0] && PortOriginalSource()[0]) {
         SDL_strlcpy(originalEdit, PortOriginalSource(), sizeof(originalEdit));
     }
-    if (tracks > 0) {
+    if (tracks >= 14) {
         ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "%d tracks from %s", tracks, PortOriginalSource());
+    } else if (tracks > 0) {
+        ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "%d of the original's 14 tracks from %s", tracks,
+                           PortOriginalSource());
     } else {
         ImGui::TextDisabled("None chosen.");
     }
-    if (originalMessage[0]) {
-        ImGui::TextWrapped("%s", originalMessage);
+    if (originalMessage[0] && tracks == 0) {
+        ImGui::TextWrapped("%s", originalMessage); /* (why nothing was found) */
     }
     UnpackProgress(UNPACK_ORIGINAL);
 #ifndef __EMSCRIPTEN__
