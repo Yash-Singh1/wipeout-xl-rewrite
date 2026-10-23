@@ -86,10 +86,14 @@ void GpuInterpolating(int on);
    window and another picture (RGBA, rows from the bottom; lowerNew: changed since the last call) in the
    lower half; and an area read back at the framebuffer's scale (RGBA, rows from the bottom). */
 void GpuPresentSplit(int x, int y, int w, int h, const uint8_t *lower, int lowerW, int lowerH, int lowerNew);
+/* The console picture's lines: 240 (NTSC) or 256 (PAL, region.c), across the same 4:3 screen. */
+extern int portPal;
+#define GPU_LINES (portPal ? 256 : 240)
 /* The band of console rows each player's half shows (libgpu.c): below the middle, where the ship is, and a few
-   rows more than half the picture (a little more of the view, with widescreen's sides to match). */
-#define GPU_SPLIT_TOP 76
-#define GPU_SPLIT_ROWS 136
+   rows more than half the picture (a little more of the view, with widescreen's sides to match). PAL's are the
+   same part of its taller picture. */
+#define GPU_SPLIT_TOP (portPal ? 81 : 76)
+#define GPU_SPLIT_ROWS (portPal ? 145 : 136)
 uint8_t *GpuReadArea(int x, int y, int w, int h, int *outW, int *outH);
 /* The depth buffer in that area of video memory starts afresh (each ordering table: libgpu's DrawOTag). */
 void GpuClearDepth(int x, int y, int w, int h);

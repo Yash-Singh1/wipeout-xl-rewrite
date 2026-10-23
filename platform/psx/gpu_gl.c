@@ -412,7 +412,7 @@ int GpuWindowScale(void)
     int width, height;
 
     PortDrawableSize(&width, &height);
-    return SDL_clamp((height + 239) / 240, 1, SDL_min(8, GpuMaxScale()));
+    return SDL_clamp((height + GPU_LINES - 1) / GPU_LINES, 1, SDL_min(8, GpuMaxScale()));
 }
 
 /* The scale wanted: the settings' resolution, or the window's. */
@@ -703,7 +703,7 @@ static void CopyToWide(int x, int y, int w, int h)
     }
 }
 
-/* The margin the window asks for: the console's 240 lines across its height, the width it leaves (rounded up:
+/* The margin the window asks for: the console's 4:3 picture across its height, the width it leaves (rounded up:
    the picture covers the window, the part of a column left over is cut off its sides when shown). */
 static int WantedMargin(void)
 {
@@ -721,9 +721,11 @@ static int WantedMargin(void)
         return 0;
     }
     if (PortLinkSplit()) {
-        /* each half of a split window: the band's rows across half the height */
-        margin = (int)SDL_ceil((GPU_SPLIT_ROWS * 2.0 * width / height - SCREEN_COLUMNS) / 2);
+        /* each half of a split window: the band's rows across half the height (PAL's are as much wider as its
+           lines are more) */
+        margin = (int)SDL_ceil((GPU_SPLIT_ROWS * 2.0 * 240 / GPU_LINES * width / height - SCREEN_COLUMNS) / 2);
     } else {
+        /* (240: the columns a 4:3 picture has for its height's 320 x 3/4, whatever its lines) */
         margin = (int)SDL_ceil((240.0 * width / height - SCREEN_COLUMNS) / 2);
     }
     return SDL_clamp(margin, 0, MAX_WIDE_MARGIN);

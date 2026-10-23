@@ -11,10 +11,12 @@
 #include "psx_io.h"
 #include "spu.h"
 
-#define FIELD_RATE_NUM 60000ull /* 59.94 fields a second = 60000 / 1001 */
-#define FIELD_RATE_DEN 1001ull
+/* The fields a second: 59.94 = 60000 / 1001 (NTSC) or 50 (PAL, region.c's portPal). */
+extern int portPal;
+#define FIELD_RATE_NUM (portPal ? 50ull : 60000ull)
+#define FIELD_RATE_DEN (portPal ? 1ull : 1001ull)
 /* Samples in one video field, rounded up (for deciding whether a wait is shorter than one). */
-#define SAMPLES_PER_FIELD 736
+#define SAMPLES_PER_FIELD (portPal ? 882 : 736)
 
 /* Provided by the platform's video timing (platform/psx/libetc.c): one field passes. */
 void PsxVBlank(void);

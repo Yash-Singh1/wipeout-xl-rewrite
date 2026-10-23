@@ -24,6 +24,7 @@
 #include "../settings.h"
 #include "gte.h"
 #include "psyq.h"
+#include "../region.h"
 
 uint16_t psxVram[VRAM_HEIGHT][VRAM_WIDTH];
 uint16_t psxVramHigh[VRAM_HEIGHT][VRAM_WIDTH];
@@ -531,9 +532,15 @@ int DrawSync(int mode)
     return 0;
 }
 
-/* The display: libetc's VSync calls this when a frame is shown. The GPU scans out 240 lines (NTSC)
+/* The display: libetc's VSync calls this when a frame is shown. The GPU scans out 240 lines (NTSC; 256 PAL)
    from the display start whatever height the environment gives (the menus say 180 and draw down to
    line 230); only a height above 256 is an interlaced picture of twice that. */
+static int ShownLines(int height)
+{
+    int lines = portPal ? 256 : 240;
+
+    return height > 256 ? 2 * lines : lines;
+}
 /* The window keeps its last picture until the area to be shown has been drawn again (PsxHoldPicture):
    the drawing areas of the tables drawn since. */
 #define HOLD_AREAS 4
@@ -648,7 +655,7 @@ void PsxShowDisplay(void)
     }
     if (PsxCanInterpolate() && !(portConfig.fixedStep && PsxInterpolationTest())) {
         if (state.displayEnabled && state.displayW > 0 && state.displayH > 0) {
-            FrameCapShown(state.displayX, state.displayY, state.displayW, state.displayH > 256 ? 480 : 240);
+            FrameCapShown(state.displayX, state.displayY, state.displayW, ShownLines(state.displayH));
         }
         PsxDrawInterpolated();
         return;
@@ -656,12 +663,12 @@ void PsxShowDisplay(void)
     if (drawnFrame.pending && PsxInterpolationOn() && !holdPicture && state.displayEnabled &&
         !(portConfig.fixedStep && PsxInterpolationTest())) {
         if (state.displayW > 0 && state.displayH > 0) {
-            FrameCapShown(state.displayX, state.displayY, state.displayW, state.displayH > 256 ? 480 : 240);
+            FrameCapShown(state.displayX, state.displayY, state.displayW, ShownLines(state.displayH));
         }
         if (PortLinkSplit()) {
             ShowSplit(drawnFrame.left, drawnFrame.top);
         } else {
-            GpuPresent(drawnFrame.left, drawnFrame.top, drawnFrame.width, drawnFrame.height > 256 ? 480 : 240);
+            GpuPresent(drawnFrame.left, drawnFrame.top, drawnFrame.width, ShownLines(drawnFrame.height));
         }
         return;
     }
@@ -676,8 +683,8 @@ void PsxShowDisplay(void)
         holdPicture = 0;
     }
     if (state.displayEnabled && state.displayW > 0 && state.displayH > 0) {
-        FrameCapShown(state.displayX, state.displayY, state.displayW, state.displayH > 256 ? 480 : 240);
-        GpuPresent(state.displayX, state.displayY, state.displayW, state.displayH > 256 ? 480 : 240);
+        FrameCapShown(state.displayX, state.displayY, state.displayW, ShownLines(state.displayH));
+        GpuPresent(state.displayX, state.displayY, state.displayW, ShownLines(state.displayH));
     } else {
         GpuPresent(-1, -1, 0, 0);
     }
@@ -1365,12 +1372,12 @@ static void HudPoint(GpuVertex *v)
 
         v->x = v->x - ox < 160.0f ? ox - sides : ox + 320.0f + sides;
         if (hudFillBand) {
-            v->y = v->y - oy < 120.0f ? oy + GPU_SPLIT_TOP - 1.0f : oy + GPU_SPLIT_TOP + GPU_SPLIT_ROWS + 1.0f;
+            v->y = v->y - oy < GPU_LINES / 2.0f ? oy + GPU_SPLIT_TOP - 1.0f : oy + GPU_SPLIT_TOP + GPU_SPLIT_ROWS + 1.0f;
         }
         return;
     }
     v->x = ox + 160.0f + (v->x - ox - 160.0f) * HUD_SPLIT_SCALE + hudMoveX;
-    v->y = oy + GPU_SPLIT_TOP + GPU_SPLIT_ROWS / 2.0f + (v->y - oy - 120.0f) * HUD_SPLIT_SCALE + hudMoveY;
+    v->y = oy + GPU_SPLIT_TOP + GPU_SPLIT_ROWS / 2.0f + (v->y - oy - GPU_LINES / 2.0f) * HUD_SPLIT_SCALE + hudMoveY;
 }
 
 /* The rectangle a drawing packet covers, in drawing-area coordinates; 0 for packets that draw nothing. */
@@ -1520,7 +1527,7 @@ static void DrawAnchored(u_long *p, int margin, int half)
 
             if (!PacketBounds((const uint32_t *)(node + 1), (int)(*node >> 24), box) ||
                 (box[0] >= -ANCHOR_OFF && box[1] >= -ANCHOR_OFF && box[2] <= 320 + ANCHOR_OFF &&
-                 box[3] <= 240 + ANCHOR_OFF)) {
+                 box[3] <= GPU_LINES + ANCHOR_OFF)) {
                 if (count == capacity) {
                     capacity = capacity ? capacity * 2 : 1024;
                     hud = realloc(hud, (size_t)capacity * sizeof(*hud));
@@ -1542,7 +1549,7 @@ static void DrawAnchored(u_long *p, int margin, int half)
             if (!PacketBounds((const uint32_t *)(hud[last] + 1), (int)(*hud[last] >> 24), box)) {
                 continue;
             }
-            over = box[0] <= 0 && box[1] <= 0 && box[2] >= 320 && box[3] >= 240;
+            over = box[0] <= 0 && box[1] <= 0 && box[2] >= 320 && box[3] >= GPU_LINES;
             if (have && (over || box[0] > group[2] + ANCHOR_GAP || box[2] < group[0] - ANCHOR_GAP ||
                          box[1] > group[3] || box[3] < group[1])) {
                 break;
@@ -1575,8 +1582,8 @@ static void DrawAnchored(u_long *p, int margin, int half)
             /* each corner's element as far from the band's corner as it was from the screen's, at the HUD's size */
             hudActive = HUD_SCALED;
             hudMoveX = (float)side * (160.0f * (1.0f - HUD_SPLIT_SCALE) + (float)margin);
-            if (side && (group[3] <= 120 || group[1] >= 120)) {
-                hudMoveY = (group[3] <= 120 ? -1.0f : 1.0f) * (GPU_SPLIT_ROWS / 2.0f - 120.0f * HUD_SPLIT_SCALE);
+            if (side && (group[3] <= GPU_LINES / 2 || group[1] >= GPU_LINES / 2)) {
+                hudMoveY = (group[3] <= GPU_LINES / 2 ? -1.0f : 1.0f) * (GPU_SPLIT_ROWS / 2.0f - GPU_LINES / 2.0f * HUD_SPLIT_SCALE);
             }
         } else {
             hudActive = HUD_PLAIN;
@@ -1734,13 +1741,13 @@ void PsxDrawInterpolatedAt(float along)
     DrawInterpolated(along);
     if (recordingBetween) {
         /* (read back before it is shown: the window's picture is drawn over it) */
-        FrameCapBetweenShown(upcoming.left, upcoming.top, 320, upcoming.height > 256 ? 480 : 240);
+        FrameCapBetweenShown(upcoming.left, upcoming.top, 320, ShownLines(upcoming.height));
         recordingBetween = 0;
     }
     if (PortLinkSplit()) {
         ShowSplit(upcoming.left, upcoming.top);
     } else {
-        GpuPresentInterpolated(upcoming.left, upcoming.top, upcoming.width, upcoming.height > 256 ? 480 : 240);
+        GpuPresentInterpolated(upcoming.left, upcoming.top, upcoming.width, ShownLines(upcoming.height));
     }
 }
 

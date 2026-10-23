@@ -1,10 +1,11 @@
 /* Video timing: VSync, the vertical-blank callback and the scanline counter
    (root counter 1) the game times its frames with.
 
-   The console shows 59.94 fields a second (NTSC), 262 scanlines each. The
-   game waits for fields with VSync and measures a frame by the scanlines
-   counted since it last cleared root counter 1 (GsClearVcount), stepping
-   its menus and races by that count / 262. The clock here is that scanline
+   The console shows 59.94 fields a second (NTSC), 262 scanlines each, or 50
+   of 312 (PAL: the European release, region.c). The game waits for fields
+   with VSync and measures a frame by the scanlines counted since it last
+   cleared root counter 1 (GsClearVcount), stepping its menus and races by
+   that count / the lines of a field. The clock here is that scanline
    count: VSync moves it to the start of the next field. The game's own work
    between fields takes no scanlines, so every frame measures as on a console
    that keeps up (the retail game's 30 frames a second); in real time the
@@ -21,10 +22,11 @@
 #include "psx_io.h"
 #include "../trace.h"
 #include "../link.h"
+#include "../region.h"
 #include "psyq.h"
 
-#define LINES_PER_FIELD 262
-#define FIELD_SECONDS (1.0 / 59.94)
+#define LINES_PER_FIELD (portPal ? 312 : 262)
+#define FIELD_SECONDS (portPal ? 1.0 / 50 : 1.0 / 59.94)
 
 static uint64_t lines;        /* scanlines since power-on */
 static uint64_t counterBase;  /* lines when root counter 1 was cleared */

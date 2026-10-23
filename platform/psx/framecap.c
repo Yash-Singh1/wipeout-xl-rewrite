@@ -9,6 +9,7 @@
 #include <SDL3/SDL.h>
 
 #include "framecap.h"
+#include "gpu.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #define STBI_WRITE_NO_STDIO
@@ -23,7 +24,6 @@
 #define TAB_SECONDS 10 /* RECORD_WITH_TAB: up to the last ten */
 #define FRAMES 1200    /* (at most: ten seconds of 120 pictures a second, five of 240) */
 #define PICTURE_W 320
-#define PICTURE_H 240
 /* The picture is kept at the framebuffer's scale (the pixels drawn, not the console's: thin lines and seams
    show), read back without waiting for the GPU (gpu.h's GPU_READ_RECORDER) and compressed as a JPEG of this
    quality (above 90: colours not subsampled) by worker threads: 1 to 3 MB a frame at 4K. */
@@ -529,7 +529,7 @@ void PortTagPrims(const void *start, const void *end, const char *what, const ch
 static void TakePicture(FrameCapFrame *f, int x, int y, int w, int h)
 {
     int margin = GpuShownMargin(x, w), scale = SDL_max(GpuScale(), 1);
-    int width = (PICTURE_W + 2 * margin) * scale, height = PICTURE_H * scale;
+    int width = (PICTURE_W + 2 * margin) * scale, height = GPU_LINES * scale; /* (240 lines, or PAL's 256) */
 
     FinishRead(1); /* (the picture before's: back by now) */
     ForgetPicture(f);

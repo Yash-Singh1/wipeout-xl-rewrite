@@ -484,6 +484,7 @@ static void RecorderTab(void)
     // pictureW: the picture's console columns (its pixels are pictureScale times as many each way)
     int pictureScale = hasPicture ? SDL_max(f->pictureScale, 1) : 1;
     int pictureW = hasPicture ? f->pictureW / pictureScale : 320, pictureX = hasPicture ? f->pictureX : 0;
+    int pictureH = hasPicture ? f->pictureH / pictureScale : GPU_LINES; // (PAL's 256 lines)
     // below the picture, the pixel's primitives: at least a few rows and the details (zoomed in, the picture
     // takes the rest)
     float below = SDL_min(240 * ui, room.y * 0.35f), belowZoomed = SDL_min(170 * ui, room.y * 0.3f);
@@ -492,7 +493,7 @@ static void RecorderTab(void)
     if (!beside && pictureRoom > 0) {
         paneH = SDL_clamp(pictureRoom, 100 * ui, SDL_max(100 * ui, room.y - splitter - 60 * ui));
     }
-    float fit = SDL_max(0.5f, SDL_min(paneW / pictureW, paneH / 240.0f));
+    float fit = SDL_max(0.5f, SDL_min(paneW / pictureW, paneH / (float)pictureH));
 
     // zoom first, the frame's description after it: steps of whole and half pixels (smaller than the console's too),
     // or as large as fits
@@ -540,10 +541,10 @@ static void RecorderTab(void)
     }
     // the picture: the console's 320 columns, and with widescreen the sides (from column `pictureX`)
     if (!uploaded || uploadedNumber != f->number || uploadedShown != f->shown || uploadedHad != hasPicture) {
-        static uint8_t black[320 * 240 * 3];
+        static uint8_t black[320 * 256 * 3];
         glBindTexture(GL_TEXTURE_2D, frameTexture);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, hasPicture ? picturePixelsW : 320, hasPicture ? picturePixelsH : 240, 0,
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, hasPicture ? picturePixelsW : 320, hasPicture ? picturePixelsH : GPU_LINES, 0,
                      GL_RGB, GL_UNSIGNED_BYTE, hasPicture ? picture : black);
         LoadMipmapFunctions();
         if (generateMipmap) {
@@ -560,7 +561,7 @@ static void RecorderTab(void)
     // the picture as large as fits or as zoomed (in a pane of its own that scrolls when it is larger), the picked
     // pixel's primitives beside it (in a narrow window below it)
     float zoom = pictureZoom > 0 ? pictureZoom : fit;
-    ImVec2 imageSize(pictureW * zoom, 240 * zoom);
+    ImVec2 imageSize(pictureW * zoom, pictureH * zoom);
     if (!beside && pictureZoom > 0 && pictureRoom <= 0) {
         paneH = SDL_max(paneH, room.y - belowZoomed - splitter); // zoomed in: as tall as it gets, the list smaller
     }
@@ -570,7 +571,7 @@ static void RecorderTab(void)
                       ImVec2(across ? paneW : imageSize.x + (down ? bar : 0), down ? paneH : imageSize.y + (across ? bar : 0)),
                       ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar);
     ImVec2 origin = ImGui::GetCursorScreenPos();
-    PixelImage(ImVec2(pictureW * zoom, 240 * zoom), ImVec2(0, 0), ImVec2(1, 1), zoom < pictureScale);
+    PixelImage(ImVec2(pictureW * zoom, pictureH * zoom), ImVec2(0, 0), ImVec2(1, 1), zoom < pictureScale);
     bool hovered = ImGui::IsItemHovered();
     if (hovered || testHover) {
         ImVec2 m = ImGui::GetMousePos();
@@ -590,14 +591,14 @@ static void RecorderTab(void)
         // the magnifier: the pixels about the pointer, ten times over, the one under it outlined
         const int span = 17;
         const float cell = 10.0f * ui;
-        int left = SDL_clamp(px - span / 2, 0, pictureW - span), top = SDL_clamp(py - span / 2, 0, 240 - span);
+        int left = SDL_clamp(px - span / 2, 0, pictureW - span), top = SDL_clamp(py - span / 2, 0, pictureH - span);
         if (!hovered) {
             ImGui::SetNextWindowPos(ImVec2(origin.x + (px + 2) * zoom, origin.y + (py + 2) * zoom));
         }
         ImGui::BeginTooltip();
         ImVec2 corner = ImGui::GetCursorScreenPos();
-        PixelImage(ImVec2(span * cell, span * cell), ImVec2((float)left / pictureW, top / 240.0f),
-                   ImVec2((float)(left + span) / pictureW, (top + span) / 240.0f), cell < pictureScale);
+        PixelImage(ImVec2(span * cell, span * cell), ImVec2((float)left / pictureW, top / (float)pictureH),
+                   ImVec2((float)(left + span) / pictureW, (top + span) / (float)pictureH), cell < pictureScale);
         ImVec2 a(corner.x + (px - left) * cell, corner.y + (py - top) * cell);
         ImGui::GetWindowDrawList()->AddRect(ImVec2(a.x - 1, a.y - 1), ImVec2(a.x + cell + 1, a.y + cell + 1),
                                             IM_COL32(0, 0, 0, 255), 0.0f, 0, 3.0f);
@@ -613,7 +614,7 @@ static void RecorderTab(void)
         ImGui::EndTooltip();
     }
     ImDrawList *draw = ImGui::GetWindowDrawList();
-    draw->PushClipRect(origin, ImVec2(origin.x + pictureW * zoom, origin.y + 240 * zoom), true);
+    draw->PushClipRect(origin, ImVec2(origin.x + pictureW * zoom, origin.y + pictureH * zoom), true);
     if (pickHit >= 0 && pickHit < hitCount) {
         const FrameCapPrim *p = &f->prims[hits[pickHit].prim];
         int corners = p->kind == FRAMECAP_FILL ? 0 : p->count;
@@ -1219,6 +1220,28 @@ static void XlDisc(void)
     ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "In use: %s",
                        PortRegionEurope() ? "WipEout 2097 (Europe)" : "Wipeout XL (USA)");
     UnpackProgress(UNPACK_XL);
+    // the video standard (region.c): the disc's, or either for both; the game runs to it from its start
+    {
+        const char *const standards[] = {PortRegionEurope() ? "By the disc (PAL)" : "By the disc (NTSC)",
+                                         "NTSC (60 Hz)", "PAL (50 Hz)"};
+        int standard = portSettings.videoStandard;
+        if (ImGui::Combo("Video standard", &standard, standards, IM_ARRAYSIZE(standards))) {
+            portSettings.videoStandard = standard;
+            Changed();
+        }
+        bool wanted = portSettings.videoStandard == VIDEO_PAL ||
+                      (portSettings.videoStandard == VIDEO_BY_DISC && PortRegionEurope());
+        if (wanted != (portPal != 0)) {
+#ifdef PORT_MOBILE
+            ImGui::TextDisabled("From the game's next start.");
+#else
+            const char *disc = portConfig.discGiven ? portConfig.discGiven : portSettings.discPath;
+            if (ImGui::Button("Restart to use it") && !PortRestart(disc)) {
+                SDL_snprintf(discMessage, sizeof(discMessage), "The game could not be started again: %s", SDL_GetError());
+            }
+#endif
+        }
+    }
     if (ImGui::Button("Browse...##disc")) {
         PickerOpen(&discPicker, false, discEdit);
     }
@@ -1582,15 +1605,15 @@ static void Resolution(void)
     const char *items[17];
     int count = GpuMaxScale(), choice = SDL_min(portSettings.renderScale, count), i, w = 0, h = 0, columns = 320;
 
-    // the console's 240 lines, and its 320 columns or, with widescreen, as many as the window's shape gives
+    // the console's 240 lines (PAL 256), and its 320 columns or, with widescreen, as many as the window's shape gives
     PortDrawableSize(&w, &h);
     if (portSettings.widescreen && h > 0) {
         columns = SDL_clamp((int)SDL_ceil(240.0 * w / h), 320, 320 + 2 * 400);
     }
-    SDL_snprintf(auto_, sizeof(auto_), "Auto (%dx%d)", columns * GpuWindowScale(), 240 * GpuWindowScale());
+    SDL_snprintf(auto_, sizeof(auto_), "Auto (%dx%d)", columns * GpuWindowScale(), GPU_LINES * GpuWindowScale());
     items[0] = auto_;
     for (i = 1; i <= count && i <= 16; i++) {
-        SDL_snprintf(labels[i - 1], sizeof(labels[i - 1]), "%dx%d%s", columns * i, 240 * i,
+        SDL_snprintf(labels[i - 1], sizeof(labels[i - 1]), "%dx%d%s", columns * i, GPU_LINES * i,
                      i == 1 ? " (PS1 original resolution)" : "");
         items[i] = labels[i - 1];
     }
@@ -1733,7 +1756,8 @@ static void Console(void)
             }
             ImGui::TextDisabled("Off: far polygons can be drawn over nearer ones, as on the console.");
             ImGui::Separator();
-            static const char *const rates[] = {"Uncapped", "Display refresh (VSync)", "Capped", "PS1 original (30 fps)"};
+            const char *const rates[] = {"Uncapped", "Display refresh (VSync)", "Capped",
+                                         portPal ? "PS1 original (25 fps)" : "PS1 original (30 fps)"};
             int rate = portSettings.frameRate;
             if (ImGui::Combo("Frame rate", &rate, rates, IM_ARRAYSIZE(rates))) {
                 portSettings.frameRate = rate;
