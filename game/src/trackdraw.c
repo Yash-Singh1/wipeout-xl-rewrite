@@ -46,6 +46,18 @@ static void SetQuadTile(POLY_FT4 *poly, Tile *tile)
     poly->v3 = tile->v3;
 }
 
+/* Port: frame interpolation (gte.h): a point of the track is known by where it is in the world, so that a point two
+   faces share (a corner, a point halfway along an edge) has the one key whichever face projects it and at whichever
+   detail, and moves alike in both between frames (each face's own keys moved them apart where one face changed its
+   detail: a crack the background showed through). The game's halving of camera-relative coordinates gives a point's
+   world position exactly (the camera's offset is whole), so the key is the same from frame to frame too. */
+static int gridCamera[3]; /* the camera's offset of the grids being projected */
+
+static uint64_t WorldKey(int x, int y, int z)
+{
+    return GteKeyMix(GteKeyMix(GteKeyMix(0x5452414B, (uint64_t)(int64_t)x), (uint64_t)(int64_t)y), (uint64_t)(int64_t)z);
+}
+
 /* Loads corner `vertex` of the track, relative to the camera, into the GTE vertex register pair that starts at
    `reg` (xy in `reg`, z in `reg + 1`).  Returns 0, loading nothing, when a coordinate does not fit in 16 bits. */
 static int LoadCorner(VECTOR *vertex, int reg, int cameraX, int cameraY, int cameraZ)
@@ -59,7 +71,7 @@ static int LoadCorner(VECTOR *vertex, int reg, int cameraX, int cameraY, int cam
     }
     GteWriteData(reg, (x & 0xFFFF) | (int)((u_int)y << 16));
     GteWriteData(reg + 1, z);
-    GteKeyNext(reg / 2, (uint64_t)(uintptr_t)vertex); /* Port: frame interpolation (gte.h): the track vertex */
+    GteKeyNext(reg / 2, WorldKey(vertex->vx, vertex->vy, vertex->vz)); /* Port: frame interpolation */
     return 1;
 }
 
@@ -149,23 +161,13 @@ typedef struct GridPoint {
     uint32_t handle; /* Port: the precise projection (gte.h) */
 } GridPoint;
 
-/* Port: frame interpolation (gte.h): a grid point is known by its face (or cell) and its place in the grid. */
-static uint64_t         gridKey;
-static const GridPoint *gridBase;
-
-static void GridKeys(uint64_t key, const GridPoint *base)
-{
-    gridKey = key;
-    gridBase = base;
-}
-
 /* Projects a grid point through the GTE: fills in its screen position, depth and the flag bits that matter
    (the upper half of the GTE flag word, masked with 0x466).  Returns whether the point is rejected. */
 static int ProjectGridPoint(GridPoint *point)
 {
     GteWriteData(0, (point->x & 0xFFFF) | (int)((u_int)(int)point->y << 16));
     GteWriteData(1, point->z);
-    GteKeyNext(0, GteKeyMix(gridKey, (uint64_t)(point - gridBase))); /* Port: frame interpolation */
+    GteKeyNext(0, WorldKey(point->x - gridCamera[0], point->y - gridCamera[1], point->z - gridCamera[2])); /* Port */
     GteExecute(GTE_RTPS);
     StoreScreenXY(&point->sx, &point->sy, GteReadData(14));
     point->handle = GtePreciseHandle(14);
@@ -219,6 +221,9 @@ void AsmTrackMed(TrackSection *firstSection, Skeleton *camera, short medCount)
     cameraX = camera->relative.t[0];
     cameraY = camera->relative.t[1];
     cameraZ = camera->relative.t[2];
+    gridCamera[0] = cameraX; /* Port: frame interpolation (WorldKey) */
+    gridCamera[1] = cameraY;
+    gridCamera[2] = cameraZ;
     ordering = OT[CurrentScreen];
     poly = TrackMedPolys[CurrentScreen] + medTileCount;
     vertices = track->vertices;
@@ -253,7 +258,6 @@ void AsmTrackMed(TrackSection *firstSection, Skeleton *camera, short medCount)
             grid[3].z = (short)((cz[1] + cz[2]) >> 1); grid[5].z = (short)((cz[0] + cz[3]) >> 1);
             grid[4].z = (short)((((cz[1] + cz[2]) >> 1) + ((cz[0] + cz[3]) >> 1)) >> 1);
 
-            GridKeys(GteKeyMix((uintptr_t)face, 2), grid); /* Port: frame interpolation */
             for (i = 0; i < 9; i++) {
                 int rejected = ProjectGridPoint(&grid[i]);
 
@@ -357,19 +361,11 @@ static void DrawPartialCell(GridPoint *cell[4], Tile *tile, Face *face, u_long *
     sub[3].x = (cell[0]->x + cell[2]->x) >> 1;  sub[3].y = (cell[0]->y + cell[2]->y) >> 1;  sub[3].z = (cell[0]->z + cell[2]->z) >> 1;
     sub[5].x = (cell[1]->x + cell[3]->x) >> 1;  sub[5].y = (cell[1]->y + cell[3]->y) >> 1;  sub[5].z = (cell[1]->z + cell[3]->z) >> 1;
     sub[4].x = (sub[3].x + sub[5].x) >> 1;      sub[4].y = (sub[3].y + sub[5].y) >> 1;      sub[4].z = (sub[3].z + sub[5].z) >> 1;
-    {
-        /* Port: frame interpolation: the cell's points under its first corner's place in the face's grid */
-        uint64_t         faceKey = gridKey;
-        const GridPoint *faceBase = gridBase;
-
-        GridKeys(GteKeyMix(faceKey, 1000 + (uint64_t)(cell[0] - faceBase)), sub);
-        ProjectGridPoint(&sub[1]);
-        ProjectGridPoint(&sub[3]);
-        ProjectGridPoint(&sub[4]);
-        ProjectGridPoint(&sub[5]);
-        ProjectGridPoint(&sub[7]);
-        GridKeys(faceKey, faceBase);
-    }
+    ProjectGridPoint(&sub[1]);
+    ProjectGridPoint(&sub[3]);
+    ProjectGridPoint(&sub[4]);
+    ProjectGridPoint(&sub[5]);
+    ProjectGridPoint(&sub[7]);
 
     uv[0] = (u_short)(u[0] | v[0] << 8);
     uv[2] = (u_short)(u[1] | v[1] << 8);
@@ -438,6 +434,9 @@ void AsmTrackHi(TrackSection *firstSection, Skeleton *camera, AutoMeshData *auto
     cameraX = camera->relative.t[0];
     cameraY = camera->relative.t[1];
     cameraZ = camera->relative.t[2];
+    gridCamera[0] = cameraX; /* Port: frame interpolation (WorldKey) */
+    gridCamera[1] = cameraY;
+    gridCamera[2] = cameraZ;
     ordering = OT[CurrentScreen];
     count = hiTileCount;
     poly = TrackHiPolys[CurrentScreen] + count;
@@ -463,7 +462,6 @@ void AsmTrackHi(TrackSection *firstSection, Skeleton *camera, AutoMeshData *auto
             SubdivideHigh(x, gx);
             SubdivideHigh(y, gy);
             SubdivideHigh(z, gz);
-            GridKeys(GteKeyMix((uintptr_t)face, 4), grid); /* Port: frame interpolation */
             for (i = 0; i < HI_POINTS; i++) {
                 int rejected;
 
@@ -538,7 +536,8 @@ static void DrawNearFace(Face *face, const PortView *view, u_short tpage, u_shor
         int aIn = a[2] >= PORT_FAR_NEAR, bIn = b[2] >= PORT_FAR_NEAR;
 
         if (aIn) {
-            pointKey[count] = (uint64_t)(uintptr_t)&track->vertices[face->vertex[outline[i]]];
+            pointKey[count] = WorldKey(track->vertices[face->vertex[outline[i]]].vx, track->vertices[face->vertex[outline[i]]].vy,
+                                       track->vertices[face->vertex[outline[i]]].vz);
             memcpy(clipped[count++], a, sizeof(clipped[0]));
         }
         if (aIn != bIn) {
@@ -622,7 +621,7 @@ void PortTrackFar(TrackSection *section, const PortView *view)
         for (k = 0; k < 4; k++) {
             VECTOR *vertex = &track->vertices[face->vertex[k]];
 
-            GteKeyNext(0, (uint64_t)(uintptr_t)vertex); /* frame interpolation: the game's key of the vertex */
+            GteKeyNext(0, WorldKey(vertex->vx, vertex->vy, vertex->vz)); /* frame interpolation: as the game's (WorldKey) */
             PortFarProject(view, vertex->vx, vertex->vy, vertex->vz, &corner[k]);
             if (corner[k].rejected) {
                 break;
