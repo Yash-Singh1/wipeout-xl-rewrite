@@ -49,6 +49,18 @@ static const HiScoreTimes defaultHiScoreLapTimes = {{
         {0, 0, 0x0B04, 0x0A14}
 }};
 
+/* The European program's lap records, in 50 Hz frames: not a plain rescaling of the NTSC ones. */
+static const HiScoreTimes defaultHiScoreLapTimesPal = {{
+        {0x08FC, 0x07D0, 0x06D6, 0x0672},
+        {0x0992, 0x0866, 0x07D0, 0x073A},
+        {0x0E10, 0x0D48, 0x0BEA, 0x09C4},
+        {0x0DAC, 0x0BEA, 0x0AF0, 0x0960},
+        {0x0E10, 0x0CE4, 0x0B86, 0x0AF0},
+        {0x0CE4, 0x0BB8, 0x0AF0, 0x0A28},
+        {0, 0, 0x09C4, 0x08FC},
+        {0, 0, 0x09F6, 0x092E}
+}};
+
 void ScoreTabInit(ConfigData *config)
 {
     HiScoreNames names;
@@ -60,7 +72,7 @@ void ScoreTabInit(ConfigData *config)
 
     names = defaultHiScoreNames;
     raceTimes = defaultHiScoreRaceTimes;
-    lapTimes = defaultHiScoreLapTimes;
+    lapTimes = portPal ? defaultHiScoreLapTimesPal : defaultHiScoreLapTimes;
     if (config->initMagic != 0x25345327) {
         for (track = 0; track < 16; track++) {
             trackSlot = track;
@@ -175,7 +187,7 @@ void DisplayScoreTab(ConfigData *config, HiScoreData *score)
     }
     if (score->displayFlag != 0) {
         CentreText("ENTER PLAYER NAME", 0x28, 0x28, 8, 0);
-        DoButton(0x85, 0xD2, 1, msgSelect);
+        DoButton(0x85, RESULT_BUTTON_Y, 1, msgSelect);
     } else {
         CentreText("PLAYER TRACK RECORDS", 0x28, 0x28, 8, 0);
     }
@@ -305,7 +317,7 @@ void EnterHighScore(ConfigData *gameData, HiScoreData *hiScoreData)
     hiScoreData->toggleDisplay++;
     if (!hiScoreData->userEntry) {
         if (hiScoreData->count > 2) {
-            DoButton(127, 210, 1, "CONTINUE");
+            DoButton(127, RESULT_BUTTON_Y, 1, "CONTINUE");
             if (GetMenuKey(5)) {
                 hiScoreData->charX = 40;
                 hiScoreData->highScore = 0;

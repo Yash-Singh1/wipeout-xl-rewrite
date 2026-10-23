@@ -304,9 +304,9 @@ void buildFixedPad(struct PadPacket *pad)
 void SetBrake(ShipData *ship, ControlInput *control)
 {
     if (control->buttons & 0x800) {
-        ship->r_brake_rot += 0x20;
+        ship->r_brake_rot += PAL_SPEED(0x20);
     } else if (ship->r_brake_rot > 0) {
-        ship->r_brake_rot -= 0x20;
+        ship->r_brake_rot -= PAL_SPEED(0x20);
     }
     if (ship->r_brake_rot < 0) {
         ship->r_brake_rot = 0;
@@ -315,9 +315,9 @@ void SetBrake(ShipData *ship, ControlInput *control)
         ship->r_brake_rot = 0x100;
     }
     if (control->buttons & 0x400) {
-        ship->l_brake_rot += 0x20;
+        ship->l_brake_rot += PAL_SPEED(0x20);
     } else if (ship->l_brake_rot > 0) {
-        ship->l_brake_rot -= 0x20;
+        ship->l_brake_rot -= PAL_SPEED(0x20);
     }
     if (ship->l_brake_rot < 0) {
         ship->l_brake_rot = 0;

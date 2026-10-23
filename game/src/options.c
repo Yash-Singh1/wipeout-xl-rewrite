@@ -477,7 +477,7 @@ void DeSelectScreen(struct SelectBox *sel)
     sel->box[CurrentScreen].r0 = 6;
     sel->box[CurrentScreen].g0 = 6;
     sel->box[CurrentScreen].b0 = 6;
-    setXY4(&sel->box[CurrentScreen], 0, 0, 320, 0, 0, 240, 320, 240);
+    setXY4(&sel->box[CurrentScreen], 0, 0, 320, 0, 0, SCREEN_HEIGHT, 320, SCREEN_HEIGHT);
     SetSemiTrans(&sel->box[CurrentScreen], 1);
     SetDrawMode(&sel->trans[CurrentScreen], 1, 1, GetTPage(0, 0, 0, 0), 0);
     AddPrim(OT[CurrentScreen], &sel->box[CurrentScreen]);

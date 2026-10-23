@@ -9,6 +9,8 @@ char cardPattern1[8] = "bu10:*";
 CardDevice cardPrefix0 = { "bu00:" };
 CardDevice cardPrefix1 = { "bu10:" };
 Label6 labelGame[1] = { { { 87, 79, 88, 76, 32, 0 } } };
+/* Port: the European program's labelGame ("WO2097 "), chosen by portEuropeDisc */
+Label8 labelGameEurope[1] = { { { 87, 79, 50, 48, 57, 55, 32, 0 } } };
 Label5 labelUsed[1] = { { { 85, 83, 69, 68, 0 } } };
 unsigned char cheatWeapon = 0;
 unsigned char cheatDamage = 0;

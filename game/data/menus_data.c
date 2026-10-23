@@ -53,6 +53,8 @@ u8 msgAsOtherPlayer[] = "AS OTHER PLAYER";
 u8 msgHasStarted[] = "HAS STARTED";
 u8 msgWaitingForOtherPlayer[28] = "WAITING FOR OTHER PLAYER";
 char textureSequenceName[36] = "c:\\wipeout2\\textures\\menutims.cmp";
+/* Port: the European program's textureSequenceName, chosen by portEuropeDisc */
+char textureSequenceNameEurope[36] = "c:\\wipeout2\\textures\\menutimp.cmp";
 char msgNoCard[12] = "NO CARD \n";
 char msgEnterFileName[] = "ENTER FILE NAME";
 u8 msgErrorOpenRead[32] = "Error opening file for read \n";
@@ -66,6 +68,8 @@ LabelList loadModeLabels = { { "LOAD", "SAVE", "DELETE" } };
 u8 msgCheckingMemory[] = "CHECKING MEMORY";
 u8 msgFileExists[] = "FILE EXISTS";
 u8 msgNotAWipeoutXl[20] = "NOT A WIPEOUT XL";
+/* Port: the European program's msgNotAWipeoutXl, chosen by portEuropeDisc */
+u8 msgNotAWipeout2097[20] = "NOT A WIPEOUT 2097";
 u8 msgSaveGame[12] = "SAVE GAME";
 u8 msgNotFormatted[16] = "NOT FORMATTED";
 u8 msgErrorFormatting[20] = "ERROR FORMATTING";
