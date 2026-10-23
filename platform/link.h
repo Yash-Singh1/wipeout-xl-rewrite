@@ -15,7 +15,8 @@ enum {
     LINK_SLAVE_BOOTING,  /* started, not yet at the link screen */
     LINK_SLAVE_WAITING,  /* at the link screen, waiting for the master's go */
     LINK_SLAVE_LINKED,   /* linked: in the menus or racing */
-    LINK_SLAVE_OTHER_BUILD /* refused: not the program the master runs (it was replaced since the master started) */
+    LINK_SLAVE_OTHER_BUILD, /* refused: not the program the master runs (it was replaced since the master started) */
+    LINK_SLAVE_HERE_NONE   /* none can run here: a web page or a phone's app starts no second program */
 };
 
 /* The largest picture the slave hands over: the lower half of a window up to 3840 pixels across. */

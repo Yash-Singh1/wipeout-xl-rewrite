@@ -8,7 +8,7 @@
 /* platform/link.h */
 enum { PORT_LINK_NONE, PORT_LINK_MASTER, PORT_LINK_SLAVE };
 enum { PORT_LINK_SLAVE_NONE, PORT_LINK_SLAVE_BOOTING, PORT_LINK_SLAVE_WAITING, PORT_LINK_SLAVE_LINKED,
-       PORT_LINK_SLAVE_OTHER_BUILD };
+       PORT_LINK_SLAVE_OTHER_BUILD, PORT_LINK_SLAVE_HERE_NONE };
 int PortLinkRole(void);
 int PortLinkTransfer(const unsigned char *send, unsigned char *recv, int count);
 void PortLinkSetSlaveState(int state);

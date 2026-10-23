@@ -295,6 +295,9 @@ void PortLinkShutdown(void)
 
 int PortLinkSlaveState(void)
 {
+#if defined(__EMSCRIPTEN__) || defined(PORT_MOBILE)
+    return LINK_SLAVE_HERE_NONE;
+#endif
     if (!shared) {
         return LINK_SLAVE_NONE;
     }

@@ -331,7 +331,9 @@ int PortLobby(ConfigData *gameData, MenuSelection *selection)
     }
 
     /* the strip: what the lobby waits for */
-    if (state == PORT_LINK_SLAVE_OTHER_BUILD) {
+    if (state == PORT_LINK_SLAVE_HERE_NONE) {
+        PrintCX((u_char *)"TWO PLAYERS NEED THE GAME ON A COMPUTER", 160, STRIP_Y);
+    } else if (state == PORT_LINK_SLAVE_OTHER_BUILD) {
         if (blink % 60 < 45) {
             PrintCX((u_char *)"THE GAME WAS UPDATED: RESTART IT FOR TWO PLAYERS", 160, STRIP_Y);
         }
