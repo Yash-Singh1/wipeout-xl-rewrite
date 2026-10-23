@@ -39,7 +39,11 @@ typedef struct PortSettings {
     int skipLogos;        /* no logo screens at start-up (Sony, the copyright, Dolby, Red Bull) */
     int recordRate;       /* the frame recorder's pictures a second, up to: 30 the game's frames, more the ones between
                              (psx/framecap.h; 0: 60) */
+    int videoStandard;    /* VIDEO_BY_DISC, VIDEO_NTSC or VIDEO_PAL (region.c); takes effect at the next start */
 } PortSettings;
+
+/* PortSettings.videoStandard: the disc's (Wipeout XL NTSC, WipEout 2097 PAL), or either for both */
+enum { VIDEO_BY_DISC, VIDEO_NTSC, VIDEO_PAL };
 
 /* PortSettings.recordFrames: what the frame recorder keeps, and what Tab does */
 enum {

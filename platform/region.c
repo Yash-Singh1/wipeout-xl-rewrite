@@ -11,6 +11,7 @@
 
 #include "original.h"
 #include "platform.h"
+#include "settings.h"
 #include "region.h"
 #include "psx/disc.h"
 #include "psx/psx_io.h"
@@ -35,6 +36,18 @@ static const struct {
 
 static uint8_t *made[PIECES];
 static size_t madeSize[PIECES];
+
+int portPal;
+int portEuropeDisc;
+
+/* The two switches the game's version.h reads, fixed for the run: the disc's region, and the video standard (the
+   settings; by default the disc's). */
+void PortRegionStart(void)
+{
+    portEuropeDisc = PortRegionEurope();
+    portPal = portSettings.videoStandard == VIDEO_PAL ||
+              (portSettings.videoStandard == VIDEO_BY_DISC && portEuropeDisc);
+}
 
 int PortRegionEurope(void)
 {

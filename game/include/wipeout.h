@@ -2,6 +2,7 @@
 #define WIPEOUT_H
 
 #include "psyq.h"
+#include "version.h"
 
 #ifndef BASIC_TYPES_DEFINED
 #define BASIC_TYPES_DEFINED

@@ -9,6 +9,7 @@
 #include "platform.h"
 #include "psx/gte.h"
 #include "psx/psx_io.h"
+#include "region.h"
 #include "debug_ui.h"
 #include "discimage.h"
 #include "link.h"
@@ -396,6 +397,7 @@ int main(int argc, char **argv)
         }
         atexit(PsxIoShutdown);
     }
+    PortRegionStart(); /* the disc's region and the video standard (version.h) */
     PortTraceInit();
     if (recordReplay || (portSettings.recordReplays && !portConfig.hidden)) {
         /* a replay of this session: <data folder>/replays/<date and time>/ */

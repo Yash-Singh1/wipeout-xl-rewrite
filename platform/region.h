@@ -8,6 +8,9 @@ extern "C" {
 #endif
 
 int PortRegionEurope(void); /* the disc is WipEout 2097 (Europe, SLES-00327) */
+/* Decides portPal and portEuropeDisc (game/include/version.h), once the disc is open and before the game starts. */
+void PortRegionStart(void);
+extern int portPal, portEuropeDisc;
 
 #ifdef __cplusplus
 }

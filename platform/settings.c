@@ -50,6 +50,8 @@ static void Set(const char *key, const char *value)
         portSettings.recordRate = SDL_clamp(number, 30, 240);
     } else if (!strcmp(key, "skip_logos")) {
         portSettings.skipLogos = number != 0;
+    } else if (!strcmp(key, "video_standard")) {
+        portSettings.videoStandard = SDL_clamp(number, VIDEO_BY_DISC, VIDEO_PAL);
     } else if (!strcmp(key, "record_frames")) {
         portSettings.recordFrames = SDL_clamp(number, RECORD_OFF, RECORD_WITH_TAB);
     } else if (!strcmp(key, "record_replays")) {
@@ -153,6 +155,11 @@ void PortSettingsLoad(void)
     if ((value = SDL_getenv("WIPEOUT_SKIP_LOGOS"))) {
         portSettings.skipLogos = SDL_atoi(value) != 0;
     }
+    if ((value = SDL_getenv("WIPEOUT_VIDEO_STANDARD"))) {
+        /* "ntsc", "pal", anything else the disc's */
+        portSettings.videoStandard = !SDL_strcasecmp(value, "ntsc") ? VIDEO_NTSC
+                                     : !SDL_strcasecmp(value, "pal") ? VIDEO_PAL : VIDEO_BY_DISC;
+    }
     if ((value = SDL_getenv("WIPEOUT_DEPTH_BUFFER"))) {
         portSettings.consoleDepth = SDL_atoi(value) == 0;
     }
@@ -204,7 +211,8 @@ int PortSettingsSave(void)
             "widescreen = %d\nframe_rate = %d\nframe_cap = %d\nskip_intro = %d\nrecord_frames = %d\nrecord_replays = %d\nsave_dir = %s\ndisc = %s\noriginal = %s\n"
             "render_scale = %d\nhd_textures = %d\nhd_pack = %s\nwipeout64 = %s\n"
             "custom_music = %d\nmusic_shuffle = %d\nmusic_folder = %s\nsave_slot = %s\nautosave = %d\n"
-            "touch_controls = %d\ntouch_size = %d\ntouch_opacity = %d\ndepth_buffer = %d\nskip_logos = %d\nrecord_rate = %d\n",
+            "touch_controls = %d\ntouch_size = %d\ntouch_opacity = %d\ndepth_buffer = %d\nskip_logos = %d\nrecord_rate = %d\n"
+            "video_standard = %d\n",
             portSettings.showFps, portSettings.farView, portSettings.fade, portSettings.fadeNear, portSettings.fadeFar,
             portSettings.widescreen, portSettings.frameRate,
             portSettings.frameCap, portSettings.skipIntro,
@@ -215,7 +223,7 @@ int PortSettingsSave(void)
             portSettings.musicShuffle, portSettings.musicFolder, portSettings.saveSlot, !portSettings.noAutoSave,
             portSettings.touchControls, portSettings.touchSize ? portSettings.touchSize : 100,
             portSettings.touchOpacity ? portSettings.touchOpacity : 60, !portSettings.consoleDepth, portSettings.skipLogos,
-            portSettings.recordRate ? portSettings.recordRate : 60);
+            portSettings.recordRate ? portSettings.recordRate : 60, portSettings.videoStandard);
     fclose(file);
     return 1;
 }
