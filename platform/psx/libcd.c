@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "internal.h"
+#include "../platform.h"
 
 typedef struct { uint8_t minute, second, sector, track; } Loc;
 
@@ -256,6 +257,9 @@ int CdReadSync(int mode, uint8_t *result)
         uint64_t eta = 0;
         bool aborted = false;
 
+        /* the fields the clock says have passed while the game reads (the console's vertical blanks went on
+           during a read, and the loading screen is drawn in them: progress.c) */
+        PsxPassFields();
         PsxIoService();
 
         PsxLock();

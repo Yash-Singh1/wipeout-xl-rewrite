@@ -183,18 +183,25 @@ void PsxVBlank(void)
 
 void PsxPassFields(void)
 {
-    uint64_t now;
+    static int passing; /* (a field's vblank callback may read the disc itself) */
+    uint64_t now, due;
 
-    if (portConfig.fixedStep) {
+    if (portConfig.fixedStep || passing) {
         return;
     }
     if (!startTicks) {
         startTicks = SDL_GetTicksNS();
     }
     now = SDL_GetTicksNS();
+    due = startTicks + (uint64_t)((fields + 1 - paceField) * FIELD_SECONDS * 1e9);
+    if (due + 250000000ull < now) {
+        startTicks += now - due; /* far behind (the host stalled): one field, not a rush to catch up, as Pace */
+    }
+    passing = 1;
     while (startTicks + (uint64_t)((fields + 1 - paceField) * FIELD_SECONDS * 1e9) <= now) {
         Field();
     }
+    passing = 0;
 }
 
 /* VSync(0) waits for the next field, VSync(n) for n fields; VSync(1) returns

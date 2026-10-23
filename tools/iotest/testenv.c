@@ -29,6 +29,11 @@ void PsxVBlank(void)
     PsxIoField(fields);
 }
 
+/* ... and the fields due by the clock while the game reads the disc: none (the tests' time is the fields'). */
+void PsxPassFields(void)
+{
+}
+
 /* The platform's two-player link and window, as without them: no link, the window in focus. */
 int PortLinkRole(void)
 {
