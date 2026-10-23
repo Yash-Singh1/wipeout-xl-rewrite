@@ -133,9 +133,10 @@ static void Field(void)
             const char *value = SDL_getenv("WIPEOUT_FRAMECAP_FREEZE_AT");
             freezeAt = value ? SDL_atoi(value) : 0;
         }
-        if (freezeAt > 0 && PortShownFrames() == freezeAt) {
+        if (freezeAt > 0 && PortShownFrames() >= freezeAt) {
             FrameCapToggleFreeze();
             DebugUiShowRecorder();
+            freezeAt = 0; /* (once) */
         }
     }
     {

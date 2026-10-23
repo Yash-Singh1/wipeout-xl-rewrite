@@ -494,17 +494,10 @@ static void RecorderTab(void)
     }
     float fit = SDL_max(0.5f, SDL_min(paneW / pictureW, paneH / 240.0f));
 
-    if (f->between > 0.0f) {
-        ImGui::Text("between game frames %llu and %llu (%.0f%%), %d primitives   (, and . step)",
-                    (unsigned long long)f->gameFrame - 1, (unsigned long long)f->gameFrame, f->between * 100.0f, f->count);
-    } else {
-        ImGui::Text("game frame %llu, %d primitives, %s   (, and . step)", (unsigned long long)f->gameFrame, f->count,
-                    f->shown ? "shown" : "never shown");
-    }
-    // zoom: steps of whole and half pixels (smaller than the console's too), or as large as fits
+    // zoom first, the frame's description after it: steps of whole and half pixels (smaller than the console's too),
+    // or as large as fits
     static const float levels[] = {0.5f, 0.75f, 1, 1.5f, 2, 2.5f, 3, 4, 5, 6, 8, 10, 12, 16, 20, 24, 32};
     float current = pictureZoom > 0 ? pictureZoom : fit;
-    ImGui::SameLine();
     if (ImGui::Button(" - ##zoomout")) {
         int i = IM_ARRAYSIZE(levels) - 1;
         while (i > 0 && levels[i] >= current * 0.99f) {
@@ -525,7 +518,18 @@ static void RecorderTab(void)
         pictureZoom = 0;
     }
     ImGui::SameLine();
+    float labelAt = ImGui::GetCursorPosX();
     ImGui::TextDisabled("%.1fx%s", pictureZoom > 0 ? pictureZoom : fit, pictureZoom > 0 ? "" : " (fits)");
+    // the frame's description after the widest the zoom's label gets (nothing on the line moves as either changes)
+    ImGui::SameLine(labelAt + ImGui::CalcTextSize("32.0x (fits)").x + ImGui::GetStyle().ItemSpacing.x * 2);
+    if (f->between > 0.0f) {
+        ImGui::Text("between game frames %llu and %llu (%.0f%%), %d primitives   (, and . step)",
+                    (unsigned long long)f->gameFrame - 1, (unsigned long long)f->gameFrame, f->between * 100.0f, f->count);
+    } else {
+        ImGui::Text("game frame %llu, %d primitives, %s   (, and . step)", (unsigned long long)f->gameFrame, f->count,
+                    f->shown ? "shown" : "never shown");
+    }
+
 
     // the picture; a click picks the pixel
     if (!frameTexture) {
