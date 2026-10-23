@@ -201,7 +201,7 @@ port_platform_target(wipeoutxl)
 
 # ---- macOS: Wipeout XL.app beside the program, after each build ----
 # The program with the Mac version's icon, and the libraries it uses from Homebrew inside (it runs on a Mac
-# without them). build/wipeoutxl stays as it is (the tests run it).
+# without them). The program stays beside it as well (the tests run it).
 if(APPLE AND NOT IOS)
     set(MAC_APP "${CMAKE_BINARY_DIR}/Wipeout XL.app")
     add_custom_command(OUTPUT "${MAC_APP}/Contents/Info.plist"
@@ -281,10 +281,10 @@ if(EMSCRIPTEN)
 endif()
 
 # ---- Link check: which symbols does the game still need from the platform and the data? ----
-# tools/linkstub.py writes build/linkstub.c: weak definitions for every symbol that the game
+# tools/linkstub.py writes linkstub.c in the build folder: weak definitions for every symbol that the game
 # (plus whatever platform and data sources exist) leaves undefined, and prints the list.  The
 # `linkcheck` executable links with those stubs, so the toolchain's link step itself proves what
-# is left.  Build it with:  cmake --build build --target linkcheck
+# is left.  Build it with:  cmake --build build/mac --target linkcheck
 add_custom_target(linkstub
     COMMAND ${CMAKE_COMMAND} -E env python3 ${CMAKE_SOURCE_DIR}/tools/linkstub.py
             --build ${CMAKE_BINARY_DIR} --source ${CMAKE_SOURCE_DIR}

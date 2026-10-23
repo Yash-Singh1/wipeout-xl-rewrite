@@ -7,7 +7,7 @@
 # a race) and leaves OUTPUT_DIR/DEVICE-SCREEN.png: title, main menu, controller screen, pause menu,
 # the results ("bad luck", then replay or menu). Keys and the virtual gamepad go through WIPEOUT_KEYS
 # (platform/controls.c), so they take the path real input does; the destroyed ship of the results
-# comes from a scripted write (platform/trace.c). Environment: WIPEOUT_BIN (default build/wipeoutxl),
+# comes from a scripted write (platform/trace.c). Environment: WIPEOUT_BIN (default build/mac/wipeoutxl, build/linux/ on Linux),
 # WIPEOUT_XL_DISC (the PS1 disc .cue).
 # The timings are video fields at a 8x disc speed; they hold for the retail disc.
 set -eu
@@ -17,7 +17,8 @@ root=$(cd "$here/../.." && pwd)
 out=${1:?output directory}
 shift
 devices=${*:-keyboard xbox switch ps5 generic}
-bin=${WIPEOUT_BIN:-$root/build/wipeoutxl}
+case $(uname -s) in Darwin) native=mac ;; *) native=linux ;; esac
+bin=${WIPEOUT_BIN:-$root/build/$native/wipeoutxl}
 : "${WIPEOUT_XL_DISC:?set WIPEOUT_XL_DISC to the PS1 disc image (.cue)}"
 mkdir -p "$out"
 work=$(mktemp -d "${TMPDIR:-/tmp}/controls-shots.XXXXXX")

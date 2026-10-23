@@ -6,7 +6,7 @@
 # The port runs hidden, muted and in fixed-step time, with the recording's
 # pad script, scripted writes, loading-screen lengths and scanline-counter reads, and writes its trace to OUTPUT_DIR
 # (default /tmp/wipeoutxl-lockstep/NAME). Environment: WIPEOUT_BIN (the
-# executable, default build/wipeoutxl), WIPEOUT_XL_DISC (the PS1 disc .cue),
+# executable, default build/mac/wipeoutxl, build/linux/ on Linux), WIPEOUT_XL_DISC (the PS1 disc .cue),
 # LOCKSTEP_FRAMES (frames to compare).
 set -eu
 
@@ -15,7 +15,8 @@ root=$(cd "$here/../.." && pwd)
 recording=$(cd "$1" && pwd)
 name=$(basename "$recording")
 out=${2:-/tmp/wipeoutxl-lockstep/$name}
-bin=${WIPEOUT_BIN:-$root/build/wipeoutxl}
+case $(uname -s) in Darwin) native=mac ;; *) native=linux ;; esac
+bin=${WIPEOUT_BIN:-$root/build/$native/wipeoutxl}
 : "${WIPEOUT_XL_DISC:?set WIPEOUT_XL_DISC to the PS1 disc image (.cue)}"
 
 mkdir -p "$out"

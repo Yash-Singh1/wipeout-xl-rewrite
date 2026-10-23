@@ -6,7 +6,7 @@
 # The game runs hidden, muted and in fixed-step time with the recorded buttons, scanline counter reads
 # (frame timing and random seeds) and loading lengths, from a copy of the recorded memory card, and saves
 # every EVERY-th shown frame from FROM_FRAME on (default: all) to OUTPUT_DIR (default /tmp/wipeoutxl-replay).
-# Environment: WIPEOUT_BIN (default build/wipeoutxl), WIPEOUT_XL_DISC (the PS1 disc .cue), WIPEOUT_WINDOW
+# Environment: WIPEOUT_BIN (default build/mac/wipeoutxl, build/linux/ on Linux), WIPEOUT_XL_DISC (the PS1 disc .cue), WIPEOUT_WINDOW
 # (default 1280x960), and the settings' variables (WIPEOUT_FAR_VIEW, WIPEOUT_FADE) as the
 # recorded wipeoutxl.ini had them unless set.
 set -eu
@@ -17,7 +17,8 @@ replay=$(cd "$1" && pwd)
 out=${2:-/tmp/wipeoutxl-replay}
 from=${3:-0}
 every=${4:-1}
-bin=${WIPEOUT_BIN:-$root/build/wipeoutxl}
+case $(uname -s) in Darwin) native=mac ;; *) native=linux ;; esac
+bin=${WIPEOUT_BIN:-$root/build/$native/wipeoutxl}
 : "${WIPEOUT_XL_DISC:?set WIPEOUT_XL_DISC to the PS1 disc image (.cue)}"
 
 mkdir -p "$out/frames"

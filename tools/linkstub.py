@@ -102,7 +102,7 @@ def sizeof_probe(tu, names):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--build', default='build')
+    ap.add_argument('--build', default='build/mac' if sys.platform == 'darwin' else 'build/linux')
     ap.add_argument('--source', default='.')
     ap.add_argument('--out', default=str(ROOT / 'tools/linkstub.c'))
     ap.add_argument('--report', default=str(ROOT / 'docs/LINKSTUB.md'))

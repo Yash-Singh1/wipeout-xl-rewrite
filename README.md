@@ -24,20 +24,22 @@ real game.
 
 ## Build
 
-macOS (Homebrew's `sdl3`) and Linux (for example Debian 13 or Ubuntu 25.04:
-`libsdl3-dev libgl-dev`):
+Each build has its own folder under `build/`. macOS (Homebrew's `sdl3`):
 
 ```sh
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
-ninja -C build
+cmake -S . -B build/mac -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+ninja -C build/mac
 ```
 
-On macOS the build also makes `build/Wipeout XL.app`, with the Mac version's
-icon and the Homebrew libraries it uses inside (copy it to `/Applications`).
+It also makes `build/mac/Wipeout XL.app`, with the Mac version's icon and the
+Homebrew libraries it uses inside (copy it to `/Applications`).
+
+Linux (for example Debian 13 or Ubuntu 25.04: `libsdl3-dev libgl-dev`): the
+same two commands with `build/linux`.
 
 Windows, with MSYS2's MinGW-w64 (UCRT64 or CLANG64 shell, packages `cmake`
-`ninja` `gcc` or `clang`): the same two commands. From macOS or Linux, with the
-MinGW-w64 cross compiler, use the toolchain file:
+`ninja` `gcc` or `clang`): the same two commands with `build/windows`. From
+macOS or Linux, with the MinGW-w64 cross compiler, use the toolchain file:
 
 ```sh
 cmake -S . -B build/windows -G Ninja -DCMAKE_BUILD_TYPE=Release \
@@ -106,7 +108,7 @@ start: they find no partner, as on the web.
 ## Play
 
 ```sh
-build/wipeoutxl --disc "path/to/Wipeout XL (USA).cue"
+build/mac/wipeoutxl --disc "path/to/Wipeout XL (USA).cue"
 ```
 
 Started without `--disc` (from the desktop, say), the game opens the disc
