@@ -117,7 +117,7 @@ void CheckShipDestroyed(ShipData *ships, ConfigData *game, int *attract, int idl
         ships[ownShip].attr &= ~4;
         ships[ownShip].attr &= ~RACING;
         humanToDroneSpeed(ships, ownShip);
-        attractDelayFrames = 900;
+        attractDelayFrames = PAL_TIME(900);
         *attract = 1;
         idleTimer = 0;
     }
@@ -191,7 +191,7 @@ void PlayCredits(int state)
             return;
         }
         if (!(shipIndex[ownShip].combatAttr & DESTROYED)) {
-            CentreText("DEMO MODE", 60, 20, 8, 0);
+            CentreText("DEMO MODE", 60, REGION(20, 10), 8, 0);
         }
     }
 }
@@ -346,7 +346,7 @@ void RaceComplete(void *screen, void *unused, ConfigData *gameData, short *choic
                         CentreText("NEXT CIRCUIT", 60, 110, 8, 1);
                         CentreText("END CHALLENGE", 60, 124, 8, 0);
                     }
-                    DoButton(133, 210, 1, selectLabel);
+                    DoButton(133, RESULT_BUTTON_Y, 1, selectLabel);
                     DeSelectScreen(screen);
                     if (GetMenuKey(5)) {
                         PlayNote(9, 255, 15, 15, 256);
@@ -366,7 +366,7 @@ void RaceComplete(void *screen, void *unused, ConfigData *gameData, short *choic
                     goto done;
                 } else {
                     CentreText("YOU DID NOT QUALIFY", 60, 36, 8, 1);
-                    DoButton(133, 210, 1, selectLabel);
+                    DoButton(133, RESULT_BUTTON_Y, 1, selectLabel);
                     if (continuesLeft) {
                         DisplayContinues(continuesTexture, 176, 168);
                         if (continueAnimFrame == 0) {
@@ -442,7 +442,7 @@ void RaceComplete(void *screen, void *unused, ConfigData *gameData, short *choic
                     CentreText("REPLAY GAME", 60, 110, 8, 1);
                     CentreText("GO TO MENU", 60, 124, 8, 0);
                 }
-                DoButton(133, 210, 1, selectLabel);
+                DoButton(133, RESULT_BUTTON_Y, 1, selectLabel);
                 DeSelectScreen(screen);
                 if (GetMenuKey(5)) {
                     PlayNote(9, 255, 15, 15, 256);

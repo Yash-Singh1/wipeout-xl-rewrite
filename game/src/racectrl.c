@@ -206,8 +206,8 @@ void race(ConfigData *gameData, int context, int scene)
     if(context==0) raceFlag=1;
     trackCache=DAlloc(reserveHeap,sizeof(AutoMeshData));
     trackCache->triCount=0;trackCache->quadCount=0;trackCache->mode=0;trackCache->active=1;
-    locals.clearPolys[0]=BlockFill(0,0,320,240,0,0,0);
-    locals.clearPolys[1]=BlockFill(0,256,320,240,0,0,0);
+    locals.clearPolys[0]=BlockFill(0,0,320,SCREEN_HEIGHT,0,0,0);
+    locals.clearPolys[1]=BlockFill(0,256,320,SCREEN_HEIGHT,0,0,0);
     SetSkeletonPosition(raceCamera.camPos,0,0,0);SetSkeletonDirection(raceCamera.camPos,0,0,0);
     SetSkeletonPosition(upperSkeleton,0,0,0);SetSkeletonDirection(upperSkeleton,0,0,0);
     cameraPtr=&raceCamera;track=&locals.trackData;tempGameData=gameData;raceCamera.camPos->super=upperSkeleton;
@@ -336,6 +336,7 @@ restart:
     if(context!=one) attractDelayFrames=0;
     InitAttractMode(context,shipIndex);gameData->complete=0;SetUpFirstCheckPoint();
 frame:
+    if(portPal) GetJoyPadPacketOnVsync(pauseState.stage); /* the European program: the link slave waits a field while a two-player pause is requested */
     buildGameKeyPad(padBuf1,playerControl);buildFixedPad(padBuf1);
     PortRaceControls((shipIndex[ownShip].attr&RACING) && pauseState.selection==-1,keyDef); /* Port: the keyboard steers the ship only while racing */
     if(raceType==one) RecordKeypresses(shipIndex);
@@ -452,7 +453,8 @@ frame:
                 damping_done:
                 if(shipTargetIndex[i]<15) {
                     radius=(15-shipTargetIndex[i])*64;
-                    if((shipTargetIndex[i]&7)==7) {
+                    /* the European program spaces the explosions by its own tenth of a second (5 frames) */
+                    if(portPal ? shipTargetIndex[i]%5==one : (shipTargetIndex[i]&7)==7) {
                         x=shipIndex[i].ppivot.vx+newRand()%radius-(radius>>1);
                         y=shipIndex[i].ppivot.vy-newRand()%127;
                         z=shipIndex[i].ppivot.vz+newRand()%radius-(radius>>1);
@@ -465,7 +467,7 @@ frame:
                         AddSmokeExplode(x,y,z,-1);
                     }
                     radius=(20-shipTargetIndex[i])*64;
-                    if((shipTargetIndex[i]-shipTargetIndex[i]/6*6)==one) {
+                    if((shipTargetIndex[i]-shipTargetIndex[i]/FRAMES_PER_TENTH*FRAMES_PER_TENTH)==one) {
                         x=shipIndex[i].ppivot.vx+newRand()%radius-(radius>>1);
                         y=shipIndex[i].ppivot.vy-newRand()%127;
                         z=shipIndex[i].ppivot.vz+newRand()%radius-(radius>>1);
@@ -517,6 +519,7 @@ frame:
     if(playCredits) {ClearOTagR(OT[CurrentScreen],8192);ClearOTagR(OT2[CurrentScreen],1600);}
     AddPrim(OT[CurrentScreen]+8191,locals.clearPolys[CurrentScreen]);
     PortTagPrims(locals.clearPolys[CurrentScreen],locals.clearPolys[CurrentScreen]+1,"screen clear",NULL,CurrentScreen); /* Port: the frame recorder */
+    if(portPal && !pauseState.stage && gameType==one) VSync(0); /* the European program: the link slave waits another field while a two-player pause is requested */
     if(gameType!=one) advance=menuSendFlags;else advance=menuRecvFlags;
     cardNum-=advance*30;heading-=advance*15;
     Swap();firstTimeIn=0;UpdateNotes(0);

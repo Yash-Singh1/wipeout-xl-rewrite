@@ -55,9 +55,9 @@ void InitSystem(void)
     ResetGraph(0);
     SetGraphDebug(0);
     InitGeom();
-    SetVideoMode(0);
-    SetDefDrawEnv(&DrawEnv0, 0, 256, 320, 240);
-    SetDefDrawEnv(&DrawEnv1, 0, 0, 320, 240);
+    SetVideoMode(VIDEO_MODE);
+    SetDefDrawEnv(&DrawEnv0, 0, 256, 320, SCREEN_HEIGHT);
+    SetDefDrawEnv(&DrawEnv1, 0, 0, 320, SCREEN_HEIGHT);
     InitGameDisplay(1);
     doubleBuffer[0].disp = &DispEnv0;
     doubleBuffer[0].draw = &DrawEnv0;
@@ -79,10 +79,28 @@ void InitSystem(void)
 
 void InitMenuDisplay(int geomY, int keepOffsets)
 {
-    SetDefDispEnv(&DispEnv0, 0, 0, 0x140, 0xB4);
-    SetDefDispEnv(&DispEnv1, 0, 0x100, 0x140, 0xB4);
-    if (keepOffsets == 0) {
-        /* Port: dispOffX0, dispOffY0, dispOffX1 and dispOffY1 were names for these four fields. */
+    SetDefDispEnv(&DispEnv0, 0, 0, 0x140, REGION(0xB4, 0x80));
+    SetDefDispEnv(&DispEnv1, 0, 0x100, 0x140, REGION(0xB4, 0x80));
+    /* Port: dispOffX0, dispOffY0, dispOffX1 and dispOffY1 were names for the screen.x and screen.y fields. */
+    if (portPal) {
+        /* PAL: the picture is shifted and 256 lines high, and 1 means the unmoved screen */
+        if (keepOffsets == 1) {
+            DispEnv0.screen.x = DISPLAY_SHIFT_X;
+            DispEnv0.screen.y = DISPLAY_SHIFT_Y;
+        } else {
+            DispEnv0.screen.x = gameData->screenX + DISPLAY_SHIFT_X;
+            DispEnv0.screen.y = gameData->screenY + DISPLAY_SHIFT_Y;
+        }
+        DispEnv0.screen.h = SCREEN_HEIGHT;
+        if (keepOffsets == 1) {
+            DispEnv1.screen.x = DISPLAY_SHIFT_X;
+            DispEnv1.screen.y = DISPLAY_SHIFT_Y;
+        } else {
+            DispEnv1.screen.x = gameData->screenX + DISPLAY_SHIFT_X;
+            DispEnv1.screen.y = gameData->screenY + DISPLAY_SHIFT_Y;
+        }
+        DispEnv1.screen.h = SCREEN_HEIGHT;
+    } else if (keepOffsets == 0) {
         DispEnv0.screen.x = gameData->screenX;
         DispEnv0.screen.y = gameData->screenY;
         DispEnv1.screen.x = gameData->screenX;
@@ -96,16 +114,34 @@ void InitMenuDisplay(int geomY, int keepOffsets)
 
 void InitGameDisplay(int keepOffsets)
 {
-    SetDefDispEnv(&DispEnv0, 0, 0, 0x140, 0xF0);
-    SetDefDispEnv(&DispEnv1, 0, 0x100, 0x140, 0xF0);
-    if (keepOffsets == 0) {
-        /* Port: dispOffX1, dispOffX0, dispOffY1 and dispOffY0 were names for these four fields. */
+    SetDefDispEnv(&DispEnv0, 0, 0, 0x140, SCREEN_HEIGHT);
+    SetDefDispEnv(&DispEnv1, 0, 0x100, 0x140, SCREEN_HEIGHT);
+    /* Port: dispOffX1, dispOffX0, dispOffY1 and dispOffY0 were names for the screen.x and screen.y fields. */
+    if (portPal) {
+        /* PAL: the picture is shifted and 256 lines high, and 1 means the unmoved screen */
+        if (keepOffsets == 1) {
+            DispEnv0.screen.x = DISPLAY_SHIFT_X;
+            DispEnv0.screen.y = DISPLAY_SHIFT_Y;
+        } else {
+            DispEnv0.screen.x = gameData->screenX + DISPLAY_SHIFT_X;
+            DispEnv0.screen.y = gameData->screenY + DISPLAY_SHIFT_Y;
+        }
+        DispEnv0.screen.h = SCREEN_HEIGHT;
+        if (keepOffsets == 1) {
+            DispEnv1.screen.x = DISPLAY_SHIFT_X;
+            DispEnv1.screen.y = DISPLAY_SHIFT_Y;
+        } else {
+            DispEnv1.screen.x = gameData->screenX + DISPLAY_SHIFT_X;
+            DispEnv1.screen.y = gameData->screenY + DISPLAY_SHIFT_Y;
+        }
+        DispEnv1.screen.h = SCREEN_HEIGHT;
+    } else if (keepOffsets == 0) {
         DispEnv1.screen.x = gameData->screenX;
         DispEnv0.screen.x = DispEnv1.screen.x;
         DispEnv1.screen.y = gameData->screenY;
         DispEnv0.screen.y = DispEnv1.screen.y;
     }
-    SetGeomOffset(0xA0, 0x78);
+    SetGeomOffset(0xA0, SCREEN_HEIGHT / 2);
     SetGeomScreen(0xA0);
     PutDispEnv(doubleBuffer[CurrentScreen].disp);
     PutDispEnv(doubleBuffer[CurrentScreen == 0].disp);
@@ -116,6 +152,14 @@ void InitSonyDisplay(void)
 {
     SetDefDispEnv(&DispEnv0, 0, 0, 0x280, 0x100);
     SetDefDispEnv(&DispEnv1, 0, 0x100, 0x280, 0x100);
+    if (portPal) {
+        DispEnv0.screen.x = DISPLAY_SHIFT_X;
+        DispEnv0.screen.y = DISPLAY_SHIFT_Y;
+        DispEnv0.screen.h = SCREEN_HEIGHT;
+        DispEnv1.screen.x = DISPLAY_SHIFT_X;
+        DispEnv1.screen.y = DISPLAY_SHIFT_Y;
+        DispEnv1.screen.h = SCREEN_HEIGHT;
+    }
     SetGeomOffset(0x140, 0x80);
     SetGeomScreen(0x140);
     PutDispEnv(doubleBuffer[CurrentScreen].disp);
@@ -145,12 +189,12 @@ void Swap(void)
     GsGetVcount();
     vcount = GsGetVcount();
     max = vcount;
-    if (((gameType != 1) && (fastFrame == 0)) && (vcount < 0x20C)) {
+    if (((gameType != 1) && (fastFrame == 0)) && (vcount < 2 * LINES_PER_FIELD)) {
         VSync(0);
     }
     vcountNow = GsGetVcount();
     max = vcountNow;
-    menuSendFlags = vcountNow / 262;
+    menuSendFlags = vcountNow / LINES_PER_FIELD;
     GsClearVcount(); /* Port: the library call takes no argument; the 0 the console passed was ignored */
     if (max >= 0x220) {
         if (drawTime >= 0xB) {

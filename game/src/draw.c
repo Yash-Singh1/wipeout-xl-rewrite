@@ -55,7 +55,11 @@ void DrawLandscape(ShipData *playerShip, TrackCamera *camera)
     int          farZ;
     int          nearZ;
 
-    if (raceType != 2) {
+    if (portPal) {
+        /* The European program has no per-track range: one fixed landscape range. */
+        minDistance = 0x800;
+        maxDistance = 0x9538;
+    } else if (raceType != 2) {
         minDistance = clipNearTable1[clipLevel];
         maxDistance = clipFarTable1[clipLevel];
     } else {

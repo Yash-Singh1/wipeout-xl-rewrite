@@ -54,6 +54,7 @@ void UpdateCameraRaceExternal(TrackCamera *camera, ShipData *camShip, RescueData
     distance.vx = pos.vx - bestPath.vx;
     distance.vy = pos.vy - bestPath.vy;
     distance.vz = pos.vz - bestPath.vz;
+    PAL_SPEED_VECTOR(distance); /* the European program moves the camera 6/5 as far per frame */
 
     camera->vel.vx -= distance.vx >> 6;
     camera->vel.vy -= distance.vy >> 6;
@@ -366,6 +367,7 @@ void UpdateCameraDroidView(TrackCamera *camera, ShipData *camShip, RescueData *r
     distance.vx = pos.vx - bestPath.vx;
     distance.vy = pos.vy - bestPath.vy;
     distance.vz = pos.vz - bestPath.vz;
+    PAL_SPEED_VECTOR(distance); /* the European program moves the camera 6/5 as far per frame */
 
     camera->vel.vx -= distance.vx >> 6;
     camera->vel.vy -= distance.vy >> 6;

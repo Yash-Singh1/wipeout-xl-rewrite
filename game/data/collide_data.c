@@ -8,7 +8,8 @@ int collideMinAlpha = 0;
 u_char classLaps[4] = { 2, 3, 4, 5 };
 int trackNameOffset = -9999;
 int energyBlinkFrame = 0;
-HudTextRows classRowY[1] = { { { 180, 170, 160, 150 } } };
+/* The lap-time rows of each class on NTSC, and the European program's on PAL (UpdateRaceHud reads classRowY[portPal]). */
+HudTextRows classRowY[2] = { { { 180, 170, 160, 150 } }, { { 198, 186, 174, 162 } } };
 int hudFrame = 0;
 char fmtNumber[4] = "%d";
 char msgP[4] = "P";

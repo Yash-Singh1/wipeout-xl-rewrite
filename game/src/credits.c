@@ -335,7 +335,7 @@ void ShowCredits(int y)
     int index;
     int style;
 
-    y -= 3000;
+    y -= CREDITS_SCROLL_LENGTH;
     group = 0;
     style = 1;
     do {
