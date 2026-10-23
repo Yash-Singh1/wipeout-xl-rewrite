@@ -55,6 +55,9 @@ extern u_short shipSkidClass0[], shipSkidClass1[], shipSkidClass2[], shipSkidCla
 extern u_short shipResistanceClass0[], shipResistanceClass1[], shipResistanceClass2[], shipResistanceClass3[];
 extern u_short shipHeadingIncClass0[], shipHeadingIncClass1[], shipHeadingIncClass2[], shipHeadingIncClass3[];
 extern u_short shipMaxHeadingClass0[], shipMaxHeadingClass1[], shipMaxHeadingClass2[], shipMaxHeadingClass3[];
+/* A per-frame heading rate from the tables above: read unsigned on NTSC; the European program reads the
+   tables as signed shorts and raises the rate with PAL_SPEED. */
+#define SHIP_RATE(rate) (portPal ? PAL_SPEED((short)(rate)) : (rate))
 extern u_short shipRemoteMaxClass0[], shipRemoteMaxClass1[], shipRemoteMaxClass2[], shipRemoteMaxClass3[];
 extern u_short shipRemoteMagClass0[], shipRemoteMagClass1[], shipRemoteMagClass2[], shipRemoteMagClass3[];
 
@@ -547,7 +550,7 @@ void initShipData(TrackSection *section, ShipData *shipIndex, ConfigData *option
         shipIndex[i].lap = 0;
         shipIndex[i].reverseLap = 0;
         for (j = 0; j < 5; j++) shipIndex[i].lapTimes[j] = 0;
-        shipIndex[i].updateCount = 200;
+        shipIndex[i].updateCount = START_COUNTDOWN_FRAMES;
         if (i == ownShip) {
             shipIndex[i].combatAttr = 0;
         } else if (i == remoteShip) {
@@ -567,10 +570,10 @@ void initShipData(TrackSection *section, ShipData *shipIndex, ConfigData *option
         case 3: shipIndex[i].mass = shipMassClass3[i]; shipIndex[i].maxThrust = shipMaxThrustClass3[i]; shipIndex[i].skid = shipSkidClass3[i]; shipIndex[i].resistance = shipResistanceClass3[i]; break;
         }
         switch (options->shipClass) {
-        case 0: shipIndex[i].headingInc = shipHeadingIncClass0[i]; shipIndex[i].maxHeading = shipMaxHeadingClass0[i]; break;
-        case 1: shipIndex[i].headingInc = shipHeadingIncClass1[i]; shipIndex[i].maxHeading = shipMaxHeadingClass1[i]; break;
-        case 2: shipIndex[i].headingInc = shipHeadingIncClass2[i]; shipIndex[i].maxHeading = shipMaxHeadingClass2[i]; break;
-        case 3: shipIndex[i].headingInc = shipHeadingIncClass3[i]; shipIndex[i].maxHeading = shipMaxHeadingClass3[i]; break;
+        case 0: shipIndex[i].headingInc = SHIP_RATE(shipHeadingIncClass0[i]); shipIndex[i].maxHeading = SHIP_RATE(shipMaxHeadingClass0[i]); break;
+        case 1: shipIndex[i].headingInc = SHIP_RATE(shipHeadingIncClass1[i]); shipIndex[i].maxHeading = SHIP_RATE(shipMaxHeadingClass1[i]); break;
+        case 2: shipIndex[i].headingInc = SHIP_RATE(shipHeadingIncClass2[i]); shipIndex[i].maxHeading = SHIP_RATE(shipMaxHeadingClass2[i]); break;
+        case 3: shipIndex[i].headingInc = SHIP_RATE(shipHeadingIncClass3[i]); shipIndex[i].maxHeading = SHIP_RATE(shipMaxHeadingClass3[i]); break;
         }
         if (i == ownShip || i == remoteShip || (i == ghostShip && raceType == 1)) {
             shipIndex[i].update = UpdatePlayerShipStart;
@@ -648,6 +651,7 @@ void SetSpread(ShipData *shipIndex, ConfigData *snd, int vol, short idx, short a
         shipIndex[idx].numToSpeed = vol * spreadScale3[snd->trackNum];
         break;
     }
+    shipIndex[idx].numToSpeed = PAL_TIME(shipIndex[idx].numToSpeed);
     if (idx == ownShip || idx == remoteShip) {
         shipIndex[idx].numToSpeed = 0;
     }

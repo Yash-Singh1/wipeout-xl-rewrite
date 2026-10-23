@@ -384,9 +384,9 @@ void NewTrailSegment(int ship, VECTOR *left, VECTOR *right)
     if (speed > 255) intensity = 255;
     for (i = 0; i < TRAIL_SEGMENTS; i++) {
         segment = &shipTrails[ship].segment[i];
-        segment->r -= 27;
-        segment->g -= 27;
-        segment->b -= 27;
+        segment->r -= TRAIL_FADE;
+        segment->g -= TRAIL_FADE;
+        segment->b -= TRAIL_FADE;
         if (segment->r < 0) segment->r = 0;
         if (segment->g < 0) segment->g = 0;
         if (segment->b < 0) segment->b = 0;
@@ -452,9 +452,9 @@ void BuildOwnShipTrail(int ship, VECTOR *left, VECTOR *right)
         segment->b = (shipTrails[ship].colour[0][2] * intensity) >> 8;
     }
     for (i = TRAIL_SEGMENTS - 1; i > 0; i--) {
-        shipTrails[ship].segment[i].r = shipTrails[ship].segment[i - 1].r - 27;
-        shipTrails[ship].segment[i].g = shipTrails[ship].segment[i - 1].g - 27;
-        shipTrails[ship].segment[i].b = shipTrails[ship].segment[i - 1].b - 27;
+        shipTrails[ship].segment[i].r = shipTrails[ship].segment[i - 1].r - TRAIL_FADE;
+        shipTrails[ship].segment[i].g = shipTrails[ship].segment[i - 1].g - TRAIL_FADE;
+        shipTrails[ship].segment[i].b = shipTrails[ship].segment[i - 1].b - TRAIL_FADE;
         if (shipTrails[ship].segment[i].r < 0) shipTrails[ship].segment[i].r = 0;
         if (shipTrails[ship].segment[i].g < 0) shipTrails[ship].segment[i].g = 0;
         if (shipTrails[ship].segment[i].b < 0) shipTrails[ship].segment[i].b = 0;
@@ -908,9 +908,9 @@ void NewPlasmaSeg(VECTOR *pos, Trail *trail)
     intensity = 255;
     for (i = 0; i < TRAIL_SEGMENTS; i++) {
         if (trail->segment[i].active) {
-            trail->segment[i].r -= 27;
-            trail->segment[i].g -= 27;
-            trail->segment[i].b -= 27;
+            trail->segment[i].r -= TRAIL_FADE;
+            trail->segment[i].g -= TRAIL_FADE;
+            trail->segment[i].b -= TRAIL_FADE;
             if (trail->segment[i].r < 0) trail->segment[i].r = 0;
             if (trail->segment[i].g < 0) trail->segment[i].g = 0;
             if (trail->segment[i].b < 0) trail->segment[i].b = 0;

@@ -3,6 +3,9 @@
 
 #include "wipeout.h"
 
+/* Frames of the start countdown (ShipData.updateCount while the ships are held on the grid). */
+#define START_COUNTDOWN_FRAMES PAL_TIME(200)
+
 /* One entry per track section, indexed by section number. */
 /* Race order table: position along the lap and the ship it belongs to. */
 typedef struct ShipRank {

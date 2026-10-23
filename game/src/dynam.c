@@ -53,15 +53,15 @@ void ShipTrkReaction(ShipData *playerShip, Object **shipShapes)
         }
         Ship2Track(playerShip, face, shipShapes);
         if ((face->flags & 32) && (playerShip->attr & 32)) {
-            playerShip->vpivot.vx += playerShip->nearTrkSect->nextSection.ptr->centre.vx - playerShip->nearTrkSect->centre.vx;
-            playerShip->vpivot.vy += playerShip->nearTrkSect->nextSection.ptr->centre.vy - playerShip->nearTrkSect->centre.vy;
-            playerShip->vpivot.vz += playerShip->nearTrkSect->nextSection.ptr->centre.vz - playerShip->nearTrkSect->centre.vz;
+            playerShip->vpivot.vx += PAL_SPEED(playerShip->nearTrkSect->nextSection.ptr->centre.vx - playerShip->nearTrkSect->centre.vx);
+            playerShip->vpivot.vy += PAL_SPEED(playerShip->nearTrkSect->nextSection.ptr->centre.vy - playerShip->nearTrkSect->centre.vy);
+            playerShip->vpivot.vz += PAL_SPEED(playerShip->nearTrkSect->nextSection.ptr->centre.vz - playerShip->nearTrkSect->centre.vz);
         }
         face++;
         if ((face->flags & 32) && !(playerShip->attr & 32)) {
-            playerShip->vpivot.vx += playerShip->nearTrkSect->nextSection.ptr->centre.vx - playerShip->nearTrkSect->centre.vx;
-            playerShip->vpivot.vy += playerShip->nearTrkSect->nextSection.ptr->centre.vy - playerShip->nearTrkSect->centre.vy;
-            playerShip->vpivot.vz += playerShip->nearTrkSect->nextSection.ptr->centre.vz - playerShip->nearTrkSect->centre.vz;
+            playerShip->vpivot.vx += PAL_SPEED(playerShip->nearTrkSect->nextSection.ptr->centre.vx - playerShip->nearTrkSect->centre.vx);
+            playerShip->vpivot.vy += PAL_SPEED(playerShip->nearTrkSect->nextSection.ptr->centre.vy - playerShip->nearTrkSect->centre.vy);
+            playerShip->vpivot.vz += PAL_SPEED(playerShip->nearTrkSect->nextSection.ptr->centre.vz - playerShip->nearTrkSect->centre.vz);
         }
         face--;
         if (!(playerShip->attr & 32)) face++;
@@ -95,6 +95,9 @@ void ShipTrkReaction(ShipData *playerShip, Object **shipShapes)
         playerShip->apivot.vx += (reaction.vx + playerShip->thrustVector.vx) / mass;
         playerShip->apivot.vy += (reaction.vy + playerShip->thrustVector.vy) / mass;
         playerShip->apivot.vz += (reaction.vz + playerShip->thrustVector.vz) / mass;
+        PAL_SPEED_UP(playerShip->apivot.vx);
+        PAL_SPEED_UP(playerShip->apivot.vy);
+        PAL_SPEED_UP(playerShip->apivot.vz);
         friction = (playerShip->resistance * (74 - (brake >> 3))) >> 7;
         playerShip->vpivot.vx += playerShip->apivot.vx;
         xDrag = ((volatile VECTOR *)&playerShip->vpivot)->vx; playerShip->vpivot.vx = xDrag - xDrag / friction;
@@ -158,6 +161,9 @@ void ShipTrkReaction(ShipData *playerShip, Object **shipShapes)
         playerShip->apivot.vx += playerShip->thrustVector.vx / playerShip->mass;
         playerShip->apivot.vy += (playerShip->thrustVector.vy + 80000) / playerShip->mass;
         playerShip->apivot.vz += playerShip->thrustVector.vz / playerShip->mass;
+        PAL_SPEED_UP(playerShip->apivot.vx);
+        PAL_SPEED_UP(playerShip->apivot.vy);
+        PAL_SPEED_UP(playerShip->apivot.vz);
         friction = (playerShip->resistance * (74 - (brake >> 3))) >> 7;
         playerShip->vpivot.vx += playerShip->apivot.vx;
         xDragC = ((volatile VECTOR *)&playerShip->vpivot)->vx; playerShip->vpivot.vx = xDragC - xDragC / friction;
@@ -168,7 +174,7 @@ void ShipTrkReaction(ShipData *playerShip, Object **shipShapes)
         playerShip->ppivot.vx += sar(playerShip->vpivot.vx, 6);
         playerShip->ppivot.vy += sar(playerShip->vpivot.vy, 6);
         playerShip->ppivot.vz += sar(playerShip->vpivot.vz, 6);
-        playerShip->vpitch -= 50;
+        playerShip->vpitch -= PAL_SPEED(50);
         playerShip->vpitch -= playerShip->vpitch >> 2;
         playerShip->hdg += sar((short)sar(playerShip->r_brake_rot - playerShip->l_brake_rot, 3) * playerShip->speed, 15);
         playerShip->vroll += sar(playerShip->vhdg, 5);

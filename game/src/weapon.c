@@ -5,6 +5,19 @@
 #include "include_asm_g8.h"
 #include "port_widen.h"
 
+/* Frames between minigun bursts. */
+#define MINIGUN_FIRE_INTERVAL REGION(30, 23)
+
+/* Weapon lifetimes in frames.  The European values follow no single 5/6 rule, so each is
+   the value the European program uses. */
+#define ROCKET_FRAMES   REGION(0xC8, 0x8C)
+#define MISSILE_FRAMES  REGION(0xC8, 0x96)
+#define QUAKE_FRAMES    REGION(0x46, 0x3C)
+#define PLASMA_FRAMES   REGION(0xDC, 0x99)
+#define ELECBOLT_FRAMES REGION(0x8C, 0x64)
+/* The plasma shot charges while its count is above this; the European charge starts lower. */
+#define PLASMA_CHARGE_FRAMES REGION(200, 140)
+
 /* $gp-relative globals are tentative definitions; the rest are extern. */
 extern short fadeAmount;
 extern u_char fadeActive;
@@ -87,7 +100,7 @@ void InsertWeapon(ShipData *ship, WeaponData *weapons, int owner, u_char type)
 {
     WeaponData *weapon;
     int delay = 0;
-    int lifetime = 40;
+    int lifetime = PAL_TIME(40);
     int frequency = 256;
     int offset;
     int *shield;
@@ -158,7 +171,7 @@ again:
             delay += 3;
             weapon->update = InitMine;
             if ((owner & 255) != ownShip && (owner & 255) != remoteShip)
-                weapon->count = delay + 40;
+                weapon->count = delay + PAL_TIME(40);
             else weapon->count = delay;
             weapon->type = 3;
             weapon++;
@@ -167,7 +180,7 @@ again:
             return;
         case 14:
             weapon->update = InitSmartBomb;
-            weapon->count = 24;
+            weapon->count = PAL_TIME(24);
             weapon->owner = owner;
             weapon->type = 14;
             ship->weapon = 0;
@@ -185,7 +198,7 @@ again:
             return;
         case 7:
             ship->weapon = 0;
-            ship->autopilotCount = 120;
+            ship->autopilotCount = PAL_TIME(120);
             ship->update = UpdateDroneShip;
             humanToDroneSpeed(shipIndex, owner);
             if (owner == ownShip) PlayNote(16, 480, 15, 15, frequency);
@@ -203,7 +216,7 @@ again:
             return;
         case 8:
             weapon->update = InitShield;
-            weapon->count = 200;
+            weapon->count = REGION(200, 150);
             weapon->owner = owner;
             weapon->type = 8;
             ship->weapon = 0;
@@ -742,6 +755,7 @@ steer:
     weapon->accel.vx = (-rsin(weapon->hdg) * rcos(weapon->pitch)) >> 16;
     weapon->accel.vy = -rsin(weapon->pitch) >> 4;
     weapon->accel.vz = (rcos(weapon->hdg) * rcos(weapon->pitch)) >> 16;
+    PAL_SPEED_VECTOR(weapon->accel);
     weapon->velocity.vx += weapon->accel.vx;
     weapon->velocity.vy += weapon->accel.vy;
     weapon->velocity.vz += weapon->accel.vz;
@@ -849,11 +863,11 @@ void InitMissile(ShipData *shapes, WeaponShape *slots, WeaponData *w, WeaponData
     u_char flag;
 
     if (w->owner == ownShip) {
-        w->count = 0xC8;
+        w->count = MISSILE_FRAMES;
     } else if (w->owner == remoteShip) {
-        w->count = 0xC8;
+        w->count = MISSILE_FRAMES;
     } else if (w->count < 2) {
-        w->count = 0xC8;
+        w->count = MISSILE_FRAMES;
     } else {
         w->count = w->count - 1;
         return;
@@ -874,6 +888,7 @@ void InitMissile(ShipData *shapes, WeaponShape *slots, WeaponData *w, WeaponData
                 }
             } while (1);
             GetFireVector(&w->accel, shapes[w->owner].unitVecNose, node, shapes[w->owner].ppivot);
+            PAL_SPEED_VECTOR(w->accel);
             w->velocity.vx = shapes[w->owner].vpivot.vx >> 6;
             w->velocity.vy = shapes[w->owner].vpivot.vy >> 6;
             w->velocity.vz = shapes[w->owner].vpivot.vz >> 6;
@@ -984,11 +999,11 @@ void InitMinigun(ShipData *ships, WeaponShape *shapes, WeaponData *weapon, Weapo
     int        i;
 
     if (weapon->owner == ownShip) {
-        weapon->count = 30;
+        weapon->count = MINIGUN_FIRE_INTERVAL;
     } else if (weapon->owner == remoteShip) {
-        weapon->count = 30;
+        weapon->count = MINIGUN_FIRE_INTERVAL;
     } else if (weapon->count < 2) {
-        weapon->count = 30;
+        weapon->count = MINIGUN_FIRE_INTERVAL;
     } else {
         weapon->count = weapon->count - 1;
         return;
@@ -1137,11 +1152,11 @@ void InitQuake(ShipData *shapes, WeaponShape *unused, WeaponData *w, WeaponData 
 
     id = w->owner;
     if (id == ownShip) {
-        w->count = 0x46;
+        w->count = QUAKE_FRAMES;
     } else if (id == remoteShip) {
-        w->count = 0x46;
+        w->count = QUAKE_FRAMES;
     } else if (w->count < 2) {
-        w->count = 0x46;
+        w->count = QUAKE_FRAMES;
     } else {
         w->count = w->count - 1;
         return;
@@ -1152,6 +1167,7 @@ void InitQuake(ShipData *shapes, WeaponShape *unused, WeaponData *w, WeaponData 
         node++;
     }
     GetFireVector(&w->accel, shapes[w->owner].unitVecNose, node, shapes[w->owner].ppivot);
+    PAL_SPEED_VECTOR(w->accel);
     w->velocity.vx = shapes[w->owner].vpivot.vx >> 6;
     w->velocity.vy = shapes[w->owner].vpivot.vy >> 6;
     w->velocity.vz = shapes[w->owner].vpivot.vz >> 6;
@@ -1175,11 +1191,11 @@ void InitPlasma(ShipData *shapes, WeaponShape *unused, WeaponData *w, WeaponData
     InitPlasmaShot();
     id = w->owner;
     if (id == ownShip) {
-        w->count = 0xDC;
+        w->count = PLASMA_FRAMES;
     } else if (id == remoteShip) {
-        w->count = 0xDC;
+        w->count = PLASMA_FRAMES;
     } else if (w->count < 2) {
-        w->count = 0xDC;
+        w->count = PLASMA_FRAMES;
     } else {
         w->count = w->count - 1;
         return;
@@ -1190,6 +1206,7 @@ void InitPlasma(ShipData *shapes, WeaponShape *unused, WeaponData *w, WeaponData
         node++;
     }
     GetFireVector(&w->accel, shapes[w->owner].unitVecNose, node, shapes[w->owner].ppivot);
+    PAL_SPEED_VECTOR(w->accel);
     w->velocity.vx = shapes[w->owner].vpivot.vx >> 6;
     w->velocity.vy = shapes[w->owner].vpivot.vy >> 6;
     w->velocity.vz = shapes[w->owner].vpivot.vz >> 6;
@@ -1212,11 +1229,11 @@ void InitRocket(ShipData *shapes, WeaponShape *slots, WeaponData *w, WeaponData 
     int    dz;
 
     if (w->owner == ownShip) {
-        w->count = 0xC8;
+        w->count = ROCKET_FRAMES;
     } else if (w->owner == remoteShip) {
-        w->count = 0xC8;
+        w->count = ROCKET_FRAMES;
     } else if (w->count < 2) {
-        w->count = 0xC8;
+        w->count = ROCKET_FRAMES;
     } else {
         w->count = w->count - 1;
         return;
@@ -1236,6 +1253,7 @@ void InitRocket(ShipData *shapes, WeaponShape *slots, WeaponData *w, WeaponData 
                 }
             } while (1);
             GetFireVector(&w->accel, shapes[w->owner].unitVecNose, node, shapes[w->owner].ppivot);
+            PAL_SPEED_VECTOR(w->accel);
             w->quakeBumpStep = 0;
             w->velocity.vx = w->accel.vx << 3;
             w->velocity.vy = w->accel.vy << 3;
@@ -1261,11 +1279,11 @@ void InitRocketLeft(ShipData *shapes, WeaponShape *slots, WeaponData *w, WeaponD
     VECTOR offset;
 
     if (w->owner == ownShip) {
-        w->count = 0xC8;
+        w->count = ROCKET_FRAMES;
     } else if (w->owner == remoteShip) {
-        w->count = 0xC8;
+        w->count = ROCKET_FRAMES;
     } else if (w->count < 2) {
-        w->count = 0xC8;
+        w->count = ROCKET_FRAMES;
     } else {
         w->count = w->count - 1;
         return;
@@ -1285,6 +1303,7 @@ void InitRocketLeft(ShipData *shapes, WeaponShape *slots, WeaponData *w, WeaponD
                 }
             } while (1);
             GetFireVector(&w->accel, shapes[w->owner].unitVecNose, node, shapes[w->owner].ppivot);
+            PAL_SPEED_VECTOR(w->accel);
             w->velocity.vx = w->accel.vx << 3;
             w->velocity.vy = w->accel.vy << 3;
             w->velocity.vz = w->accel.vz << 3;
@@ -1318,11 +1337,11 @@ void InitRocketRight(ShipData *shapes, WeaponShape *slots, WeaponData *w, Weapon
     VECTOR offset;
 
     if (w->owner == ownShip) {
-        w->count = 0xC8;
+        w->count = ROCKET_FRAMES;
     } else if (w->owner == remoteShip) {
-        w->count = 0xC8;
+        w->count = ROCKET_FRAMES;
     } else if (w->count < 2) {
-        w->count = 0xC8;
+        w->count = ROCKET_FRAMES;
     } else {
         w->count = w->count - 1;
         return;
@@ -1342,6 +1361,7 @@ void InitRocketRight(ShipData *shapes, WeaponShape *slots, WeaponData *w, Weapon
                 }
             } while (1);
             GetFireVector(&w->accel, shapes[w->owner].unitVecNose, node, shapes[w->owner].ppivot);
+            PAL_SPEED_VECTOR(w->accel);
             w->velocity.vx = w->accel.vx << 3;
             w->velocity.vy = w->accel.vy << 3;
             w->velocity.vz = w->accel.vz << 3;
@@ -1421,6 +1441,7 @@ steer:
     weapon->accel.vx = (-rsin(weapon->hdg) * rcos(weapon->pitch)) >> 16;
     weapon->accel.vy = -rsin(weapon->pitch) >> 4;
     weapon->accel.vz = (rcos(weapon->hdg) * rcos(weapon->pitch)) >> 16;
+    PAL_SPEED_VECTOR(weapon->accel);
     weapon->velocity.vx += weapon->accel.vx;
     weapon->velocity.vy += weapon->accel.vy;
     weapon->velocity.vz += weapon->accel.vz;
@@ -1466,7 +1487,7 @@ steer:
             if (GetMagnitude(distance) < 100) {
                 if (!(ship->attr & SHIELDED)) {
                     ship->attr |= ELECTROED;
-                    ship->electroCount = 140;
+                    ship->electroCount = REGION(140, 100);
                 }
                 DamageCollide(5, i);
                 AddRandomParticles(particleSlots, 64, &weapon->pos, &weapon->velocity);
@@ -1496,11 +1517,11 @@ void InitElecBolt(ShipData *shapes, WeaponShape *slots, WeaponData *w, WeaponDat
     int i;
 
     if (w->owner == ownShip) {
-        w->count = 0x8C;
+        w->count = ELECBOLT_FRAMES;
     } else if (w->owner == remoteShip) {
-        w->count = 0x8C;
+        w->count = ELECBOLT_FRAMES;
     } else if (w->count < 2) {
-        w->count = 0x8C;
+        w->count = ELECBOLT_FRAMES;
     } else {
         w->count = w->count - 1;
         return;
@@ -1514,6 +1535,7 @@ void InitElecBolt(ShipData *shapes, WeaponShape *slots, WeaponData *w, WeaponDat
             w->accel.vx = shapes[w->owner].unitVecNose.vx >> 8;
             w->accel.vy = shapes[w->owner].unitVecNose.vy >> 8;
             w->accel.vz = shapes[w->owner].unitVecNose.vz >> 8;
+            PAL_SPEED_VECTOR(w->accel);
             w->velocity.vx = shapes[w->owner].vpivot.vx >> 6;
             w->velocity.vy = shapes[w->owner].vpivot.vy >> 6;
             w->velocity.vz = shapes[w->owner].vpivot.vz >> 6;
@@ -1550,7 +1572,7 @@ void InitMine(ShipData *ships, WeaponShape *weaponShapes, WeaponData *weapon, We
                     PlayNote(11, 200, 15, 15, 256);
                 }
                 weapon->update = UpdateMine;
-                weapon->count = 450;
+                weapon->count = REGION(450, 350);
                 return;
             }
         }
@@ -1581,7 +1603,7 @@ void InitSmartBomb(ShipData *ships, WeaponShape *weaponShapes, WeaponData *weapo
                 PlayNote(11, 200, 15, 15, 256);
             }
             weapon->update = UpdateSmartBomb;
-            weapon->count = 24;
+            weapon->count = PAL_TIME(24);
             return;
         }
     }
@@ -2437,7 +2459,7 @@ void UpdatePlasma(ShipData *shipIndex, WeaponShape *weaponShapes, WeaponData *we
     char workspace[16];
 
     weapon->count--;
-    if (weapon->count > 200 && weapon->owner == ownShip) {
+    if (weapon->count > PLASMA_CHARGE_FRAMES && weapon->owner == ownShip) {
         SetPolyG4(&CHARGE);
         CHARGE.r0 = 255;
         CHARGE.g0 = 255;
@@ -2452,9 +2474,9 @@ void UpdatePlasma(ShipData *shipIndex, WeaponShape *weaponShapes, WeaponData *we
         CHARGE.g3 = 0;
         CHARGE.b3 = 0;
         CHARGE.x0 = 140;
-        CHARGE.x1 = 200 - 3 * (weapon->count - 200);
+        CHARGE.x1 = 200 - 3 * (weapon->count - PLASMA_CHARGE_FRAMES);
         CHARGE.x2 = 140;
-        CHARGE.x3 = 200 - 3 * (weapon->count - 200);
+        CHARGE.x3 = 200 - 3 * (weapon->count - PLASMA_CHARGE_FRAMES);
         CHARGE.y0 = 70;
         CHARGE.y1 = 70;
         CHARGE.y2 = 74;
@@ -2473,7 +2495,7 @@ wallNote:
     PlayDirectionalNote(6, 0, 40, weapon->pos);
     goto done;
 compute:
-    if (weapon->count == 200) {
+    if (weapon->count == PLASMA_CHARGE_FRAMES) {
         weapon->section = shipIndex[weapon->owner].nearTrkSect;
         facePtr = track->faces + shipIndex[weapon->owner].nearTrkSect->faceStart;
         do {
@@ -2485,6 +2507,7 @@ compute:
             }
         } while (1);
         GetFireVector(&weapon->accel, shipIndex[weapon->owner].unitVecNose, facePtr, shipIndex[weapon->owner].ppivot);
+        PAL_SPEED_VECTOR(weapon->accel);
         weapon->velocity.vx = shipIndex[weapon->owner].vpivot.vx >> 6;
         weapon->velocity.vy = shipIndex[weapon->owner].vpivot.vy >> 6;
         weapon->velocity.vz = shipIndex[weapon->owner].vpivot.vz >> 6;
@@ -2805,7 +2828,7 @@ void UpdateFadeScreen(void)
     fadeTile[CurrentScreen].w = 320;
     fadeTile[CurrentScreen].x0 = 0;
     fadeTile[CurrentScreen].y0 = 0;
-    fadeTile[CurrentScreen].h = 240;
+    fadeTile[CurrentScreen].h = REGION(240, 255);
     AddPrim(OT[CurrentScreen], &fadeTile[CurrentScreen]);
     if (fadeAmount > 0) {
         fadeAmount -= 8;
