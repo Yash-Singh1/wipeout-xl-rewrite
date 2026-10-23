@@ -50,8 +50,9 @@ typedef struct FrameCapFrame {
     int vram;             /* its video-memory snapshot (FrameCapVram) */
     FrameCapPrim *prims;
     int count, capacity;
-    uint8_t *picture;     /* RGBA, pictureW x pictureH, top row first: the picture shown */
+    uint8_t *picture;     /* RGB, pictureW x pictureH, top row first: the picture shown */
     int pictureW, pictureH;
+    int pictureScale;     /* ... its pixels per console pixel (pictureW is the columns times this) */
     int pictureX;         /* the column of the picture's left edge, from the area's (widescreen: -the margin) */
 } FrameCapFrame;
 

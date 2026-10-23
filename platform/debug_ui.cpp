@@ -377,9 +377,10 @@ static void RecorderTab(void)
         followNewest = true;
     }
     ImGui::Separator();
-    // while recording, the frames up to the newest shown (the one being drawn is not finished)
+    // the frames up to the newest shown: the one being drawn when the recording stopped (or while it goes on) is
+    // not finished, and has no picture
     int usable = total;
-    while (live && usable > 0 && !FrameCapFrameAt(usable - 1)->shown) {
+    while (usable > 0 && !FrameCapFrameAt(usable - 1)->shown) {
         usable--;
     }
     if (usable == 0) {
@@ -422,8 +423,10 @@ static void RecorderTab(void)
     ImGui::SameLine();
     ImGui::SetNextItemWidth(-1);
     char sliderLabel[64];
-    SDL_snprintf(sliderLabel, sizeof(sliderLabel), live ? "frame %%d / %d (recording)" : "frame %%d / %d", usable - 1);
-    if (ImGui::SliderInt("##frame", &frameShown, 0, usable - 1, sliderLabel)) {
+    int number = frameShown + 1; // (counted from 1)
+    SDL_snprintf(sliderLabel, sizeof(sliderLabel), live ? "frame %%d / %d (recording)" : "frame %%d / %d", usable);
+    if (ImGui::SliderInt("##frame", &number, 1, usable, sliderLabel)) {
+        frameShown = number - 1;
         changed = true;
     }
     if (changed || frameShown >= usable - 1) {
@@ -437,8 +440,13 @@ static void RecorderTab(void)
     room.y -= ImGui::GetFrameHeightWithSpacing();
     bool beside = room.x > 1000 * ui;
     bool hasPicture = f->picture && f->shown;
-    int pictureW = hasPicture ? f->pictureW : 320, pictureX = hasPicture ? f->pictureX : 0;
-    float paneW = beside ? room.x * 0.5f : room.x, paneH = beside ? room.y : room.y - 300 * ui;
+    // pictureW: the picture's console columns (its pixels are pictureScale times as many each way)
+    int pictureScale = hasPicture ? SDL_max(f->pictureScale, 1) : 1;
+    int pictureW = hasPicture ? f->pictureW / pictureScale : 320, pictureX = hasPicture ? f->pictureX : 0;
+    // below the picture, the pixel's primitives: at least a few rows and the details (zoomed in, the picture
+    // takes the rest)
+    float below = SDL_min(300 * ui, room.y * 0.4f), belowZoomed = SDL_min(170 * ui, room.y * 0.3f);
+    float paneW = beside ? room.x * 0.5f : room.x, paneH = beside ? room.y : room.y - below;
     float fit = SDL_max(0.5f, SDL_min(paneW / pictureW, paneH / 240.0f));
 
     ImGui::Text("game frame %llu, %d primitives, %s   (, and . step)", (unsigned long long)f->gameFrame, f->count,
@@ -478,11 +486,11 @@ static void RecorderTab(void)
     }
     // the picture: the console's 320 columns, and with widescreen the sides (from column `pictureX`)
     if (!uploaded || uploadedGame != f->gameFrame || uploadedShown != f->shown) {
-        static uint8_t black[320 * 240 * 4];
+        static uint8_t black[320 * 240 * 3];
         glBindTexture(GL_TEXTURE_2D, frameTexture);
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, pictureW, 240, 0, GL_RGBA, GL_UNSIGNED_BYTE,
-                     hasPicture ? f->picture : black);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, hasPicture ? f->pictureW : 320, hasPicture ? f->pictureH : 240, 0,
+                     GL_RGB, GL_UNSIGNED_BYTE, hasPicture ? f->picture : black);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
         uploaded = true;
         uploadedGame = f->gameFrame;
@@ -493,6 +501,9 @@ static void RecorderTab(void)
     // pixel's primitives beside it (in a narrow window below it)
     float zoom = pictureZoom > 0 ? pictureZoom : fit;
     ImVec2 imageSize(pictureW * zoom, 240 * zoom);
+    if (!beside && pictureZoom > 0) {
+        paneH = SDL_max(paneH, room.y - belowZoomed); // zoomed in: as tall as it gets, the list below it smaller
+    }
     float bar = ImGui::GetStyle().ScrollbarSize;
     bool across = imageSize.x > paneW, down = imageSize.y > paneH;
     ImGui::BeginChild("##picture",
@@ -532,7 +543,9 @@ static void RecorderTab(void)
                                             IM_COL32(0, 0, 0, 255), 0.0f, 0, 3.0f);
         ImGui::GetWindowDrawList()->AddRect(a, ImVec2(a.x + cell, a.y + cell), IM_COL32(255, 0, 255, 255), 0.0f, 0, 1.5f);
         if (hasPicture) {
-            const uint8_t *rgb = &f->picture[(py * pictureW + px) * 4];
+            // (the middle of the console pixel's picture pixels)
+            const uint8_t *rgb = &f->picture[((size_t)(py * pictureScale + pictureScale / 2) * f->pictureW +
+                                              (size_t)(px * pictureScale + pictureScale / 2)) * 3];
             ImGui::Text("pixel %d, %d   colour %d, %d, %d", x, y, rgb[0], rgb[1], rgb[2]);
         } else {
             ImGui::Text("pixel %d, %d", x, y);

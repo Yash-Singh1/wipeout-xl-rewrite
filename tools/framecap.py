@@ -101,10 +101,11 @@ def pixel_rgb(frame, x, y):
     if not pic:
         return None
     w, h, data = pic
+    scale = max(1, h // 240)  # the picture's pixels per console pixel (240 rows of the console's)
     x -= frame['picture_x']
-    if not (0 <= x < w and 0 <= y < h):
+    if not (0 <= x < w // scale and 0 <= y < 240):
         return None
-    i = (y * w + x) * 3
+    i = ((y * scale + scale // 2) * w + x * scale + scale // 2) * 3
     return tuple(data[i:i + 3])
 
 
@@ -249,6 +250,7 @@ def flicker(frames, threshold=40):
     for i in range(1, len(shown) - 1):
         a, b, c = shown[i - 1], shown[i], shown[i + 1]
         w, h, _ = picture(b)
+        w, h = w // max(1, h // 240), 240  # in console pixels
         spots = []
         for y in range(0, h, 2):
             for x in range(b['picture_x'], b['picture_x'] + w, 2):

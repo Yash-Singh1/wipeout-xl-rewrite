@@ -18,11 +18,15 @@
 #define FRAMES TAB_FRAMES
 #define PICTURE_W 320
 #define PICTURE_H 240
+/* The picture is kept at the framebuffer's scale up to this (the drawn pixels, not the console's: thin lines
+   and seams of a sharper picture show), RGB: about 1.2 MB a frame, 100 MB for the last three seconds. */
+#define PICTURE_MAX_SCALE 2
 
 static FrameCapFrame frames[FRAMES];
 static int first, count; /* the ring: frames[first], ... count of them */
 static int current = -1; /* the frame being recorded */
 static int newFrame = 1; /* a picture was shown since the last table: the next table starts a frame */
+static int skipFrame;    /* the rest of a dropped frame (DropUnfinished) is not recorded, up to its picture */
 static int frozen;
 static int taking;       /* RECORD_WITH_TAB: between the Tab that started a recording and the one that stops it */
 static int generation;
@@ -155,6 +159,10 @@ void FrameCapTable(int offsetX, int offsetY, int areaX, int areaY, int areaW, in
     if (!newFrame && current >= 0) {
         return; /* the second table (the HUD) of the same frame */
     }
+    if (skipFrame && !newFrame) {
+        return;
+    }
+    skipFrame = 0;
     newFrame = 0;
     while (count >= (FrameCapMode() == RECORD_WITH_TAB ? TAB_FRAMES : LAST_FRAMES)) {
         f = &frames[first];
@@ -176,7 +184,7 @@ void FrameCapTable(int offsetX, int offsetY, int areaX, int areaY, int areaW, in
     f->count = 0;
     f->vram = TakeSnapshot();
     if (f->picture) {
-        memset(f->picture, 0, (size_t)f->pictureW * f->pictureH * 4);
+        memset(f->picture, 0, (size_t)f->pictureW * f->pictureH * 3);
     }
 }
 
@@ -288,16 +296,21 @@ void FrameCapShown(int x, int y, int w, int h)
         if (x >= f->areaX && x < f->areaX + f->areaW && y >= f->areaY && y < f->areaY + f->areaH) {
             if (!f->shown) {
                 /* the console's pixels, and with widescreen the sides as well */
-                int margin = GpuShownMargin(x, w), width = PICTURE_W + 2 * margin;
-                uint8_t *pixels = GpuReadPicture(x, y, w, h, margin, width, PICTURE_H);
+                int margin = GpuShownMargin(x, w), scale = SDL_clamp(GpuScale(), 1, PICTURE_MAX_SCALE);
+                int width = (PICTURE_W + 2 * margin) * scale, height = PICTURE_H * scale;
+                uint8_t *pixels = GpuReadPicture(x, y, w, h, margin, width, height);
+                size_t i, n = (size_t)width * height;
 
-                if (!f->picture || f->pictureW != width) {
-                    f->picture = realloc(f->picture, (size_t)width * PICTURE_H * 4);
+                if (!f->picture || f->pictureW != width || f->pictureH != height) {
+                    f->picture = realloc(f->picture, n * 3);
                 }
                 f->pictureW = width;
-                f->pictureH = PICTURE_H;
+                f->pictureH = height;
+                f->pictureScale = scale;
                 f->pictureX = -margin;
-                memcpy(f->picture, pixels, (size_t)width * PICTURE_H * 4);
+                for (i = 0; i < n; i++) {
+                    memcpy(f->picture + i * 3, pixels + i * 4, 3);
+                }
                 f->shown = PortShownFrames() + 1;
             }
             return;
@@ -538,7 +551,7 @@ static void Save(void)
     }
     for (i = 0; i < count; i++) {
         const FrameCapFrame *f = FrameCapFrameAt(i);
-        int x, y;
+        int y;
 
         if (!f->picture || !f->shown) {
             continue;
@@ -547,9 +560,7 @@ static void Save(void)
         if ((file = fopen(path, "wb"))) {
             fprintf(file, "P6\n%d %d\n255\n", f->pictureW, f->pictureH);
             for (y = 0; y < f->pictureH; y++) {
-                for (x = 0; x < f->pictureW; x++) {
-                    Put(file, f->picture + ((size_t)y * f->pictureW + x) * 4, 3);
-                }
+                Put(file, f->picture + (size_t)y * f->pictureW * 3, (size_t)f->pictureW * 3);
             }
             fclose(file);
         }
@@ -562,12 +573,24 @@ void FrameCapSave(void)
     Save();
 }
 
+/* The frame being built when the recording stops: never finished nor shown, nothing to look at. */
+static void DropUnfinished(void)
+{
+    if (count > 0 && current == (first + count - 1) % FRAMES && !frames[current].shown) {
+        Release(frames[current].vram);
+        count--;
+        skipFrame = 1;
+    }
+    current = -1;
+}
+
 void FrameCapToggleFreeze(void)
 {
     if (frozen) {
         frozen = 0;
         return;
     }
+    DropUnfinished();
     if (!count) {
         return;
     }
@@ -586,6 +609,7 @@ void FrameCapClear(void)
     first = count = 0;
     current = -1;
     newFrame = 1;
+    skipFrame = 0;
     frozen = taking = 0;
     savedDir[0] = 0;
     generation++;
@@ -597,7 +621,7 @@ void FrameCapTab(void)
         FrameCapToggleFreeze();
     } else if (taking) {
         taking = 0;
-        current = -1;
+        DropUnfinished();
         generation++;
     } else {
         FrameCapClear();
