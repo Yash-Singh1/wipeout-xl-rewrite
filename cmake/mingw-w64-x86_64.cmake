@@ -1,5 +1,5 @@
 # Cross-compiling for 64-bit Windows with MinGW-w64 (from macOS or Linux):
-#   cmake -S . -B build-windows -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64-x86_64.cmake
+#   cmake -S . -B build/windows -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64-x86_64.cmake
 # On Windows itself (MSYS2's MinGW-w64 or Clang environment) no toolchain file is needed.
 set(CMAKE_SYSTEM_NAME Windows)
 set(CMAKE_SYSTEM_PROCESSOR x86_64)

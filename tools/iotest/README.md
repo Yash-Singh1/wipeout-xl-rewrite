@@ -2,8 +2,8 @@
 
 Unit tests for the sound, disc, controller and memory card layers in `platform/psx`.
 
-    cmake -S tools/iotest -B build-iotest && cmake --build build-iotest
-    WIPEOUT_NO_GAMEPAD=1 ctest --test-dir build-iotest --output-on-failure
+    cmake -S tools/iotest -B build/iotest && cmake --build build/iotest
+    WIPEOUT_NO_GAMEPAD=1 ctest --test-dir build/iotest --output-on-failure
 
 They run headless and muted (no audio device, no window). Tests that need the PS1 disc find it at
 `../wipeout-xl` next to the repository or at `$WIPEOUT_XL_DISC` (the .cue) and

@@ -1,5 +1,5 @@
 # Unit tests for the sound, disc, controller and memory card layers.
-#   cmake -S tools/iotest -B build-iotest && cmake --build build-iotest && ctest --test-dir build-iotest
+#   cmake -S tools/iotest -B build/iotest && cmake --build build/iotest && ctest --test-dir build/iotest
 # Tests that need the PS1 disc image look for it next to the repository (../wipeout-xl) or at
 # $WIPEOUT_XL_DISC / $WIPEOUT_XL_ROOT, and skip when it is not there.
 cmake_minimum_required(VERSION 3.20)

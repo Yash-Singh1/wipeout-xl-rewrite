@@ -40,9 +40,9 @@ Windows, with MSYS2's MinGW-w64 (UCRT64 or CLANG64 shell, packages `cmake`
 MinGW-w64 cross compiler, use the toolchain file:
 
 ```sh
-cmake -S . -B build-windows -G Ninja -DCMAKE_BUILD_TYPE=Release \
+cmake -S . -B build/windows -G Ninja -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64-x86_64.cmake
-ninja -C build-windows
+ninja -C build/windows
 ```
 
 `wipeoutxl.exe` is a single file, with SDL3 and the C runtime linked in and the
@@ -51,18 +51,18 @@ PC version's icon.
 The web, with Emscripten:
 
 ```sh
-emcmake cmake -S . -B build-web -G Ninja -DCMAKE_BUILD_TYPE=Release \
+emcmake cmake -S . -B build/web -G Ninja -DCMAKE_BUILD_TYPE=Release \
       -DWIPEOUT_WEB_DISC="path/to/Wipeout XL (USA).cue"
-ninja -C build-web
+ninja -C build/web
 ```
 
 This makes `wipeoutxl.html`, `wipeoutxl.js` and `wipeoutxl.wasm`, and, as
 wipeout-rewrite's web build has its data beside the page, the disc the page
 loads by itself: `WIPEOUT_WEB_DISC` (your own copy) links the `.cue` and its
-`.bin` tracks into `build-web/disc/` and writes `wipeoutxl-data.json`, which
-names it. Put `build-web` on any web server with the links followed
-(`cp -RL build-web site`), or try it with `python3 -m http.server` in
-`build-web` and open `http://localhost:8000/wipeoutxl.html`. A host can also
+`.bin` tracks into `build/web/disc/` and writes `wipeoutxl-data.json`, which
+names it. Put `build/web` on any web server with the links followed
+(`cp -RL build/web site`), or try it with `python3 -m http.server` in
+`build/web` and open `http://localhost:8000/wipeoutxl.html`. A host can also
 put a disc there by hand: `disc/Wipeout XL (USA).cue` with its tracks is found
 without a `wipeoutxl-data.json`, and the JSON (`{ "disc": "url/of/the.cue" }`)
 can point anywhere on the site.
@@ -75,11 +75,11 @@ The same game runs on iPhone, iPad and Android, landscape and full screen (OpenG
 iOS (Xcode; the simulator needs no signing):
 
 ```sh
-cmake -S . -B build-ios -G Ninja -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphonesimulator \
+cmake -S . -B build/ios -G Ninja -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphonesimulator \
       -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DCMAKE_BUILD_TYPE=RelWithDebInfo
-ninja -C build-ios wipeoutxl
-codesign --force --sign - "build-ios/Wipeout XL.app"
-xcrun simctl install booted "build-ios/Wipeout XL.app"
+ninja -C build/ios wipeoutxl
+codesign --force --sign - "build/ios/Wipeout XL.app"
+xcrun simctl install booted "build/ios/Wipeout XL.app"
 ```
 
 For a device, configure with `-G Xcode -DCMAKE_SYSTEM_NAME=iOS -DWIPEOUT_IOS_TEAM=<your team id>
