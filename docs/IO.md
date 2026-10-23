@@ -129,7 +129,9 @@ docs/CONTROLS.md). Gamepads: the standard layout (south/east/west/north =
 Cross/Circle/Square/Triangle), triggers L2/R2, left stick = d-pad; hot-plug takes the first free
 port. `PsxPadLastDevice` says whether the player last used the keyboard or which family of
 gamepad (PlayStation, Xbox, Nintendo, other), for the glyphs.
-`WIPEOUT_PAD_TYPE=negcon` selects the NeGcon (stick or arrows twist, triggers analogue).
+The first port reports a NeGcon instead of the digital pad when the player chooses it (the debug
+console's Game tab, `negcon` in the settings; `WIPEOUT_PAD_TYPE=negcon` or `digital` for a run):
+see docs/CONTROLS.md.
 Scripts (`padScript`): lines `field port BUTTONS` (names joined by `+`, `none`, or a hex mask;
 `twist=`, `i=`, `ii=`, `l=`), applied from that video field on.
 

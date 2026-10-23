@@ -56,6 +56,9 @@ int PortWindowFocused(void)
     return 1;
 }
 
+/* The video standard (region.c): NTSC, the console the tests' timings are of. */
+int portPal;
+
 void PortLog(const char *format, ...)
 {
     va_list ap;

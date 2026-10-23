@@ -30,7 +30,10 @@ void PortConsoleGlyphs(int forced);
 
 /* Names of buttons in the game's text. The console's own text is returned for a PlayStation pad
    and when there is nothing better; otherwise the name of the key or button of the device. */
-typedef enum { PORT_BUTTON_START, PORT_BUTTON_L1, PORT_BUTTON_L2, PORT_BUTTON_R1, PORT_BUTTON_R2 } PortButton;
+typedef enum {
+    PORT_BUTTON_START, PORT_BUTTON_L1, PORT_BUTTON_L2, PORT_BUTTON_R1, PORT_BUTTON_R2,
+    PORT_BUTTON_NEGCON_L, PORT_BUTTON_NEGCON_R /* the NeGcon's shoulders (psx/pad_sdl.c) */
+} PortButton;
 char *PortButtonLabel(PortButton button, char *console);
 
 #endif

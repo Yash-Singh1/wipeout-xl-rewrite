@@ -8,6 +8,7 @@
 
 #include "platform.h"
 #include "psx/gte.h"
+#include "psx/pad.h"
 #include "psx/psx_io.h"
 #include "region.h"
 #include "debug_ui.h"
@@ -396,6 +397,7 @@ int main(int argc, char **argv)
             return 1;
         }
         atexit(PsxIoShutdown);
+        PsxPadSetType(0, portSettings.negcon ? PAD_NEGCON : PAD_DIGITAL); /* (the settings, WIPEOUT_PAD_TYPE) */
     }
     PortRegionStart(); /* the disc's region and the video standard (version.h) */
     PortTraceInit();

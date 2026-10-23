@@ -28,6 +28,7 @@ extern "C" {
 #include "psx/framecap.h"
 #include "psx/disc.h"
 #include "psx/gpu.h"
+#include "psx/pad.h"
 #include "psx/psx_io.h"
 }
 
@@ -1031,6 +1032,25 @@ static void DisabledWrapped(const char *text)
     ImGui::PopStyleColor();
 }
 
+static void Controller(void)
+{
+    static const char *const types[] = {"Digital pad", "NeGcon (analogue)"};
+    int type = portSettings.negcon != 0;
+
+    ImGui::TextUnformatted("Controller the game sees");
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12);
+    if (ImGui::Combo("##controller", &type, types, IM_ARRAYSIZE(types))) {
+        portSettings.negcon = type;
+        PsxPadSetType(0, type ? PAD_NEGCON : PAD_DIGITAL);
+        Changed();
+    }
+    DisabledWrapped("NeGcon: Namco's twisting controller, which the game steers and thrusts by degrees. The left stick "
+                    "twists it, the right trigger is button I (thrust; also the south button), the west button II "
+                    "(fire), the left trigger the L shoulder and the right shoulder button R (the air brakes), the east "
+                    "and north buttons A and B. The game's controller screen (Options) then sets its buttons and its "
+                    "twist: maximum lock, centre and dead spot.");
+}
+
 static void TouchControls(void)
 {
     static const char *const modes[] = {"Automatic", "On", "Off"};
@@ -1795,6 +1815,8 @@ static void Console(void)
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Game", nullptr, FirstTab("game"))) {
+            Controller();
+            ImGui::Separator();
             TouchControls();
             ImGui::Separator();
             bool skip = portSettings.skipIntro != 0;

@@ -109,6 +109,27 @@ bindings (`InitPadSettings`):
 Analog sticks feed the NegCon path (axes 0x8FF0-0x8FF2) only when the player
 picks the analog controller type.
 
+## NeGcon
+
+The game supports Namco's NeGcon, which twists in the middle to steer and has three analogue buttons
+(I, II and the left shoulder L), a digital right shoulder R, two face buttons A and B, Start and a d-pad.
+The debug console's Game tab chooses which the first port reports (the digital pad by default); the
+game then shows its NeGcon screens (Options, controller: the buttons, and the twist's maximum lock,
+centre and dead spot). The twist steers the ship by degrees and button I thrusts by degrees.
+
+| NeGcon | Gamepad | Keyboard in a race |
+|---|---|---|
+| twist | left stick across (a small dead zone, the rest spread over the whole twist); d-pad left/right all the way in a race | left / right arrows, all the way |
+| I (thrust) | right trigger, by degrees; south button fully | S |
+| II (fire) | west button | Space |
+| L (an air brake) | left trigger, by degrees; left shoulder button fully | A |
+| R (the other) | right shoulder button | D |
+| A (drop weapon) / B (view) | east / north button (the console's circle and triangle bits) | Alt / V |
+
+In the menus the d-pad and the arrow keys are the d-pad (the stick moves the cursor up and down too),
+and the keys press what they press on the digital pad: Enter I (accept), Alt II, Space A, Escape B. The
+controller screen names L and R after the device (LT and RB on an Xbox pad, ZL and R on a Nintendo pad).
+
 Gamepads count only while the game's window has the input focus: SDL reports them
 in the background too, so a pad used in another program does nothing here. Buttons
 still held when the window gets the focus back stay quiet until they are released.

@@ -414,13 +414,6 @@ void PsxPadInit(const char *scriptPath)
     }
     /* the keyboard is always plugged into port 0 */
     PsxPadSetSource(0, PAD_SRC_KEYBOARD, &idle, true);
-    {
-        const char *type = getenv("WIPEOUT_PAD_TYPE");
-
-        if (type && !strcmp(type, "negcon")) {
-            ports[0].type = PAD_NEGCON;
-        }
-    }
     if (scriptPath) {
         FILE *f = fopen(scriptPath, "rb");
 

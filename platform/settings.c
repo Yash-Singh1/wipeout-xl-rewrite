@@ -86,6 +86,8 @@ static void Set(const char *key, const char *value)
         portSettings.touchSize = SDL_clamp(number, 50, 200);
     } else if (!strcmp(key, "touch_opacity")) {
         portSettings.touchOpacity = SDL_clamp(number, 10, 100);
+    } else if (!strcmp(key, "negcon")) {
+        portSettings.negcon = number != 0;
     }
 }
 
@@ -160,6 +162,9 @@ void PortSettingsLoad(void)
         portSettings.videoStandard = !SDL_strcasecmp(value, "ntsc") ? VIDEO_NTSC
                                      : !SDL_strcasecmp(value, "pal") ? VIDEO_PAL : VIDEO_BY_DISC;
     }
+    if ((value = SDL_getenv("WIPEOUT_PAD_TYPE"))) {
+        portSettings.negcon = !SDL_strcasecmp(value, "negcon"); /* "negcon", anything else the digital pad */
+    }
     if ((value = SDL_getenv("WIPEOUT_DEPTH_BUFFER"))) {
         portSettings.consoleDepth = SDL_atoi(value) == 0;
     }
@@ -212,7 +217,7 @@ int PortSettingsSave(void)
             "render_scale = %d\nhd_textures = %d\nhd_pack = %s\nwipeout64 = %s\n"
             "custom_music = %d\nmusic_shuffle = %d\nmusic_folder = %s\nsave_slot = %s\nautosave = %d\n"
             "touch_controls = %d\ntouch_size = %d\ntouch_opacity = %d\ndepth_buffer = %d\nskip_logos = %d\nrecord_rate = %d\n"
-            "video_standard = %d\n",
+            "video_standard = %d\nnegcon = %d\n",
             portSettings.showFps, portSettings.farView, portSettings.fade, portSettings.fadeNear, portSettings.fadeFar,
             portSettings.widescreen, portSettings.frameRate,
             portSettings.frameCap, portSettings.skipIntro,
@@ -223,7 +228,8 @@ int PortSettingsSave(void)
             portSettings.musicShuffle, portSettings.musicFolder, portSettings.saveSlot, !portSettings.noAutoSave,
             portSettings.touchControls, portSettings.touchSize ? portSettings.touchSize : 100,
             portSettings.touchOpacity ? portSettings.touchOpacity : 60, !portSettings.consoleDepth, portSettings.skipLogos,
-            portSettings.recordRate ? portSettings.recordRate : 60, portSettings.videoStandard);
+            portSettings.recordRate ? portSettings.recordRate : 60, portSettings.videoStandard,
+            portSettings.negcon);
     fclose(file);
     return 1;
 }

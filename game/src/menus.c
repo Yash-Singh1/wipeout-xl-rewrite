@@ -3908,7 +3908,7 @@ void JoyPadConfig(ConfigData *gameData, KeyConfig *keyConfig, MenuPolys *polys, 
             break;
         case 0x800:
             if (playerControl[0].head == 2) {
-                Print(msgRButton, 150, i * 16 + 88, 8);
+                Print(PortButtonLabel(PORT_BUTTON_NEGCON_R, msgRButton), 150, i * 16 + 88, 8); /* Port: the name of the pad's button */
             } else {
                 Print(PortButtonLabel(PORT_BUTTON_R1, msgR1Button), 150, i * 16 + 88, 8); /* Port: the name of the pad's button */
             }
@@ -3926,7 +3926,7 @@ void JoyPadConfig(ConfigData *gameData, KeyConfig *keyConfig, MenuPolys *polys, 
             DoButton(150, (short)(i * 16 + 83), 2, numTex);
             break;
         case 0x8FF2:
-            Print(msgLButton, 150, i * 16 + 88, 8);
+            Print(PortButtonLabel(PORT_BUTTON_NEGCON_L, msgLButton), 150, i * 16 + 88, 8); /* Port: the name of the pad's button */
             break;
         }
     }

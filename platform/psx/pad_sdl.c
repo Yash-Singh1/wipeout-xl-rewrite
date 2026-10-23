@@ -25,8 +25,8 @@
    The last device used (a key, or a button or stick of a gamepad) is told to the pad (see
    PsxPadNoteDevice) for the button glyphs the game shows.
 
-   With the NeGcon type selected (WIPEOUT_PAD_TYPE=negcon) the left stick, or the left and
-   right arrow keys, twist the controller and the triggers are the analogue buttons. */
+   With the NeGcon chosen (the debug console's Game tab, or WIPEOUT_PAD_TYPE=negcon) the left stick, or the
+   left and right arrow keys, twist the controller and the triggers are the analogue buttons (update_gamepad). */
 #include <SDL3/SDL.h>
 
 #include <string.h>
@@ -91,6 +91,7 @@ static PadState keyboardState, gamepadState[GAMEPADS];
 static uint16_t (*touchSource)(PadContext context); /* the touch controls (PsxPadSetTouchSource) */
 
 static void Route(void);
+static void update_gamepad(int port);
 static PadDevice gamepad_device(SDL_Gamepad *g);
 static void SendSecondPlayer(void);
 static void ReceiveSecondPlayer(void);
@@ -121,17 +122,26 @@ static void update_keyboard(void)
         st.buttons |= touchSource(keyContext);
     }
     if (PsxPadGetType(0) == PAD_NEGCON) {
-        /* NeGcon: S is button I (thrust), Space button II (fire), A the left shoulder (analogue
-           L), D the right shoulder (R), the arrows twist, Alt button B, V button A */
+        /* NeGcon: in a race S is button I (thrust), Space button II (fire), Alt button A (drop weapon: the
+           circle's bit), V button B (view: the triangle's), A the left shoulder (analogue L), D the right
+           shoulder (R), and the left and right arrows twist it all the way. In the menus the keys keep what they
+           press on the digital pad, as the glyphs show them: Enter is I (the cross's place), Alt II (the
+           square's), Space A and Escape B, the arrows the d-pad. */
         uint16_t held = st.buttons;
 
-        st.buttons &= (uint16_t)~(PAD_CROSS | PAD_CIRCLE | PAD_SQUARE | PAD_L2 | PAD_R2 | PAD_LEFT | PAD_RIGHT);
+        st.buttons &= (uint16_t)~(PAD_CROSS | PAD_CIRCLE | PAD_SQUARE | PAD_L2 | PAD_R2);
         st.analogI = (held & PAD_CROSS) ? 0xFF : 0;
-        st.analogII = (held & PAD_CIRCLE) ? 0xFF : 0;
         st.analogL = (held & PAD_L2) ? 0xFF : 0;
-        if (held & PAD_SQUARE) st.buttons |= PAD_CIRCLE; /* button B */
-        if (held & PAD_R2) st.buttons |= PAD_R1;         /* the digital right shoulder */
-        st.twist = (held & PAD_LEFT) ? ((held & PAD_RIGHT) ? 0x80 : 0x00) : (held & PAD_RIGHT) ? 0xFF : 0x80;
+        if (held & PAD_R2) st.buttons |= PAD_R1; /* the digital right shoulder */
+        if (keyContext == PAD_CONTEXT_RACE) {
+            st.analogII = (held & PAD_CIRCLE) ? 0xFF : 0;
+            if (held & PAD_SQUARE) st.buttons |= PAD_CIRCLE;
+            st.buttons &= (uint16_t)~(PAD_LEFT | PAD_RIGHT);
+            st.twist = (held & PAD_LEFT) ? ((held & PAD_RIGHT) ? 0x80 : 0x00) : (held & PAD_RIGHT) ? 0xFF : 0x80;
+        } else {
+            st.analogII = (held & PAD_SQUARE) ? 0xFF : 0;
+            st.buttons |= held & PAD_CIRCLE;
+        }
     }
     keyboardState = st;
     Route();
@@ -152,6 +162,11 @@ void PsxPadSdlField(void)
             keyHeldOver[i] = keyDown[i] && before && before != key_buttons(i, context);
         }
         keyContext = context;
+        for (i = 0; i < GAMEPADS; i++) {
+            if (gamepads[i] && PsxPadGetType(0) == PAD_NEGCON) {
+                update_gamepad((int)i); /* (the NeGcon's d-pad and stick mean other things in a race) */
+            }
+        }
         PortLog("pad: keyboard in %s (thrust is button %04X)\n", context == PAD_CONTEXT_RACE ? "the race" : "the menus",
                 PsxPadActionButton(PAD_ACTION_THRUST));
     }
@@ -163,6 +178,18 @@ void PsxPadSdlField(void)
     if (routed && secondDevice != DEVICE_NONE) {
         SendSecondPlayer();
     }
+}
+
+/* NeGcon: the twist of a stick's position across (-32768 .. 32767). A real NeGcon's twist rests at 0x80 and turns
+   smoothly from there; a stick wanders a little about its centre, so a small dead zone is left out and the rest
+   spread over the whole twist, without a step at its edge. */
+#define TWIST_DEAD_ZONE 2600
+static uint8_t Twist(int x)
+{
+    int beyond = x > TWIST_DEAD_ZONE ? x - TWIST_DEAD_ZONE : x < -TWIST_DEAD_ZONE ? x + TWIST_DEAD_ZONE : 0;
+    int twist = 0x80 + beyond * 0x80 / (32768 - TWIST_DEAD_ZONE);
+
+    return (uint8_t)SDL_clamp(twist, 0, 0xFF);
 }
 
 static void update_gamepad(int port)
@@ -217,20 +244,29 @@ static void update_gamepad(int port)
     }
     padHeldOver[port] &= st.buttons;
     st.buttons &= (uint16_t)~padHeldOver[port];
+    if (padHeldOver[port] & PAD_L2) lt = 0; /* (the NeGcon's analogue buttons too) */
+    if (padHeldOver[port] & PAD_R2) rt = 0;
     if (PsxPadGetType(port) == PAD_NEGCON) {
-        /* the stick twists; the right trigger and south button are button I, west button II,
-           the left trigger the analogue left shoulder, east button B, north button A */
+        /* the stick twists; the right trigger is button I (analogue) and so is the south button (fully), the
+           west button II, the left trigger the analogue left shoulder and the left shoulder button it fully, the
+           right shoulder button R; the east and north buttons are A and B (where the console reports them: the
+           circle's and the triangle's bits). In the menus the stick moves the cursor up and down as well. */
         uint16_t held = st.buttons;
 
-        st.buttons &= (uint16_t)~(PAD_CROSS | PAD_SQUARE | PAD_L2 | PAD_R2 | PAD_LEFT | PAD_RIGHT);
-        st.twist = (uint8_t)((x + 32768) >> 8);
-        if (st.twist > 0x70 && st.twist < 0x90) st.twist = 0x80; /* dead zone */
+        st.buttons &= (uint16_t)~(PAD_CROSS | PAD_SQUARE | PAD_L1 | PAD_L2 | PAD_R2);
+        st.twist = Twist(x);
         st.analogI = (held & PAD_CROSS) ? 0xFF : (uint8_t)(rt >> 7);
         st.analogII = (held & PAD_SQUARE) ? 0xFF : 0;
-        st.analogL = (uint8_t)(lt >> 7);
-        if (held & PAD_R2) st.buttons |= PAD_R1;
-        if (held & PAD_LEFT) st.twist = 0x00;
-        if (held & PAD_RIGHT) st.twist = 0xFF;
+        st.analogL = (held & PAD_L1) ? 0xFF : (uint8_t)(lt >> 7);
+        if (PsxPadContext() == PAD_CONTEXT_RACE) {
+            /* the d-pad's left and right twist it all the way (in the menus they are the d-pad's) */
+            st.buttons &= (uint16_t)~(PAD_LEFT | PAD_RIGHT);
+            if (held & PAD_LEFT) st.twist = 0x00;
+            if (held & PAD_RIGHT) st.twist = 0xFF;
+        } else {
+            if (y < -16384) st.buttons |= PAD_UP;
+            if (y > 16384) st.buttons |= PAD_DOWN;
+        }
     }
     gamepadState[port] = st;
     Route();

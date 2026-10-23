@@ -36,13 +36,14 @@ void PortRaceControls(int steering, const unsigned short *bindings)
 /* ---- names of buttons ---- */
 
 typedef struct ButtonNames {
-    const char *start, *l1, *l2, *r1, *r2;
+    const char *start, *l1, *l2, *r1, *r2, *negconL, *negconR;
 } ButtonNames;
 
-/* The font has capitals, digits and a few marks: the Switch's plus is spelled out. */
-static const ButtonNames keyboardNames = {"ENTER", "Q", "A", "E", "D"};
-static const ButtonNames xboxNames = {"MENU", "LB", "LT", "RB", "RT"};
-static const ButtonNames nintendoNames = {"PLUS", "L", "ZL", "R", "ZR"};
+/* The font has capitals, digits and a few marks: the Switch's plus is spelled out. The NeGcon's analogue left
+   shoulder is the left trigger (or, fully, the left shoulder button), its right shoulder the right shoulder button. */
+static const ButtonNames keyboardNames = {"ENTER", "Q", "A", "E", "D", "A", "D"};
+static const ButtonNames xboxNames = {"MENU", "LB", "LT", "RB", "RT", "LT", "RB"};
+static const ButtonNames nintendoNames = {"PLUS", "L", "ZL", "R", "ZR", "ZL", "R"};
 
 char *PortButtonLabel(PortButton button, char *console)
 {
@@ -61,6 +62,8 @@ char *PortButtonLabel(PortButton button, char *console)
     case PORT_BUTTON_L2: name = names->l2; break;
     case PORT_BUTTON_R1: name = names->r1; break;
     case PORT_BUTTON_R2: name = names->r2; break;
+    case PORT_BUTTON_NEGCON_L: name = names->negconL; break;
+    case PORT_BUTTON_NEGCON_R: name = names->negconR; break;
     default: return console;
     }
     return (char *)name;
