@@ -1737,8 +1737,9 @@ void GpuPresentSplit(int x, int y, int w, int h, const uint8_t *lower, int lower
     glViewport(0, 0, width, height);
     glClearColor(0, 0, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT);
-    /* the upper half: this game's band (OpenGL's rows go up: the upper half is from height / 2) */
-    Fit(0, height - height / 2, width, height / 2, across, h, &ox, &oy, &ow, &oh);
+    /* the upper half: this game's band (OpenGL's rows go up: the upper half is from height / 2), its pixels as wide
+       as the console's are (PAL's 256 lines across the same 4:3 screen: wider than tall) */
+    Fit(0, height - height / 2, width, height / 2, across * GPU_LINES, h * 240, &ox, &oy, &ow, &oh);
     glBindFramebuffer(GL_READ_FRAMEBUFFER, wide ? wideFramebuffer : framebuffer);
     glBlitFramebuffer(wide ? 0 : x * scale, y * scale, (wide ? across : x + w) * scale, (y + h) * scale, ox, oy + oh,
                       ox + ow, oy, GL_COLOR_BUFFER_BIT, GL_LINEAR);

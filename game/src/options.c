@@ -7,6 +7,8 @@
 
 extern short CurrentScreen;
 extern char msgAreYouSure[];
+extern int      quadIndex;
+extern POLY_FT4 quadPool[];
 extern char msgWantToRestart[];
 extern char msgWantToQuit[];
 extern char labelSelect[];
@@ -428,6 +430,7 @@ void UpdateSfxBar(POLY_G4 bars[][2], ConfigData *game)
 void InGameConfirm(u_char *confirmed, int mode, int unused, u_char *selection, int *frameCount)
 {
     int highlight;
+    POLY_FT4 *choices; /* Port */
 
     highlight = 1;
     if (mode == 1) {
@@ -443,6 +446,7 @@ void InGameConfirm(u_char *confirmed, int mode, int unused, u_char *selection, i
         PlayNote(8, 0xFF, 0xF, 0xF, 0x100);
     }
 
+    choices = &quadPool[quadIndex]; /* Port: YES and NO stay in the middle with widescreen (PortHudCentred) */
     if (*selection != 0) {
         if (!(*frameCount & 1)) {
             AddText(labelYes, 0x4B, 0x78, 0x10, 0);
@@ -458,6 +462,7 @@ void InGameConfirm(u_char *confirmed, int mode, int unused, u_char *selection, i
             AddText(labelNo, 0xCD, 0x78, 0x10, 1);
         }
     }
+    PortHudCentred(choices, &quadPool[quadIndex]);
     if (gameType == 1) {
         VSync(0);
     }

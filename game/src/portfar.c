@@ -15,6 +15,7 @@ extern int        ownShip;
 extern int        remoteShip;
 extern int        ghostShip;
 extern int        raceType;
+extern ShipData  *shipIndex;
 
 /* The game's ordering table has 0x2000 entries; the sky is linked into the last. Primitives the game
    would put at or beyond FAR_ENTRY go into the far table, linked in at FAR_ENTRY: drawn after the sky,
@@ -524,7 +525,15 @@ void PortFarFlares(TrackCamera *camera)
             distance = 0;
         }
         flareSlot = PortFarSlot(distance >> 1, (distance >> 1) * 4.0);
-        DrawFlare((short)(centre.screen & 0xFFFF), (short)(centre.screen >> 16), distance, i);
+        {
+            /* its size: speed * 8 / distance (DrawFlare), not below the 2 of a flare at the edge of the game's range
+               (beyond it the flare would round away to nothing) */
+            ShipData *ship = &shipIndex[i];
+            int speed = (i != ownShip || !(ship->attr & RACING)) ? ship->speed >> 1 : ship->thrust >> 5;
+            int sizeDistance = speed * 4 > 0 && distance > speed * 4 ? speed * 4 : distance;
+
+            DrawFlare((short)(centre.screen & 0xFFFF), (short)(centre.screen >> 16), sizeDistance, i);
+        }
         flareSlot = NULL;
     }
     farShips = 0;

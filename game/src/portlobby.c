@@ -321,12 +321,13 @@ int PortLobby(ConfigData *gameData, MenuSelection *selection)
         PortLinkRestart(); /* it closed (or never started): again */
     }
 
+    /* each half's middle: the box's inside runs from column 22 to the divider at 160, and on to 306 */
     DrawDivider();
-    DrawPlayer(&players[0], 0, 84, -655);
+    DrawPlayer(&players[0], 0, 91, -595);
     if (players[1].device != DEVICE_NONE) {
-        DrawPlayer(&players[1], 1, 236, 655);
+        DrawPlayer(&players[1], 1, 233, 629);
     } else {
-        DrawJoin(236, players[0].device != DEVICE_KEYBOARD);
+        DrawJoin(233, players[0].device != DEVICE_KEYBOARD);
     }
 
     /* the strip: what the lobby waits for */

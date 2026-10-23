@@ -585,11 +585,12 @@ static int SplitSize(int x, int *w, int *h)
     if (!state.displayEnabled || !PortLinkBand(&margin, &halfW, &halfH)) {
         return 0;
     }
+    /* (the console's pixels as wide as they are shown: PAL's 256 lines across the same 4:3 screen) */
     *h = halfH;
-    *w = (int)((int64_t)halfH * across / GPU_SPLIT_ROWS);
+    *w = (int)((int64_t)halfH * across * GPU_LINES / (GPU_SPLIT_ROWS * 240));
     if (*w > halfW) {
         *w = halfW;
-        *h = (int)((int64_t)halfW * GPU_SPLIT_ROWS / across);
+        *h = (int)((int64_t)halfW * GPU_SPLIT_ROWS * 240 / ((int64_t)across * GPU_LINES));
     }
     while ((size_t)*w * *h * 4 > LINK_FRAME_BYTES) {
         *w = *w * 3 / 4;
@@ -1452,9 +1453,9 @@ void PsxHudTables(u_long *lastEntry, u_long *secondTable)
     hudTable = secondTable;
 }
 
-/* The HUD in the band of a split window, at this size of the console's (a little smaller, against the band,
-   than the console's HUD against its screen). */
-#define HUD_SPLIT_SCALE 0.45f
+/* The HUD in the band of a split window, at this size of the console's (a little larger, against the band, than
+   the console's HUD against its screen: the band is a wide strip of the window; its corner groups still fit). */
+#define HUD_SPLIT_SCALE 0.65f
 
 /* A HUD vertex (DrawAnchored): a box over the whole screen out to the sides of the wide picture (and the
    band's top and bottom); else scaled about the centre of the picture to the middle of the band, and moved
@@ -1587,6 +1588,33 @@ void PortSceneRange(const void *start, size_t bytes)
     sceneRangeNext = (sceneRangeNext + 1) % SCENE_RANGES;
 }
 
+/* PortHudCentred's: those of the frame being built, and those of the tables drawn (PsxUpcomingTables). */
+#define CENTRED_RANGES 16
+static struct {
+    const char *start, *end;
+} centred[2][CENTRED_RANGES];
+static int centredCount[2];
+
+void PortHudCentred(const void *start, const void *end)
+{
+    if (centredCount[0] < CENTRED_RANGES && end > start) {
+        centred[0][centredCount[0]].start = (const char *)start;
+        centred[0][centredCount[0]++].end = (const char *)end;
+    }
+}
+
+static int HudCentred(const u_long *node)
+{
+    int i;
+
+    for (i = 0; i < centredCount[1]; i++) {
+        if ((const char *)node >= centred[1][i].start && (const char *)node < centred[1][i].end) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static int SceneSprite(const u_long *node)
 {
     int i;
@@ -1665,6 +1693,11 @@ static void DrawAnchored(u_long *p, int margin, int half)
                 break;
             }
         }
+        for (i = first; i < last && have; i++) {
+            if (HudCentred(hud[i])) {
+                have = 0; /* (PortHudCentred: where the game put it) */
+            }
+        }
         side = !have ? 0
                : group[2] <= ANCHOR_LEFT || (group[2] < 160 && group[0] <= ANCHOR_OUTER) ? -1
                : group[0] >= ANCHOR_RIGHT || (group[0] > 160 && group[2] >= 320 - ANCHOR_OUTER) ? 1
@@ -1715,6 +1748,9 @@ static uint64_t frameDrawnField;       /* tests: the field the last frame was dr
 
 void PsxUpcomingTables(u_long *table, u_long *second, u_long *hudFirst, DRAWENV *env)
 {
+    memcpy(centred[1], centred[0], sizeof(centred[0])); /* (PortHudCentred: the frame's, for its tables) */
+    centredCount[1] = centredCount[0];
+    centredCount[0] = 0;
     upcoming.table = table;
     upcoming.second = second;
     upcoming.hudEntry = hudFirst;
