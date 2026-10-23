@@ -253,6 +253,7 @@ static uint64_t uploadedGame;
 static int uploadedShown;
 static bool uploadedHad;            // ... and whether it had its picture then (a recording being made: compressed later)
 static float pictureZoom;           // the picture's pixels per console pixel; 0: as large as fits
+static float pictureRoom;           // the height dragged for the picture above the list (0: as the layout gives)
 static GLuint frameTexture;
 static int pickHit = -1;
 
@@ -472,8 +473,12 @@ static void RecorderTab(void)
     int pictureW = hasPicture ? f->pictureW / pictureScale : 320, pictureX = hasPicture ? f->pictureX : 0;
     // below the picture, the pixel's primitives: at least a few rows and the details (zoomed in, the picture
     // takes the rest)
-    float below = SDL_min(300 * ui, room.y * 0.4f), belowZoomed = SDL_min(170 * ui, room.y * 0.3f);
-    float paneW = beside ? room.x * 0.5f : room.x, paneH = beside ? room.y : room.y - below;
+    float below = SDL_min(240 * ui, room.y * 0.35f), belowZoomed = SDL_min(170 * ui, room.y * 0.3f);
+    float splitter = 8 * ui; // (the bar between them, dragged to give the picture more room or less)
+    float paneW = beside ? room.x * 0.5f : room.x, paneH = beside ? room.y : room.y - below - splitter;
+    if (!beside && pictureRoom > 0) {
+        paneH = SDL_clamp(pictureRoom, 100 * ui, SDL_max(100 * ui, room.y - splitter - 60 * ui));
+    }
     float fit = SDL_max(0.5f, SDL_min(paneW / pictureW, paneH / 240.0f));
 
     ImGui::Text("game frame %llu, %d primitives, %s   (, and . step)", (unsigned long long)f->gameFrame, f->count,
@@ -534,8 +539,8 @@ static void RecorderTab(void)
     // pixel's primitives beside it (in a narrow window below it)
     float zoom = pictureZoom > 0 ? pictureZoom : fit;
     ImVec2 imageSize(pictureW * zoom, 240 * zoom);
-    if (!beside && pictureZoom > 0) {
-        paneH = SDL_max(paneH, room.y - belowZoomed); // zoomed in: as tall as it gets, the list below it smaller
+    if (!beside && pictureZoom > 0 && pictureRoom <= 0) {
+        paneH = SDL_max(paneH, room.y - belowZoomed - splitter); // zoomed in: as tall as it gets, the list smaller
     }
     float bar = ImGui::GetStyle().ScrollbarSize;
     bool across = imageSize.x > paneW, down = imageSize.y > paneH;
@@ -609,6 +614,24 @@ static void RecorderTab(void)
     ImGui::EndChild();
     if (beside) {
         ImGui::SameLine();
+    } else {
+        // the bar below the picture: dragged up or down, the picture's room (a double click: as the layout gives)
+        float shownHeight = ImGui::GetItemRectSize().y;
+        ImVec2 at = ImGui::GetCursorScreenPos();
+        ImGui::InvisibleButton("##split", ImVec2(room.x, splitter));
+        bool over = ImGui::IsItemHovered() || ImGui::IsItemActive();
+        if (over) {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
+        }
+        if (ImGui::IsItemActive() && ImGui::GetIO().MouseDelta.y != 0) {
+            pictureRoom = shownHeight + ImGui::GetIO().MouseDelta.y;
+        }
+        if (over && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+            pictureRoom = 0;
+        }
+        ImGui::GetWindowDrawList()->AddLine(ImVec2(at.x, at.y + splitter * 0.5f), ImVec2(at.x + room.x, at.y + splitter * 0.5f),
+                                            ImGui::GetColorU32(over ? ImGuiCol_SeparatorActive : ImGuiCol_Separator),
+                                            over ? 3.0f : 1.0f);
     }
     ImGui::BeginChild("##pixel", ImVec2(0, 0), ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar);
     if (picked) {
