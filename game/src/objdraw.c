@@ -234,12 +234,20 @@ static u_char PolyCode(DrawKind kind, u_char code, short primFlag)
 
 /* Whether a polygon that faces away is dropped: single sided ones are in the plain and lit renderers, all of
    them in the sky. */
+static int PreciseFacing(const ProjectedVertex *a, const ProjectedVertex *b, const ProjectedVertex *c);
+
 static int Culled(DrawKind kind, short primFlag, const ProjectedVertex *a, const ProjectedVertex *b, const ProjectedVertex *c)
 {
+    int facing;
+
     if (kind != DRAW_FIXED && !(primFlag & SingleSided)) {
         return 0;
     }
-    culled = FacesAway(a, b, c);
+    /* Port: judged on the precise positions the polygon is drawn from, when there are: on the corners rounded to
+       whole pixels a polygon seen nearly edge on (a sliver of a turning ship) faced away in one frame and not in
+       the next, and flickered. Not in the lockstep tests, which compare the console's drawing. */
+    facing = farView || PortTracing() ? -1 : PreciseFacing(a, b, c);
+    culled = facing >= 0 ? facing : FacesAway(a, b, c);
     culledVertex[0] = a;
     culledVertex[1] = b;
     culledVertex[2] = c;
@@ -250,6 +258,19 @@ static int Culled(DrawKind kind, short primFlag, const ProjectedVertex *a, const
    rounded to whole pixels; a far polygon a few pixels across, seen nearly edge on, can come out facing away
    in one frame and not in the next. Such a polygon is left to the far view (portfar.h), which judges on the
    precise positions: a black speck of background flickered where it was missing. */
+/* Port: 1 when a polygon faces away judged on its corners' precise positions, 0 when it faces the camera, -1
+   when they are not all known. */
+static int PreciseFacing(const ProjectedVertex *a, const ProjectedVertex *b, const ProjectedVertex *c)
+{
+    GtePrecise p[3];
+
+    if (!GtePreciseOf(projectedHandle[a - projected], &p[0]) || !GtePreciseOf(projectedHandle[b - projected], &p[1]) ||
+        !GtePreciseOf(projectedHandle[c - projected], &p[2])) {
+        return -1;
+    }
+    return (p[1].x - p[0].x) * (p[2].y - p[0].y) - (p[1].y - p[0].y) * (p[2].x - p[0].x) <= 0;
+}
+
 static int CulledForCertain(const ProjectedVertex *a, const ProjectedVertex *b, const ProjectedVertex *c)
 {
     GtePrecise p[3];

@@ -34,6 +34,8 @@ void PsxLinkRegion(void *start, size_t bytes);
 /* Whether the port draws the whole track in view (portfar.h): not in the lockstep tests (WIPEOUT_TRACE)
    or with WIPEOUT_FAR_VIEW=0. */
 int PortFarViewEnabled(void);
+/* Whether this run is recorded for the lockstep tests (platform/trace.h): the game decides as the console did. */
+int PortTracing(void);
 int PortLogoFields(int fields); /* how long a start-up logo is shown: the console's, or none (platform/main.c) */
 /* Widescreen (the settings): how far the picture reaches beyond each side of the console's 320 columns, in
    console pixels; 0 for the console's 4:3. A race's scene is shown wide (the game says so every frame it
