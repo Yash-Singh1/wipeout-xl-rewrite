@@ -236,11 +236,19 @@ static u_char PolyCode(DrawKind kind, u_char code, short primFlag)
    them in the sky. */
 static int PreciseFacing(const ProjectedVertex *a, const ProjectedVertex *b, const ProjectedVertex *c);
 
+/* Port: the menus' track models are drawn two-sided (port_platform.h). */
+static int twoSided;
+
+void PortTwoSided(int on)
+{
+    twoSided = on;
+}
+
 static int Culled(DrawKind kind, short primFlag, const ProjectedVertex *a, const ProjectedVertex *b, const ProjectedVertex *c)
 {
     int facing;
 
-    if (kind != DRAW_FIXED && !(primFlag & SingleSided)) {
+    if (kind != DRAW_FIXED && (!(primFlag & SingleSided) || (twoSided && !PortTracing()))) {
         return 0;
     }
     /* Port: judged on the precise positions the polygon is drawn from, when there are: on the corners rounded to

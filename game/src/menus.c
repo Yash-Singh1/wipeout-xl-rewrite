@@ -3407,7 +3407,9 @@ void DispHiScores(UnlockData *unlock, void *unused, unsigned char raceMode)
             case 3: Print(hiScoreRank3, 190, 122, 8); Print(hiScoreRank3, 190, 167, 8); break;
         }
     }
+    PortTwoSided(1); /* Port: the track model's surfaces shown from behind too */
     DrawTeamShips(0, -260, 1500, heading, 220, shipModels[trackModelOrder[originalTrack]]);
+    PortTwoSided(0);
     myseed++;
 }
 
@@ -4657,7 +4659,9 @@ afterTrackDescription:
         classBlink += 1;
         return;
     }
+    PortTwoSided(1); /* Port: the track model's surfaces shown from behind too */
     DrawTeamShips(400, -200, 1800, heading, 220, shipModels[trackModelOrder[selection->trackNum]]);
+    PortTwoSided(0);
     PrintCX(GetTrackName(selection->actTrackNum, 90, 90, 0), 160, 90);
     switch (trackMedals[selection->trackNum]) {
     case 1:

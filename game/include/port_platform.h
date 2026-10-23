@@ -36,6 +36,10 @@ void PsxLinkRegion(void *start, size_t bytes);
 int PortFarViewEnabled(void);
 /* Whether this run is recorded for the lockstep tests (platform/trace.h): the game decides as the console did. */
 int PortTracing(void);
+/* While on, models are drawn with both sides of their single-sided polygons (objdraw.c): a menu's turning track
+   model, a surface of which is otherwise gone while its back is to the camera (a climb, seen from behind). Not in
+   the lockstep tests. */
+void PortTwoSided(int on);
 int PortLogoFields(int fields); /* how long a start-up logo is shown: the console's, or none (platform/main.c) */
 /* Widescreen (the settings): how far the picture reaches beyond each side of the console's 320 columns, in
    console pixels; 0 for the console's 4:3. A race's scene is shown wide (the game says so every frame it
