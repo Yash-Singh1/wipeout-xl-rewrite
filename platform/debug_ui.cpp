@@ -687,8 +687,13 @@ static void RecorderTab(void)
             ImGui::TableNextColumn();
             ImGui::Text("%s  %s", p->tag[0] ? p->tag : "(untagged)", PrimName(p, name, sizeof(name)));
             ImGui::TableNextColumn();
-            ImGui::ColorButton("##c", ImVec4(h->r / 255.0f, h->g / 255.0f, h->b / 255.0f, 1.0f),
-                               ImGuiColorEditFlags_NoTooltip, ImVec2(40 * ui, 0));
+            // the colour, as tall as the row's text (a swatch of its own: one per row, not a widget)
+            ImVec2 at = ImGui::GetCursorScreenPos();
+            float tall = ImGui::GetTextLineHeight();
+            ImGui::GetWindowDrawList()->AddRectFilled(
+                at, ImVec2(at.x + 40 * ui, at.y + tall),
+                ImGui::GetColorU32(ImVec4(h->r / 255.0f, h->g / 255.0f, h->b / 255.0f, 1.0f)));
+            ImGui::Dummy(ImVec2(40 * ui, tall));
             ImGui::TableNextColumn();
             Explain(p, h, notes, sizeof(notes));
             ImGui::TextUnformatted(notes);
