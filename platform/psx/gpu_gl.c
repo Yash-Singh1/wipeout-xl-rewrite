@@ -891,11 +891,24 @@ static void Flush(void)
     glBindTexture(GL_TEXTURE_2D, hdAtlas);
     glUniform1i(uniformHdAtlas, 2);
     glActiveTexture(GL_TEXTURE0);
-    /* The depth buffer: what has a depth is drawn where nothing nearer was drawn, give or take DEPTH_SLACK (the
-       game's own order decides among things at about the same depth: a shadow or a pad on the track), and the
-       opaque write their depth once drawn. Without it (the console's look) the game's order alone decides. */
+    /* The depth buffer: what has a depth is drawn where nothing nearer is, give or take DEPTH_SLACK (the game's own
+       order decides among things at about the same depth: a shadow or a pad on the track). The depth of the batch's
+       opaque texels is written first, so that the batch is tested against itself too: a polygon behind another of
+       the same batch (a far wall in the same batch as the track in front of it) is hidden by it whatever their
+       order in the batch, as by one of an earlier batch. Without it (the console's look) the game's order alone
+       decides. */
     if (!portSettings.consoleDepth) {
         glEnable(GL_DEPTH_TEST);
+        if (batchDepth && !(batchState.semi >= 0 && !batchState.textured)) {
+            glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+            glDepthMask(GL_TRUE);
+            glDepthFunc(GL_LESS);
+            glUniform1i(uniformDepthPass, 1);
+            glUniform1i(uniformPass, 3);
+            glDisable(GL_BLEND);
+            glDrawArrays(GL_TRIANGLES, 0, batchCount);
+            glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        }
         glDepthFunc(GL_LEQUAL);
         glDepthMask(GL_FALSE);
         glUniform1f(uniformDepthPull, 1.0f / (1.0f - DEPTH_SLACK));
@@ -910,17 +923,6 @@ static void Flush(void)
         DrawBatch(2);
     } else {
         DrawBatch(0);
-    }
-    if (!portSettings.consoleDepth && batchDepth && !(batchState.semi >= 0 && !batchState.textured)) {
-        /* the depth of what was drawn opaque (the shader leaves out the rest) */
-        glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-        glDepthMask(GL_TRUE);
-        glDepthFunc(GL_LESS);
-        glUniform1i(uniformDepthPass, 1);
-        glUniform1i(uniformPass, 3);
-        glDrawArrays(GL_TRIANGLES, 0, batchCount);
-        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-        glDepthMask(GL_FALSE);
     }
     glDisable(GL_DEPTH_TEST);
     batchCount = 0;
@@ -1067,23 +1069,17 @@ static void FindHd(const GpuDrawState *state, const GpuVertex *vertices, int cou
     primitiveHdTexels[3] = (int16_t)hit.h;
 }
 
-/* The depth buffer: a batch's depth is written once it is drawn (Flush), so a polygon seen from behind does not go
-   in a batch after polygons seen from the front: it meets their depth, and is hidden where they are nearer (the
-   other way round the game's order already has the front, nearer, drawn over it). */
-static int batchFront;
 
-static void Begin(const GpuDrawState *state, int vertices, int back)
+static void Begin(const GpuDrawState *state, int vertices)
 {
     if (batchCount && (!SameState(state, &batchState) || batchCount + vertices > BATCH_VERTICES ||
-                       (state->textured && state->semi == 2) || (back && batchFront && !portSettings.consoleDepth))) {
+                       (state->textured && state->semi == 2))) {
         Flush();
     }
     if (!batchCount) {
         batchState = *state;
-        batchFront = 0;
         batchDepth = 0;
     }
-    batchFront |= !back;
     primitiveState = *state;
 }
 
@@ -1184,7 +1180,7 @@ void GpuTriangles(const GpuDrawState *given, const GpuVertex *vertices, int coun
     /* ... and a menu's backdrop is enlarged about the middle of the draw area to fill them, keeping its shape */
     backdrop = backdropNext && areaWide && areaX == 0 && areaW == SCREEN_COLUMNS && !perspective && !GpuRaceWide();
     FindHd(state, vertices, count);
-    Begin(state, count, vertices[0].backFacing);
+    Begin(state, count);
     for (i = 0; i < count; i++) {
         GpuVertex v = vertices[i];
         if (!perspective) {

@@ -809,7 +809,6 @@ static void Save(void)
             Put(file, &p->clut, 2);
             Put(file, p->ix, 8);
             Put(file, p->iy, 8);
-            const uint8_t none = 0;
 
             for (j = 0; j < 4; j++) {
                 const GpuVertex *v = &p->v[j];
@@ -822,7 +821,11 @@ static void Save(void)
                 Put(file, &v->a, 1);
                 Put(file, &v->u, 4);
                 Put(file, &v->v, 4);
-                Put(file, &none, 1); /* the file keeps the place of the sky's mark of earlier versions */
+                {
+                    /* left out of the depth buffer (1: the sky, corners found by their pixels; 2: seen from behind) */
+                    uint8_t mark = (uint8_t)(v->noDepth ? 1 : v->backFacing ? 2 : 0);
+                    Put(file, &mark, 1);
+                }
             }
             {
                 const int *d = &p->draw.textured;
