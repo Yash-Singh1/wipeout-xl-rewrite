@@ -303,16 +303,16 @@ void Ship2TrackBase(ShipData *playerShip, Face *facePtr, int alpha) {
         playerShip->vpivot.vx -= playerShip->vpivot.vx >> 3;
         playerShip->vpivot.vy -= playerShip->vpivot.vy >> 3;
         playerShip->vpivot.vz -= playerShip->vpivot.vz >> 3;
-        playerShip->vpivot.vx += facePtr->normal.vx;
-        playerShip->vpivot.vy += facePtr->normal.vy;
-        playerShip->vpivot.vz += facePtr->normal.vz;
-        playerShip->vpivot.vx -= (facePtr->normal.vx * alpha) >> 4;
-        playerShip->vpivot.vy -= (facePtr->normal.vy * alpha) >> 4;
-        playerShip->vpivot.vz -= (facePtr->normal.vz * alpha) >> 4;
+        playerShip->vpivot.vx += PAL_SPEED(facePtr->normal.vx);
+        playerShip->vpivot.vy += PAL_SPEED(facePtr->normal.vy);
+        playerShip->vpivot.vz += PAL_SPEED(facePtr->normal.vz);
+        playerShip->vpivot.vx -= PAL_SPEED((facePtr->normal.vx * alpha) >> 4);
+        playerShip->vpivot.vy -= PAL_SPEED((facePtr->normal.vy * alpha) >> 4);
+        playerShip->vpivot.vz -= PAL_SPEED((facePtr->normal.vz * alpha) >> 4);
     } else if (alpha < 31) {
-        playerShip->vpivot.vx += facePtr->normal.vx;
-        playerShip->vpivot.vy += facePtr->normal.vy;
-        playerShip->vpivot.vz += facePtr->normal.vz;
+        playerShip->vpivot.vx += PAL_SPEED(facePtr->normal.vx);
+        playerShip->vpivot.vy += PAL_SPEED(facePtr->normal.vy);
+        playerShip->vpivot.vz += PAL_SPEED(facePtr->normal.vz);
     }
 }
 
@@ -326,15 +326,15 @@ void DroneShip2TrackBase(ShipData *playerShip, Face *facePtr, int alpha)
         collideMinAlpha = alpha;
     }
     if (alpha <= 0) {
-        playerShip->ppivot.vx += facePtr->normal.vx >> 3;
-        playerShip->ppivot.vy += facePtr->normal.vy >> 3;
-        playerShip->ppivot.vz += facePtr->normal.vz >> 3;
+        playerShip->ppivot.vx += PAL_SPEED(facePtr->normal.vx >> 3);
+        playerShip->ppivot.vy += PAL_SPEED(facePtr->normal.vy >> 3);
+        playerShip->ppivot.vz += PAL_SPEED(facePtr->normal.vz >> 3);
         return;
     }
     if (alpha < 0x1F) {
-        playerShip->vpivot.vx += facePtr->normal.vx >> 3;
-        playerShip->vpivot.vy += facePtr->normal.vy >> 3;
-        playerShip->vpivot.vz += facePtr->normal.vz >> 3;
+        playerShip->vpivot.vx += PAL_SPEED(facePtr->normal.vx >> 3);
+        playerShip->vpivot.vy += PAL_SPEED(facePtr->normal.vy >> 3);
+        playerShip->vpivot.vz += PAL_SPEED(facePtr->normal.vz >> 3);
     }
 }
 
@@ -675,7 +675,7 @@ void WingCollision(ShipData *playerShip, Face *facePtr, int direction, int alpha
     DamageCollide(129, remoteShip);
   }
   else
-    if (!(playerShip->combatAttr & 1))
+    if (portPal || !(playerShip->combatAttr & 1)) /* the European program has no combatAttr bit 1 test here */
   {
     DamageCollide(129, ownShip);
   }
@@ -726,7 +726,7 @@ void NoseCollision(ShipData *playerShip, Face *facePtr, int direction, int alpha
     DamageCollide(129, remoteShip);
   }
   else
-    if (!(playerShip->combatAttr & 1))
+    if (portPal || !(playerShip->combatAttr & 1)) /* the European program has no combatAttr bit 1 test here */
   {
     DamageCollide(129, ownShip);
     DamageCollide(129, ownShip);

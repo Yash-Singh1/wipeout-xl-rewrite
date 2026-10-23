@@ -33,25 +33,25 @@ void UpdateRescueDroid(ShipData *ships, Object **unused1, int shipNo, WeaponData
             short thrust = ship->thrust;
             if (target >= thrust) {
                 int diff = target - thrust;
-                int step = 0x10;
-                if (diff < 0x10) {
+                int step = PAL_SPEED(16);
+                if (diff < PAL_SPEED(16)) {
                     step = diff;
                 }
                 ship->thrust = thrust + step;
             } else {
-                ship->thrust = thrust - 0x10;
+                ship->thrust = thrust - PAL_SPEED(16);
             }
         } else {
             short thrust = ship->thrust;
-            if (thrust >= 0x10) {
-                ship->thrust = thrust - 0x10;
+            if (thrust >= PAL_SPEED(16)) {
+                ship->thrust = thrust - PAL_SPEED(16);
             }
         }
     } else {
         if (control->buttons & 0x4000) {
-            ship->thrust += 0x10;
-        } else if (ship->thrust >= 0x10) {
-            ship->thrust -= 0x10;
+            ship->thrust += PAL_SPEED(16);
+        } else if (ship->thrust >= PAL_SPEED(16)) {
+            ship->thrust -= PAL_SPEED(16);
         }
         if (ship->maxThrust < ship->thrust) {
             ship->thrust = ship->maxThrust;
@@ -84,9 +84,9 @@ void UpdateRescueDroid(ShipData *ships, Object **unused1, int shipNo, WeaponData
         droidTarget.vx = droidTarget.vx + ((next->centre.vx - droidTarget.vx) >> 6);
         droidTarget.vy = droidTarget.vy + ((next->centre.vy - droidTarget.vy) >> 6);
         droidTarget.vz = droidTarget.vz + ((next->centre.vz - droidTarget.vz) >> 6);
-        ship->vpivot.vx = droidTarget.vx - ship->ppivot.vx;
-        ship->vpivot.vy = droidTarget.vy - ship->ppivot.vy;
-        ship->vpivot.vz = droidTarget.vz - ship->ppivot.vz;
+        ship->vpivot.vx = PAL_SPEED(droidTarget.vx - ship->ppivot.vx);
+        ship->vpivot.vy = PAL_SPEED(droidTarget.vy - ship->ppivot.vy);
+        ship->vpivot.vz = PAL_SPEED(droidTarget.vz - ship->ppivot.vz);
         nose.vx = next->centre.vx - ship->nearTrkSect->centre.vx;
         nose.vy = next->centre.vy - ship->nearTrkSect->centre.vy;
         nose.vz = next->centre.vz - ship->nearTrkSect->centre.vz;
@@ -115,7 +115,7 @@ void UpdateRescueDroid(ShipData *ships, Object **unused1, int shipNo, WeaponData
     ship->roll = ship->roll - ((s16)ship->roll >> 5);
     if ((ship->attr & IN_TOW) && (GetMagnitude(distance) < 0x640)) {
         ship->update = UpdatePlayerShip;
-        ship->updateCount = 0x5A;
+        ship->updateCount = PAL_TIME(90);
         ship->attr &= ~RESCUE;
     }
 }

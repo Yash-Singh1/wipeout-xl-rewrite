@@ -17,7 +17,7 @@ void UpdateDroneShipStart(ShipData *ships, Object **unused, int shipNo, WeaponDa
     ship = &ships[shipNo];
     ship->prevShipSect = ship->nearTrkSect;
     SectionSearch(ship); /* Port: the console also left track in the unused second argument register */
-    if (ship->updateCount == 200) {
+    if (ship->updateCount == START_COUNTDOWN_FRAMES) {
         ship->startY = ship->ppivot.vy;
     }
     ship->ppivot.vy = ship->startY + (rsin(ship->updateCount * ((shipNo * 3) + 80)) >> 7);
@@ -38,6 +38,8 @@ extern u_short   classSpeedLimit[];
 extern short     classSpeedMargin[];
 extern u_short   classAccel[];
 extern short     classSteer[];
+/* The European program's steering bias per class, in place of classSteer (no rule relates the two). */
+static const short classSteerPal[4] = { 1190, 1580, 2070, 2160 };
 extern RaceLine  raceLines[];
 
 /* Speed gained on a speed-up pad, per ship class. */
@@ -235,7 +237,7 @@ void UpdateDroneShip(ShipData *ships, Object **shipShapes, int shipNo, WeaponDat
                 if ((u_short)(sectDiff + 80) < 40) {
                     zone = -3;
                 }
-                steerBias = classSteer[shipClassIndex];
+                steerBias = (portPal ? classSteerPal : classSteer)[shipClassIndex];
                 rivalNo = humanNo;
                 rival = ships + rivalNo;
                 steer = steerBias;
@@ -367,8 +369,8 @@ weaponByteReady:
         /* Target velocity along the track, bled off by turning, then the pull towards the racing line. */
         nextSection = section->nextSection.ptr;
         nearSect = ship->nearTrkSect;
-        ship->speed -= abs(ship->speed * ship->vhdg) >> 14;
-        ship->speed -= abs(ship->speed * ship->vpitch) >> 14;
+        ship->speed -= abs(ship->speed * PAL_SPEED_INV(ship->vhdg)) >> 14;
+        ship->speed -= abs(ship->speed * PAL_SPEED_INV(ship->vpitch)) >> 14;
         section = ship->nearTrkSect;
         if ((nearSect->flags & SECTION_JUMP) || (nearSect->nextSection.ptr->flags & SECTION_JUMP)
             || (nearSect->prevSection.ptr->flags & SECTION_JUMP)
@@ -396,6 +398,9 @@ weaponByteReady:
         ship->apivot.vx = targetVector.vx + (bestPath.vx - ship->ppivot.vx);
         ship->apivot.vy = targetVector.vy + (bestPath.vy - ship->ppivot.vy);
         ship->apivot.vz = targetVector.vz + (bestPath.vz - ship->ppivot.vz);
+        PAL_SPEED_UP(ship->apivot.vx);
+        PAL_SPEED_UP(ship->apivot.vy);
+        PAL_SPEED_UP(ship->apivot.vz);
         ship->vpivot.vx = ship->vpivot.vx + ship->apivot.vx;
         ship->vpivot.vy = ship->vpivot.vy + ship->apivot.vy;
         ship->vpivot.vz = ship->vpivot.vz + ship->apivot.vz;
@@ -431,8 +436,10 @@ weaponByteReady:
         } else if (ship->vhdg < -2048) {
             ship->vhdg = ship->vhdg + 4096;
         }
+        PAL_SPEED_UP(ship->vhdg);
         ship->hdg += ship->vhdg >> 4;
         ship->vpitch = -ratan2(targetVector.vy, flat) - ship->pitch;
+        PAL_SPEED_UP(ship->vpitch);
         ship->pitch += ship->vpitch >> 4;
         ship->vroll += sar(ship->vhdg, 2); /* Port: the console call left the old pitch in $a2, which sar never reads */
         ship->vroll -= ship->vroll >> 1;
@@ -475,6 +482,9 @@ weaponByteReady:
         ship->apivot.vx = targetVector.vx + ((bestPath.vx - ship->ppivot.vx) >> 1);
         ship->apivot.vy = targetVector.vy;
         ship->apivot.vz = targetVector.vz + ((bestPath.vz - ship->ppivot.vz) >> 1);
+        PAL_SPEED_UP(ship->apivot.vx);
+        PAL_SPEED_UP(ship->apivot.vy);
+        PAL_SPEED_UP(ship->apivot.vz);
         ship->vpivot.vx += ship->apivot.vx;
         ship->vpivot.vy += ship->apivot.vy;
         ship->vpivot.vz += ship->apivot.vz;

@@ -195,13 +195,13 @@ void UpdatePlayerShipStart(ShipData *shipIndex, Object **shipShapes, int shipNo,
     if (!(shipIndex[ownShip].combatAttr & 0x8000)) {
         playerShip = &shipIndex[shipNo];
         GeneralStartProcs(playerShip);
-        if (playerShip->updateCount == 199) {
+        if (playerShip->updateCount == PAL_TIME(199)) {
             playerShip->startY = playerShip->ppivot.vy;
         }
         playerShip->ppivot.vy = playerShip->startY + (rsin(playerShip->updateCount * 80) >> 7);
         if (playerShip->updateCount == 0) {
             if (playerShip->attr & 64) {
-                playerShip->updateCount = 90;
+                playerShip->updateCount = PAL_TIME(90);
                 playerShip->update = UpdatePlayerShip;
             } else {
                 playerShip->update = UpdateDroneShip;
@@ -223,23 +223,23 @@ void UpdatePlayerShipStart(ShipData *shipIndex, Object **shipShapes, int shipNo,
             if (thrustVal > 0) {
                 if (targetThrust >= playerShip->thrust) {
                     thrustDelta = targetThrust - playerShip->thrust;
-                    if (thrustDelta < 16) {
+                    if (thrustDelta < PAL_SPEED(16)) {
                         thrust = thrustDelta;
                     } else {
-                        thrust = 16;
+                        thrust = PAL_SPEED(16);
                     }
                     playerShip->thrust += thrust;
                 } else {
-                    playerShip->thrust -= 16;
+                    playerShip->thrust -= PAL_SPEED(16);
                 }
-            } else if (playerShip->thrust > 15) {
-                playerShip->thrust -= 16;
+            } else if (playerShip->thrust >= PAL_SPEED(16)) {
+                playerShip->thrust -= PAL_SPEED(16);
             }
         } else {
             if (controller->buttons & 0x4000) {
-                playerShip->thrust += 16;
-            } else if (playerShip->thrust > 15) {
-                playerShip->thrust -= 16;
+                playerShip->thrust += PAL_SPEED(16);
+            } else if (playerShip->thrust >= PAL_SPEED(16)) {
+                playerShip->thrust -= PAL_SPEED(16);
             }
             if (playerShip->thrust > playerShip->maxThrust) {
                 playerShip->thrust = playerShip->maxThrust;
@@ -255,7 +255,7 @@ void SetUpFirstCheckPoint(void)
     Face         *e;
     short         i;
 
-    checkTimer = classCheckTime[tempGameData->shipClass];
+    checkTimer = PAL_TIME(classCheckTime[tempGameData->shipClass]); /* the European table holds the same times in 50 Hz frames */
     sect = track->sections;
     while (sect->secNo != startLinePos[tempGameData->actTrackNum]) {
         sect = sect->nextSection.ptr;
@@ -269,7 +269,7 @@ void SetUpFirstCheckPoint(void)
         do {
             if (checkCells[tempGameData->trackNum][tempGameData->shipClass][i].section == sect->secNo) {
                 checkCells[tempGameData->trackNum][tempGameData->shipClass][i].done = 1;
-                checkTimer = checkTimer + checkCells[tempGameData->trackNum][tempGameData->shipClass][i].bonusSeconds * 60;
+                checkTimer = checkTimer + checkCells[tempGameData->trackNum][tempGameData->shipClass][i].bonusSeconds * FRAMES_PER_SECOND;
             }
             i++;
         } while (i < 6);
@@ -380,11 +380,11 @@ void UpdatePlayerShip(ShipData *ships, Object **shapes, int shipNo, WeaponData *
         ship->vhdg += newRand() % 600 - 300;
     }
     if (control->buttons & 64) {
-        ship->vpitch += 30;
+        ship->vpitch += PAL_SPEED(30);
     } else if (control->buttons & 16) {
-        ship->vpitch -= 30;
+        ship->vpitch -= PAL_SPEED(30);
     }
-    if (ship->updateCount == 90) {
+    if (ship->updateCount == PAL_TIME(90)) {
         launchThrust = ship->maxThrust >> 3;
         lower = launchThrust * 5;
         upper = launchThrust * 3;
@@ -435,30 +435,30 @@ void UpdatePlayerShip(ShipData *ships, Object **shapes, int shipNo, WeaponData *
             }
             if (thrustVal > 0) {
                 if (targetThrust >= ship->thrust) {
-                    if (targetThrust - ship->thrust < 16) {
+                    if (targetThrust - ship->thrust < PAL_SPEED(16)) {
                         thrust = targetThrust - ship->thrust;
                     } else {
-                        thrust = 16;
+                        thrust = PAL_SPEED(16);
                     }
                     ship->thrust += thrust;
                 } else {
-                    ship->thrust -= 16;
+                    ship->thrust -= PAL_SPEED(16);
                 }
-            } else if (ship->thrust > 15) {
-                ship->thrust -= 16;
+            } else if (ship->thrust >= PAL_SPEED(16)) {
+                ship->thrust -= PAL_SPEED(16);
             }
         } else {
             if (control->buttons & 0x4000) {
-                ship->thrust += 16;
-            } else if (ship->thrust > 7) {
-                ship->thrust -= 8;
+                ship->thrust += PAL_SPEED(16);
+            } else if (ship->thrust >= PAL_SPEED(8)) {
+                ship->thrust -= PAL_SPEED(8);
             }
             if (ship->thrust > maxThrust) {
                 ship->thrust = maxThrust;
             }
         }
     } else {
-        ship->thrust -= 64;
+        ship->thrust -= PAL_SPEED(64);
         if (ship->thrust < 0) {
             ship->thrust = 0;
             if (ship->speed < 5000U) {
@@ -491,7 +491,7 @@ void UpdatePlayerShip(ShipData *ships, Object **shapes, int shipNo, WeaponData *
 
 void GeneralStartProcs(ShipData *s)
 {
-    if (s->updateCount == 200 && !(s->combatAttr & 2)) {
+    if (s->updateCount == START_COUNTDOWN_FRAMES && !(s->combatAttr & 2)) {
         startCountdown = s->updateCount;
         countdownActive = 1;
     }
@@ -503,11 +503,11 @@ void GeneralStartProcs(ShipData *s)
         PlayNote(0x1D, 0x1E0, 0xF, 0xF, 200);
         countdownActive = 0;
     }
-    if (s->updateCount == 0x21) {
+    if (s->updateCount == REGION(0x21, 41)) {
         PlayNote(0x1C, 0x1E0, 0xF, 0xF, 220);
-    } else if (s->updateCount == 0x42) {
+    } else if (s->updateCount == REGION(0x42, 83)) {
         PlayNote(0x1B, 0x1E0, 0xF, 0xF, 220);
-    } else if (s->updateCount == 0x64) {
+    } else if (s->updateCount == REGION(0x64, 125)) {
         PlayNote(0x1A, 0x1E0, 0xF, 0xF, 220);
     }
 }

@@ -561,7 +561,7 @@ void Video(Object **objects, int count)
 
     objp = objects;
     rectangles[0] .w = 0xFF;
-    rectangles[0] .h = 0xEF;
+    rectangles[0] .h = SCREEN_HEIGHT - 1;
     if (CurrentScreen == 0) {
         rectangles[0] .x = 0;
         rectangles[0] .y = 0x100;
@@ -1184,12 +1184,12 @@ void UpdateLightStart(Object **objects, ShipData *ships, DroidData *droids, shor
             face = (FT4 *)object->primitives;
             for (j = 0; j < 8; j++) {
                 if (face->type == 4) {
-                    if (lightUpdate < 480) {
-                        if (startCountdown >= 34 && startCountdown <= 66) {
+                    if (lightUpdate < PAL_TIME(480)) {
+                        if (startCountdown >= REGION(34, 42) && startCountdown <= REGION(66, 83)) {
                             face->colour.r = white;
                             face->colour.g = 0;
                             face->colour.b = 0;
-                        } else if (startCountdown >= 1 && startCountdown <= 33) {
+                        } else if (startCountdown >= 1 && startCountdown <= REGION(33, 41)) {
                             face->colour.r = white;
                             face->colour.g = 128;
                             face->colour.b = 0;
@@ -1201,7 +1201,7 @@ void UpdateLightStart(Object **objects, ShipData *ships, DroidData *droids, shor
                         }
                     } else {
                         lightUpdate++;
-                        if (lightUpdate >= 480) {
+                        if (lightUpdate >= PAL_TIME(480)) {
                             if ((short)(lightChaseStep % 8) == j) {
                                 face->colour.r = 0;
                                 face->colour.g = white;
@@ -1778,6 +1778,10 @@ void DrawShadow(void *shapes, ShipData *ships, Shadow *shadow)
 }
 
 
+/* Screen rows of the weapon icon; the PAL layout puts it 8 lines higher. */
+#define WEAPON_ICON_TOP    REGION(0x14, 0x0C)
+#define WEAPON_ICON_BOTTOM REGION(0x43, 0x3B)
+
 void InitWeaponIcons(POLY_FT4 *icons, Texture **textures)
 {
     short loc;
@@ -1806,13 +1810,13 @@ void InitWeaponIcons(POLY_FT4 *icons, Texture **textures)
         icons[i].g0 = 0x80;
         icons[i].b0 = 0x80;
         icons[i].x0 = 0x90;
-        icons[i].y0 = 0x14;
+        icons[i].y0 = WEAPON_ICON_TOP;
         icons[i].x1 = 0xBF;
-        icons[i].y1 = 0x14;
+        icons[i].y1 = WEAPON_ICON_TOP;
         icons[i].x2 = 0x90;
-        icons[i].y2 = 0x43;
+        icons[i].y2 = WEAPON_ICON_BOTTOM;
         icons[i].x3 = 0xBF;
-        icons[i].y3 = 0x43;
+        icons[i].y3 = WEAPON_ICON_BOTTOM;
         icons[i].tpage = GetTPage(0, 0, textures[0]->textureX, textures[0]->textureY);
 
         back = &weaponIconPrims[i];
@@ -1821,13 +1825,13 @@ void InitWeaponIcons(POLY_FT4 *icons, Texture **textures)
         weaponIconPrims[i].g0 = 0x80;
         weaponIconPrims[i].b0 = 0x80;
         weaponIconPrims[i].x0 = 0x90;
-        weaponIconPrims[i].y0 = 0x14;
+        weaponIconPrims[i].y0 = WEAPON_ICON_TOP;
         weaponIconPrims[i].x1 = 0xBF;
-        weaponIconPrims[i].y1 = 0x14;
+        weaponIconPrims[i].y1 = WEAPON_ICON_TOP;
         weaponIconPrims[i].x2 = 0x90;
-        weaponIconPrims[i].y2 = 0x43;
+        weaponIconPrims[i].y2 = WEAPON_ICON_BOTTOM;
         weaponIconPrims[i].x3 = 0xBF;
-        weaponIconPrims[i].y3 = 0x43;
+        weaponIconPrims[i].y3 = WEAPON_ICON_BOTTOM;
         back->code |= 2;
         back->tpage = GetTPage(0, 3, textures[3]->textureX, textures[3]->textureY);
         back->u0 = textures[3]->u0;
@@ -1889,22 +1893,22 @@ void ShakeScreen(void)
 
     if (shakeAmount >= 2) {
         rnd = newRand();
-        offsetX = rnd % (int) shakeAmount;
+        offsetX = rnd % (int) shakeAmount - DISPLAY_SHIFT_X;
         posX = *(u_short *)&gameData->screenX + (((int) shakeAmount >> 1) - offsetX);
         DispEnv1.screen.x = posX;
         DispEnv0.screen.x = posX;
         rnd2 = newRand();
-        offsetY = rnd2 % (int) shakeAmount;
+        offsetY = rnd2 % (int) shakeAmount - DISPLAY_SHIFT_Y;
         halfShake = (int) shakeAmount >> 1;
         posY = *(u_short *)&gameData->screenY + (halfShake - offsetY);
         shakeAmount -= 1;
         DispEnv1.screen.y = posY;
         DispEnv0.screen.y = posY;
     } else if (shakeAmount == 1) {
-        posX2 = *(u_short *)&gameData->screenX;
+        posX2 = *(u_short *)&gameData->screenX + DISPLAY_SHIFT_X;
         DispEnv1.screen.x = posX2;
         DispEnv0.screen.x = posX2;
-        posY2 = *(u_short *)&gameData->screenY;
+        posY2 = *(u_short *)&gameData->screenY + DISPLAY_SHIFT_Y;
         shakeAmount = 0;
         DispEnv1.screen.y = posY2;
         DispEnv0.screen.y = posY2;

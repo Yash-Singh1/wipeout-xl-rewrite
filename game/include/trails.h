@@ -1,6 +1,9 @@
 #ifndef TRAILS_H
 #define TRAILS_H
 
+/* How much a trail segment's colour fades each frame. */
+#define TRAIL_FADE REGION(27, 23)
+
 /* One quad of a ship's exhaust trail. */
 typedef struct TrailSegment {
     char   active;
