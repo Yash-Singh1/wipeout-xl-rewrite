@@ -44,6 +44,10 @@ def load(folder):
         if version >= 2:
             picture_x, = struct.unpack_from('<i', data, pos)
             pos += 4
+        between = 0.0  # version 3: a picture drawn between game frames, how far along (0: a game frame)
+        if version >= 3:
+            between, = struct.unpack_from('<f', data, pos)
+            pos += 4
         prims = []
         for _ in range(n):
             p = Prim()
@@ -62,7 +66,7 @@ def load(folder):
             p.tag = tag.split(b'\0')[0].decode('latin-1')
             prims.append(p)
         frames.append(dict(index=index, game=game, shown=shown, offset=(ox, oy), area=(ax, ay, aw, ah), vram=vram,
-                           prims=prims, folder=folder, picture_x=picture_x))
+                           prims=prims, folder=folder, picture_x=picture_x, between=between))
     return frames
 
 

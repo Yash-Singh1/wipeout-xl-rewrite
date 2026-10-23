@@ -120,8 +120,9 @@ static void Field(void)
             const char *value = SDL_getenv("WIPEOUT_FRAMECAP_SAVE_AT");
             saveAt = value ? SDL_atoi(value) : 0;
         }
-        if (saveAt > 0 && PortShownFrames() == saveAt) {
+        if (saveAt > 0 && PortShownFrames() >= saveAt) {
             FrameCapSave();
+            saveAt = 0; /* (once: with pictures between frames the count passes it within a field) */
         }
     }
     {

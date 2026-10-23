@@ -345,6 +345,7 @@ static void ReadPendingTables(void);
 
 /* A packet as the GPU receives it: recorded for tests, then drawn. */
 static int interpolating; /* drawing a picture between two of the game's frames (PsxDrawInterpolated) */
+static int recordingBetween; /* ... which the frame recorder keeps (FrameCapBetween) */
 static float interpolationAlong;
 
 /* Widescreen: the packets of the menus' backdrops (PortWideBackdrop), which fill the picture's sides. They are
@@ -987,7 +988,7 @@ static int Skipped(const GpuVertex *v, const int32_t x[3], const int32_t y[3])
 static void Record(int kind, uint32_t code, int count, const int32_t *ix, const int32_t *iy, const GpuVertex *v,
                    const GpuDrawState *draw, int flags, const uint32_t *w, uint32_t page, uint32_t clut)
 {
-    FrameCapPrim *p = interpolating ? NULL : FrameCapAdd();
+    FrameCapPrim *p = interpolating && !recordingBetween ? NULL : FrameCapAdd();
     int i, r;
 
     if (!p) {
@@ -1728,7 +1729,14 @@ static void DrawInterpolated(float along)
 
 void PsxDrawInterpolatedAt(float along)
 {
+    recordingBetween = FrameCapBetween(along < 0.0f ? 0.0f : along > 1.0f ? 1.0f : along, upcoming.offsetX,
+                                       upcoming.offsetY, upcoming.left, upcoming.top, upcoming.width, upcoming.height);
     DrawInterpolated(along);
+    if (recordingBetween) {
+        /* (read back before it is shown: the window's picture is drawn over it) */
+        FrameCapBetweenShown(upcoming.left, upcoming.top, 320, upcoming.height > 256 ? 480 : 240);
+        recordingBetween = 0;
+    }
     if (PortLinkSplit()) {
         ShowSplit(upcoming.left, upcoming.top);
     } else {

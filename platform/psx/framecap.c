@@ -19,9 +19,9 @@
 #include "../platform.h"
 #include "../settings.h"
 
-#define LAST_FRAMES 90 /* RECORD_LAST_SECONDS: three seconds of the game's 30 frames a second */
-#define TAB_FRAMES 300 /* RECORD_WITH_TAB: up to the last ten */
-#define FRAMES TAB_FRAMES
+#define LAST_SECONDS 3 /* RECORD_LAST_SECONDS: the last three seconds */
+#define TAB_SECONDS 10 /* RECORD_WITH_TAB: up to the last ten */
+#define FRAMES 1200    /* (at most: ten seconds of 120 pictures a second, five of 240) */
 #define PICTURE_W 320
 #define PICTURE_H 240
 /* The picture is kept at the framebuffer's scale (the pixels drawn, not the console's: thin lines and seams
@@ -30,6 +30,21 @@
 #define PICTURE_QUALITY 95
 
 static FrameCapFrame frames[FRAMES];
+static uint32_t nextNumber;
+static uint64_t lastPictureTicks; /* when the last recorded picture was taken */
+static int inBetween;             /* a picture between frames is being recorded (FrameCapBetween) ... */
+static int betweenSaved = -1;     /* ... and this was the frame being recorded before it */
+
+/* Pictures a second kept, and the frames the recording holds at most. */
+static int Rate(void)
+{
+    return portSettings.recordRate ? SDL_clamp(portSettings.recordRate, 30, 240) : 60;
+}
+
+static int Capacity(void)
+{
+    return SDL_min(Rate() * (FrameCapMode() == RECORD_WITH_TAB ? TAB_SECONDS : LAST_SECONDS), FRAMES);
+}
 static int first, count; /* the ring: frames[first], ... count of them */
 static int current = -1; /* the frame being recorded */
 static int newFrame = 1; /* a picture was shown since the last table: the next table starts a frame */
@@ -363,6 +378,27 @@ const uint8_t *FrameCapPicture(int index, int *w, int *h)
     return decoded;
 }
 
+/* The next frame of the ring (the oldest given up when it is full). */
+static FrameCapFrame *NewFrame(void)
+{
+    FrameCapFrame *f;
+
+    while (count >= Capacity()) {
+        f = &frames[first];
+        if (betweenSaved == first) {
+            betweenSaved = -1;
+        }
+        Release(f->vram);
+        ForgetPicture(f);
+        first = (first + 1) % FRAMES;
+        count--;
+    }
+    f = &frames[(first + count) % FRAMES];
+    count++;
+    f->number = ++nextNumber;
+    return f;
+}
+
 void FrameCapTable(int offsetX, int offsetY, int areaX, int areaY, int areaW, int areaH)
 {
     FrameCapFrame *f;
@@ -380,16 +416,10 @@ void FrameCapTable(int offsetX, int offsetY, int areaX, int areaY, int areaW, in
     }
     skipFrame = 0;
     newFrame = 0;
-    while (count >= (FrameCapMode() == RECORD_WITH_TAB ? TAB_FRAMES : LAST_FRAMES)) {
-        f = &frames[first];
-        Release(f->vram);
-        first = (first + 1) % FRAMES;
-        count--;
-    }
-    current = (first + count) % FRAMES;
-    count++;
-    f = &frames[current];
+    f = NewFrame();
+    current = (int)(f - frames);
     f->gameFrame = PortGameFrames();
+    f->between = 0.0f;
     f->shown = 0;
     f->offsetX = offsetX;
     f->offsetY = offsetY;
@@ -495,6 +525,69 @@ void PortTagPrims(const void *start, const void *end, const char *what, const ch
     FrameCapTag(start, end, what, name, index);
 }
 
+/* The picture at (x, y, w, h) read back for frame f: the console's pixels, and with widescreen the sides as well. */
+static void TakePicture(FrameCapFrame *f, int x, int y, int w, int h)
+{
+    int margin = GpuShownMargin(x, w), scale = SDL_max(GpuScale(), 1);
+    int width = (PICTURE_W + 2 * margin) * scale, height = PICTURE_H * scale;
+
+    FinishRead(1); /* (the picture before's: back by now) */
+    ForgetPicture(f);
+    f->pictureW = width;
+    f->pictureH = height;
+    f->pictureScale = scale;
+    f->pictureX = -margin;
+    SDL_LockMutex(Lock());
+    f->pictureToken = ++nextToken;
+    SDL_UnlockMutex(lockMutex);
+    readSlot = (int)(f - frames);
+    readToken = f->pictureToken;
+    GpuReadPictureStart(GPU_READ_RECORDER, x, y, w, h, margin, width, height);
+    f->shown = PortShownFrames() + 1;
+    lastPictureTicks = SDL_GetTicksNS();
+}
+
+int FrameCapBetween(float along, int offsetX, int offsetY, int areaX, int areaY, int areaW, int areaH)
+{
+    FrameCapFrame *f;
+    uint64_t now = SDL_GetTicksNS();
+
+    if (!FrameCapRecording() || Rate() <= 30 || inBetween ||
+        now - lastPictureTicks < 1000000000ull / (uint64_t)Rate() * 9 / 10) {
+        return 0;
+    }
+    betweenSaved = current;
+    f = NewFrame();
+    f->gameFrame = PortGameFrames();
+    f->between = SDL_clamp(along, 0.001f, 0.999f);
+    f->shown = 0;
+    f->offsetX = offsetX;
+    f->offsetY = offsetY;
+    f->areaX = areaX;
+    f->areaY = areaY;
+    f->areaW = areaW;
+    f->areaH = areaH;
+    f->count = 0;
+    f->vram = TakeSnapshot(); /* (the frame before's, unless the game loaded something since) */
+    ForgetPicture(f);
+    current = (int)(f - frames);
+    inBetween = 1;
+    return 1;
+}
+
+void FrameCapBetweenShown(int x, int y, int w, int h)
+{
+    if (!inBetween) {
+        return;
+    }
+    if (current >= 0 && frames[current].between > 0.0f) {
+        TakePicture(&frames[current], x, y, w, h);
+    }
+    current = betweenSaved;
+    betweenSaved = -1;
+    inBetween = 0;
+}
+
 void FrameCapShown(int x, int y, int w, int h)
 {
     int i;
@@ -503,29 +596,16 @@ void FrameCapShown(int x, int y, int w, int h)
     if (!FrameCapRecording() || w <= 0 || h <= 0) {
         return;
     }
-    /* the newest frame drawn where the picture is taken from, not yet shown */
+    /* the newest of the game's frames drawn where the picture is taken from, not yet shown */
     for (i = count - 1; i >= 0; i--) {
         FrameCapFrame *f = &frames[(first + i) % FRAMES];
 
+        if (f->between > 0.0f) {
+            continue;
+        }
         if (x >= f->areaX && x < f->areaX + f->areaW && y >= f->areaY && y < f->areaY + f->areaH) {
             if (!f->shown) {
-                /* the console's pixels, and with widescreen the sides as well */
-                int margin = GpuShownMargin(x, w), scale = SDL_max(GpuScale(), 1);
-                int width = (PICTURE_W + 2 * margin) * scale, height = PICTURE_H * scale;
-
-                FinishRead(1); /* (the frame before's: back by now) */
-                ForgetPicture(f);
-                f->pictureW = width;
-                f->pictureH = height;
-                f->pictureScale = scale;
-                f->pictureX = -margin;
-                SDL_LockMutex(Lock());
-                f->pictureToken = ++nextToken;
-                SDL_UnlockMutex(lockMutex);
-                readSlot = (int)(f - frames);
-                readToken = f->pictureToken;
-                GpuReadPictureStart(GPU_READ_RECORDER, x, y, w, h, margin, width, height);
-                f->shown = PortShownFrames() + 1;
+                TakePicture(f, x, y, w, h);
             }
             return;
         }
@@ -698,7 +778,7 @@ static void Save(void)
     }
     /* header: magic, version, frames; per frame its fields, then its primitives (see tools/framecap.py) */
     Put(file, "XLFC", 4);
-    PutI32(file, 2);
+    PutI32(file, 3);
     PutI32(file, count);
     for (i = 0; i < count; i++) {
         const FrameCapFrame *f = FrameCapFrameAt(i);
@@ -715,6 +795,7 @@ static void Save(void)
         PutI32(file, f->vram);
         PutI32(file, f->count);
         PutI32(file, f->pictureX); /* version 2 */
+        Put(file, &f->between, 4); /* version 3 */
         for (k = 0; k < f->count; k++) {
             const FrameCapPrim *p = &f->prims[k];
             int j;
@@ -823,6 +904,8 @@ void FrameCapClear(void)
     current = -1;
     newFrame = 1;
     skipFrame = 0;
+    inBetween = 0;
+    betweenSaved = -1;
     frozen = taking = 0;
     savedDir[0] = 0;
     generation++;

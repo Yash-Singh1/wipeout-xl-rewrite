@@ -43,7 +43,10 @@ typedef struct FrameCapPrim {
 } FrameCapPrim;
 
 typedef struct FrameCapFrame {
-    uint64_t gameFrame;   /* the game's Swap count */
+    uint64_t gameFrame;   /* the game's Swap count (a picture between frames: the frame it moves on from) */
+    uint32_t number;      /* the recorded frames' running count (each its own) */
+    float between;        /* a picture drawn between two of the game's frames: how far along (0 < between < 1), its
+                             primitives where that picture drew them; 0: one of the game's frames */
     int shown;            /* the presented frame on which it first appeared (0: not shown) */
     int offsetX, offsetY; /* the drawing offset of its tables */
     int areaX, areaY, areaW, areaH;
@@ -63,6 +66,11 @@ void FrameCapTable(int offsetX, int offsetY, int areaX, int areaY, int areaW, in
 FrameCapPrim *FrameCapAdd(void); /* the next primitive's record (NULL when not recording); fill it in */
 void FrameCapVramChanged(void);
 void FrameCapShown(int x, int y, int w, int h);
+/* A picture drawn between the game's frames (frame interpolation, libgpu): FrameCapBetween before it is drawn (1:
+   it is recorded, its primitives go to FrameCapAdd), FrameCapBetweenShown once it is (its picture at x, y, w, h). The
+   settings say how many pictures a second are kept (portSettings.recordRate): 30 only the game's frames. */
+int FrameCapBetween(float along, int offsetX, int offsetY, int areaX, int areaY, int areaW, int areaH);
+void FrameCapBetweenShown(int x, int y, int w, int h);
 void FrameCapTagRecord(FrameCapPrim *prim); /* its tag, from its address */
 
 /* What built the packets from start to end (game code, through PortTagPrims). */

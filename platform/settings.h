@@ -37,6 +37,8 @@ typedef struct PortSettings {
     int touchOpacity;     /* ... how opaque, in percent (0: 60) */
     int consoleDepth;     /* no depth buffer: the game's ordering tables alone decide what is in front (gpu_gl.c) */
     int skipLogos;        /* no logo screens at start-up (Sony, the copyright, Dolby, Red Bull) */
+    int recordRate;       /* the frame recorder's pictures a second, up to: 30 the game's frames, more the ones between
+                             (psx/framecap.h; 0: 60) */
 } PortSettings;
 
 /* PortSettings.recordFrames: what the frame recorder keeps, and what Tab does */

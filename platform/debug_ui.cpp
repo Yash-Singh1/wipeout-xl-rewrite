@@ -217,6 +217,17 @@ static void FpsOverlay(void)
     ImGui::End();
 }
 
+// The recording's length: its game frames, 30 a second (the pictures between them add none).
+static float RecordedSeconds(void)
+{
+    int i, frames = 0;
+
+    for (i = 0; i < FrameCapFrameCount(); i++) {
+        frames += FrameCapFrameAt(i)->between <= 0.0f;
+    }
+    return frames / 30.0f;
+}
+
 // While a RECORD_WITH_TAB recording is made (and a while after it stops), with the console closed: in the corner.
 static bool RecorderNoteWanted(void)
 {
@@ -236,9 +247,9 @@ static void RecorderNote(void)
     if (FrameCapTaking()) {
         ImGui::TextColored(ImVec4(1.0f, 0.25f, 0.25f, 1.0f), "REC");
         ImGui::SameLine();
-        ImGui::Text("%.1f s   (Tab stops)", FrameCapFrameCount() / 30.0f);
+        ImGui::Text("%.1f s   (Tab stops)", RecordedSeconds());
     } else {
-        ImGui::Text("Recorded %.1f s: ~ shows it (the console's Recorder tab)", FrameCapFrameCount() / 30.0f);
+        ImGui::Text("Recorded %.1f s: ~ shows it (the console's Recorder tab)", RecordedSeconds());
     }
     ImGui::End();
 }
@@ -246,10 +257,10 @@ static void RecorderNote(void)
 // ---- the frame recorder's viewer (psx/framecap.h) ----
 
 static int frameShown = -1;
-static uint64_t frameShownGame;     // ... its game frame (while a recording grows the oldest frames make way)
+static uint32_t frameShownNumber;   // ... its number (while a recording grows the oldest frames make way)
 static bool followNewest = true;    // while recording: the newest frame, as each comes in
-static bool uploaded;               // the picture in frameTexture: of game frame uploadedGame, as uploadedShown
-static uint64_t uploadedGame;
+static bool uploaded;               // the picture in frameTexture: of frame uploadedNumber, as uploadedShown
+static uint32_t uploadedNumber;
 static int uploadedShown;
 static bool uploadedHad;            // ... and whether it had its picture then (a recording being made: compressed later)
 static float pictureZoom;           // the picture's pixels per console pixel; 0: as large as fits
@@ -368,6 +379,17 @@ static void RecorderTab(void)
         FrameCapClear();
         Changed();
     }
+    if (mode != RECORD_OFF) {
+        int rate = portSettings.recordRate ? portSettings.recordRate : 60;
+        if (ImGui::SliderInt("Pictures a second, up to", &rate, 30, 240)) {
+            portSettings.recordRate = rate;
+            FrameCapClear();
+            Changed();
+        }
+        if (rate > 30) {
+            ImGui::TextDisabled("The game makes 30 frames a second; the rest are the pictures drawn between them.");
+        }
+    }
     if (mode == RECORD_LAST_SECONDS && !FrameCapFrozen()) {
         ImGui::TextWrapped("Tab freezes the game and saves the last 3 seconds; here you can then step back through "
                            "them and click a pixel to see every primitive drawn there.");
@@ -416,7 +438,7 @@ static void RecorderTab(void)
     if (frameShown >= 0 && !followNewest) {
         // the same frame as before, wherever it is now (the oldest once it is gone)
         int i = usable - 1;
-        while (i >= 0 && FrameCapFrameAt(i)->gameFrame != frameShownGame) {
+        while (i >= 0 && FrameCapFrameAt(i)->number != frameShownNumber) {
             i--;
         }
         frameShown = SDL_max(i, 0);
@@ -459,7 +481,7 @@ static void RecorderTab(void)
         followNewest = live && frameShown >= usable - 1; // back at the newest: following it again
     }
     const FrameCapFrame *f = FrameCapFrameAt(frameShown);
-    frameShownGame = f->gameFrame;
+    frameShownNumber = f->number;
 
     // the room for the picture (below this line) and the pixel's primitives
     ImVec2 room = ImGui::GetContentRegionAvail();
@@ -481,8 +503,13 @@ static void RecorderTab(void)
     }
     float fit = SDL_max(0.5f, SDL_min(paneW / pictureW, paneH / 240.0f));
 
-    ImGui::Text("game frame %llu, %d primitives, %s   (, and . step)", (unsigned long long)f->gameFrame, f->count,
-                f->shown ? "shown" : "never shown");
+    if (f->between > 0.0f) {
+        ImGui::Text("between game frames %llu and %llu (%.0f%%), %d primitives   (, and . step)",
+                    (unsigned long long)f->gameFrame - 1, (unsigned long long)f->gameFrame, f->between * 100.0f, f->count);
+    } else {
+        ImGui::Text("game frame %llu, %d primitives, %s   (, and . step)", (unsigned long long)f->gameFrame, f->count,
+                    f->shown ? "shown" : "never shown");
+    }
     // zoom: steps of whole and half pixels (smaller than the console's too), or as large as fits
     static const float levels[] = {0.5f, 0.75f, 1, 1.5f, 2, 2.5f, 3, 4, 5, 6, 8, 10, 12, 16, 20, 24, 32};
     float current = pictureZoom > 0 ? pictureZoom : fit;
@@ -517,7 +544,7 @@ static void RecorderTab(void)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     }
     // the picture: the console's 320 columns, and with widescreen the sides (from column `pictureX`)
-    if (!uploaded || uploadedGame != f->gameFrame || uploadedShown != f->shown || uploadedHad != hasPicture) {
+    if (!uploaded || uploadedNumber != f->number || uploadedShown != f->shown || uploadedHad != hasPicture) {
         static uint8_t black[320 * 240 * 3];
         glBindTexture(GL_TEXTURE_2D, frameTexture);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -530,7 +557,7 @@ static void RecorderTab(void)
         }
         glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
         uploaded = true;
-        uploadedGame = f->gameFrame;
+        uploadedNumber = f->number;
         uploadedShown = f->shown;
         uploadedHad = hasPicture;
         Pick(frameShown);
