@@ -1529,7 +1529,7 @@ static void SavesTab(void)
 
         ImGui::Text("Memory card %d", port + 1);
         for (int i = 0; i < count; i++) {
-            if (strncmp(names[i], "BASCUS-94351", 12)) {
+            if (strncmp(names[i], portEuropeDisc ? "BESLES-00327" : "BASCUS-94351", 12)) { // (the disc's release's)
                 continue;
             }
             const char *name = names[i] + 12;

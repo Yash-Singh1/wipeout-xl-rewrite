@@ -559,7 +559,7 @@ static void DrawNearFace(Face *face, const PortView *view, u_short tpage, u_shor
         left += point[i].x < -margin;
         right += point[i].x > 320 + margin;
         above += point[i].y < 0;
-        below += point[i].y > 240;
+        below += point[i].y > SCREEN_HEIGHT;
         deepest = point[i].z > deepest ? point[i].z : deepest;
     }
     if (left == count || right == count || above == count || below == count) {
@@ -629,7 +629,7 @@ void PortTrackFar(TrackSection *section, const PortView *view)
             left += corner[k].x < -margin;
             right += corner[k].x > 320 + margin;
             above += corner[k].y < 0;
-            below += corner[k].y > 240;
+            below += corner[k].y > SCREEN_HEIGHT;
         }
         if (k < 4) {
             DrawNearFace(face, view, tileSurfaces[(u_char)face->texture][0].low[0].tsb,
