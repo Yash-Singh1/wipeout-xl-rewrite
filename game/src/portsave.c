@@ -45,7 +45,7 @@ void PortLoadSavedGame(ConfigData *settings)
     int  card = PortSaveSlot(name);
 
     if (card < 0 || !LoadCardInitData(name, (short)card, settings)) {
-            FirstSavedGame(settings); /* (which tells PortSaveChosen what it loaded) */
+        FirstSavedGame(settings); /* (which tells PortSaveChosen what it loaded) */
     }
     Remember(settings);
 }
