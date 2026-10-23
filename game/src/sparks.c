@@ -1251,6 +1251,7 @@ void AddElectric(VECTOR *position, int mode)
     SVECTOR vertex;
     SVECTOR screen[4];
     int p, flag;
+    int unchecked = 0; /* Port: the flags of the projections the game does not test */
     u_char blue0;
     int index, depth, x, y, z, absX, absZ;
     int red0, green0, red, green, blue;
@@ -1321,6 +1322,7 @@ void AddElectric(VECTOR *position, int mode)
     vertex.vy = endPos.vy;
     vertex.vz = endPos.vz;
     RotTransPers(&vertex, (int *)&screen[1], &p, &flag);
+    unchecked |= flag; /* Port */
     midPos.vx = (startPos.vx + endPos.vx) >> 1;
     midPos.vy = (startPos.vy + endPos.vy) >> 1;
     midPos.vz = (startPos.vz + endPos.vz) >> 1;
@@ -1331,6 +1333,7 @@ void AddElectric(VECTOR *position, int mode)
     vertex.vy = midPos.vy;
     vertex.vz = midPos.vz;
     RotTransPers(&vertex, (int *)&screen[2], &p, &flag);
+    unchecked |= flag; /* Port */
     midPos.vx = (startPos.vx + endPos.vx) >> 1;
     midPos.vy = (startPos.vy + endPos.vy) >> 1;
     midPos.vz = (startPos.vz + endPos.vz) >> 1;
@@ -1374,6 +1377,10 @@ void AddElectric(VECTOR *position, int mode)
     electrics[index].line3[CurrentScreen].b1 = blue;
     depth -= 180;
     if (depth < 0) depth = 0;
+    /* Port: the end of the streak and its first bend were not tested; behind the camera (a ship scraping the rock
+       beside it) they land anywhere, and the streak crossed the whole screen. Left out, as the game leaves out one
+       whose start or second bend is. */
+    if ((unchecked & 0x80460000) && !PortTracing()) return;
     AddPrim(OT[CurrentScreen] + (depth >> 1), &electrics[index].line1[CurrentScreen]);
     AddPrim(OT[CurrentScreen] + (depth >> 1), &electrics[index].line2[CurrentScreen]);
     AddPrim(OT[CurrentScreen] + (depth >> 1), &electrics[index].line3[CurrentScreen]);

@@ -350,8 +350,10 @@ static int MaybeVisible(const double c[3], double radius, double behind)
     if (z < h * 0.5) {
         return 0;
     }
-    /* the screen is 320x240 about the centre, and as much wider as widescreen adds: a generous cone */
-    return fabs(c[0]) - radius < z * ((200.0 + PortScreenMargin()) / h) && fabs(c[1]) - radius < z * (160.0 / h);
+    /* the screen is 320x240 about the centre, and as much wider as widescreen adds: a cone twice as wide and high, as
+       the pictures between two frames show the view a little before (an object leaving the screen at a turn popped
+       out at its edge, with a cone a quarter wider) */
+    return fabs(c[0]) - radius < z * ((320.0 + 2 * PortScreenMargin()) / h) && fabs(c[1]) - radius < z * (256.0 / h);
 }
 
 /* The view of world positions, as the track renderers have it: SetSkeletonTransform(camera->super), points +
@@ -407,7 +409,7 @@ static void DrawFarScenery(void)
             }
         }
         SkeletonView(object->skeleton, &view);
-        if (MaybeVisible(view.t, (double)object->extent, 0.0)) {
+        if (MaybeVisible(view.t, (double)object->extent, PORT_FAR_BEHIND)) { /* (beside the camera: as the track) */
             PortDrawObjectFar(object, &view, NULL);
         }
     }
