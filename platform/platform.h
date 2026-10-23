@@ -81,6 +81,8 @@ void PortInputScript(uint64_t field);
 
 /* main.c: whether the whole track is drawn (game/include/portfar.h) */
 int PortFarViewEnabled(void);
+/* main.c: how many fields a start-up logo screen is shown (0 with skip_logos) */
+int PortLogoFields(int fields);
 
 /* Diagnostics */
 void PortLog(const char *format, ...);

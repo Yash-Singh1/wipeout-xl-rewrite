@@ -1685,7 +1685,11 @@ static void Console(void)
                 portSettings.skipIntro = skip;
                 Changed();
             }
-            ImGui::TextDisabled("The race endings' movies still play.");
+            bool logos = portSettings.skipLogos != 0;
+            if (ImGui::Checkbox("Skip the logos at start-up (straight to the title screen)", &logos)) {
+                portSettings.skipLogos = logos;
+                Changed();
+            }
             ImGui::Separator();
             bool record = portSettings.recordReplays != 0;
             if (ImGui::Checkbox("Record every session as a replay (from the next start)", &record)) {

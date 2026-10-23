@@ -451,6 +451,12 @@ int PortRestart(const char *discPath)
     exit(0);
 }
 
+int PortLogoFields(int fields)
+{
+    /* the setting; never in the tests' recorded runs, which compare the console's start-up */
+    return portSettings.skipLogos && !SDL_getenv("WIPEOUT_TRACE") ? 0 : fields;
+}
+
 int PortFarViewEnabled(void)
 {
     static int mode = -1; /* 2: forced on (tests), 0: off while tracing, 1: the setting */

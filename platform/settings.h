@@ -36,6 +36,7 @@ typedef struct PortSettings {
     int touchSize;        /* ... their size, in percent (0: 100) */
     int touchOpacity;     /* ... how opaque, in percent (0: 60) */
     int consoleDepth;     /* no depth buffer: the game's ordering tables alone decide what is in front (gpu_gl.c) */
+    int skipLogos;        /* no logo screens at start-up (Sony, the copyright, Dolby, Red Bull) */
 } PortSettings;
 
 /* PortSettings.recordFrames: what the frame recorder keeps, and what Tab does */

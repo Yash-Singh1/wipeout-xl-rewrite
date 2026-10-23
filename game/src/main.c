@@ -131,32 +131,32 @@ int PsxMain(void) { /* Port: was void main(void), noreturn; the platform owns th
     SetCharTextures(8);
     SetCharTextures(0xC);
     SetCharTextures(0x10);
-    do {
+    while (frame < PortLogoFields(0xF0)) { /* Port: skip_logos (the original's do-while showed each one field) */
         VSync(0);
         frame += 1;
-    } while (frame < 0xF0);
+    }
     SetDispMask(0);
     InitGameDisplay(1);
     Load16BitTexture("c:\\wipeout2\\textures\\rcopyxl.tim", 1);
     SetDispMask(1);
     activateOT2 = 1;
     frame = 0;
-    do {
+    while (frame < PortLogoFields(0x3C)) {
         VSync(0);
         frame += 1;
-    } while (frame < 0x3C);
+    }
     Load16BitTexture("c:\\wipeout2\\textures\\dolbynts.tim", 1);
     frame = 0;
-    do {
+    while (frame < PortLogoFields(0x3C)) {
         VSync(0);
         frame += 1;
-    } while (frame < 0x3C);
+    }
     Load16BitTexture("c:\\wipeout2\\textures\\redbntsc.tim", 1);
     frame = 0;
-    do {
+    while (frame < PortLogoFields(0x78)) {
         VSync(0);
         frame += 1;
-    } while (frame < 0x78);
+    }
     frame = 0;
     ShowLoadMessage();
     do {
