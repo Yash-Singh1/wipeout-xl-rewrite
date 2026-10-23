@@ -117,13 +117,14 @@ Files tab changes it: Browse... (the system's file picker; where the system has
 none, the console's own) or a typed path, then "Restart with it now"; the game
 starts with that disc from then on.
 
-WipEout 2097 (Europe, SLES-00327) works too: the same game on a disc with its
-own program, whose data is Wipeout XL's file for file but for the pieces the
-program chooses by region. With that disc the game shows them
-(`platform/region.c`): the WipEout 2097 title screen, copyright and Red Bull
-screens, the menus' backdrop and logo, the piracy warning, and the movies at 25
-frames a second. Their pictures were made for the European television's 256
-lines and are fitted to the 240 the game draws, keeping their shape.
+WipEout 2097 (Europe, SLES-00327) works too, as the European release: its title
+screen, copyright and Red Bull screens, menus' backdrop and logo, piracy
+warning, movies at 25 frames a second, memory card saves (`BESLES-00327`), and
+the PAL program's 50 Hz timing, physics and 256-line layout
+(`game/include/version.h`). The video standard follows the disc; the debug
+console's **Video standard** plays either disc as NTSC (60 Hz) or PAL (50 Hz).
+Pictures made for the other standard are fitted to its lines, keeping their
+shape (`platform/region.c`).
 
 The disc image can be given as it is kept (`platform/discimage.c`):
 
