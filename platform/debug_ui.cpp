@@ -169,6 +169,18 @@ extern "C" int DebugUiEvent(const SDL_Event *event)
     }
 }
 
+/* A message in colour, wrapped at the window's edge (a path or an explanation can be longer than the window). */
+static void TextWrappedColored(const ImVec4 &colour, const char *format, ...)
+{
+    va_list args;
+
+    ImGui::PushStyleColor(ImGuiCol_Text, colour);
+    va_start(args, format);
+    ImGui::TextWrappedV(format, args);
+    va_end(args);
+    ImGui::PopStyleColor();
+}
+
 static void OpenFolder(const char *folder)
 {
     char url[1200];
@@ -1232,10 +1244,10 @@ static void XlDisc(void)
         UseDisc(discEdit);
     }
     if (discMessage[0]) {
-        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.4f, 1.0f), "%s", discMessage);
+        TextWrappedColored(ImVec4(1.0f, 0.5f, 0.4f, 1.0f), "%s", discMessage);
     }
     if (portSettings.discPath[0] && portConfig.discGiven && strcmp(portSettings.discPath, portConfig.discGiven) != 0) {
-        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "The game starts with %s from now on.",
+        TextWrappedColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "The game starts with %s from now on.",
                            portSettings.discPath);
 #ifdef PORT_MOBILE
         ImGui::TextWrapped("Close the game and open it again to play it."); /* (an app cannot start itself again) */
@@ -1426,7 +1438,7 @@ static void Music(void)
         ImGui::TextDisabled("No folder chosen.");
     }
     if (musicMessage[0] && PortMusicCount() == 0) {
-        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.4f, 1.0f), "%s", musicMessage);
+        TextWrappedColored(ImVec4(1.0f, 0.5f, 0.4f, 1.0f), "%s", musicMessage);
     }
 #ifndef __EMSCRIPTEN__
     if (ImGui::Button("Choose the music folder...")) {
@@ -1603,7 +1615,7 @@ static void VideoStandard(void)
 #endif
     }
     if (standardMessage[0]) {
-        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.4f, 1.0f), "%s", standardMessage);
+        TextWrappedColored(ImVec4(1.0f, 0.5f, 0.4f, 1.0f), "%s", standardMessage);
     }
 }
 
@@ -1678,7 +1690,7 @@ static void HdTextures(void)
         ImGui::TextDisabled("No pack chosen.");
     }
     if (packMessage[0] && HdTexCount() == 0) {
-        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.4f, 1.0f), "%s", packMessage);
+        TextWrappedColored(ImVec4(1.0f, 0.5f, 0.4f, 1.0f), "%s", packMessage);
     }
 #ifndef __EMSCRIPTEN__
     if (ImGui::Button("Choose the pack's .zip...")) {
