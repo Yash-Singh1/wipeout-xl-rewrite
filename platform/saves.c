@@ -385,7 +385,7 @@ int PortSavesImport(int index, char *message, int messageSize)
     }
     {
         /* the header size of the save's format and of the disc's (the records follow it) */
-        size_t from = !strcmp(s->region, "Europe") ? 256 : 512, to = portEuropeDisc ? 256 : 512;
+        size_t from = !strcmp(s->region, "Europe") ? 256 : 512, to = portEuropeCard ? 256 : 512;
         size_t records = 0x600 + 0x100, size = (size_t)s->blocks * BLOCK_BYTES;
 
         if (from != to && size >= from + records && size >= to + records) {
@@ -399,7 +399,7 @@ int PortSavesImport(int index, char *message, int messageSize)
             }
         }
     }
-    SDL_snprintf(name, sizeof(name), "%s%s", portEuropeDisc ? "BESLES-00327" : "BASCUS-94351", s->name);
+    SDL_snprintf(name, sizeof(name), "%s%s", portEuropeCard ? "BESLES-00327" : "BASCUS-94351", s->name);
     ok = PsxCardWriteFile(0, name, data, s->blocks * BLOCK_BYTES);
     SDL_free(data);
     if (!ok) {

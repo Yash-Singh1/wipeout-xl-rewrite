@@ -62,14 +62,14 @@ typedef union CardFilename {
     int words[10];
 } CardFilename;
 
-/* The game's product code: the memory card directory name of its saves (WipEout 2097's on the European disc). */
-#define CARD_GAME_CODE REGION_STR("BASCUS-94351", "BESLES-00327")
+/* The game's product code: the memory card directory name of its saves (WipEout 2097's in its format: portEuropeCard). */
+#define CARD_GAME_CODE (portEuropeCard ? "BESLES-00327" : "BASCUS-94351")
 
 /* Size of the header block at the start of a save file; WipEout 2097's card format uses half. */
-#define CARD_HEADER_SIZE (portEuropeDisc ? 0x100 : 0x200)
+#define CARD_HEADER_SIZE (portEuropeCard ? 0x100 : 0x200)
 
 /* Offset in the save header where the file's own name starts, after the game title. */
-#define CARD_NAME_OFFSET (portEuropeDisc ? 18 : 14)
+#define CARD_NAME_OFFSET (portEuropeCard ? 18 : 14)
 
 /* Device prefix written before a file name ("bu00" style). */
 typedef union CardDevice {

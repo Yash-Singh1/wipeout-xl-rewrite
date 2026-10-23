@@ -1644,7 +1644,7 @@ int DisplayCardBack(MenuPolys *polys, int cursorArg, int cardArg, SaveSelection 
                             nameDiff = strncmp(cardSlots[activeCard].entry[cursorSlot].filename, cardSlots[activeCard].entry[entryIndex].filename, 0x14);
                             nextEntry = entryIndex + 1;
                             /* (WipEout 2097 lights every entry of the file name: it has no multi-block entries) */
-                            if ((nameDiff == 0) && (portEuropeDisc || (cardSlots[activeCard].entry[entryIndex].multi == 1) || (nextEntry = entryIndex + 1, (cursorSlot == entryIndex)))) {
+                            if ((nameDiff == 0) && (portEuropeCard || (cardSlots[activeCard].entry[entryIndex].multi == 1) || (nextEntry = entryIndex + 1, (cursorSlot == entryIndex)))) {
                                 fadeSprite = 0;
                                 if (activeCard == 0) {
                                     do {
@@ -1689,7 +1689,7 @@ int DisplayCardBack(MenuPolys *polys, int cursorArg, int cardArg, SaveSelection 
                         prevEntry = 0;
                         do {
                             if (strncmp(cardSlots[prevCard].entry[cursorSlot].filename, cardSlots[prevCard].entry[prevEntry].filename, 0x14) == 0) {
-                                if (!portEuropeDisc && cardSlots[prevCard].entry[prevEntry].multi == 0) { /* (WipEout 2097 leaves every entry of the name as it is) */
+                                if (!portEuropeCard && cardSlots[prevCard].entry[prevEntry].multi == 0) { /* (WipEout 2097 leaves every entry of the name as it is) */
                                     prevNext = prevEntry + 1;
                                     if (cursorSlot != prevEntry) {
                                         goto unhighlight;

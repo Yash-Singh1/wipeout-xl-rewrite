@@ -8,12 +8,16 @@
  *
  *   portPal          the video standard: PAL's 50 fields a second and 256 lines, with the European program's
  *                    timing, physics and layout (the settings; by default the disc's).
- *   portEuropeDisc   the disc is WipEout 2097's: the files the game asks for, the memory card's saves.
+ *   portEuropeDisc   the disc is WipEout 2097's: the files the game asks for, its text.
  *
- * REGION and the PAL_ macros follow the video standard, REGION_STR and the memory card the disc.
+ * REGION and the PAL_ macros follow the video standard, REGION_STR the disc; the memory card neither (portEuropeCard).
  */
 extern int portPal;
 extern int portEuropeDisc;
+/* The memory card's saves in WipEout 2097's own format (BESLES-00327, a header of 256 bytes): off, so that both
+   discs share Wipeout XL's saves and a player's progress goes from one to the other (platform/saves.c converts a
+   European save it imports). */
+extern int portEuropeCard;
 
 /* REGION(us, eu): a value that differs between the releases and follows no rule. */
 #define REGION(us, eu) (portPal ? (eu) : (us))

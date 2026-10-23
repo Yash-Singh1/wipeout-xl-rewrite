@@ -51,6 +51,7 @@ static size_t madeSize[PIECES];
 
 int portPal;
 int portEuropeDisc;
+int portEuropeCard; /* (off: version.h) */
 
 /* The two switches the game's version.h reads, fixed for the run: the disc's region, and the video standard (the
    settings; by default the disc's). */

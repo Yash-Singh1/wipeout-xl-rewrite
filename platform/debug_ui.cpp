@@ -1507,7 +1507,7 @@ static void SavesTab(void)
 
         ImGui::Text("Memory card %d", port + 1);
         for (int i = 0; i < count; i++) {
-            if (strncmp(names[i], portEuropeDisc ? "BESLES-00327" : "BASCUS-94351", 12)) { // (the disc's release's)
+            if (strncmp(names[i], portEuropeCard ? "BESLES-00327" : "BASCUS-94351", 12)) { // (the game's saves: card.h)
                 continue;
             }
             const char *name = names[i] + 12;

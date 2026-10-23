@@ -240,7 +240,7 @@ void GetHeader(u_char *buffer, u_char *name)
     buffer[1] = 0x43;
     buffer[2] = 0x11;
     buffer[3] = 1;
-    if (portEuropeDisc) {
+    if (portEuropeCard) {
         /* the title "ＷＯ２０９７　" in Shift-JIS */
         buffer[4] = 0x82;
         buffer[5] = 0x76;
@@ -294,9 +294,9 @@ void GetHeader(u_char *buffer, u_char *name)
 void MakeFileName(char *suffix, void *header, int slot)
 {
     if (slot == 0) {
-        __builtin_memcpy(header, REGION_STR("bu00:BASCUS-94351", "bu00:BESLES-00327"), 18);
+        __builtin_memcpy(header, portEuropeCard ? "bu00:BESLES-00327" : "bu00:BASCUS-94351", 18);
     } else {
-        __builtin_memcpy(header, REGION_STR("bu10:BASCUS-94351", "bu10:BESLES-00327"), 18);
+        __builtin_memcpy(header, portEuropeCard ? "bu10:BESLES-00327" : "bu10:BASCUS-94351", 18);
     }
     strcat(header, suffix);
 }
@@ -546,7 +546,7 @@ void LoadCardFiles(CardSlot *cards, int slot)
     CardEntry     *source;
     CardEntry     *dest;
 
-    if (portEuropeDisc) {
+    if (portEuropeCard) {
         LoadCardFilesEurope(cards, slot);
         return;
     }
