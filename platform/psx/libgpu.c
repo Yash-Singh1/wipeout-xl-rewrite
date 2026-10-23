@@ -1594,6 +1594,12 @@ static struct {
     const char *start, *end;
 } centred[2][CENTRED_RANGES];
 static int centredCount[2];
+static int inPlace[2]; /* PortHudInPlace: the frame being built's, the tables drawn's */
+
+void PortHudInPlace(void)
+{
+    inPlace[0] = 1;
+}
 
 void PortHudCentred(const void *start, const void *end)
 {
@@ -1607,6 +1613,9 @@ static int HudCentred(const u_long *node)
 {
     int i;
 
+    if (inPlace[1]) {
+        return 1;
+    }
     for (i = 0; i < centredCount[1]; i++) {
         if ((const char *)node >= centred[1][i].start && (const char *)node < centred[1][i].end) {
             return 1;
@@ -1751,6 +1760,8 @@ void PsxUpcomingTables(u_long *table, u_long *second, u_long *hudFirst, DRAWENV 
     memcpy(centred[1], centred[0], sizeof(centred[0])); /* (PortHudCentred: the frame's, for its tables) */
     centredCount[1] = centredCount[0];
     centredCount[0] = 0;
+    inPlace[1] = inPlace[0];
+    inPlace[0] = 0;
     upcoming.table = table;
     upcoming.second = second;
     upcoming.hudEntry = hudFirst;

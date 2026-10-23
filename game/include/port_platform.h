@@ -61,6 +61,8 @@ void PortSceneRange(const void *start, size_t bytes);
 /* The HUD packets from start to end, of the frame being built, stay where the game puts them: a menu over the race
    whose items stand apart in the middle of the screen (the pause's YES and NO), not an element of a side. */
 void PortHudCentred(const void *start, const void *end);
+/* ... and all of this frame's HUD (a screen of text over the race, the results: its scene is shown wide). */
+void PortHudInPlace(void);
 
 /* The original Wipeout's tracks (platform/original.c), raced as guests in Talon's Reach's slot (trackNum 0,
    folder 1): the ones the player's copy of the original has, their names and classes (XL's: 1 Venom,
