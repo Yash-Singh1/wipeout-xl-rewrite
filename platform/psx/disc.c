@@ -28,10 +28,18 @@ EM_JS(const uint8_t *, WebDiscFile, (const char *path, size_t *size), {
 typedef struct DiscFile {
     const uint8_t *data;
     size_t size;
-    int32_t start; /* LBA of its first sector */
-    int32_t sectors;
+    int32_t start;   /* LBA of its first sector */
+    int32_t sectors; /* in the file */
+    int32_t length;  /* on the disc: its sectors and the gaps the cue sheet puts among them (PREGAP) */
     void *handle; /* platform mapping handle */
 } DiscFile;
+
+/* A PREGAP: sectors of silence on the disc that its image leaves out (a track's pregap the cue sheet names
+   instead of the file holding it), in the file `file`. */
+typedef struct DiscGap {
+    int32_t start, sectors;
+    int file;
+} DiscGap;
 
 /* A disc image with its data track alone gets the original's eleven music tracks, silent, of three minutes each. */
 #define SILENT_TRACKS 11
@@ -42,8 +50,33 @@ struct Disc {
     int fileCount;
     DiscTrack tracks[DISC_MAX_TRACKS];
     int trackCount;
+    DiscGap gaps[DISC_MAX_TRACKS];
+    int gapCount;
     int32_t leadOut;
 };
+
+/* The sector of file `file` at lba, or -1 in a gap (or outside the file). */
+static int32_t FileSector(const Disc *disc, int file, int32_t lba)
+{
+    const DiscFile *f = &disc->files[file];
+    int32_t sector = lba - f->start;
+    int i;
+
+    if (sector < 0 || sector >= f->length) {
+        return -1;
+    }
+    for (i = 0; i < disc->gapCount; i++) {
+        const DiscGap *g = &disc->gaps[i];
+
+        if (g->file == file && lba >= g->start) {
+            if (lba < g->start + g->sectors) {
+                return -1;
+            }
+            sector -= g->sectors;
+        }
+    }
+    return sector < f->sectors ? sector : -1;
+}
 
 static void fail(char *error, int size, const char *format, const char *a)
 {
@@ -163,6 +196,7 @@ Disc *DiscOpen(const char *cuePath, char *error, int errorSize)
     int current = -1;   /* current track index (into disc->tracks) */
     int32_t index0[DISC_MAX_TRACKS], index1[DISC_MAX_TRACKS];
     int fileOf[DISC_MAX_TRACKS];
+    int32_t pregap = 0; /* the current track's PREGAP, put in before its first INDEX */
     int i;
 
     if (!disc) {
@@ -205,8 +239,9 @@ Disc *DiscOpen(const char *cuePath, char *error, int errorSize)
                 goto bad;
             }
             f->sectors = (int32_t)(f->size / DISC_RAW_SECTOR);
+            f->length = f->sectors;
             f->start = disc->fileCount ? disc->files[disc->fileCount - 1].start +
-                                             disc->files[disc->fileCount - 1].sectors
+                                             disc->files[disc->fileCount - 1].length
                                        : 0;
             disc->fileCount++;
         } else if (!strncmp(p, "TRACK", 5)) {
@@ -234,7 +269,9 @@ Disc *DiscOpen(const char *cuePath, char *error, int errorSize)
                 goto bad;
             }
             fileOf[current] = disc->fileCount - 1;
+            pregap = 0;
         } else if (!strncmp(p, "INDEX", 5)) {
+            DiscFile *f = &disc->files[disc->fileCount - 1];
             int n;
             char msf[32];
             int32_t value;
@@ -243,15 +280,33 @@ Disc *DiscOpen(const char *cuePath, char *error, int errorSize)
                 fail(error, errorSize, "bad INDEX line in %s", cuePath);
                 goto bad;
             }
-            value += disc->files[disc->fileCount - 1].start;
+            /* (the file's times leave out the gaps put in it before) */
+            value += f->start + f->length - f->sectors;
+            if (pregap) {
+                /* the PREGAP comes first: the track's index 0, silence the file has not */
+                DiscGap *g = &disc->gaps[disc->gapCount++];
+
+                g->start = value;
+                g->sectors = pregap;
+                g->file = disc->fileCount - 1;
+                f->length += pregap;
+                index0[current] = value;
+                value += pregap;
+                pregap = 0;
+            }
             if (n == 0) {
                 index0[current] = value;
             } else if (n == 1) {
                 index1[current] = value;
             }
         } else if (!strncmp(p, "PREGAP", 6)) {
-            fail(error, errorSize, "PREGAP directives are not supported (%s)", cuePath);
-            goto bad;
+            char msf[32];
+
+            if (current < 0 || index0[current] >= 0 || index1[current] >= 0 || disc->gapCount >= DISC_MAX_TRACKS ||
+                sscanf(p + 6, "%31s", msf) != 1 || !parse_msf(msf, &pregap)) {
+                fail(error, errorSize, "bad PREGAP line in %s", cuePath);
+                goto bad;
+            }
         }
     }
     fclose(cue);
@@ -274,7 +329,7 @@ Disc *DiscOpen(const char *cuePath, char *error, int errorSize)
         DiscTrack *t = &disc->tracks[i];
         const DiscFile *last = &disc->files[disc->fileCount - 1];
 
-        t->end = i + 1 < disc->trackCount ? disc->tracks[i + 1].index0 : last->start + last->sectors;
+        t->end = i + 1 < disc->trackCount ? disc->tracks[i + 1].index0 : last->start + last->length;
         if (t->end <= t->index1 || (i && t->index0 < disc->tracks[i - 1].index1)) {
             fail(error, errorSize, "inconsistent track layout in %s", cuePath);
             goto bad;
@@ -329,15 +384,19 @@ const uint8_t *DiscRawSector(const Disc *disc, int32_t lba)
     if (lba < 0) {
         return NULL;
     }
-    if (lba >= last->start + last->sectors && lba < disc->leadOut) {
+    if (lba >= last->start + last->length && lba < disc->leadOut) {
         return silence; /* (the silent music tracks of a disc with its data track alone) */
     }
     for (i = disc->fileCount - 1; i >= 0; i--) {
         const DiscFile *f = &disc->files[i];
 
         if (lba >= f->start) {
-            return lba < f->start + f->sectors ? f->data + (size_t)(lba - f->start) * DISC_RAW_SECTOR
-                                               : NULL;
+            int32_t sector = FileSector(disc, i, lba);
+
+            if (sector >= 0) {
+                return f->data + (size_t)sector * DISC_RAW_SECTOR;
+            }
+            return lba < f->start + f->length ? silence : NULL; /* (a PREGAP the image leaves out) */
         }
     }
     return NULL;
@@ -354,11 +413,12 @@ void DiscPrefetch(const Disc *disc, int32_t lba, int sectors)
         if (lba >= f->start) {
             size_t first, length;
             long page = sysconf(_SC_PAGESIZE);
+            int32_t sector = FileSector(disc, i, lba);
 
-            if (lba >= f->start + f->sectors || page <= 0) {
+            if (sector < 0 || page <= 0) {
                 return;
             }
-            first = (size_t)(lba - f->start) * DISC_RAW_SECTOR;
+            first = (size_t)sector * DISC_RAW_SECTOR;
             length = (size_t)sectors * DISC_RAW_SECTOR;
             if (first + length > f->size) {
                 length = f->size - first;
