@@ -258,7 +258,9 @@ static const char *vertexSource =
        holds 1 - 1/depth; what is left out and 2D are in front of it (always drawn) and never written. */
     "    float w = position.z != 0.0 ? abs(position.z) : 1.0;\n"
     "    vec2 ndc = (position.xy - origin) / target * 2.0 - 1.0;\n"
-    "    float z = position.z > 0.0 ? w - 2.0 * (depthPass == 1 ? 1.0 : depthPull) : (depthPass == 1 ? w : -w);\n"
+    /* modeIn.w: a polygon seen from behind, tested without the slack (hidden by anything nearer) */
+    "    float pull = depthPass == 1 || modeIn.w == 1u ? 1.0 : depthPull;\n"
+    "    float z = position.z > 0.0 ? w - 2.0 * pull : (depthPass == 1 ? w : -w);\n"
     "    gl_Position = vec4(ndc * w, z, w);\n"
     "    vColour = colour;\n"
     "    texturePage = ivec4(texture.xy, 0, 0);\n"
@@ -1088,15 +1090,22 @@ static void FindHd(const GpuDrawState *state, const GpuVertex *vertices, int cou
     primitiveHdTexels[3] = (int16_t)hit.h;
 }
 
-static void Begin(const GpuDrawState *state, int vertices)
+/* The depth buffer: a batch's depth is written once it is drawn (Flush), so a polygon seen from behind does not go
+   in a batch after polygons seen from the front: it meets their depth, and is hidden where they are nearer (the
+   other way round the game's order already has the front, nearer, drawn over it). */
+static int batchFront;
+
+static void Begin(const GpuDrawState *state, int vertices, int back)
 {
     if (batchCount && (!SameState(state, &batchState) || batchCount + vertices > BATCH_VERTICES ||
-                       (state->textured && state->semi >= 0))) {
+                       (state->textured && state->semi >= 0) || (back && batchFront && !portSettings.consoleDepth))) {
         Flush();
     }
     if (!batchCount) {
         batchState = *state;
+        batchFront = 0;
     }
+    batchFront |= !back;
     primitiveState = *state;
 }
 
@@ -1124,7 +1133,7 @@ static void Add(const GpuVertex *v)
     out->mode[0] = (uint8_t)primitiveState.textured;
     out->mode[1] = (uint8_t)primitiveState.raw;
     out->mode[2] = (uint8_t)primitiveState.depth;
-    out->mode[3] = 0;
+    out->mode[3] = (uint8_t)(v->backFacing != 0); /* (the vertex shader's depth test without slack) */
     memcpy(out->hd, primitiveHd, sizeof(out->hd));
     memcpy(out->hdTexels, primitiveHdTexels, sizeof(out->hdTexels));
 }
@@ -1195,7 +1204,7 @@ void GpuTriangles(const GpuDrawState *given, const GpuVertex *vertices, int coun
     /* ... and a menu's backdrop is enlarged about the middle of the draw area to fill them, keeping its shape */
     backdrop = backdropNext && areaWide && areaX == 0 && areaW == SCREEN_COLUMNS && !perspective && !GpuRaceWide();
     FindHd(state, vertices, count);
-    Begin(state, count);
+    Begin(state, count, vertices[0].backFacing);
     for (i = 0; i < count; i++) {
         GpuVertex v = vertices[i];
         if (!perspective) {

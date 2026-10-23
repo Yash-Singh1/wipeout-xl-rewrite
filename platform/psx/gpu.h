@@ -45,6 +45,8 @@ typedef struct GpuVertex {
     uint8_t r, g, b, a;
     float u, v;
     int noDepth;    /* with a depth (w): left out of the depth buffer (the sky; corners only found by their pixels) */
+    int backFacing; /* ... of a polygon seen from behind: hidden by anything nearer (the depth buffer's slack is not
+                       for it: a model drawn two-sided, its back behind its front) */
 } GpuVertex;
 
 /* How a primitive is drawn. */

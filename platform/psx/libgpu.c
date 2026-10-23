@@ -918,6 +918,15 @@ static unsigned Vertices(GpuVertex *v, const uint32_t *const *words, int count)
     for (i = 0; i < count && !bound; i++) {
         v[i].noDepth = 1; /* (the depth buffer: only what the 3D renderers placed) */
     }
+    {
+        /* seen from behind: its first three corners wind the other way on screen (the game's facing test) */
+        int back = depth && count >= 3 &&
+                   (v[1].x - v[0].x) * (v[2].y - v[0].y) - (v[1].y - v[0].y) * (v[2].x - v[0].x) <= 0.0f;
+
+        for (i = 0; i < count; i++) {
+            v[i].backFacing = back;
+        }
+    }
     if (hudActive && !mask) {
         for (i = 0; i < count; i++) {
             HudPoint(&v[i]); /* the HUD of a split window, or a box over the whole screen */
