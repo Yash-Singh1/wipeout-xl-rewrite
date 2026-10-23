@@ -79,8 +79,9 @@ static void Pace(void)
                                 ? lastPicture + 1000000000ull / (uint64_t)SDL_max(portSettings.frameCap, 1)
                                 : now;
 
-            if (next > now || now + pictureCost > due) {
-                /* not yet (the cap), or no time for one before the field: the game's time comes first */
+            if (next > now || now + pictureCost / 2 > due) {
+                /* not yet (the cap), or no time for one before the field: the game's time comes first (half a picture
+                   late at most: sleeping the rest of the field instead left the display idle for up to a picture) */
                 SDL_DelayPrecise(((next > now && next < due) ? next : due) - now);
                 continue;
             }

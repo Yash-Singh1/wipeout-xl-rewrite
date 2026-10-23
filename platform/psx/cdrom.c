@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define SAMPLES_PER_SECOND 44100.0
-#define ACK_SAMPLES 66            /* about 1.5 ms: the first response of a command */
+#define ACK_SAMPLES 66            /* about 1.5 ms: the first response of a command (at the console's speed) */
 #define MIN_SEEK_SAMPLES 176      /* 4 ms: staying on the same track */
 
 uint8_t CdToBcd(unsigned value)
@@ -203,7 +203,7 @@ int CdDriveCommand(CdDrive *cd, int command, const uint8_t *param, int paramCoun
     bool wasActive = cd->state == CD_READING || cd->state == CD_PLAYING;
 
     cd->completeAt = 0; /* a new command replaces the pending second response */
-    cd->ackAt = cd->now + ACK_SAMPLES;
+    cd->ackAt = cd->now + (uint64_t)(ACK_SAMPLES / cd->speed); /* (sped up as the reads are) */
     switch (command) {
     case CDC_NOP:
     case CDC_FORWARD:
@@ -370,7 +370,7 @@ void CdDriveStartRead(CdDrive *cd, int sectors, int mode)
     int32_t target = CdDriveReadTarget(cd);
 
     cd->completeAt = 0;
-    cd->ackAt = cd->now + ACK_SAMPLES;
+    cd->ackAt = cd->now + (uint64_t)(ACK_SAMPLES / cd->speed); /* (sped up as the reads are) */
     cd->setlocPending = false;
     cd->mode = (uint8_t)mode;
     memset(&cd->job, 0, sizeof(cd->job));

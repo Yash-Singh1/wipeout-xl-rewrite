@@ -77,6 +77,7 @@
     X(PFNGLBLITFRAMEBUFFERPROC, glBlitFramebuffer) \
     X(PFNGLBLENDEQUATIONPROC, glBlendEquation) \
     X(PFNGLBLENDCOLORPROC, glBlendColor) \
+    X(PFNGLBLENDFUNCSEPARATEPROC, glBlendFuncSeparate) \
     X(PFNGLACTIVETEXTUREPROC, glActiveTexture) \
     X(PFNGLGENERATEMIPMAPPROC, glGenerateMipmap) \
     X(PFNGLGENRENDERBUFFERSPROC, glGenRenderbuffers) \
@@ -139,6 +140,7 @@ ASYNC_GL_FUNCTIONS(DECLARE_GL)
 #define glBlitFramebuffer p_glBlitFramebuffer
 #define glBlendEquation p_glBlendEquation
 #define glBlendColor p_glBlendColor
+#define glBlendFuncSeparate p_glBlendFuncSeparate
 #define glActiveTexture p_glActiveTexture
 #define glGenerateMipmap p_glGenerateMipmap
 #define glGenRenderbuffers p_glGenRenderbuffers
@@ -187,7 +189,6 @@ static GLuint vramTexture;           /* the CPU copy, R16UI */
 static GLuint glyphTexture;          /* the glyph page (GpuSetGlyphMemory): RGBA, premultiplied, filtered */
 static GLuint hdAtlas;               /* HD textures: the images in use (HdPlaced) */
 static GLuint program, vertexArray, vertexBuffer;
-static GLint uniformAlphaScale;
 static GLint uniformVram, uniformGlyphs, uniformHdAtlas, uniformPass, uniformTarget;
 static GLint uniformDepthPull, uniformDepthPass;
 static int vramDirty = 1;
@@ -228,6 +229,7 @@ typedef struct BatchVertex {
 static BatchVertex batch[BATCH_VERTICES];
 static int batchCount;
 static GpuDrawState batchState;
+static int batchDepth; /* a vertex of the batch can write the depth buffer (else Flush leaves out that pass) */
 
 /* The shaders are written once for OpenGL 3.3 and OpenGL ES 3 (WebGL 2): Compile() puts the version
    line in front (PORT_GLSL_VERSION); ES needs the precision of floats, integers and integer textures. */
@@ -246,6 +248,7 @@ static const char *vertexSource =
     "flat out ivec4 clut;\n"
     "flat out ivec4 vWindow;\n"
     "flat out ivec4 mode;\n"
+    "flat out int semiMode;\n"        /* the primitive's blending: -1 opaque, else the console's mode 0-3 */
     "uniform int pass;\n"
     "uniform float depthPull;\n"       /* the depth buffer (Flush): depth tested this much nearer */
     "uniform int depthPass;\n"         /* ... 1: depth written, at the true depth */
@@ -258,8 +261,10 @@ static const char *vertexSource =
        holds 1 - 1/depth; what is left out and 2D are in front of it (always drawn) and never written. */
     "    float w = position.z != 0.0 ? abs(position.z) : 1.0;\n"
     "    vec2 ndc = (position.xy - origin) / target * 2.0 - 1.0;\n"
-    /* modeIn.w: a polygon seen from behind, tested without the slack (hidden by anything nearer) */
-    "    float pull = depthPass == 1 || modeIn.w == 1u ? 1.0 : depthPull;\n"
+    /* modeIn.w: bit 0 a polygon seen from behind, tested without the slack (hidden by anything nearer); from bit 4
+       the blending mode + 1 */
+    "    float pull = depthPass == 1 || (modeIn.w & 1u) == 1u ? 1.0 : depthPull;\n"
+    "    semiMode = int(modeIn.w >> 4u) - 1;\n"
     "    float z = position.z > 0.0 ? w - 2.0 * pull : (depthPass == 1 ? w : -w);\n"
     "    gl_Position = vec4(ndc * w, z, w);\n"
     "    vColour = colour;\n"
@@ -272,8 +277,11 @@ static const char *vertexSource =
     "    hdTexels = hdTexelsIn;\n"
     "}\n";
 
-/* mode: x = textured (0/1), y = raw, z = pass (0 all, 1 opaque texels, 2 semi texels), w = depth
-   texturePage: page x, page y; clut: x, y; window: mask x, mask y, offset x, offset y */
+/* mode: x = textured (0/1), y = raw, z = pass, w = depth
+   texturePage: page x, page y; clut: x, y; window: mask x, mask y, offset x, offset y
+   Every blending but the console's subtraction is the one premultiplied blend (Flush): what a fragment writes says
+   how much of what is behind stays (its alpha). Pass 0: all of it; for a batch of subtracting primitives pass 1
+   draws what is opaque and pass 2 the rest, subtracted; pass 3 writes the depth of what is opaque. */
 static const char *fragmentSource =
     "#ifdef GL_ES\n"
     "precision highp float;\n"
@@ -281,8 +289,8 @@ static const char *fragmentSource =
     "precision highp usampler2D;\n"
     "#endif\n"
     "in vec4 vColour;\n"
-    "uniform float alphaScale;\n"
     "in vec3 vTexel;\n"
+    "flat in int semiMode;\n"
     "uniform usampler2D vram;\n"
     "uniform sampler2D glyphs;\n"
     "uniform sampler2D hdAtlas;\n"
@@ -296,12 +304,28 @@ static const char *fragmentSource =
     /* texels and palettes from either half of video memory (rows to 1023) */
     "uint Fetch(ivec2 p) { return texelFetch(vram, ivec2(p.x & 1023, p.y & 1023), 0).r; }\n"
     "uint FetchClut(ivec2 p) { return texelFetch(vram, ivec2(p.x & 1023, p.y & 1023), 0).r; }\n"
+    /* colour col with coverage cov (premultiplied), blended or opaque, faded with distance (vColour.a) */
+    "void Out(vec3 col, float cov, bool blended) {\n"
+    "    float fade = vColour.a;\n"
+    "    if (mode.z == 3) {\n"
+    "        if (blended || fade < 0.999 || cov < 0.999) discard;\n"
+    "        fragment = vec4(0.0);\n"
+    "        return;\n"
+    "    }\n"
+    "    if (mode.z == 1 && blended) discard;\n"
+    "    if (mode.z == 2 && !blended) discard;\n"
+    "    col *= fade;\n"
+    "    cov *= fade;\n"
+    "    if (!blended) fragment = vec4(col, cov);\n"
+    "    else if (semiMode == 0) fragment = vec4(col * 0.5, cov * 0.5);\n"  /* B/2 + F/2 */
+    "    else if (semiMode == 3) fragment = vec4(col * 0.25, 0.0);\n"      /* B + F/4 */
+    "    else fragment = vec4(col, 0.0);\n"                               /* B + F; B - F (its own blend) */
+    "}\n"
     "void main() {\n"
     "    vec3 c = vColour.rgb;\n"
     "    float fade = vColour.a;\n"
     "    if (mode.x == 0) {\n"
-    "        if (mode.z == 1) discard;\n"
-    "        fragment = vec4(c * fade, fade * alphaScale);\n"
+    "        Out(c, 1.0, semiMode >= 0);\n"
     "        return;\n"
     "    }\n"
     "    vec2 t = vTexel.xy;\n"
@@ -309,7 +333,7 @@ static const char *fragmentSource =
     "        vec4 g = texture(glyphs, t / 256.0);\n"
     "        if (g.a < 0.004) discard;\n"
     "        vec3 rgb = mode.y == 0 ? min(g.rgb * c * (255.0 / 128.0), vec3(g.a)) : g.rgb;\n"
-    "        fragment = vec4(rgb, g.a);\n"
+    "        Out(rgb, g.a, semiMode >= 0);\n"
     "        return;\n"
     "    }\n"
     "    ivec2 uv = ivec2(floor(t)) & 255;\n"
@@ -323,10 +347,8 @@ static const char *fragmentSource =
     "            vec4 h = texelFetch(hdAtlas, ivec2(hd.xy) + at, 0);\n"
     "            if (h.a < 0.25) discard;\n"
     "            bool hdSemi = h.a < 0.75;\n"
-    "            if (mode.z == 1 && hdSemi) discard;\n"
-    "            if (mode.z == 2 && !hdSemi) discard;\n"
     "            vec3 hc = mode.y == 0 ? min(h.rgb * c * (255.0 / 128.0), vec3(1.0)) : h.rgb;\n"
-    "            fragment = vec4(hc * fade, fade * alphaScale);\n"
+    "            Out(hc, 1.0, semiMode >= 0 && hdSemi);\n"
     "            return;\n"
     "        }\n"
     "    }\n"
@@ -344,13 +366,11 @@ static const char *fragmentSource =
     "    }\n"
     "    if (texel == 0u) discard;\n"
     "    bool semi = (texel & 0x8000u) != 0u;\n"
-    "    if (mode.z == 1 && semi) discard;\n"
-    "    if (mode.z == 2 && !semi) discard;\n"
     "    vec3 t8 = vec3(float(texel & 31u), float((texel >> 5) & 31u), float((texel >> 10) & 31u)) * 8.0 / 255.0;\n"
     "    if (mode.y == 0) {\n"
     "        t8 = min(t8 * c * (255.0 / 128.0), vec3(1.0));\n"
     "    }\n"
-    "    fragment = vec4(t8 * fade, fade * alphaScale);\n"
+    "    Out(t8, 1.0, semiMode >= 0 && semi);\n"
     "}\n";
 
 static GLuint Compile(GLenum type, const char *source)
@@ -479,7 +499,6 @@ int GpuInit(void)
     uniformVram = glGetUniformLocation(program, "vram");
     uniformGlyphs = glGetUniformLocation(program, "glyphs");
     uniformHdAtlas = glGetUniformLocation(program, "hdAtlas");
-    uniformAlphaScale = glGetUniformLocation(program, "alphaScale");
     uniformPass = glGetUniformLocation(program, "pass");
     uniformDepthPull = glGetUniformLocation(program, "depthPull");
     uniformDepthPass = glGetUniformLocation(program, "depthPass");
@@ -813,58 +832,29 @@ static void BindTarget(void)
 
 /* Whether two primitives can be drawn in one batch: the same blending and passes (what else their states say
    goes with the vertices). */
-static int SameState(const GpuDrawState *a, const GpuDrawState *b)
+/* Whether a primitive is drawn over what is behind (semi-transparent, faded, or glyphs with their coverage). */
+static int Blended(const GpuDrawState *s)
 {
-    return a->semi == b->semi && a->fade == b->fade &&
-           (a->textured && a->depth == 3) == (b->textured && b->depth == 3) &&
-           (a->textured && a->semi >= 0) == (b->textured && b->semi >= 0);
+    return s->semi >= 0 || s->fade || (s->textured && s->depth == 3);
 }
 
-static void SetBlend(int semi)
+static int SameState(const GpuDrawState *a, const GpuDrawState *b)
 {
-    switch (semi) {
-    case 0: /* B/2 + F/2 */
-        glEnable(GL_BLEND);
-        glBlendEquation(GL_FUNC_ADD);
-        glBlendColor(0, 0, 0, 0.5f);
-        glBlendFunc(GL_CONSTANT_ALPHA, GL_CONSTANT_ALPHA);
-        break;
-    case 1: /* B + F */
-        glEnable(GL_BLEND);
-        glBlendEquation(GL_FUNC_ADD);
-        glBlendFunc(GL_ONE, GL_ONE);
-        break;
-    case 2: /* B - F */
-        glEnable(GL_BLEND);
-        glBlendEquation(GL_FUNC_REVERSE_SUBTRACT);
-        glBlendFunc(GL_ONE, GL_ONE);
-        break;
-    case 3: /* B + F/4 */
-        glEnable(GL_BLEND);
-        glBlendEquation(GL_FUNC_ADD);
-        glBlendColor(0, 0, 0, 0.25f);
-        glBlendFunc(GL_CONSTANT_ALPHA, GL_ONE);
-        break;
-    case 5: /* faded with distance (premultiplied): over what is behind */
-        glEnable(GL_BLEND);
-        glBlendEquation(GL_FUNC_ADD);
-        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-        break;
-    case 6: /* B/2 + F/2 faded: F*a/2 + B*(1 - a/2) */
-        glEnable(GL_BLEND);
-        glBlendEquation(GL_FUNC_ADD);
-        glBlendColor(0, 0, 0, 0.5f);
-        glBlendFunc(GL_CONSTANT_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        break;
-    case 4: /* the platform's glyphs: their coverage, premultiplied */
-        glEnable(GL_BLEND);
-        glBlendEquation(GL_FUNC_ADD);
-        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-        break;
-    default:
-        glDisable(GL_BLEND);
-        break;
+    /* (the console's subtraction is a blend of its own; the opaque are drawn without blending, which is cheaper) */
+    return (a->semi == 2) == (b->semi == 2) && Blended(a) == Blended(b);
+}
+
+/* The premultiplied blend every fragment says how much of what is behind stays in (the shader's Out), or the
+   console's subtraction; the framebuffer's alpha stays as it is. */
+static void SetBlend(int subtract)
+{
+    if (!Blended(&batchState)) {
+        glDisable(GL_BLEND); /* (the shader writes the colour itself: coverage 1, no fade) */
+        return;
     }
+    glEnable(GL_BLEND);
+    glBlendEquation(subtract ? GL_FUNC_REVERSE_SUBTRACT : GL_FUNC_ADD);
+    glBlendFuncSeparate(GL_ONE, subtract ? GL_ONE : GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
 }
 
 /* The depth buffer's slack: what is drawn after may be this much farther (a fraction of its depth) than what is
@@ -873,21 +863,8 @@ static void SetBlend(int semi)
 
 static void DrawBatch(int pass)
 {
-    const GpuDrawState *s = &batchState;
-
     glUniform1i(uniformPass, pass);
-    glUniform1f(uniformAlphaScale, s->fade && s->semi == 0 && pass != 1 ? 0.5f : 1.0f);
-    if (s->fade && (pass == 1 || s->semi < 0)) {
-        SetBlend(5);
-    } else if (s->fade && s->semi == 0) {
-        SetBlend(6);
-    } else if (pass == 1) {
-        SetBlend(-1);
-    } else if (s->textured && s->depth == 3 && s->semi < 0) {
-        SetBlend(4);
-    } else {
-        SetBlend(s->semi);
-    }
+    SetBlend(pass == 2);
     glDrawArrays(GL_TRIANGLES, 0, batchCount);
 }
 
@@ -926,21 +903,21 @@ static void Flush(void)
     } else {
         glDisable(GL_DEPTH_TEST);
     }
-    if (s->textured && s->semi >= 0) {
-        /* Texels without the semi-transparency bit are drawn opaque, the
-           others blended: two passes, each discarding the other's texels. */
+    if (s->semi == 2) {
+        /* the console's subtraction: what is opaque (texels without the semi-transparency bit) drawn first, then
+           the rest subtracted */
         DrawBatch(1);
         DrawBatch(2);
     } else {
         DrawBatch(0);
     }
-    if (!portSettings.consoleDepth && !s->fade && (s->semi < 0 || s->textured) && !(s->textured && s->depth == 3)) {
-        /* the depth of what was drawn opaque (its opaque texels) */
+    if (!portSettings.consoleDepth && batchDepth && !(batchState.semi >= 0 && !batchState.textured)) {
+        /* the depth of what was drawn opaque (the shader leaves out the rest) */
         glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
         glDepthMask(GL_TRUE);
         glDepthFunc(GL_LESS);
         glUniform1i(uniformDepthPass, 1);
-        glUniform1i(uniformPass, s->textured && s->semi >= 0 ? 1 : 0);
+        glUniform1i(uniformPass, 3);
         glDrawArrays(GL_TRIANGLES, 0, batchCount);
         glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
         glDepthMask(GL_FALSE);
@@ -1098,12 +1075,13 @@ static int batchFront;
 static void Begin(const GpuDrawState *state, int vertices, int back)
 {
     if (batchCount && (!SameState(state, &batchState) || batchCount + vertices > BATCH_VERTICES ||
-                       (state->textured && state->semi >= 0) || (back && batchFront && !portSettings.consoleDepth))) {
+                       (state->textured && state->semi == 2) || (back && batchFront && !portSettings.consoleDepth))) {
         Flush();
     }
     if (!batchCount) {
         batchState = *state;
         batchFront = 0;
+        batchDepth = 0;
     }
     batchFront |= !back;
     primitiveState = *state;
@@ -1116,6 +1094,7 @@ static void Add(const GpuVertex *v)
     out->x = v->x;
     out->y = v->y;
     out->w = v->w > 0.0f && v->noDepth ? -v->w : v->w; /* (the vertex shader's position.z) */
+    batchDepth |= out->w > 0.0f && v->a == 255;
     out->r = v->r / 255.0f;
     out->g = v->g / 255.0f;
     out->b = v->b / 255.0f;
@@ -1133,7 +1112,8 @@ static void Add(const GpuVertex *v)
     out->mode[0] = (uint8_t)primitiveState.textured;
     out->mode[1] = (uint8_t)primitiveState.raw;
     out->mode[2] = (uint8_t)primitiveState.depth;
-    out->mode[3] = (uint8_t)(v->backFacing != 0); /* (the vertex shader's depth test without slack) */
+    /* (the vertex shader's: a polygon seen from behind; the blending) */
+    out->mode[3] = (uint8_t)((v->backFacing != 0) | (primitiveState.semi + 1) << 4);
     memcpy(out->hd, primitiveHd, sizeof(out->hd));
     memcpy(out->hdTexels, primitiveHdTexels, sizeof(out->hdTexels));
 }
