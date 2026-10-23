@@ -588,6 +588,56 @@ int GteInterpolate(const GtePrecise *p, float along, GtePrecise *out)
     return 1;
 }
 
+int GteViewAt(const GtePrecise *p, float along, double view[3])
+{
+    PastEntry *entry;
+    int r;
+
+    if (p->view[0] == 0.0f && p->view[1] == 0.0f && p->view[2] == 0.0f) {
+        return 0;
+    }
+    for (r = 0; r < 3; r++) {
+        view[r] = p->view[r];
+    }
+    if (along >= 1.0f || !keepPast || !p->key || pastFrame != preciseFrame - 1 || CameraCut()) {
+        return 1; /* (where the frame has it: as GteInterpolate leaves a vertex it cannot move) */
+    }
+    entry = PastSlot(p->key, 0);
+    if (entry && Moved(entry->view, p->view) <= CUT_DISTANCE * CUT_DISTANCE) {
+        for (r = 0; r < 3; r++) {
+            view[r] = entry->view[r] + (p->view[r] - entry->view[r]) * along;
+        }
+    } else if (motionValid) {
+        double d[3], was[3];
+
+        for (r = 0; r < 3; r++) {
+            d[r] = p->view[r] - motionT[r];
+        }
+        for (r = 0; r < 3; r++) {
+            was[r] = motionR[0][r] * d[0] + motionR[1][r] * d[1] + motionR[2][r] * d[2];
+        }
+        for (r = 0; r < 3; r++) {
+            view[r] = was[r] + (p->view[r] - was[r]) * along;
+        }
+    }
+    return 1;
+}
+
+double GteNearPlane(void)
+{
+    double h = (double)(uint16_t)gte.control[H];
+
+    return h * 0.5 > 1.0 ? h * 0.5 : 1.0;
+}
+
+void GteProjectView(const double view[3], float *x, float *y)
+{
+    double h = (double)(uint16_t)gte.control[H];
+
+    *x = (float)(gte.control[OFX] / 65536.0 + view[0] * h / view[2]);
+    *y = (float)(gte.control[OFY] / 65536.0 + view[1] * h / view[2]);
+}
+
 void GteRecordView(uint32_t handle, double x, double y, double z)
 {
     int32_t record = HandleRecord(handle);

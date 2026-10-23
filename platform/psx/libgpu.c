@@ -899,9 +899,12 @@ static float hudMoveX, hudMoveY; /* ... a scaled one goes this far from the band
    packets there (bound to their projections: a menu's model) keep theirs. */
 static int hudPackets;
 
+static GtePrecise resolved[GTE_RESOLVE_MAX]; /* the last primitive's projections (Vertices), for NearCut */
+static unsigned resolvedMask;
+
 static unsigned Vertices(GpuVertex *v, const uint32_t *const *words, int count)
 {
-    GtePrecise precise[GTE_RESOLVE_MAX];
+    GtePrecise *precise = resolved;
     uint32_t xy[GTE_RESOLVE_MAX];
     unsigned mask;
     int i, depth, bound;
@@ -940,7 +943,96 @@ static unsigned Vertices(GpuVertex *v, const uint32_t *const *words, int count)
             HudPoint(&v[i]); /* the HUD of a split window, or a box over the whole screen */
         }
     }
+    resolvedMask = mask;
     return mask;
+}
+
+/* A polygon with a corner nearer than the GTE projects (the far view's faces beside and just behind the camera; in a
+   picture between two frames, what the camera was nearer to or had not yet passed) is placed from its corners' view-
+   space positions, cut at a plane just in front of the camera (the far view's, portfar.h) with its texture coordinates
+   and colours, and the part in front drawn. 1 when it was (or was wholly behind), 0 when it needs none of this or its
+   corners have no view-space positions. */
+#define CUT_NEAR 16.0
+static int NearCut(const GpuDrawState *draw, const GpuVertex *v, int count)
+{
+    static const int quadOutline[4] = {0, 1, 3, 2}; /* (a quad's packet corners around its edge) */
+    struct {
+        double view[3], depth; /* view space; the depth drawn per view-space depth (the far view's is a hair more) */
+        GpuVertex v;
+    } in[4], out[8];
+    double near = GteNearPlane();
+    float along = interpolating ? interpolationAlong : 1.0f;
+    const double plane = CUT_NEAR;
+    int i, k, behind = 0, cut = 0;
+
+    if (count < 3 || resolvedMask != (1u << count) - 1) {
+        return 0;
+    }
+    for (i = 0; i < count; i++) {
+        int c = count == 4 ? quadOutline[i] : i;
+
+        if (!GteViewAt(&resolved[c], along, in[i].view)) {
+            return 0;
+        }
+        in[i].depth = resolved[c].view[2] != 0.0f ? resolved[c].z / resolved[c].view[2] : 1.0;
+        in[i].v = v[c];
+        /* (what GteInterpolate cannot place: behind the camera in this frame, or nearer than it projects) */
+        behind += resolved[c].view[2] < near || in[i].view[2] < near;
+    }
+    if (!behind) {
+        return 0;
+    }
+    for (i = 0; i < count; i++) {
+        const int j = (i + 1) % count;
+        const int aIn = in[i].view[2] >= plane, bIn = in[j].view[2] >= plane;
+
+        if (aIn) {
+            out[cut++] = in[i];
+        }
+        if (aIn != bIn) {
+            double t = (plane - in[i].view[2]) / (in[j].view[2] - in[i].view[2]);
+
+            out[cut] = in[i];
+            for (k = 0; k < 3; k++) {
+                out[cut].view[k] = in[i].view[k] + (in[j].view[k] - in[i].view[k]) * t;
+            }
+            out[cut].view[2] = plane;
+            out[cut].depth = in[i].depth + (in[j].depth - in[i].depth) * t;
+            out[cut].v.u = (float)(in[i].v.u + (in[j].v.u - in[i].v.u) * t);
+            out[cut].v.v = (float)(in[i].v.v + (in[j].v.v - in[i].v.v) * t);
+            out[cut].v.r = (uint8_t)(in[i].v.r + (in[j].v.r - in[i].v.r) * t + 0.5);
+            out[cut].v.g = (uint8_t)(in[i].v.g + (in[j].v.g - in[i].v.g) * t + 0.5);
+            out[cut].v.b = (uint8_t)(in[i].v.b + (in[j].v.b - in[i].v.b) * t + 0.5);
+            out[cut].v.a = (uint8_t)(in[i].v.a + (in[j].v.a - in[i].v.a) * t + 0.5);
+            cut++;
+        }
+    }
+    if (cut < 3) {
+        return 1; /* wholly behind the camera */
+    }
+    for (i = 0; i < cut; i++) {
+        float x, y;
+
+        GteProjectView(out[i].view, &x, &y);
+        out[i].v.x = x + (float)state.offsetX;
+        out[i].v.y = y + (float)state.offsetY;
+        out[i].v.w = (float)(out[i].view[2] * out[i].depth);
+    }
+    {
+        /* seen from behind: its outline winds the other way on screen (as Vertices judges a whole one) */
+        int back = (out[1].v.x - out[0].v.x) * (out[2].v.y - out[0].v.y) -
+                       (out[1].v.y - out[0].v.y) * (out[2].v.x - out[0].v.x) <= 0.0f;
+
+        for (i = 0; i < cut; i++) {
+            out[i].v.backFacing = back;
+        }
+    }
+    for (i = 1; i + 1 < cut; i++) {
+        GpuVertex triangle[3] = {out[0].v, out[i].v, out[i + 1].v};
+
+        GpuTriangles(draw, triangle, 3);
+    }
+    return 1;
 }
 
 static void Colour(GpuVertex *v, uint32_t word)
@@ -1075,6 +1167,10 @@ static void Polygon(const uint32_t *w, uint32_t code)
             v[i].g = v[0].g;
             v[i].b = v[0].b;
         }
+    }
+    if (NearCut(&draw, v, count)) {
+        Record(FRAMECAP_POLYGON, code, count, ix, iy, v, &draw, flags, w, page, clut);
+        return;
     }
     {
         int32_t tx[3] = {ix[0], ix[1], ix[2]}, ty[3] = {iy[0], iy[1], iy[2]};

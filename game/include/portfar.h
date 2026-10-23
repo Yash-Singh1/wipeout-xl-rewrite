@@ -56,6 +56,13 @@ void PortFarProject(const PortView *view, double x, double y, double z, PortFarV
    packet keeps its position clamped to the GPU's coordinates, the precise projection holds the true one. */
 #define PORT_FAR_NEAR 16.0
 void PortFarProjectCamera(double cx, double cy, double cz, PortFarVertex *out);
+/* ... any camera-space point, also behind the camera: libgpu places a polygon with such a corner from the corners'
+   view-space positions in each picture, cut just in front of the camera (the pictures between two frames see what
+   the camera has just passed). The track's faces are drawn this far behind the camera for them. */
+void PortFarProjectAny(double cx, double cy, double cz, PortFarVertex *out);
+#define PORT_FAR_BEHIND 4096.0
+/* ... and this many pixels around the screen (where the camera looked a frame before, turning) */
+#define PORT_FAR_AROUND 64
 void PortFarDepthBias(double scale); /* the depth of what is projected next is scaled (drawn behind) */
 u_long *PortFarSlot(int entry, double depth);
 char *PortFarAlloc(int bytes);

@@ -579,7 +579,7 @@ static void RecorderTab(void)
         int px = hovered ? (int)((m.x - origin.x) / zoom) : testHoverX - pictureX;
         int py = hovered ? (int)((m.y - origin.y) / zoom) : testHoverY;
         px = SDL_clamp(px, 0, pictureW - 1);
-        py = SDL_clamp(py, 0, 239);
+        py = SDL_clamp(py, 0, pictureH - 1);
         int x = px + pictureX, y = py;
 
         if (ImGui::IsItemClicked()) {
@@ -1220,28 +1220,6 @@ static void XlDisc(void)
     ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "In use: %s",
                        PortRegionEurope() ? "WipEout 2097 (Europe)" : "Wipeout XL (USA)");
     UnpackProgress(UNPACK_XL);
-    // the video standard (region.c): the disc's, or either for both; the game runs to it from its start
-    {
-        const char *const standards[] = {PortRegionEurope() ? "By the disc (PAL)" : "By the disc (NTSC)",
-                                         "NTSC (60 Hz)", "PAL (50 Hz)"};
-        int standard = portSettings.videoStandard;
-        if (ImGui::Combo("Video standard", &standard, standards, IM_ARRAYSIZE(standards))) {
-            portSettings.videoStandard = standard;
-            Changed();
-        }
-        bool wanted = portSettings.videoStandard == VIDEO_PAL ||
-                      (portSettings.videoStandard == VIDEO_BY_DISC && PortRegionEurope());
-        if (wanted != (portPal != 0)) {
-#ifdef PORT_MOBILE
-            ImGui::TextDisabled("From the game's next start.");
-#else
-            const char *disc = portConfig.discGiven ? portConfig.discGiven : portSettings.discPath;
-            if (ImGui::Button("Restart to use it") && !PortRestart(disc)) {
-                SDL_snprintf(discMessage, sizeof(discMessage), "The game could not be started again: %s", SDL_GetError());
-            }
-#endif
-        }
-    }
     if (ImGui::Button("Browse...##disc")) {
         PickerOpen(&discPicker, false, discEdit);
     }
@@ -1599,6 +1577,34 @@ static void SavesTab(void)
 }
 
 // The resolution: the framebuffer's scale (gpu_gl.c), the window's or the player's.
+// The video standard (region.c): the disc's, or either for both; the game runs to it from its start.
+static void VideoStandard(void)
+{
+    static char standardMessage[256];
+    const char *const standards[] = {PortRegionEurope() ? "By the disc (PAL)" : "By the disc (NTSC)",
+                                     "NTSC (60 Hz)", "PAL (50 Hz)"};
+    int standard = portSettings.videoStandard;
+    if (ImGui::Combo("Video standard", &standard, standards, IM_ARRAYSIZE(standards))) {
+        portSettings.videoStandard = standard;
+        Changed();
+    }
+    bool wanted = portSettings.videoStandard == VIDEO_PAL ||
+                  (portSettings.videoStandard == VIDEO_BY_DISC && PortRegionEurope());
+    if (wanted != (portPal != 0)) {
+#ifdef PORT_MOBILE
+        ImGui::TextDisabled("From the game's next start.");
+#else
+        const char *disc = portConfig.discGiven ? portConfig.discGiven : portSettings.discPath;
+        if (ImGui::Button("Restart to use it") && !PortRestart(disc)) {
+            SDL_snprintf(standardMessage, sizeof(standardMessage), "The game could not be started again: %s", SDL_GetError());
+        }
+#endif
+    }
+    if (standardMessage[0]) {
+        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.4f, 1.0f), "%s", standardMessage);
+    }
+}
+
 static void Resolution(void)
 {
     char auto_[64], labels[16][48];
@@ -1770,6 +1776,7 @@ static void Console(void)
                     Changed();
                 }
             }
+            VideoStandard();
             ImGui::Separator();
             bool wide = portSettings.widescreen != 0;
             if (ImGui::Checkbox("Widescreen", &wide)) {

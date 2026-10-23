@@ -252,6 +252,29 @@ void PortFarProjectCamera(double cx, double cy, double cz, PortFarVertex *out)
     GteRecordView(out->handle, cx, cy, cz); /* frame interpolation (gte.h) */
 }
 
+void PortFarProjectAny(double cx, double cy, double cz, PortFarVertex *out)
+{
+    double nearZ = cz > PORT_FAR_NEAR ? cz : PORT_FAR_NEAR;
+    double h = (double)(u_short)GteReadControl(26);
+    int sx, sy;
+
+    if (cz >= PORT_FAR_NEAR) {
+        PortFarProjectCamera(cx, cy, cz, out);
+        return;
+    }
+    /* (its place is libgpu's to work out, from the view-space position: this one stands in) */
+    out->z = cz;
+    out->x = GteReadControl(24) / 65536.0 + cx * h / nearZ;
+    out->y = GteReadControl(25) / 65536.0 + cy * h / nearZ;
+    sx = out->x < -1024.0 ? -1024 : out->x > 1023.0 ? 1023 : (int)floor(out->x);
+    sy = out->y < -1024.0 ? -1024 : out->y > 1023.0 ? 1023 : (int)floor(out->y);
+    out->screen = (sx & 0xFFFF) | (int)((u_int)sy << 16);
+    out->rejected = 0;
+    out->handle = GteRecordProjection((uint32_t)out->screen, (float)out->x, (float)out->y, (float)(cz * depthBias),
+                                      GteFade(sqrt(cx * cx + cy * cy + cz * cz)));
+    GteRecordView(out->handle, cx, cy, cz);
+}
+
 u_long *PortFarSlot(int entry, double depth)
 {
     int bucket;
@@ -310,8 +333,9 @@ void PortFarRelease(char *end)
 
 /* ---- the pass ---- */
 
-/* Whether a sphere about camera-space centre c might be on screen. */
-static int MaybeVisible(const double c[3], double radius)
+/* Whether a sphere about camera-space centre c might be on screen; with `behind`, also when it is that far behind the
+   camera (seen from where the camera was a frame before: the pictures between two frames). */
+static int MaybeVisible(const double c[3], double radius, double behind)
 {
     if (GteFade(sqrt(c[0] * c[0] + c[1] * c[1] + c[2] * c[2]) - radius) <= 0.0f) {
         return 0; /* faded out entirely */
@@ -319,6 +343,9 @@ static int MaybeVisible(const double c[3], double radius)
     double h = (double)(u_short)GteReadControl(26);
     double z = c[2] + radius;
 
+    if (behind > 0.0 && c[2] + radius + behind >= h * 0.5 && c[2] < radius + behind) {
+        return 1; /* about the camera: the cone below says nothing there */
+    }
     if (z < h * 0.5) {
         return 0;
     }
@@ -354,7 +381,7 @@ static void DrawFarTrack(TrackCamera *camera)
             c[k] = view.m[k][0] * section->centre.vx + view.m[k][1] * section->centre.vy + view.m[k][2] * section->centre.vz +
                    view.t[k];
         }
-        if (MaybeVisible(c, 4096.0 + section->globalRadius)) {
+        if (MaybeVisible(c, 4096.0 + section->globalRadius, PORT_FAR_BEHIND)) {
             PortTrackFar(section, &view);
         }
     }
@@ -379,7 +406,7 @@ static void DrawFarScenery(void)
             }
         }
         SkeletonView(object->skeleton, &view);
-        if (MaybeVisible(view.t, (double)object->extent)) {
+        if (MaybeVisible(view.t, (double)object->extent, 0.0)) {
             PortDrawObjectFar(object, &view, NULL);
         }
     }
@@ -412,7 +439,7 @@ static void DrawFarShips(ShipData *ships, Object **shipShapes)
         SetSkeletonPosition(&skeleton, ship->ppivot.vx, ship->ppivot.vy, ship->ppivot.vz);
         SetSkeletonDirectionHPR(&skeleton, ship->hdg, ship->pitch, ship->roll);
         SkeletonView(&skeleton, &view);
-        if (!MaybeVisible(view.t, (double)object->extent + 1024.0)) {
+        if (!MaybeVisible(view.t, (double)object->extent + 1024.0, 0.0)) {
             continue;
         }
         /* lit by the colour of the track face beside it */

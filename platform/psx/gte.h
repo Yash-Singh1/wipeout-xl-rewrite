@@ -100,6 +100,14 @@ void GteKeepPast(int on);
    1 when *out was made, 0 when there is nothing to go by (no key, not in the frame before, too near, or the
    view jumped: a camera cut). */
 int GteInterpolate(const GtePrecise *p, float along, GtePrecise *out);
+/* A vertex's view-space position in the picture drawn: the frame's own (along >= 1) or `along` of the way from the
+   frame before, as GteInterpolate places it but at any depth, also behind the camera (a polygon there is clipped at
+   GteNearPlane, libgpu.c). 0 when the vertex has no view-space position. */
+int GteViewAt(const GtePrecise *p, float along, double view[3]);
+/* The nearest depth the GTE projects (half the projection distance), and a view-space point there or beyond
+   projected: its screen position. */
+double GteNearPlane(void);
+void GteProjectView(const double view[3], float *x, float *y);
 /* libgpu has drawn a frame's ordering table: the next projection starts a
    new frame's cache. */
 void GteFrameDrawn(void);

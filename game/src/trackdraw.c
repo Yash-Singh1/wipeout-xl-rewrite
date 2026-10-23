@@ -505,106 +505,73 @@ void AsmTrackHi(TrackSection *firstSection, Skeleton *camera, AutoMeshData *auto
 
 /* Port: a face with a corner too near the camera or beyond the GPU's coordinates. The game leaves out each
    cell of it with such corners (AsmTrackMed, AsmTrackHi), so a face right beside the camera left a hole in the
-   track in front of the ship for a frame or two. Its part in front of the near plane is drawn here as
-   triangles, with their corners' true screen positions (libgpu draws them whatever their size). */
+   track in front of the ship for a frame or two. It is drawn here whole, its corners' view-space positions given
+   (PortFarProjectAny): libgpu cuts it just in front of the camera in each picture. Faces wholly behind the camera
+   are drawn too, as far as the pictures between two frames can see them (PORT_FAR_BEHIND). */
 static void DrawNearFace(Face *face, const PortView *view, u_short tpage, u_short clut)
 {
-    /* the outline: the quad's packet vertices 0, 1, 3, 2, which hold corners 1, 0, 3, 2 (AsmTrackLo's order) */
-    static const int outline[4] = {1, 0, 3, 2};
-    Tile          *tile = &FaceSurface(face)->low[0];
-    const u_char   uv[4][2] = {{tile->u0, tile->v0}, {tile->u1, tile->v1}, {tile->u3, tile->v3}, {tile->u2, tile->v2}};
-    double         corner[4][5], clipped[8][5]; /* camera x, y, z, u, v */
-    uint64_t       pointKey[8];                 /* frame interpolation: a corner's track vertex, a cut's edge */
-    PortFarVertex  point[8];
-    double         deepest = 0.0;
-    int            count = 0, left = 0, right = 0, above = 0, below = 0;
-    int            margin = PortScreenMargin(); /* widescreen's sides */
-    int            i, k;
+    PortFarVertex corner[4];
+    POLY_FT4     *poly;
+    double        deepest = 0.0;
+    int           inFront = 0, reach = 0, left = 0, right = 0, above = 0, below = 0;
+    int           margin = PortScreenMargin() + PORT_FAR_AROUND; /* widescreen's sides, and around the screen */
+    int           k;
 
-    for (i = 0; i < 4; i++) {
-        VECTOR *vertex = &track->vertices[face->vertex[outline[i]]];
+    for (k = 0; k < 4; k++) {
+        VECTOR *vertex = &track->vertices[face->vertex[k]];
+        double  c[3];
+        int     r;
 
-        for (k = 0; k < 3; k++) {
-            corner[i][k] = view->m[k][0] * vertex->vx + view->m[k][1] * vertex->vy + view->m[k][2] * vertex->vz +
-                           view->t[k];
+        for (r = 0; r < 3; r++) {
+            c[r] = view->m[r][0] * vertex->vx + view->m[r][1] * vertex->vy + view->m[r][2] * vertex->vz + view->t[r];
         }
-        corner[i][3] = uv[i][0];
-        corner[i][4] = uv[i][1];
+        GteKeyNext(0, WorldKey(vertex->vx, vertex->vy, vertex->vz)); /* frame interpolation: as the game's (WorldKey) */
+        PortFarProjectAny(c[0], c[1], c[2], &corner[k]);
+        inFront += c[2] >= PORT_FAR_NEAR;
+        reach += c[2] >= -PORT_FAR_BEHIND;
+        left += corner[k].x < -margin;
+        right += corner[k].x > 320 + margin;
+        above += corner[k].y < -PORT_FAR_AROUND;
+        below += corner[k].y > SCREEN_HEIGHT + PORT_FAR_AROUND;
+        deepest = c[2] > deepest ? c[2] : deepest;
     }
-    for (i = 0; i < 4; i++) {
-        const double *a = corner[i], *b = corner[(i + 1) & 3];
-        int aIn = a[2] >= PORT_FAR_NEAR, bIn = b[2] >= PORT_FAR_NEAR;
-
-        if (aIn) {
-            pointKey[count] = WorldKey(track->vertices[face->vertex[outline[i]]].vx, track->vertices[face->vertex[outline[i]]].vy,
-                                       track->vertices[face->vertex[outline[i]]].vz);
-            memcpy(clipped[count++], a, sizeof(clipped[0]));
-        }
-        if (aIn != bIn) {
-            double t = (PORT_FAR_NEAR - a[2]) / (b[2] - a[2]);
-
-            for (k = 0; k < 5; k++) {
-                clipped[count][k] = a[k] + (b[k] - a[k]) * t;
-            }
-            pointKey[count] = GteKeyMix((uintptr_t)face, 100 + (uint64_t)i);
-            clipped[count++][2] = PORT_FAR_NEAR;
-        }
+    if (!reach || (inFront == 4 && (left == 4 || right == 4 || above == 4 || below == 4))) {
+        return; /* too far behind, or wholly off the screen */
     }
-    if (count < 3) {
-        return; /* behind the camera */
-    }
-    for (i = 0; i < count; i++) {
-        GteKeyNext(0, pointKey[i]);
-        PortFarProjectCamera(clipped[i][0], clipped[i][1], clipped[i][2], &point[i]);
-        left += point[i].x < -margin;
-        right += point[i].x > 320 + margin;
-        above += point[i].y < 0;
-        below += point[i].y > SCREEN_HEIGHT;
-        deepest = point[i].z > deepest ? point[i].z : deepest;
-    }
-    if (left == count || right == count || above == count || below == count) {
+    poly = (POLY_FT4 *)PortFarAlloc(sizeof(POLY_FT4));
+    if (!poly) {
         return;
     }
-    for (i = 1; i + 1 < count; i++) {
-        POLY_FT3 *poly = (POLY_FT3 *)PortFarAlloc(sizeof(POLY_FT3));
-        const int fan[3] = {0, i, i + 1};
-
-        if (!poly) {
-            return;
-        }
-        SetPolyFT3(poly);
-        StoreScreenXY(&poly->x0, &poly->y0, point[fan[0]].screen);
-        StoreScreenXY(&poly->x1, &poly->y1, point[fan[1]].screen);
-        StoreScreenXY(&poly->x2, &poly->y2, point[fan[2]].screen);
-        GteBindPrecise(&poly->x0, point[fan[0]].handle);
-        GteBindPrecise(&poly->x1, point[fan[1]].handle);
-        GteBindPrecise(&poly->x2, point[fan[2]].handle);
-        poly->u0 = (u_char)(clipped[fan[0]][3] + 0.5);
-        poly->v0 = (u_char)(clipped[fan[0]][4] + 0.5);
-        poly->u1 = (u_char)(clipped[fan[1]][3] + 0.5);
-        poly->v1 = (u_char)(clipped[fan[1]][4] + 0.5);
-        poly->u2 = (u_char)(clipped[fan[2]][3] + 0.5);
-        poly->v2 = (u_char)(clipped[fan[2]][4] + 0.5);
-        poly->tpage = tpage;
-        poly->clut = clut;
-        poly->r0 = face->red;
-        poly->g0 = face->green;
-        poly->b0 = face->blue;
-        /* behind whatever the game drew of the face, and nearer things */
-        AddPrim(PortFarSlot((int)deepest >> 2, deepest), poly);
-        PortTagPrims(poly, poly + 1, "near fill face", NULL, (int)(face - track->faces));
-    }
+    SetPolyFT4(poly);
+    /* the corners as AsmTrackLo stores them: RTPT's vertices 0, 1, 2 go to x1, x0, x2 */
+    StoreScreenXY(&poly->x1, &poly->y1, corner[0].screen);
+    StoreScreenXY(&poly->x0, &poly->y0, corner[1].screen);
+    StoreScreenXY(&poly->x2, &poly->y2, corner[2].screen);
+    StoreScreenXY(&poly->x3, &poly->y3, corner[3].screen);
+    GteBindPrecise(&poly->x1, corner[0].handle);
+    GteBindPrecise(&poly->x0, corner[1].handle);
+    GteBindPrecise(&poly->x2, corner[2].handle);
+    GteBindPrecise(&poly->x3, corner[3].handle);
+    SetQuadTile(poly, &FaceSurface(face)->low[0]);
+    poly->tpage = tpage;
+    poly->clut = clut;
+    poly->r0 = face->red;
+    poly->g0 = face->green;
+    poly->b0 = face->blue;
+    /* behind whatever the game drew of the face, and nearer things */
+    AddPrim(PortFarSlot((int)deepest >> 2, deepest), poly);
+    PortTagPrims(poly, poly + 1, "near fill face", NULL, (int)(face - track->faces));
 }
 
 /* Port: the faces of a section the game did not draw (beyond its view lists, or dropped: a corner farther
    than 16 bits or deeper than the GTE's depth range), in the low detail of AsmTrackLo, projected in full precision
-   (portfar.h). Faces with a corner too near or beyond the GPU's coordinates are clipped (DrawNearFace); faces
-   wholly off screen are left out. */
+   (portfar.h). Faces with a corner too near, behind the camera or beyond the GPU's coordinates are drawn by
+   DrawNearFace; faces wholly off screen are left out. */
 void PortTrackFar(TrackSection *section, const PortView *view)
 {
     Face *face = track->faces + (u_short)section->faceStart;
     int   faceCount = (u_short)section->faceCount;
-    int   margin = PortScreenMargin(); /* widescreen's sides */
+    int   margin = PortScreenMargin() + PORT_FAR_AROUND; /* widescreen's sides, and around the screen */
     int   n, k;
 
     /* a face the game drew in part is drawn whole here, a hair deeper, so that the game's cells cover it */
@@ -628,8 +595,8 @@ void PortTrackFar(TrackSection *section, const PortView *view)
             }
             left += corner[k].x < -margin;
             right += corner[k].x > 320 + margin;
-            above += corner[k].y < 0;
-            below += corner[k].y > SCREEN_HEIGHT;
+            above += corner[k].y < -PORT_FAR_AROUND;
+            below += corner[k].y > SCREEN_HEIGHT + PORT_FAR_AROUND;
         }
         if (k < 4) {
             DrawNearFace(face, view, tileSurfaces[(u_char)face->texture][0].low[0].tsb,
