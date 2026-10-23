@@ -55,7 +55,8 @@ static int gridCamera[3]; /* the camera's offset of the grids being projected */
 
 static uint64_t WorldKey(int x, int y, int z)
 {
-    return GteKeyMix(GteKeyMix(GteKeyMix(0x5452414B, (uint64_t)(int64_t)x), (uint64_t)(int64_t)y), (uint64_t)(int64_t)z);
+    return GteKeyMix(GteKeyMix(GteKeyMix(0x5452414B, (uint64_t)(int64_t)x), (uint64_t)(int64_t)y), (uint64_t)(int64_t)z) |
+           GTE_KEY_WORLD;
 }
 
 /* Loads corner `vertex` of the track, relative to the camera, into the GTE vertex register pair that starts at

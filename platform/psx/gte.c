@@ -330,6 +330,7 @@ uint64_t GteKeyMix(uint64_t a, uint64_t b)
     v ^= v >> 31;
     v *= 0xBF58476D1CE4E5B9ull;
     v ^= v >> 29;
+    v &= ~GTE_KEY_WORLD; /* (only the track's keys have it) */
     return v ? v : 1;
 }
 
@@ -398,33 +399,47 @@ static void KeepPast(void)
     }
 }
 
-static float Moved(const float a[3], const float b[3])
+/* What a vertex cannot do in one frame of the game: move CUT_DISTANCE view-space units, and CUT_TURN more per unit
+   away from the camera (as the view turns, more far off: with the far view, a hard turn moved the track half the way
+   across the screen beyond that, and a frame was taken for a cut to another camera and drawn without the pictures
+   between moving). */
+#define CUT_DISTANCE 6000.0f
+#define CUT_TURN 0.3f
+static int Jumped(const float was[3], const float now[3])
 {
-    float dx = a[0] - b[0], dy = a[1] - b[1], dz = a[2] - b[2];
+    float dx = was[0] - now[0], dy = was[1] - now[1], dz = was[2] - now[2];
+    float reach = CUT_DISTANCE + CUT_TURN * sqrtf(now[0] * now[0] + now[1] * now[1] + now[2] * now[2]);
 
-    return dx * dx + dy * dy + dz * dz;
+    return dx * dx + dy * dy + dz * dz > reach * reach;
 }
-
-#define CUT_DISTANCE 6000.0f /* view-space units a vertex cannot move in one frame of the game */
 
 /* The view's motion between the two frames, fitted to what both projected: cur = M past + T. What one frame projects
    and the other did not (track coming into view, a face newly cut finer) moves by it, while what both projected moves
-   on its own; where the two meet (a face cut finer beside one cut coarser), any error in the fit opens a crack.
-   It starts from a guess that the projections moving on their own cannot pull off (GuessMotion: the other ships
-   about the camera, a tenth of what both frames projected and more with the far view, dragged a plain fit a turn of
-   degrees off, and the fit then gave up, leaving what was new in the frame where the frame has it: a wedge of sky
-   between a face cut finer and its neighbour). Each step solves a correction to the motion found so far linearly,
-   without the projections that do not follow it: first a turn (a rotation vector w and a translation, d = w x q + T, q where the
-   motion so far brings the past; one step alone is off by about the square of the view's turn in a frame, a third of a
-   pixel), then any linear map, as the console's fixed-point matrices are not quite rotations (a few hundredths of a
-   pixel). */
-#define MOTION_TURNS 5
-#define MOTION_STEPS (MOTION_TURNS + 1)
-/* the view-space distance from the motion found so far beyond which a projection moves on its own, by step (the
-   first steps' motion is rougher) */
-static const double motionOwn[MOTION_STEPS] = { 0.0, 150.0, 30.0, 8.0, 8.0, 8.0 };
+   on its own; where the two meet (a face cut finer beside one cut coarser), any error in the fit opens a crack, and
+   where there is no fit, what is new stays where the frame has it: a wedge of sky beside the face cut finer. It is
+   fitted to the track (FitPast), from a guess that what does not follow it cannot pull off (GuessMotion: a plain fit
+   was dragged a turn of degrees off), by steps that each solve a linear map correcting the motion so far, without
+   the projections that do not follow it. (Any linear map: with the console's fixed-point matrices and the picture's
+   proportions the view's motion is not quite a turn, by as much as 10 or 20 units, and a turn left more than the
+   last steps' 8 units everywhere; the fit gave up.) */
+#define MOTION_STEPS 4
+/* the view-space distance from the motion found so far beyond which a projection moves on its own, by step: so much,
+   and so much more per unit of depth (the guess is rougher far off) */
+static const double motionOwn[MOTION_STEPS] = { 150.0, 30.0, 8.0, 8.0 };
+static const double motionOwnFar[MOTION_STEPS] = { 0.004, 0.0005, 0.0, 0.0 };
 static double motionR[3][3], motionT[3];
 static int motionValid;
+static uint64_t motionKeys; /* the key bit of the projections fitted: GTE_KEY_WORLD, or 0 for all */
+
+/* The past of the frame's record i when the fit uses it, NULL when not: the track, which stands still (what moves
+   with the view, the other ships about the camera, does not follow the view's motion), while the frame projected
+   enough of it. */
+static PastEntry *FitPast(int i)
+{
+    const GtePrecise *p = &records[i].value;
+
+    return p->key && (p->key & motionKeys) == motionKeys && p->view[2] > 0.0f ? PastSlot(p->key, 0) : NULL;
+}
 
 /* Solves the n equations of the n x width rows of a (row-major) for each of the width - n columns on the right, in
    place: the solution of column c, unknown i, is a[i][c] / a[i][i]. */
@@ -460,8 +475,8 @@ static int Solve(double *a, int n, int width)
     return 1;
 }
 
-/* Applies a correction after the motion found so far: M = turn M, T = turn T + move. */
-static void CorrectMotion(const double turn[3][3], const double move[3])
+/* Applies a correction after the motion found so far: M = map M, T = map T + move. */
+static void CorrectMotion(const double map[3][3], const double move[3])
 {
     double m[3][3], t[3];
     int r, i, j;
@@ -471,26 +486,26 @@ static void CorrectMotion(const double turn[3][3], const double move[3])
         for (i = 0; i < 3; i++) {
             m[r][i] = 0.0;
             for (j = 0; j < 3; j++) {
-                m[r][i] += turn[r][j] * motionR[j][i];
+                m[r][i] += map[r][j] * motionR[j][i];
             }
-            t[r] += turn[r][i] * motionT[i];
+            t[r] += map[r][i] * motionT[i];
         }
     }
     memcpy(motionR, m, sizeof(motionR));
     memcpy(motionT, t, sizeof(motionT));
 }
 
-static int FitMotionStep(int step)
+/* One step: the map [q 1] of 4 unknowns, 3 columns at once, q where the motion so far brings the past. */
+static void FitMotionStep(int step)
 {
-    /* a turn: the rows [-[q]x | I] of 6 unknowns (w, T); any linear map: [q 1] of 4 unknowns, 3 columns at once */
-    double turnRows[6][7] = {{0}}, linearRows[4][7] = {{0}}, turn[3][3], move[3];
-    int linear = step >= MOTION_TURNS, i, r, n = 0;
+    double rows[4][7] = {{0}}, map[3][3], move[3], damping;
+    int i, r, u, v, n = 0;
 
     for (i = 0; i < recordCount; i++) {
-        PastEntry *entry = records[i].value.key ? PastSlot(records[i].value.key, 0) : NULL;
-        double q[3], d[3], e = 0.0;
+        PastEntry *entry = FitPast(i);
+        double q[4], d[3], e = 0.0, own;
 
-        if (!entry || records[i].value.view[2] <= 0.0f) {
+        if (!entry) {
             continue;
         }
         for (r = 0; r < 3; r++) {
@@ -499,84 +514,37 @@ static int FitMotionStep(int step)
             d[r] = records[i].value.view[r] - q[r];
             e += d[r] * d[r];
         }
-        if (step && e > motionOwn[step] * motionOwn[step]) {
+        q[3] = 1.0;
+        own = motionOwn[step] + motionOwnFar[step] * records[i].value.view[2];
+        if (e > own * own) {
             continue; /* it moves on its own */
         }
-        if (linear) {
-            double row[4] = { q[0], q[1], q[2], 1.0 };
-            int u, v;
-
-            for (u = 0; u < 4; u++) {
-                for (v = 0; v < 4; v++) {
-                    linearRows[u][v] += row[u] * row[v];
-                }
-                for (r = 0; r < 3; r++) {
-                    linearRows[u][4 + r] += row[u] * d[r];
-                }
+        for (u = 0; u < 4; u++) {
+            for (v = 0; v < 4; v++) {
+                rows[u][v] += q[u] * q[v];
             }
-        } else {
-            double row[3][6] = {{0}};
-            int u, v;
-
-            row[0][1] = q[2], row[0][2] = -q[1];
-            row[1][0] = -q[2], row[1][2] = q[0];
-            row[2][0] = q[1], row[2][1] = -q[0];
-            row[0][3] = row[1][4] = row[2][5] = 1.0;
             for (r = 0; r < 3; r++) {
-                for (u = 0; u < 6; u++) {
-                    for (v = 0; v < 6; v++) {
-                        turnRows[u][v] += row[r][u] * row[r][v];
-                    }
-                    turnRows[u][6] += row[r][u] * d[r];
-                }
+                rows[u][4 + r] += q[u] * d[r];
             }
         }
         n++;
     }
-    if (linear) {
-        /* (too few to say more than the turn did, or all on a plane: the turn stands; a hair of damping keeps a
-           direction they barely span from being made up) */
-        double damping = (linearRows[0][0] + linearRows[1][1] + linearRows[2][2]) * 1e-7;
-
-        for (r = 0; r < 3; r++) {
-            linearRows[r][r] += damping;
-        }
-        if (n < 64 || !Solve(&linearRows[0][0], 4, 7)) {
-            return 1;
-        }
-        for (r = 0; r < 3; r++) {
-            for (i = 0; i < 3; i++) {
-                turn[r][i] = (r == i ? 1.0 : 0.0) + linearRows[i][4 + r] / linearRows[i][i];
-            }
-            move[r] = linearRows[3][4 + r] / linearRows[3][3];
-        }
-    } else {
-        double w[3], angle, k[3], c, s;
-
-        if (n < 16 || !Solve(&turnRows[0][0], 6, 7)) {
-            return 0;
-        }
-        for (r = 0; r < 3; r++) {
-            w[r] = turnRows[r][6] / turnRows[r][r];
-            move[r] = turnRows[3 + r][6] / turnRows[3 + r][3 + r];
-        }
-        angle = sqrt(w[0] * w[0] + w[1] * w[1] + w[2] * w[2]);
-        for (r = 0; r < 3; r++) {
-            k[r] = angle > 1e-12 ? w[r] / angle : 0.0;
-        }
-        c = cos(angle), s = sin(angle);
-        /* Rodrigues: turn = cI + s[k]x + (1 - c)kk' */
-        for (r = 0; r < 3; r++) {
-            for (i = 0; i < 3; i++) {
-                turn[r][i] = (r == i ? c : 0.0) + (1.0 - c) * k[r] * k[i];
-            }
-        }
-        turn[0][1] -= s * k[2], turn[0][2] += s * k[1];
-        turn[1][0] += s * k[2], turn[1][2] -= s * k[0];
-        turn[2][0] -= s * k[1], turn[2][1] += s * k[0];
+    /* (too few to say more than the guess, or all on a plane: the motion so far stands; a hair of damping keeps a
+       direction they barely span from being made up) */
+    damping = (rows[0][0] + rows[1][1] + rows[2][2]) * 1e-7;
+    for (r = 0; r < 3; r++) {
+        rows[r][r] += damping;
     }
-    CorrectMotion(turn, move);
-    return 1;
+    if (n < 64 || !Solve(&rows[0][0], 4, 7)) {
+        return;
+    }
+    for (r = 0; r < 3; r++) {
+        for (i = 0; i < 3; i++) {
+            map[r][i] = (r == i ? 1.0 : 0.0) + rows[i][4 + r] / rows[i][i];
+        }
+        move[r] = rows[3][4 + r] / rows[3][3];
+    }
+    CorrectMotion(map, move);
 }
 
 /* The rigid motion that brings three past positions onto the current ones: the frames they span, one turned onto the
@@ -640,13 +608,13 @@ static int GuessMotion(void)
     uint32_t random = 0x9E3779B9u;
 
     for (i = 0; i < recordCount; i++) {
-        matched += records[i].value.key && records[i].value.view[2] > 0.0f && PastSlot(records[i].value.key, 0);
+        matched += FitPast(i) != NULL;
     }
     every = matched / GUESS_SAMPLES + 1;
     for (i = 0, matched = 0; i < recordCount && n < GUESS_SAMPLES; i++) {
-        PastEntry *entry = records[i].value.key ? PastSlot(records[i].value.key, 0) : NULL;
+        PastEntry *entry = FitPast(i);
 
-        if (!entry || records[i].value.view[2] <= 0.0f || matched++ % every) {
+        if (!entry || matched++ % every) {
             continue;
         }
         for (r = 0; r < 3; r++) {
@@ -690,24 +658,32 @@ static int GuessMotion(void)
     return most >= 16;
 }
 
+/* Chooses what FitPast gives: the track, when the frame projected enough of it that the frame before did too. */
+static void ChooseFitKeys(void)
+{
+    int i, world = 0;
+
+    motionKeys = GTE_KEY_WORLD;
+    for (i = 0; i < recordCount && world < 64; i++) {
+        world += FitPast(i) != NULL;
+    }
+    motionKeys = world < 64 ? 0 : GTE_KEY_WORLD; /* (a menu's model, no track) */
+}
+
 static void FitMotion(void)
 {
-    int step, r;
+    int step;
 
-    memset(motionR, 0, sizeof(motionR));
-    memset(motionT, 0, sizeof(motionT));
-    for (r = 0; r < 3; r++) {
-        motionR[r][r] = 1.0;
-    }
-    motionValid = 1;
-    /* (without a guess, the first step's plain fit is the guess) */
-    for (step = GuessMotion() ? 1 : 0; step < MOTION_STEPS && motionValid; step++) {
-        motionValid = FitMotionStep(step);
+    motionValid = GuessMotion();
+    for (step = 0; step < MOTION_STEPS && motionValid; step++) {
+        FitMotionStep(step);
     }
 }
 
-/* Whether the view jumped between the two frames (a cut to another camera, a restart): most of what both
-   frames projected moved too far. The view's motion is fitted at the same time. */
+/* Whether the view jumped between the two frames (a cut to another camera, a restart): most of the track (FitPast)
+   both frames projected moved too far. (Of all they projected, an object drawn in several places, one key for all,
+   seemed to jump from the first place to the others, and with enough of them a frame was taken for a cut and drawn
+   without the pictures between moving.) The view's motion is fitted at the same time. */
 static int CameraCut(void)
 {
     int i, matched = 0, far = 0;
@@ -716,12 +692,13 @@ static int CameraCut(void)
         return cut;
     }
     cutCheckedFrame = preciseFrame;
+    ChooseFitKeys();
     for (i = 0; i < recordCount; i += 7) {
-        PastEntry *entry = records[i].value.key ? PastSlot(records[i].value.key, 0) : NULL;
+        PastEntry *entry = FitPast(i);
 
         if (entry) {
             matched++;
-            far += Moved(entry->view, records[i].value.view) > CUT_DISTANCE * CUT_DISTANCE;
+            far += Jumped(entry->view, records[i].value.view);
         }
     }
     cut = matched < 8 || far * 3 > matched;
@@ -741,7 +718,7 @@ int GteInterpolate(const GtePrecise *p, float along, GtePrecise *out)
         return 0;
     }
     entry = PastSlot(p->key, 0);
-    if (entry && Moved(entry->view, p->view) <= CUT_DISTANCE * CUT_DISTANCE) {
+    if (entry && !Jumped(entry->view, p->view)) {
         for (r = 0; r < 3; r++) {
             was[r] = entry->view[r];
         }
@@ -790,7 +767,7 @@ int GteViewAt(const GtePrecise *p, float along, double view[3])
         return 1; /* (where the frame has it: as GteInterpolate leaves a vertex it cannot move) */
     }
     entry = PastSlot(p->key, 0);
-    if (entry && Moved(entry->view, p->view) <= CUT_DISTANCE * CUT_DISTANCE) {
+    if (entry && !Jumped(entry->view, p->view)) {
         for (r = 0; r < 3; r++) {
             view[r] = entry->view[r] + (p->view[r] - entry->view[r]) * along;
         }

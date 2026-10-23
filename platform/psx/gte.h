@@ -93,6 +93,9 @@ uint32_t GteFrameNumber(void);
 /* The number of the frame whose projections are recorded, without starting the next (a frame drawn again). */
 uint32_t GteFrameRecorded(void);
 uint64_t GteKeyMix(uint64_t a, uint64_t b);
+/* Set in the keys of what stands still in the world (the track): the view's motion between two frames, which moves
+   what one frame projects and the other did not, is fitted to these. */
+#define GTE_KEY_WORLD 0x8000000000000000ull
 void GteRecordView(uint32_t handle, double x, double y, double z);
 /* On while the display interpolates: the projections of the frame before are kept. */
 void GteKeepPast(int on);
