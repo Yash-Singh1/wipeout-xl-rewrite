@@ -1188,11 +1188,9 @@ static void XlDisc(void)
         SDL_free(chosen);
     }
     ImGui::TextUnformatted("Wipeout XL disc image (PlayStation)");
-    ImGui::TextWrapped("Wipeout XL (USA), or WipEout 2097 (Europe): the same game, with its own title screen, logo and "
-                       "movies. A .cue with its .bin tracks, a .bin without its .cue, or an archive of them (.7z, "
-                       ".zip, .rar, .tar, .gz and the like: unpacked once, into the settings folder).");
-    ImGui::TextWrapped("In use: %s (%s)", portConfig.discGiven ? portConfig.discGiven : "",
-                       PortRegionEurope() ? "WipEout 2097, Europe" : "Wipeout XL, USA");
+    ImGui::TextWrapped("Wipeout XL (USA) or WipEout 2097 (Europe): a .cue, a .bin, or an archive of them.");
+    ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "In use: %s",
+                       PortRegionEurope() ? "WipEout 2097 (Europe)" : "Wipeout XL (USA)");
     UnpackProgress(UNPACK_XL);
     if (ImGui::Button("Browse...##disc")) {
         PickerOpen(&discPicker, false, discEdit);
@@ -1254,18 +1252,15 @@ static void OriginalWipeout(void)
         SDL_free(chosen);
     }
     ImGui::TextUnformatted("The original Wipeout (PlayStation)");
-    ImGui::TextWrapped("Your copy of the original game: its disc image (a .cue with its .bin, or an archive of it), "
-                       "or a folder of its data (the disc's WIPEOUT folder). Its tracks are then on the RACING CLASS menu, on the "
-                       "WIPEOUT line under the classes (arcade races and time trials): left and right go through them.");
+    ImGui::TextWrapped("Its disc image or its WIPEOUT data folder. Its tracks are on the RACING CLASS menu's WIPEOUT line.");
     int tracks = PortOriginalFoundCount();
     if (!originalEdit[0] && PortOriginalSource()[0]) {
         SDL_strlcpy(originalEdit, PortOriginalSource(), sizeof(originalEdit));
     }
     if (tracks >= 14) {
-        ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "%d tracks from %s", tracks, PortOriginalSource());
+        ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "%d tracks", tracks);
     } else if (tracks > 0) {
-        ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "%d of the original's 14 tracks from %s", tracks,
-                           PortOriginalSource());
+        ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "%d of the original's 14 tracks", tracks);
     } else {
         ImGui::TextDisabled("None chosen.");
     }
@@ -1316,14 +1311,13 @@ static void Wipeout64(void)
         SDL_free(chosen);
     }
     ImGui::TextUnformatted("Wipeout 64 (Nintendo 64)");
-    ImGui::TextWrapped("Your copy of Wipeout 64: its cartridge image (.z64, .n64 or .v64). Its seven tracks are then on "
-                       "the RACING CLASS menu's WIPEOUT line too, after the original's, at Rapier class.");
+    ImGui::TextWrapped("Its cartridge image (.z64, .n64 or .v64). Its tracks are on the WIPEOUT line too, at Rapier class.");
     int tracks = PortWipeout64TrackCount();
     if (!n64Edit[0] && PortWipeout64Source()[0]) {
         SDL_strlcpy(n64Edit, PortWipeout64Source(), sizeof(n64Edit));
     }
     if (tracks > 0) {
-        ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "%d tracks from %s", tracks, PortWipeout64Source());
+        ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "%d tracks", tracks);
     } else {
         ImGui::TextDisabled("None chosen.");
     }
@@ -1389,11 +1383,9 @@ static void Music(void)
         Changed();
         PortMusicSettingsChanged();
     }
-    ImGui::TextWrapped("A folder of music files (MP3, FLAC, Ogg Vorbis or WAV; the folders in it too). Each time the "
-                       "game would start a piece of its music (the menus', a race's) the next song plays instead, "
-                       "and when a song ends the one after it. The game's music volume and pause still apply.");
+    ImGui::TextWrapped("A folder of MP3, FLAC, Ogg Vorbis or WAV files, played in place of the game's music.");
     if (PortMusicCount() > 0) {
-        ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "%d songs from %s", PortMusicCount(), PortMusicFolder());
+        ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "%d songs", PortMusicCount());
         const char *playing = PortMusicPlaying();
         if (playing[0]) {
             ImGui::Text("Playing: %s", playing);
@@ -1463,9 +1455,7 @@ static void SavesTab(void)
         portSettings.noAutoSave = !autosave;
         Changed();
     }
-    ImGui::TextWrapped("The save in use is loaded at start-up, and whenever your records, options or progress change it "
-                       "is written again (made, as AUTOSAVE, if there is none). The game's LOAD/SAVE screen still "
-                       "changes the save in use: load one, or save under a new name.");
+    ImGui::TextWrapped("The game's LOAD/SAVE screen chooses the save in use: load one, or save under a new name.");
     if (portSettings.saveSlot[0]) {
         ImGui::Text("In use: %.8s on memory card %c", portSettings.saveSlot + 2, portSettings.saveSlot[0] == '0' ? '1' : '2');
     } else {
@@ -1513,9 +1503,7 @@ static void SavesTab(void)
     ImGui::Separator();
     // other emulators'
     ImGui::TextUnformatted("Saves in other emulators");
-    ImGui::TextWrapped("Wipeout XL saves (and WipEout 2097's) found in DuckStation's, RetroArch's, OpenEmu's, Mednafen's, "
-                       "ePSXe's and PCSX's memory cards, or in a card or save file you choose (.mcd, .mcr, .srm, .gme, "
-                       ".mem, .vgs, .vmp, .mcs ...). Import copies one onto memory card 1 and loads it.");
+    ImGui::TextWrapped("Import copies a save onto memory card 1 and loads it.");
     if (ImGui::Button("Look again")) {
         scanned = false;
     }
@@ -1565,22 +1553,24 @@ static void Resolution(void)
 {
     char auto_[64], labels[16][48];
     const char *items[17];
-    int count = GpuMaxScale(), choice = SDL_min(portSettings.renderScale, count), i;
+    int count = GpuMaxScale(), choice = SDL_min(portSettings.renderScale, count), i, w = 0, h = 0, columns = 320;
 
-    SDL_snprintf(auto_, sizeof(auto_), "Auto: as the window (%dx, %dx%d)", GpuWindowScale(), 320 * GpuWindowScale(),
-                 240 * GpuWindowScale());
+    // the console's 240 lines, and its 320 columns or, with widescreen, as many as the window's shape gives
+    PortDrawableSize(&w, &h);
+    if (portSettings.widescreen && h > 0) {
+        columns = SDL_clamp((int)SDL_ceil(240.0 * w / h), 320, 320 + 2 * 400);
+    }
+    SDL_snprintf(auto_, sizeof(auto_), "Auto (%dx%d)", columns * GpuWindowScale(), 240 * GpuWindowScale());
     items[0] = auto_;
     for (i = 1; i <= count && i <= 16; i++) {
-        SDL_snprintf(labels[i - 1], sizeof(labels[i - 1]), "%dx  %dx%d%s", i, 320 * i, 240 * i,
-                     i == 1 ? "  (the console's)" : "");
+        SDL_snprintf(labels[i - 1], sizeof(labels[i - 1]), "%dx%d%s", columns * i, 240 * i,
+                     i == 1 ? " (the console's)" : "");
         items[i] = labels[i - 1];
     }
     if (ImGui::Combo("Resolution", &choice, items, SDL_min(count, 16) + 1)) {
         portSettings.renderScale = choice;
         Changed();
     }
-    ImGui::TextDisabled("Drawn at %dx (%dx%d) now. Above the window's it is smoothed down to fit; each step up takes "
-                        "more video memory.", GpuScale(), 320 * GpuScale(), 240 * GpuScale());
 }
 
 static void UsePack(const char *path)
@@ -1612,23 +1602,20 @@ static void HdTextures(void)
         portSettings.hdTextures = on;
         Changed();
     }
-    ImGui::TextWrapped("Made for NR74W's WipEout 2097 / XL texture pack (github.com/NR74W/WipEout-Mods): the menus, "
-                       "fonts and HUD redrawn at 16 times the detail. The game does not include it: download it from "
-                       "there and choose its .zip, or the folder it is in. Other packs made for DuckStation's texture "
-                       "replacement (for SCUS-94351) work as well.");
+    ImGui::TextWrapped("NR74W's pack (not included: download it from its page) or any DuckStation texture pack for "
+                       "SCUS-94351.");
     if (ImGui::Button("Open the pack's page")) {
         SDL_OpenURL("https://github.com/NR74W/WipEout-Mods");
     }
     if (HdTexCount() > 0) {
-        ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "%d replacement textures from %s", HdTexCount(),
-                           HdTexSource());
+        ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "%d replacement textures", HdTexCount());
         if (HdTexAbout()[0]) {
             ImGui::Indent();
             ImGui::TextDisabled("%s", HdTexAbout());
             ImGui::Unindent();
         }
     } else if (portSettings.hdPackPath[0] && !portSettings.hdTextures) {
-        ImGui::TextDisabled("%s (opened when HD textures are on)", portSettings.hdPackPath);
+        ImGui::TextDisabled("Opened when HD textures are on.");
     } else {
         ImGui::TextDisabled("No pack chosen.");
     }
@@ -1717,7 +1704,7 @@ static void Console(void)
                 portSettings.consoleDepth = !depthBuffer;
                 Changed();
             }
-            ImGui::TextDisabled("Off: the console's sorting, where a far polygon can be drawn over a nearer one.");
+            ImGui::TextDisabled("Off: far polygons can be drawn over nearer ones, as on the console.");
             ImGui::Separator();
             static const char *const rates[] = {"Uncapped", "Display refresh (VSync)", "Capped", "Console (60 fields a second)"};
             int rate = portSettings.frameRate;
@@ -1732,14 +1719,12 @@ static void Console(void)
                     Changed();
                 }
             }
-            ImGui::TextDisabled("The game keeps its 30 frames a second; the pictures between move smoothly from one to the next.");
             ImGui::Separator();
             bool wide = portSettings.widescreen != 0;
             if (ImGui::Checkbox("Widescreen", &wide)) {
                 portSettings.widescreen = wide;
                 Changed();
             }
-            ImGui::TextDisabled("In a window wider than 4:3 a race fills it, the HUD at the edges, and the menus' backdrop fills the sides.");
             bool fullscreen = (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) != 0;
             if (ImGui::Checkbox("Full screen (Alt+Enter, F11)", &fullscreen)) {
                 SDL_SetWindowFullscreen(window, fullscreen);
