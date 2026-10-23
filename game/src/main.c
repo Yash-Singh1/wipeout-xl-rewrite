@@ -60,7 +60,7 @@ static union { long long alignment; char bytes[MAIN_HEAP_SIZE + RESERVE_HEAP_SIZ
 
 int PsxMain(void) { /* Port: was void main(void), noreturn; the platform owns the program entry */
     char callWorkspace[64];
-    char introFilename[16] = "C:\\ntscanim.exe";
+    char *introFilename = REGION_STR("C:\\ntscanim.exe", "C:\\palanim.exe");
     char initMemory[8];
     /* Port: the console's stack was still zero here (RAM is clear at boot): the recording shows the title
        background packets with clut 0, and ShowMenuBackground never sets the clut or the colour of the two
@@ -123,7 +123,7 @@ int PsxMain(void) { /* Port: was void main(void), noreturn; the platform owns th
     InitialiseLightMatrix();
     ClearVram();
     InitSonyDisplay();
-    Load16BitTexture("c:\\wipeout2\\textures\\sce_logo.tim", 1);
+    Load16BitTexture(REGION_STR("c:\\wipeout2\\textures\\sce_logo.tim", "c:\\wipeout2\\textures\\warning.tim"), 1);
     InitCD(cdTrackLocs, 0);
     gameData = &config;
     TextureTableCount = 0x113;
@@ -137,23 +137,23 @@ int PsxMain(void) { /* Port: was void main(void), noreturn; the platform owns th
     }
     SetDispMask(0);
     InitGameDisplay(1);
-    Load16BitTexture("c:\\wipeout2\\textures\\rcopyxl.tim", 1);
+    Load16BitTexture(REGION_STR("c:\\wipeout2\\textures\\rcopyxl.tim", "c:\\wipeout2\\textures\\copy2097.tim"), 1);
     SetDispMask(1);
     activateOT2 = 1;
     frame = 0;
-    while (frame < PortLogoFields(0x3C)) {
+    while (frame < PortLogoFields(PAL_TIME(0x3C))) {
         VSync(0);
         frame += 1;
     }
-    Load16BitTexture("c:\\wipeout2\\textures\\dolbynts.tim", 1);
+    Load16BitTexture(REGION_STR("c:\\wipeout2\\textures\\dolbynts.tim", "c:\\wipeout2\\textures\\dolbypal.tim"), 1);
     frame = 0;
-    while (frame < PortLogoFields(0x3C)) {
+    while (frame < PortLogoFields(PAL_TIME(0x3C))) {
         VSync(0);
         frame += 1;
     }
-    Load16BitTexture("c:\\wipeout2\\textures\\redbntsc.tim", 1);
+    Load16BitTexture(REGION_STR("c:\\wipeout2\\textures\\redbntsc.tim", "c:\\wipeout2\\textures\\redbpal.tim"), 1);
     frame = 0;
-    while (frame < PortLogoFields(0x78)) {
+    while (frame < PortLogoFields(PAL_TIME(0x78))) {
         VSync(0);
         frame += 1;
     }
@@ -166,7 +166,7 @@ int PsxMain(void) { /* Port: was void main(void), noreturn; the platform owns th
     InitCARD(1);
     StartCARD();
     _bu_init();
-    timeout = 0xE10;
+    timeout = PAL_TIME(0xE10);
     InitCardEvents();
     championshipType = 4;
     ChangeClearSIO(1);
@@ -210,7 +210,7 @@ int PsxMain(void) { /* Port: was void main(void), noreturn; the platform owns th
     while (1) {
 restart_menu:
         if (menuRequested == 0) {
-            menuTexture = Load16BitTexture("c:\\wipeout2\\textures\\rstartxl.tim", 0);
+            menuTexture = Load16BitTexture(REGION_STR("c:\\wipeout2\\textures\\rstartxl.tim", "c:\\wipeout2\\textures\\startpal.tim"), 0);
         }
         titleFrames = 0;
         if ((raceType != championshipType) || (raceContext == enabled)) {
@@ -259,7 +259,7 @@ music_done:
                     }
                     SetCdVolume((gameData->musicVolume * 0xFF) / 100);
                     SetSoundVolume((gameData->effectVolume * 0xFF) / 100);
-                    if (titleFrames >= (titleTimeout * 0x1E)) {
+                    if (titleFrames >= (titleTimeout * PAL_TIME(0x1E))) {
                         attractCycles++;
                         if (attractCycles >= 3) {
                             goto replay_intro;
@@ -292,9 +292,9 @@ music_done:
                     if (attractLoopFlag == enabled) {
                         SetInGameCDTrack(cdPlaySeconds, cdStatus, gameData, cdFlag);
                     }
-                    if ((promptTimer % 30) < 0x15) {
+                    if ((promptTimer % PAL_TIME(30)) < REGION(0x15, 0x12)) {
                         sprintf(pressStart, "PRESS %s", PortButtonLabel(PORT_BUTTON_START, "START")); /* Port: the name of the key or button of the device in use */
-                        AddText(pressStart, 0xA0, 0xDC, 8, enabled);
+                        AddText(pressStart, 0xA0, REGION(0xDC, 0xE4), 8, enabled);
                     }
                     promptTimer += 1;
                     Swap();

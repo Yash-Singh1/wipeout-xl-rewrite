@@ -449,6 +449,8 @@ int DisplayCardBack(MenuPolys *polys, int cursorArg, int cardArg, SaveSelection 
 void DisplayConfig(ConfigData *gameData, MenuSelection *selection, HiScoreData *score, MenuPolys *polys);
 void DisplayPassword(ConfigData *gameData);
 void DisplayTexture(Texture *texture, s32 left, s32 top, POLY_FT4 *polys);
+/* y of the button at the foot of the race result and high score screens. */
+#define RESULT_BUTTON_Y REGION(210, 220)
 void DoButton(short x, short y, int requestedIcon, char *text);
 void DoConfirm(SaveSelection *selection, MenuPolys *polys, short messageType);
 void DrawDrBox(Texture *unused, DrBox *box);

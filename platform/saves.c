@@ -6,8 +6,10 @@
    .mcr, .srm, .mc, .ps, .ddf, .vm1 ...), and the ones with a header in front (DexDrive .gme, Connectix .mem/.vgs,
    the PSP's .vmp), and single saves (.mcs/.mcb/.psx: a directory frame, then the blocks). A card's directory
    names each save; Wipeout XL's are "BASCUS-94351" and a name of 8 letters (WipEout 2097's in Europe
-   BESLES-00327, in Japan BISCPS-45078: the same game, imported under the US name). An import copies the save's
-   blocks (its header with title and icon, the records, the options) onto the game's first card. */
+   BESLES-00327, in Japan BISCPS-45078: the same game, imported under the name of the disc's release). An import
+   copies the save's blocks (its header with title and icon, the records, the options) onto the game's first card;
+   WipEout 2097's header is 256 bytes where the others' is 512, so a save from the other format has its header cut
+   to the title and icon, or padded, before the records. */
 #include <SDL3/SDL.h>
 #include <stdio.h>
 #include <string.h>
@@ -16,6 +18,7 @@
 #include "saves.h"
 #include "settings.h"
 #include "psx/psx_io.h"
+#include "region.h"
 
 #define CARD_BYTES (128 * 1024)
 #define BLOCK_BYTES 8192
@@ -380,7 +383,23 @@ int PortSavesImport(int index, char *message, int messageSize)
         SDL_snprintf(message, (size_t)messageSize, "The save could not be read from %s.", s->file);
         return 0;
     }
-    SDL_snprintf(name, sizeof(name), "BASCUS-94351%s", s->name);
+    {
+        /* the header size of the save's format and of the disc's (the records follow it) */
+        size_t from = !strcmp(s->region, "Europe") ? 256 : 512, to = portEuropeDisc ? 256 : 512;
+        size_t records = 0x600 + 0x100, size = (size_t)s->blocks * BLOCK_BYTES;
+
+        if (from != to && size >= from + records && size >= to + records) {
+            uint8_t *converted = SDL_calloc(1, size);
+
+            if (converted) {
+                memcpy(converted, data, 256); /* the title frame and the icon */
+                memcpy(converted + to, data + from, records);
+                SDL_free(data);
+                data = converted;
+            }
+        }
+    }
+    SDL_snprintf(name, sizeof(name), "%s%s", portEuropeDisc ? "BESLES-00327" : "BASCUS-94351", s->name);
     ok = PsxCardWriteFile(0, name, data, s->blocks * BLOCK_BYTES);
     SDL_free(data);
     if (!ok) {

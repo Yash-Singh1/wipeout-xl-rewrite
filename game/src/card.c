@@ -34,6 +34,7 @@ extern Label6        labelEmpty[];
 extern char          cardPattern0[];
 extern char          cardPattern1[];
 extern Label6        labelGame[];
+extern Label8        labelGameEurope[];
 extern Label5        labelUsed[];
 
 void LoadCardTexture(void)
@@ -227,7 +228,8 @@ int RenameFile(char *name, int slot, ConfigData *settings)
 }
 
 
-/* Builds the 512-byte card file header: "SC" magic, the Japanese title, the file name and the icon image. */
+/* Builds the card file header (CARD_HEADER_SIZE bytes): "SC" magic, the Japanese title, the file name and the
+   icon image. */
 void GetHeader(u_char *buffer, u_char *name)
 {
     RECT  rect;
@@ -238,22 +240,41 @@ void GetHeader(u_char *buffer, u_char *name)
     buffer[1] = 0x43;
     buffer[2] = 0x11;
     buffer[3] = 1;
-    buffer[4] = 0x82;
-    buffer[5] = 0x76;
-    buffer[6] = 0x82;
-    buffer[7] = 0x6e;
-    buffer[8] = 0x82;
-    buffer[9] = 0x77;
-    buffer[10] = 0x82;
-    buffer[11] = 0x6b;
-    buffer[12] = 0x81;
-    buffer[13] = 0x40;
-    for (i = 0; (u_int)i < strlen(name); i++) {
-        buffer[2 * i + 14] = 0x82;
-        buffer[2 * i + 15] = name[i] + 0x1f;
+    if (portEuropeDisc) {
+        /* the title "ＷＯ２０９７　" in Shift-JIS */
+        buffer[4] = 0x82;
+        buffer[5] = 0x76;
+        buffer[6] = 0x82;
+        buffer[7] = 0x6e;
+        buffer[8] = 0x82;
+        buffer[9] = 0x51;
+        buffer[10] = 0x82;
+        buffer[11] = 0x4f;
+        buffer[12] = 0x82;
+        buffer[13] = 0x58;
+        buffer[14] = 0x82;
+        buffer[15] = 0x56;
+        buffer[16] = 0x81;
+        buffer[17] = 0x40;
+    } else {
+        /* "ＷＯＸＬ　" */
+        buffer[4] = 0x82;
+        buffer[5] = 0x76;
+        buffer[6] = 0x82;
+        buffer[7] = 0x6e;
+        buffer[8] = 0x82;
+        buffer[9] = 0x77;
+        buffer[10] = 0x82;
+        buffer[11] = 0x6b;
+        buffer[12] = 0x81;
+        buffer[13] = 0x40;
     }
-    buffer[2 * i + 16] = 0x81;
-    buffer[2 * i + 17] = 0x40;
+    for (i = 0; (u_int)i < strlen(name); i++) {
+        buffer[2 * i + CARD_NAME_OFFSET] = 0x82;
+        buffer[2 * i + CARD_NAME_OFFSET + 1] = name[i] + 0x1f;
+    }
+    buffer[2 * i + CARD_NAME_OFFSET + 2] = 0x81;
+    buffer[2 * i + CARD_NAME_OFFSET + 3] = 0x40;
     rect.x = cardIconInfo->clutX;
     rect.y = cardIconInfo->clutY;
     rect.w = cardIconInfo->clutW;
@@ -273,9 +294,9 @@ void GetHeader(u_char *buffer, u_char *name)
 void MakeFileName(char *suffix, void *header, int slot)
 {
     if (slot == 0) {
-        __builtin_memcpy(header, "bu00:BASCUS-94351", 18);
+        __builtin_memcpy(header, REGION_STR("bu00:BASCUS-94351", "bu00:BESLES-00327"), 18);
     } else {
-        __builtin_memcpy(header, "bu10:BASCUS-94351", 18);
+        __builtin_memcpy(header, REGION_STR("bu10:BASCUS-94351", "bu10:BESLES-00327"), 18);
     }
     strcat(header, suffix);
 }
@@ -366,14 +387,14 @@ void BuildSaveBlock(u_long *block, ConfigData *settings)
 }
 
 
-/* Writes a save file: the 512-byte header, the 1536-byte block and the 256-byte settings block. */
+/* Writes a save file: the header, the 1536-byte block and the 256-byte settings block. */
 int WriteFile(void *header, char *filename, ConfigData *settings)
 {
     u_long    block[64];
     int       fd;
 
     fd = open(filename, 2);
-    if (fd >= 0 && write(fd, header, 0x200) == 0x200 && write(fd, hiScoreTable, 0x600) == 0x600) {
+    if (fd >= 0 && write(fd, header, CARD_HEADER_SIZE) == CARD_HEADER_SIZE && write(fd, hiScoreTable, 0x600) == 0x600) {
         BuildSaveBlock(block, settings);
         if (write(fd, block, 0x100) == 0x100) {
             close(fd);
@@ -395,12 +416,116 @@ int RewriteCardFile(char *name, int slot, ConfigData *settings)
 
     MakeFileName(name, fileName, slot);
     fd = open(fileName, 1);
-    if (fd < 0 || read(fd, header, 0x200) != 0x200) {
+    if (fd < 0 || read(fd, header, CARD_HEADER_SIZE) != CARD_HEADER_SIZE) {
         close(fd);
         return 0;
     }
     close(fd);
     return WriteFile(header, fileName, settings);
+}
+
+
+/* LoadCardFiles of WipEout 2097: its card browser predates multi-block saves, so a file larger than one block is
+   listed block by block, each copying the icon of the first. */
+static void LoadCardFilesEurope(CardSlot *cards, int slot)
+{
+    DIRENTRY       directory;
+    CardFilename   filename;
+    struct {
+        u_char  u, v;
+        short   x, y;
+    } uv;
+    CardEntry     *source;
+    int            blocks;
+    u_char         i, j;
+    DIRENTRY      *result;
+    CardEntry     *dest;
+    int            count = 0;
+    CardEntry     *entry;
+    int            firstBlock;
+
+    if (slot == 0) {
+        uv.v = 222;
+        uv.x = 576;
+        uv.u = 0;
+        uv.y = 192;
+    } else {
+        uv.v = 238;
+        uv.x = 576;
+        uv.u = 0;
+        uv.y = 207;
+    }
+    for (i = 0; i < 15; i++) {
+        entry = &cards[slot].entry[i];
+        entry->name[0] = 0;
+        entry->used = 0;
+        entry->filename[0] = 0;
+        *(Label6 *)&entry->label = labelEmpty[0];
+        entry->type = 1;
+    }
+    if (slot == 0) {
+        result = firstfile(cardPattern0, &directory);
+        cardDirChanged0 = 0;
+    }
+    if (slot == 1) {
+        result = firstfile(cardPattern1, &directory);
+        cardDirChanged1 = 0;
+    }
+    if (result != 0) {
+        do {
+            if (slot == 0) {
+                __builtin_memcpy(filename.bytes, &cardPrefix0, 6);
+            } else {
+                __builtin_memcpy(filename.bytes, &cardPrefix1, 6);
+            }
+            strcat(filename.bytes, directory.name);
+            if (strncmp(directory.name, CARD_GAME_CODE, 12) == 0) {
+                i = 0;
+                j = 12;
+                do {
+                    cards[slot].entry[count].name[i] = directory.name[j];
+                    i++;
+                    j++;
+                } while (i < 8);
+                cards[slot].entry[count].name[8] = 0;
+                cards[slot].entry[count].used = 1;
+                strcpy(cards[slot].entry[count].filename, directory.name);
+                cards[slot].entry[count].type = 4;
+                cards[slot].entry[count].label = labelGameEurope[0];
+                strcat((char *)&cards[slot].entry[count].label, cards[slot].entry[count].name);
+                count++;
+            } else {
+                blocks = directory.size / 8192;
+                LoadSaveIcons(filename.bytes, slot, &uv.u, &uv.v, &uv.x, &uv.y, count);
+                firstBlock = count;
+                for (i = 0; i < blocks; i++) {
+                    cards[slot].entry[count].name[0] = 0;
+                    cards[slot].entry[count].used = 1;
+                    strcpy(cards[slot].entry[count].filename, directory.name);
+                    cards[slot].entry[count].type = 2;
+                    *(Label5 *)&cards[slot].entry[count].label = labelUsed[0];
+                    if (i != 0) {
+                        dest = &cards[slot].entry[count];
+                        source = &cards[slot].entry[firstBlock];
+                        dest->icon[0] = source->icon[0];
+                        dest->icon[1] = source->icon[1];
+                        dest->icon[2] = source->icon[2];
+                        dest->icon[3] = source->icon[3];
+                        dest->icon[4] = source->icon[4];
+                        dest->icon[5] = source->icon[5];
+                        dest->icon[6] = source->icon[6];
+                        dest->icon[7] = source->icon[7];
+                        dest->x = source->x;
+                        dest->y = source->y;
+                    }
+                    count++;
+                }
+            }
+        } while (nextfile(&directory) != 0);
+        printf("load card complete\n");
+        if (slot == 0) TrackHiCount = 1;
+        if (slot == 1) cardDirLoaded1 = 1;
+    }
 }
 
 
@@ -421,6 +546,10 @@ void LoadCardFiles(CardSlot *cards, int slot)
     CardEntry     *source;
     CardEntry     *dest;
 
+    if (portEuropeDisc) {
+        LoadCardFilesEurope(cards, slot);
+        return;
+    }
     if (slot == 0) {
         uv.v = 222;
         uv.x = 576;
@@ -437,7 +566,7 @@ void LoadCardFiles(CardSlot *cards, int slot)
         entry->name[0] = 0;
         entry->used = 0;
         entry->filename[0] = 0;
-        entry->label = labelEmpty[0];
+        *(Label6 *)&entry->label = labelEmpty[0];
         entry->type = 1;
         entry->first = 0;
         entry->multi = 0;
@@ -458,7 +587,7 @@ void LoadCardFiles(CardSlot *cards, int slot)
                 __builtin_memcpy(filename.bytes, &cardPrefix1, 6);
             }
             strcat(filename.bytes, directory.name);
-            if (strncmp(directory.name, "BASCUS-94351", 12) == 0) {
+            if (strncmp(directory.name, CARD_GAME_CODE, 12) == 0) {
                 i = 0;
                 j = 12;
                 do {
@@ -470,7 +599,7 @@ void LoadCardFiles(CardSlot *cards, int slot)
                 cards[slot].entry[count].used = 1;
                 strcpy(cards[slot].entry[count].filename, directory.name);
                 cards[slot].entry[count].type = 4;
-                cards[slot].entry[count].label = labelGame[0];
+                *(Label6 *)&cards[slot].entry[count].label = labelGame[0];
                 strcat((char *)&cards[slot].entry[count].label, cards[slot].entry[count].name);
                 count++;
             } else {
@@ -543,7 +672,7 @@ u_char LoadCardData(char *name, int slot, ConfigData *settings)
 
     MakeFileName(name, fileName, slot);
     fd = open(fileName, 1);
-    if (fd < 0 || read(fd, header, 0x200) != 0x200 || read(fd, hiScoreTable, 0x600) != 0x600 || read(fd, data, 0x100) != 0x100) {
+    if (fd < 0 || read(fd, header, CARD_HEADER_SIZE) != CARD_HEADER_SIZE || read(fd, hiScoreTable, 0x600) != 0x600 || read(fd, data, 0x100) != 0x100) {
         close(fd);
         return 0;
     }
@@ -695,7 +824,7 @@ void LoadFirstFile(u_short *count, int slot, char *name)
     }
     *count = 0;
     for (;;) {
-        if (strncmp(record.name, "BASCUS-94351", 12) == 0) {
+        if (strncmp(record.name, CARD_GAME_CODE, 12) == 0) {
             i = 0;
             j = 12;
             do {
@@ -725,7 +854,7 @@ int LoadCardInitData(char *name, short port, ConfigData *settings)
 
     MakeFileName(name, buffer.name, port);
     fd = open(buffer.name, 1);
-    if (fd < 0 || read(fd, buffer.header, 512) != 512 || read(fd, hiScoreTable, 1536) != 1536 || read(fd, buffer.data, 256) != 256) {
+    if (fd < 0 || read(fd, buffer.header, CARD_HEADER_SIZE) != CARD_HEADER_SIZE || read(fd, hiScoreTable, 1536) != 1536 || read(fd, buffer.data, 256) != 256) {
         close(fd);
         return 0;
     }

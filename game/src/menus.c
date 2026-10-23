@@ -31,6 +31,7 @@ extern Texture *textureTable[];
 extern short CurrentScreen;
 extern POLY_FT4 menuButtons[][2];
 extern char textureSequenceName[];
+extern char textureSequenceNameEurope[];
 extern char msgNoCard[];
 extern CardSlot cardSlots[];
 extern u8 TrackHiCount;
@@ -74,6 +75,7 @@ extern MenuEntry *menu;
 extern u8 msgCheckingMemory[];
 extern u8 msgFileExists[];
 extern u8 msgNotAWipeoutXl[];
+extern u8 msgNotAWipeout2097[];
 extern u8 msgSaveGame[];
 extern u8 msgNotFormatted[];
 extern u8 msgErrorFormatting[];
@@ -681,7 +683,7 @@ entered:
         }
         goto cancel;
 error:
-        errorCount = 90;
+        errorCount = PAL_TIME(90);
 cancel:
         if (GetMenuKey(4)) {
             if (currMenu == 19) {
@@ -726,7 +728,7 @@ serial:
 idleReset:
             idleCount = 0;
 idleCheck:
-            if (idleCount == 900) {
+            if (idleCount == PAL_TIME(900)) {
                 if (!linked) {
                     negconCentre = 1;
                     work.attractMode = 1;
@@ -897,7 +899,7 @@ void InitMenuTextures(u_short *textureCount)
 {
     heap = reserveHeap;
     *textureCount = TextureTableCount;
-    LoadCmpFiles(LoadCompressedTextureSequence(textureSequenceName));
+    LoadCmpFiles(LoadCompressedTextureSequence(REGION_STR(textureSequenceName, textureSequenceNameEurope)));
     heap = mainheapcopy;
 }
 
@@ -1403,7 +1405,9 @@ void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSele
             selection->calibration[1] = keyConfig->calibration[1];
             keyConfig->active = 0;
             selection->current = 0;
-            replayBuffer->disabled = 1;
+            if (!portEuropeDisc) { /* (WipEout 2097 has no replay lock) */
+                replayBuffer->disabled = 1;
+            }
         }
         break;
     case 21:
@@ -1421,7 +1425,9 @@ void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSele
             if (nc < 128) turnDivisor = ~nc;
             menu[currMenu].selection = 0;
             for (i = 0; i < 3; i++) negconEditing[i] = 0;
-            replayBuffer->disabled = 1;
+            if (!portEuropeDisc) { /* (WipEout 2097 has no replay lock) */
+                replayBuffer->disabled = 1;
+            }
         } else {
             gameData->negconMin = selection->negconMin;
             gameData->negconCentre = selection->negconCenter;
@@ -1637,7 +1643,8 @@ int DisplayCardBack(MenuPolys *polys, int cursorArg, int cardArg, SaveSelection 
                         do {
                             nameDiff = strncmp(cardSlots[activeCard].entry[cursorSlot].filename, cardSlots[activeCard].entry[entryIndex].filename, 0x14);
                             nextEntry = entryIndex + 1;
-                            if ((nameDiff == 0) && ((cardSlots[activeCard].entry[entryIndex].multi == 1) || (nextEntry = entryIndex + 1, (cursorSlot == entryIndex)))) {
+                            /* (WipEout 2097 lights every entry of the file name: it has no multi-block entries) */
+                            if ((nameDiff == 0) && (portEuropeDisc || (cardSlots[activeCard].entry[entryIndex].multi == 1) || (nextEntry = entryIndex + 1, (cursorSlot == entryIndex)))) {
                                 fadeSprite = 0;
                                 if (activeCard == 0) {
                                     do {
@@ -1682,7 +1689,7 @@ int DisplayCardBack(MenuPolys *polys, int cursorArg, int cardArg, SaveSelection 
                         prevEntry = 0;
                         do {
                             if (strncmp(cardSlots[prevCard].entry[cursorSlot].filename, cardSlots[prevCard].entry[prevEntry].filename, 0x14) == 0) {
-                                if (cardSlots[prevCard].entry[prevEntry].multi == 0) {
+                                if (!portEuropeDisc && cardSlots[prevCard].entry[prevEntry].multi == 0) { /* (WipEout 2097 leaves every entry of the name as it is) */
                                     prevNext = prevEntry + 1;
                                     if (cursorSlot != prevEntry) {
                                         goto unhighlight;
@@ -1922,7 +1929,7 @@ void InitCard(s32 card)
 
     for (; slot < 15; slot++) {
         cardSlots[card].entry[slot].name[0] = 0;
-        cardSlots[card].entry[slot].label = *defaultName;
+        *(Label6 *)&cardSlots[card].entry[slot].label = *defaultName;
         cardSlots[card].entry[slot].used = 0;
         cardSlots[card].entry[slot].filename[0] = 0;
         cardSlots[card].entry[slot].type = 1;
@@ -2212,7 +2219,7 @@ int LoadSaveIcons(char *fileName, int card, u_char *iconX, u_char *iconY, u_shor
         message = msgErrorOpenRead;
         goto fail;
     }
-    if (read(fd, fileBuffer, 0x200) == 0x200) {
+    if (read(fd, fileBuffer, CARD_HEADER_SIZE) == CARD_HEADER_SIZE) {
         rect.x = *posX;
         rect.y = *posY;
         rect.h = 1;
@@ -2371,7 +2378,7 @@ void LoadSave(ConfigData *gameData, MenuPolys *polys, SaveSelection *selection)
             PrintCX(msgFileExists, 160, 162);
             break;
         case 2:
-            PrintCX(msgNotAWipeoutXl, 160, 120);
+            PrintCX(REGION_STR(msgNotAWipeoutXl, msgNotAWipeout2097), 160, 120);
             PrintCX(msgSaveGame, 160, 128);
             break;
         case 3:
@@ -2406,7 +2413,7 @@ void LoadSave(ConfigData *gameData, MenuPolys *polys, SaveSelection *selection)
             PrintCX(msgLoadingGameData, 160, 120);
             if (cardPending.timer == 2) {
                 if (!LoadCardData(SelectedCard()->name, myFinished, gameData)) {
-                    cardNotice.timer = 60;
+                    cardNotice.timer = PAL_TIME(60);
                     cardNotice.id = 6;
                 } else {
                     PortSaveChosen(myFinished, SelectedCard()->name, gameData); /* Port: the save in use */
@@ -2417,7 +2424,7 @@ void LoadSave(ConfigData *gameData, MenuPolys *polys, SaveSelection *selection)
             PrintCX(msgSavingGameData, 160, 120);
             if (cardPending.timer == 2) {
                 if (!SaveCardFile(selection->fileName, myFinished, gameData)) {
-                    cardNotice.timer = 60;
+                    cardNotice.timer = PAL_TIME(60);
                     cardNotice.id = 7;
                 } else {
                     PortSaveChosen(myFinished, selection->fileName, gameData); /* Port: the save in use */
@@ -2440,7 +2447,7 @@ void LoadSave(ConfigData *gameData, MenuPolys *polys, SaveSelection *selection)
                 strcat(path.bytes, SelectedCard()->filename);
                 delete(path.bytes);
                 if (!SaveCardFile(selection->fileName, myFinished, gameData)) {
-                    cardNotice.timer = 60;
+                    cardNotice.timer = PAL_TIME(60);
                     cardNotice.id = 7;
                 } else {
                     PortSaveChosen(myFinished, selection->fileName, gameData); /* Port: the save in use */
@@ -2462,7 +2469,7 @@ void LoadSave(ConfigData *gameData, MenuPolys *polys, SaveSelection *selection)
                 }
                 strcat(path.bytes, SelectedCard()->filename);
                 if (!delete(path.bytes)) {
-                    cardNotice.timer = 60;
+                    cardNotice.timer = PAL_TIME(60);
                     cardNotice.id = 8;
                 } else {
                     PortSaveDeleted(myFinished, SelectedCard()->name); /* Port: (if it was the save in use) */
@@ -2545,13 +2552,13 @@ void LoadSave(ConfigData *gameData, MenuPolys *polys, SaveSelection *selection)
                 Sound(9);
                 selection->selected = 0;
                 if ((myFinished == 0 && cardUnformatted0 == 1) || (myFinished == 1 && cardUnformatted1 == 1)) {
-                    cardNotice.timer = 60;
+                    cardNotice.timer = PAL_TIME(60);
                     cardNotice.id = 3;
                 } else if (SelectedCardFlags() & 4) {
-                    cardPending.timer = 30;
+                    cardPending.timer = PAL_TIME(30);
                     cardPending.id = 4;
                 } else {
-                    cardNotice.timer = 60;
+                    cardNotice.timer = PAL_TIME(60);
                     cardNotice.id = 2;
                 }
             } else {
@@ -2568,7 +2575,7 @@ void LoadSave(ConfigData *gameData, MenuPolys *polys, SaveSelection *selection)
                     }
                     selection->enteringName = 1;
                     if ((myFinished == 0 && !card1Exists) || (myFinished == 1 && !cardPresent1)) {
-                        cardNotice.timer = 60;
+                        cardNotice.timer = PAL_TIME(60);
                         cardNotice.id = 5;
                         ResetLoadMenu(selection);
                     }
@@ -2585,7 +2592,7 @@ void LoadSave(ConfigData *gameData, MenuPolys *polys, SaveSelection *selection)
                             device = (char *)&cardDevice0;
                         }
                         if (!format(device)) {
-                            cardNotice.timer = 60;
+                            cardNotice.timer = PAL_TIME(60);
                             cardNotice.id = 4;
                             ResetLoadMenu(selection);
                             selection->confirmed = 0;
@@ -2639,7 +2646,7 @@ void LoadSave(ConfigData *gameData, MenuPolys *polys, SaveSelection *selection)
                         if (DupFileCheck(selection)) {
                             selection->nameReady = 1;
                         } else {
-                            cardNotice.timer = 60;
+                            cardNotice.timer = PAL_TIME(60);
                             cardNotice.id = 1;
                         }
                     }
@@ -2664,7 +2671,7 @@ void LoadSave(ConfigData *gameData, MenuPolys *polys, SaveSelection *selection)
             break;
         case 2:
             if ((myFinished == 0 && cardUnformatted0 == 1) || (myFinished == 1 && cardUnformatted1 == myFinished)) {
-                cardNotice.timer = 60;
+                cardNotice.timer = PAL_TIME(60);
                 cardNotice.id = 3;
                 selection->selected = 0;
             } else if (!selection->dupeCheck) {
@@ -2991,7 +2998,7 @@ void EnterPassword(ConfigData *gameData, MenuSelection *selection, MenuPolys *po
             InitMovies();
             return;
         }
-        passwordErrorTimer = 60;
+        passwordErrorTimer = PAL_TIME(60);
     }
     if (GetMenuKey(4)) {
         Sound(49);
@@ -3417,13 +3424,19 @@ void DispHiScores(UnlockData *unlock, void *unused, unsigned char raceMode)
 
 void InitNewDisplay(ConfigData *gameData)
 {
-    SetDefDispEnv(&DispEnv0, 0, 0, 0x140, 0xF0);
-    SetDefDispEnv(&DispEnv1, 0, 0x100, 0x140, 0xF0);
-    DispEnv0.screen.x = *(u16 *)&gameData->screenX;
-    DispEnv0.screen.y = *(u16 *)&gameData->screenY;
-    DispEnv1.screen.x = *(u16 *)&gameData->screenX;
-    DispEnv1.screen.y = *(u16 *)&gameData->screenY;
-    SetGeomOffset(0xA0, 0x78);
+    SetDefDispEnv(&DispEnv0, 0, 0, 0x140, SCREEN_HEIGHT);
+    SetDefDispEnv(&DispEnv1, 0, 0x100, 0x140, SCREEN_HEIGHT);
+    DispEnv0.screen.x = *(u16 *)&gameData->screenX + DISPLAY_SHIFT_X;
+    DispEnv0.screen.y = *(u16 *)&gameData->screenY + DISPLAY_SHIFT_Y;
+    if (portPal) {
+        DispEnv0.screen.h = SCREEN_HEIGHT;
+    }
+    DispEnv1.screen.x = *(u16 *)&gameData->screenX + DISPLAY_SHIFT_X;
+    DispEnv1.screen.y = *(u16 *)&gameData->screenY + DISPLAY_SHIFT_Y;
+    if (portPal) {
+        DispEnv1.screen.h = SCREEN_HEIGHT;
+    }
+    SetGeomOffset(0xA0, SCREEN_HEIGHT / 2);
     SetGeomScreen(0xA0);
     PutDispEnv(doubleBuffer[CurrentScreen].disp);
 }
@@ -3452,17 +3465,17 @@ void InitScreenBox(MenuPolys *screen)
         screen->border[1][buffer].x0 = 319;
         screen->border[1][buffer].y0 = 0;
         screen->border[1][buffer].x1 = 319;
-        screen->border[1][buffer].y1 = 239;
+        screen->border[1][buffer].y1 = SCREEN_HEIGHT - 1;
     }
     for (buffer = 0; buffer < 2; buffer++) {
         screen->border[2][buffer].x0 = 319;
-        screen->border[2][buffer].y0 = 239;
+        screen->border[2][buffer].y0 = SCREEN_HEIGHT - 1;
         screen->border[2][buffer].x1 = 0;
-        screen->border[2][buffer].y1 = 239;
+        screen->border[2][buffer].y1 = SCREEN_HEIGHT - 1;
     }
     for (buffer = 0; buffer < 2; buffer++) {
         screen->border[3][buffer].x0 = 0;
-        screen->border[3][buffer].y0 = 239;
+        screen->border[3][buffer].y0 = SCREEN_HEIGHT - 1;
         screen->border[3][buffer].x1 = 0;
         screen->border[3][buffer].y1 = 0;
     }
@@ -3494,10 +3507,10 @@ void ScreenConfig(ConfigData *gameData, MenuPolys *polys, short *screenPosition)
             screenPosition[1] = 24;
         }
     }
-    DispEnv0.screen.x = *(u_short *)&screenPosition[0];
-    DispEnv0.screen.y = *(u_short *)&screenPosition[1];
-    DispEnv1.screen.x = *(u_short *)&screenPosition[0];
-    DispEnv1.screen.y = *(u_short *)&screenPosition[1];
+    DispEnv0.screen.x = *(u_short *)&screenPosition[0] + DISPLAY_SHIFT_X;
+    DispEnv0.screen.y = *(u_short *)&screenPosition[1] + DISPLAY_SHIFT_Y;
+    DispEnv1.screen.x = *(u_short *)&screenPosition[0] + DISPLAY_SHIFT_X;
+    DispEnv1.screen.y = *(u_short *)&screenPosition[1] + DISPLAY_SHIFT_Y;
     for (corner = 0; corner < 4; corner++) {
         AddPrim(OT[CurrentScreen], &polys->border[corner][CurrentScreen]);
     }
@@ -3934,7 +3947,7 @@ void JoyPadConfig(ConfigData *gameData, KeyConfig *keyConfig, MenuPolys *polys, 
                 }
             }
             if (duplicates >= 2) {
-                duplicateKeyTimer = 90;
+                duplicateKeyTimer = PAL_TIME(90);
                 break;
             }
             duplicates = 0;
@@ -6331,8 +6344,8 @@ void InitResidentMenu(void)
 {
     LoadButtons();
     fontTexture = WADLoadTexture(textureWad, 1);
-    screenFills[0] = BlockFill(0, 0, 0x140, 0xF0, 0, 0, 0);
-    screenFills[1] = BlockFill(0, 0xF0, 0x140, 0xF0, 0, 0, 0);
+    screenFills[0] = BlockFill(0, 0, 0x140, SCREEN_HEIGHT, 0, 0, REGION(0, 0x2E));
+    screenFills[1] = BlockFill(0, SCREEN_HEIGHT, 0x140, SCREEN_HEIGHT, 0, 0, REGION(0, 0x2E));
 }
 
 
@@ -6447,14 +6460,14 @@ void ShowLoadMessage(void)
     BLK_FILL *fills[2];
     short i;
 
-    fills[0] = BlockFill(0, 0, 0x140, 0xF0, 0, 0, 0x2E);
-    fills[1] = BlockFill(0, 0x100, 0x140, 0xF0, 0, 0, 0x2E);
+    fills[0] = BlockFill(0, 0, 0x140, SCREEN_HEIGHT, 0, 0, 0x2E);
+    fills[1] = BlockFill(0, 0x100, 0x140, SCREEN_HEIGHT, 0, 0, 0x2E);
     i = 0;
     do {
         ClearOTagR(OT[CurrentScreen], 0x2000);
         ClearOTagR(OT2[CurrentScreen], 0x640);
         quadIndex = CurrentScreen * 0x12C;
-        CentreText(loadMessage, 0, 0x80, 0x10, 0);
+        CentreText(loadMessage, 0, REGION(0x80, 0x78), 0x10, 0);
         AddPrim(OT[CurrentScreen], fills[CurrentScreen]);
         PortWideLoadScreen(); /* Port: widescreen shows the loading screen wide */
         Swap();
@@ -6468,8 +6481,8 @@ void InitRaceLoad(void)
     BLK_FILL *fills[2];
     short i;
 
-    fills[0] = BlockFill(0, 0, 0x140, 0xF0, 0, 0, 0x2E);
-    fills[1] = BlockFill(0, 0x100, 0x140, 0xF0, 0, 0, 0x2E);
+    fills[0] = BlockFill(0, 0, 0x140, SCREEN_HEIGHT, 0, 0, 0x2E);
+    fills[1] = BlockFill(0, 0x100, 0x140, SCREEN_HEIGHT, 0, 0, 0x2E);
     i = 0;
     do {
         ClearOTagR(OT[CurrentScreen], 0x2000);
