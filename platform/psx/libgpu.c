@@ -466,6 +466,14 @@ static void ForgetDrawnFrame(void)
     drawnFrame.pending = 0;
 }
 
+static int shakeX, shakeY; /* PortDisplayShake's, until the next PutDispEnv */
+
+void PortDisplayShake(int x, int y)
+{
+    shakeX = x;
+    shakeY = y;
+}
+
 DISPENV *PutDispEnv(DISPENV *env)
 {
     DISPENV *given = env;
@@ -481,6 +489,7 @@ DISPENV *PutDispEnv(DISPENV *env)
     state.displayY = env->disp.y;
     state.displayW = env->disp.w;
     state.displayH = env->disp.h;
+    GpuDisplayShake(shakeX, shakeY);
     if (PortLinkRole() == LINK_SLAVE && PortLinkSplit()) {
         HandOverSplit(); /* the second player's game shows what it drew last (no fields pass in it) */
     }

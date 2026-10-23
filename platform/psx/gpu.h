@@ -80,6 +80,8 @@ void GpuClearArea(int x, int y, int w, int h, uint8_t r, uint8_t g, uint8_t b);
 void GpuPresent(int x, int y, int w, int h);
 /* ... a picture between two of the game's frames (frame interpolation, libgpu.c): not a new frame of its own. */
 void GpuPresentInterpolated(int x, int y, int w, int h);
+/* The picture shown moved x units (of 1/256 of the screen's width) right and y lines down (PortDisplayShake). */
+void GpuDisplayShake(int x, int y);
 /* What is drawn while on is such a picture. */
 void GpuInterpolating(int on);
 /* Two players on one machine (link.c): the area (x, y, w, h) of video memory in the upper half of the

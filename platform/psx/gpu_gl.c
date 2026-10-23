@@ -1394,6 +1394,14 @@ void GpuMoveFramebuffer(int x, int y, int w, int h, int toX, int toY)
 static void Present(int x, int y, int w, int h, int interpolated);
 static void AfterPicture(void);
 
+static int displayShakeX, displayShakeY; /* (GpuDisplayShake) */
+
+void GpuDisplayShake(int x, int y)
+{
+    displayShakeX = x;
+    displayShakeY = y;
+}
+
 void GpuPresent(int x, int y, int w, int h)
 {
     Present(x, y, w, h, 0);
@@ -1436,6 +1444,10 @@ static void Present(int x, int y, int w, int h, int interpolated)
         }
         outX = (width - outW) / 2;
         outY = (height - outH) / 2;
+        /* the console's jolt of the picture on the TV: a unit is 10 of the GPU's clocks, w/256 pixels; a line, one
+           of the field's (an interlaced picture's two) */
+        outX += (int)SDL_lround(displayShakeX * (w / 256.0) * outW / across);
+        outY -= (int)SDL_lround(displayShakeY * (h > 288 ? 2.0 : 1.0) * outH / h);
         if (!wide) {
             SyncWide();
         }

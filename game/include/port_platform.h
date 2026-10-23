@@ -63,6 +63,10 @@ void PortSceneRange(const void *start, size_t bytes);
 void PortHudCentred(const void *start, const void *end);
 /* ... and all of this frame's HUD (a screen of text over the race, the results: its scene is shown wide). */
 void PortHudInPlace(void);
+/* ShakeScreen's jolt (a menu landing, a hit in a race): the display moved x units right (of 1/256 of the screen's
+   width) and y lines down from where it rests. The console moves the picture on the TV (DISPENV.screen), which the
+   port has no TV for; the window's picture moves as much from the next PutDispEnv on. */
+void PortDisplayShake(int x, int y);
 
 /* The original Wipeout's tracks (platform/original.c), raced as guests in Talon's Reach's slot (trackNum 0,
    folder 1): the ones the player's copy of the original has, their names and classes (XL's: 1 Venom,

@@ -1904,6 +1904,8 @@ void ShakeScreen(void)
         shakeAmount -= 1;
         DispEnv1.screen.y = posY;
         DispEnv0.screen.y = posY;
+        PortDisplayShake((short)(posX - (gameData->screenX + DISPLAY_SHIFT_X)),
+                         (short)(posY - (gameData->screenY + DISPLAY_SHIFT_Y))); /* Port: no TV to move it on */
     } else if (shakeAmount == 1) {
         posX2 = *(u_short *)&gameData->screenX + DISPLAY_SHIFT_X;
         DispEnv1.screen.x = posX2;
@@ -1912,6 +1914,7 @@ void ShakeScreen(void)
         shakeAmount = 0;
         DispEnv1.screen.y = posY2;
         DispEnv0.screen.y = posY2;
+        PortDisplayShake(0, 0); /* Port */
     }
 }
 void InitPitCycle(void)
