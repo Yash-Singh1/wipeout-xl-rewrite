@@ -59,8 +59,12 @@ static size_t romSize;
 static char romSource[1024];
 static size_t wads[MAX_WADS];   /* where each track's wad starts */
 static int wadCount;
-static const char *const n64Names[] = {"KLIES BRIDGE", "SOKANA", "DYRONESS", "MACHAON II", "TERAFUMOS",
-                                       "VELOCITAR", "SUPER COMBO"};
+static size_t frontEnd;         /* the wad of its menus' files (frntEnd.cmp, models.prm...), 0 when not found */
+/* Its tracks in the cartridge's order (its own track list's, each entry with its wad's place), and their models in
+   its menus' models.prm */
+static const char *const n64Names[] = {"KLIES BRIDGE", "QORON IV", "SOKANA", "DYRONESS", "MACHAON II", "TERAFUMOS",
+                                       "VELOCITAR"};
+static const char *const n64Models[] = {"klies", "qoron", "sokana", "dyroness", "machaon", "terafumos", "velocitar"};
 
 /* The guests the class menu offers: the original's tracks the source has, then Wipeout 64's. */
 enum { FROM_ORIGINAL, FROM_64 };
@@ -101,7 +105,7 @@ static uint8_t *ReadOriginal(int folderNumber, const char *name, size_t *size);
    wrote it, and each colour as eight bytes (four of nothing, then red, green, blue); after each the two
    PlayStation packets its menu drew it with (double-buffered, left over too). They become XL's F4 and G4 (type,
    flag, corners, colours). NULL when the file is not one of those. */
-static uint8_t *MenuModels(size_t *size)
+static uint8_t *OriginalModels(size_t *size)
 {
     /* by type (3 F4, 7 G4): the menu file's record (with its packets) and XL's, the colours */
     static const int record[9] = {0, 0, 0, 16 + 2 * 24, 0, 0, 0, 28 + 2 * 36, 0};
@@ -153,6 +157,93 @@ static uint8_t *MenuModels(size_t *size)
     }
     *size = out;
     return models;
+}
+
+static const uint8_t *WadPart(size_t at, const char *name, size_t *size);
+
+/* Wipeout 64's track models, from its menus' models.prm (XL's format already, flat and gouraud shaded), each made
+   as large as XL's own track models look in the menu (its are of all sizes): its widest 488 units, XL's 650 at the
+   depth they are drawn, 1800, against the guests' 1350. */
+static uint8_t *Wipeout64Models(size_t *size)
+{
+    size_t length, in = 0, out = 0;
+    const uint8_t *file = frontEnd ? WadPart(frontEnd, "models.prm", &length) : NULL;
+    uint8_t *models;
+
+    if (!file || !(models = SDL_malloc(length))) {
+        return NULL;
+    }
+    while (in + 144 <= length) {
+        int vertices = (int16_t)(file[in + 16] << 8 | file[in + 17]);
+        int normals = (int16_t)(file[in + 24] << 8 | file[in + 25]);
+        int primitives = (int16_t)(file[in + 32] << 8 | file[in + 33]), i, k, wanted = 0, widest = 1;
+        size_t at = in + 144 + (size_t)SDL_max(vertices, 0) * 8 + (size_t)SDL_max(normals, 0) * 8;
+
+        if (vertices < 0 || normals < 0 || primitives < 0 || at > length) {
+            break;
+        }
+        for (i = 0; i < primitives && at + 2 <= length; i++) {
+            /* (the record sizes of XL's primitives: F3 FT3 F4 FT4 G3 GT3 G4 GT4, sprites, lit ones, splines, lights) */
+            static const int sizes[24] = {0, 16, 28, 16, 32, 24, 36, 28, 44, 0, 16, 16,
+                                          16, 28, 20, 32, 28, 40, 36, 52, 56, 16, 28, 40};
+            int type = file[at] << 8 | file[at + 1];
+
+            if (type < 1 || type > 23 || !sizes[type]) {
+                SDL_free(models);
+                return NULL;
+            }
+            at += (size_t)sizes[type];
+        }
+        for (k = 0; k < (int)SDL_arraysize(n64Models); k++) {
+            wanted |= !strncmp((const char *)file + in, n64Models[k], 16);
+        }
+        if (wanted && at <= length) {
+            uint8_t *object = models + out;
+            int32_t extent;
+
+            memcpy(object, file + in, at - in);
+            for (i = 0; i < vertices; i++) {
+                for (k = 0; k < 3; k += 2) {
+                    int v = (int16_t)(object[144 + i * 8 + k * 2] << 8 | object[144 + i * 8 + k * 2 + 1]);
+                    widest = SDL_max(widest, SDL_abs(v));
+                }
+            }
+            for (i = 0; i < vertices * 3; i++) {
+                uint8_t *p = object + 144 + (i / 3) * 8 + (i % 3) * 2;
+                int v = (int16_t)(p[0] << 8 | p[1]) * 488 / widest;
+
+                p[0] = (uint8_t)(v >> 8);
+                p[1] = (uint8_t)v;
+            }
+            extent = (int32_t)((uint32_t)object[52] << 24 | object[53] << 16 | object[54] << 8 | object[55]);
+            extent = (int32_t)((int64_t)extent * 488 / widest);
+            object[52] = (uint8_t)(extent >> 24), object[53] = (uint8_t)(extent >> 16);
+            object[54] = (uint8_t)(extent >> 8), object[55] = (uint8_t)extent;
+            out += at - in;
+        }
+        in = at;
+    }
+    *size = out;
+    return out ? models : (SDL_free(models), NULL);
+}
+
+/* The menus' guest track models (MODELS_NAME): the original's, then Wipeout 64's. */
+static uint8_t *MenuModels(size_t *size)
+{
+    size_t originalSize = 0, n64Size = 0;
+    uint8_t *original = presentCount ? OriginalModels(&originalSize) : NULL, *n64 = Wipeout64Models(&n64Size), *both;
+
+    if (!original || !n64) {
+        *size = original ? originalSize : n64Size;
+        return original ? original : n64;
+    }
+    both = SDL_malloc(originalSize + n64Size);
+    memcpy(both, original, originalSize);
+    memcpy(both + originalSize, n64, n64Size);
+    SDL_free(original);
+    SDL_free(n64);
+    *size = originalSize + n64Size;
+    return both;
 }
 
 static uint8_t *ReadOriginal(int folderNumber, const char *name, size_t *size)
@@ -301,6 +392,8 @@ static void ListGuests(void)
     guestCount = 0;
     chosen = -1;
     builtFor = -1;
+    SDL_free(modelsFile); /* (made again from the sources now in use, at the next ask) */
+    modelsFile = NULL;
     for (i = 0; i < ORIGINALS; i++) {
         if (present[i]) {
             Guest *g = &guests[guestCount++];
@@ -364,7 +457,7 @@ const char *PortOriginalTrackName(int index)
 int PortOriginalHasModels(void)
 {
     OpenSettings();
-    if (!modelsFile && presentCount) {
+    if (!modelsFile && (presentCount || frontEnd)) {
         modelsFile = MenuModels(&modelsSize);
     }
     return modelsFile != NULL;
@@ -372,8 +465,13 @@ int PortOriginalHasModels(void)
 
 const char *PortOriginalTrackModel(int index)
 {
-    return index >= 0 && index < guestCount && guests[index].from == FROM_ORIGINAL ? originals[guests[index].track].model
-                                                                                   : NULL;
+    if (index < 0 || index >= guestCount) {
+        return NULL;
+    }
+    if (guests[index].from == FROM_64) {
+        return guests[index].track < (int)SDL_arraysize(n64Models) ? n64Models[guests[index].track] : NULL;
+    }
+    return originals[guests[index].track].model;
 }
 
 const char *PortOriginalTrackGame(int index)
@@ -1045,6 +1143,7 @@ void PortWipeout64Close(void)
     romSize = 0;
     romSource[0] = 0;
     wadCount = 0;
+    frontEnd = 0;
     ListGuests();
 }
 
@@ -1084,10 +1183,14 @@ int PortWipeout64Open(const char *path, char *message, int messageSize)
         PortWipeout64Close();
         return 0;
     }
-    /* the wads: found by their first file's name */
-    for (i = 2; i + 10 < romSize && wadCount < MAX_WADS; i++) {
-        if (rom[i] == 't' && !memcmp(rom + i, "track.trv", 10) && IsWad(i - 2)) {
+    /* the wads: found by their first file's name (the menus' by its own) */
+    for (i = 2; i + 12 < romSize; i++) {
+        size_t size;
+
+        if (rom[i] == 't' && wadCount < MAX_WADS && !memcmp(rom + i, "track.trv", 10) && IsWad(i - 2)) {
             wads[wadCount++] = i - 2;
+        } else if (rom[i] == 'f' && !frontEnd && !memcmp(rom + i, "frntEnd.cmp", 12) && WadPart(i - 2, "models.prm", &size)) {
+            frontEnd = i - 2;
         }
     }
     if (!wadCount) {

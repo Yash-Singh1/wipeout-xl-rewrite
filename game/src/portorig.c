@@ -129,9 +129,10 @@ int PortOriginalClassMenu(MenuSelection *selection, short *trackCount, int draw)
     return 1;
 }
 
-/* The original's track menu models (its common/track.prm, served as origtrk.prm: platform/original.c), loaded
-   with the menus' own models when the player's copy of the original is in use. */
-static Object *originalModels[16];
+/* The guests' track menu models (the original's common/track.prm and Wipeout 64's, served as origtrk.prm:
+   platform/original.c), loaded with the menus' own models when the player's copies are in use. */
+#define GUEST_MODELS 32 /* (LoadModel fills as many as the file has: the original's and Wipeout 64's seven) */
+static Object *originalModels[GUEST_MODELS];
 static int originalModelCount;
 void LoadModel(Object **modelShapes, char *fileName);
 
@@ -145,7 +146,7 @@ void PortOriginalModelsLoad(void)
         return;
     }
     LoadModel(originalModels, "origtrk");
-    for (i = 0; i < 16 && originalModels[i]; i++) {
+    for (i = 0; i < GUEST_MODELS && originalModels[i]; i++) {
         originalModelCount++;
     }
 }

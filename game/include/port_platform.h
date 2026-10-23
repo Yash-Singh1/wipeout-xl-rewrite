@@ -68,10 +68,10 @@ void PortHudCentred(const void *start, const void *end);
 int PortOriginalTrackCount(void);
 const char *PortOriginalTrackName(int index);
 const char *PortOriginalTrackGame(int index); /* "THE ORIGINAL WIPEOUT" or "WIPEOUT 64" */
-/* The name of the track's model in the original's track menu models (origtrk.prm in the common folder, while the
-   player's copy of the original is in use), or NULL (Wipeout 64's tracks have none). */
+/* The name of the track's model in the guests' track menu models (origtrk.prm in the common folder: the original's
+   and Wipeout 64's, while the player's copies are in use), or NULL. */
 const char *PortOriginalTrackModel(int index);
-int PortOriginalHasModels(void); /* the original's track models can be loaded (origtrk.prm) */
+int PortOriginalHasModels(void); /* the guests' track models can be loaded (origtrk.prm) */
 int PortOriginalFoundCount(void);
 int PortOriginalTrackClass(int index);
 void PortOriginalTrackSelect(int index);

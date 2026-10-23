@@ -4667,8 +4667,8 @@ afterTrackDescription:
         DoButton(125, 165, 4, numTex);
     }
     if (original) {
-        /* Port: the original's track: its model from the original's track menu (Wipeout 64's tracks have none), its
-           name; no medals (its races keep no records) */
+        /* Port: a guest's track: its model from its own game's track menu, its name; no medals (its races keep no
+           records) */
         Object *model = PortOriginalModel(selection->trackSelection);
 
         if (model) {
