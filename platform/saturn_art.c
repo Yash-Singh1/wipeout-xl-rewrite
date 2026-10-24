@@ -497,6 +497,89 @@ static void Smoke(Canvas *c, int frame)
     }
 }
 
+/* ---- the pad's buttons ---- */
+
+/* The console pad's button icons (ashbutt.cmp, the Saturn's own being its pad's): round grey buttons with circle,
+   cross, square and triangle, left and right arrows (16 x 8), and the A, I, II and B of the other pad the game
+   knows (blue and red buttons, black letters). */
+static float Line(float x, float y, float x0, float y0, float x1, float y1)
+{
+    float dx = x1 - x0, dy = y1 - y0, t = ((x - x0) * dx + (y - y0) * dy) / (dx * dx + dy * dy + 1e-6f);
+
+    t = SDL_clamp(t, 0.0f, 1.0f);
+    return SDL_sqrtf((x - x0 - dx * t) * (x - x0 - dx * t) + (y - y0 - dy * t) * (y - y0 - dy * t));
+}
+
+/* The strokes of a button's symbol, as lines (x0 y0 x1 y1) on its 16 x 16 box. */
+static const float buttonStrokes[10][8][4] = {
+    {{0}},
+    {{5.2f, 5.2f, 10.8f, 10.8f}, {10.8f, 5.2f, 5.2f, 10.8f}},
+    {{5, 5, 11, 5}, {11, 5, 11, 11}, {11, 11, 5, 11}, {5, 11, 5, 5}},
+    {{8, 4.5f, 11.5f, 10.5f}, {11.5f, 10.5f, 4.5f, 10.5f}, {4.5f, 10.5f, 8, 4.5f}},
+    {{0}},
+    {{0}},
+    {{5.5f, 11.5f, 8, 4.5f}, {8, 4.5f, 10.5f, 11.5f}, {6.4f, 9, 9.6f, 9}},
+    {{8, 4.5f, 8, 11.5f}},
+    {{6.6f, 4.5f, 6.6f, 11.5f}, {9.4f, 4.5f, 9.4f, 11.5f}},
+    {{6, 4.5f, 6, 11.5f}, {6, 4.5f, 9.2f, 4.5f}, {9.2f, 4.5f, 10.2f, 6.2f}, {10.2f, 6.2f, 9.2f, 8},
+     {6, 8, 9.6f, 8}, {9.6f, 8, 10.6f, 9.8f}, {10.6f, 9.8f, 9.6f, 11.5f}, {9.6f, 11.5f, 6, 11.5f}}};
+
+static unsigned ButtonAt(int icon, float x, float y)
+{
+    static const unsigned symbols[4] = {0xff5028e8u, 0xffe8a040u, 0xffd090e8u, 0xff80d840u};
+    float r = SDL_sqrtf((x - 8) * (x - 8) + (y - 8) * (y - 8)), d = 1e9f;
+    int k;
+
+    if (icon == 4 || icon == 5) {
+        float ax = icon == 4 ? 16 - x : x; /* (drawn pointing right, mirrored for the left) */
+
+        return (ax >= 2 && ax <= 9 && y >= 2.5f && y <= 5.5f) || (ax > 9 && ax <= 14 && SDL_fabsf(y - 4) <= (14 - ax) * 0.75f)
+                   ? 0xff9a9490u
+                   : 0;
+    }
+    if (r > 7.6f) {
+        return 0;
+    }
+    for (k = 0; k < 8 && (buttonStrokes[icon][k][0] || buttonStrokes[icon][k][2]); k++) {
+        d = SDL_min(d, Line(x, y, buttonStrokes[icon][k][0], buttonStrokes[icon][k][1], buttonStrokes[icon][k][2],
+                            buttonStrokes[icon][k][3]));
+    }
+    if (icon == 0) {
+        d = SDL_fabsf(r - 3.4f);
+    }
+    if (d < 0.75f) {
+        return icon < 4 ? symbols[icon] : 0xff101010u;
+    }
+    if (r > 6.6f) {
+        return 0xff302c2cu;
+    }
+    return icon < 4 ? 0xff585050u : icon == 6 || icon == 9 ? 0xffd05028u : 0xff1818c0u;
+}
+
+static void Button(Canvas *c, int icon)
+{
+    int x, y, i, k;
+
+    for (y = 0; y < c->h; y++) {
+        for (x = 0; x < c->w; x++) {
+            unsigned r = 0, g = 0, b = 0, n = 0;
+
+            for (k = 0; k < 4; k++) {
+                for (i = 0; i < 4; i++) {
+                    unsigned p = ButtonAt(icon, x + (i + 0.5f) / 4, y + (k + 0.5f) / 4);
+
+                    if (p) {
+                        r += p & 0xff, g += (p >> 8) & 0xff, b += (p >> 16) & 0xff, n++;
+                    }
+                }
+            }
+            if (n >= 6) {
+                Plot(c, x, y, r / n | g / n << 8 | b / n << 16 | 0xff000000u);
+            }
+        }
+    }
+}
+
 /* ---- the PlayStation's TIMs ---- */
 
 /* The Saturn's art for a TIM (of a .cmp, its index) as RGBA: 0 when there is none. */
@@ -518,6 +601,8 @@ static int Draw(const char *name, int index, Canvas *c)
         Board(c);
     } else if (!strcmp(name, "smoke.cmp")) {
         Smoke(c, index);
+    } else if (!strcmp(name, "ashbutt.cmp") && index < 10) {
+        Button(c, index);
     } else if (!strcmp(name, "wofont.tim")) {
         SmallFont(c);
     } else if (!strcmp(name, "menutims.cmp") && index < 8) {
