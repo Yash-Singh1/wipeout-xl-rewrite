@@ -46,6 +46,22 @@ a track's whole textures `TRACKnn\TRACKTEX.CMP`, 128x128 each, in place of the t
 - The controllers stay the port's: the PC's keyboard prompts become the device's buttons and names
   (keyglyphs.c), as on the PlayStation disc.
 
+## Race textures, loading, movies and music
+
+- `startwad.wad` (the PlayStation keeps the weapons, start droid, explosions and lights there) is made by `pc.c` from
+  the PC's own files in the same order (`MakeStartWad`); what the PC draws from its own pages (HUD gauges, fonts) is
+  empty. The PC arranges video memory differently from the PlayStation, so a PC texture file is moved to the
+  rectangles the PlayStation's file of the same name has (`PlaceFile`), or it would overwrite the track's textures
+  (the PC's `LIGHT.CMP`, `CHROME.TIM`, `TH.TIM`).
+- The PC race loads one picture for the Red Bull boards of track 1 (`TH.TIM`; `pc.c` serves it as `alphared.cmp`) and
+  animates nothing on the other tracks (their boards, video screens and torches stay as the track's wad draws them);
+  `racectrl.c`'s `InitRedBull` does as the PC does.
+- The loading screen is the PC's text and bars (`game/src/pc/pcload.c`), drawn by `VsyncFunc`.
+- The movies are the PC's MPEG-1 files (`platform/pc_movie.c`, pl_mpeg for the pictures). The sound is not MPEG audio:
+  it is in the user data after each picture header, as 18-byte frames of differential codes.
+- The music is the CD's audio tracks after the data track, played as the PlayStation's are; the song names are the
+  PC's (`game/src/pc/pcmusic.c`). A copy without audio tracks has no music (`cdMusicCount` 0, as the PC's own check).
+
 ## Copies people have
 
 Redump's BIN/CUE (data and audio tracks), a bare ISO of the data track, CloneCD (`.ccd`/`.img`),

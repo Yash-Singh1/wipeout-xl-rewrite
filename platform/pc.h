@@ -29,6 +29,9 @@ unsigned char *PortPcLoadFile(const char *path, size_t *size);
 /* The PC version's texture pages (game/include/port_platform.h, PortPcLoadPages, PortPcLoadPicture). */
 int PortPcLoadPages(const char *name, int firstPage, int pageCount);
 int PortPcLoadPicture(const char *name, int firstPage);
+/* Plays a movie of the PC CD (MPEG\WXLINTR.MPG), as movie.c plays the PlayStation's: skipped by Start or Cross, the
+   sound from the file's user data (pc_movie.c). Returns 0 when it is not there. */
+int PortPcPlayMovie(const char *path);
 /* The game's samples.wad made from the PC's WAV sounds (pc_sound.c); NULL when one is missing. The caller frees. */
 unsigned char *PcMakeSamples(size_t *size);
 

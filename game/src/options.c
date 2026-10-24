@@ -4,6 +4,7 @@
 #include "ayrace.h"
 #include "hud.h"
 #include "include_asm_g8.h"
+#include "pc/pc.h" /* Port: the PC version's songs */
 
 
 extern short CurrentScreen;
@@ -21,12 +22,18 @@ extern char *cdTrackArtists[];
 
 char *GetCdTrackName(int track)
 {
+    if (PortPcData()) {
+        return (char *)PcCdTrackName(track);
+    }
     return cdTrackNames[track];
 }
 
 
 char *GetCdTrackArtist(int track)
 {
+    if (PortPcData()) {
+        return (char *)PcCdTrackArtist(track);
+    }
     return cdTrackArtists[track];
 }
 
