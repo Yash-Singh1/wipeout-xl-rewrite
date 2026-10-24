@@ -134,10 +134,14 @@ static void SpriteOf(Canvas *c, SaturnVideo *v, const unsigned char *table, size
 {
     unsigned at, mode, colours, part, parts;
 
-    if (!v || !table || tableSize < 8 || sprite >= (int)Be32(table) || 4 + sprite * 4 + 4 > (int)tableSize) {
+    unsigned offsets;
+
+    /* the table: where its offsets start (4), the offsets, then the sprites: as many as fit before the first */
+    if (!v || !table || tableSize < 8 || sprite < 0 || (offsets = Be32(table)) + 4 > tableSize ||
+        offsets + (unsigned)sprite * 4 + 4 > SDL_min(tableSize, (size_t)Be32(table + offsets))) {
         return;
     }
-    at = Be32(table + 4 + sprite * 4);
+    at = Be32(table + offsets + sprite * 4);
     if (at + 16 > tableSize) {
         return;
     }
