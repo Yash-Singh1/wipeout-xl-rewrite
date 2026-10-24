@@ -112,8 +112,8 @@ int PortPcPlayMovie(const char *path)
         return 0;
     }
     buffer = plm_buffer_create_with_memory(data, size, 0);
+    /* (B pictures between the reference ones: the decoder puts the pictures in their order) */
     video = plm_video_create_with_buffer(buffer, 1);
-    plm_video_set_no_delay(video, 1);
     width = plm_video_get_width(video);
     height = plm_video_get_height(video);
     fps = plm_video_get_framerate(video);
@@ -142,7 +142,7 @@ int PortPcPlayMovie(const char *path)
     previous = PsxPadButtons(0);
     PortLog("movie %s (PC) at field %d\n", path, (int)PsxFieldCount());
     start = SDL_GetTicksNS();
-    while (!plm_video_has_ended(video)) {
+    for (;;) {
         plm_frame_t *frame;
         uint16_t buttons, pressed;
 
