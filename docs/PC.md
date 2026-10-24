@@ -14,7 +14,7 @@ PlayStation code the port runs for every disc.
 | `TRACKnn` | `TRACK.WAD`, `TRACK.TEX`, checkpoints, `TRACKTEX.CMP` | the track's geometry and textures identical; some scenery differs |
 | `TEXTURES` | a few TIMs and CMPs (shadows, smoke, explosions, birds) | identical; the other 80 or so (menus, HUD, fonts, logos, effects) are not there |
 | `SOUND` | each sound effect as a WAV | the PlayStation has them in one `samples.wad` |
-| `PICS\HI-RES`, `PICS\LO-RES` | the 2D and per-track texture atlases (TGA, 256x256 pages) | the PlayStation's video memory pages, coloured, see below |
+| `PICS\HI-RES`, `PICS\LO-RES` | the 2D and per-track texture atlases (TGA, 256x256 pages) | the PC front end's and races' texture pages, see below |
 | `BLITSURF` | the start and copyright pictures (PPM) | |
 | `MPEG` | the intro and the four endings (MPEG-1) | the PlayStation's are its own movie format |
 | CD audio | the music | other tracks than the PlayStation's |
