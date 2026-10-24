@@ -278,8 +278,11 @@ static void dir_of(const char *path, char *out, size_t size)
     snprintf(out, size, "%.*s", (int)(slash - path + 1), path);
 }
 
-/* The tracks' ends and the lead-out once the tracks' starts (index0 and index1, -1 for none) are known; a data track
-   alone gets the silent music tracks. */
+/* The 12 bytes a raw sector starts with. */
+static const uint8_t raw_sync[12] = {0, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0};
+
+/* The tracks' ends and the lead-out once the tracks' starts (index0 and index1, -1 for none) are known, and the
+   raw data tracks' modes as their sectors give them; a data track alone gets the silent music tracks. */
 static bool finish_layout(Disc *disc, const int32_t *index0, const int32_t *index1, const char *name, char *error,
                           int errorSize)
 {
@@ -310,6 +313,16 @@ static bool finish_layout(Disc *disc, const int32_t *index0, const int32_t *inde
         }
     }
     disc->leadOut = disc->tracks[disc->trackCount - 1].end;
+    for (i = 0; i < disc->trackCount; i++) {
+        /* the mode in the header of the track's first sector, whatever the cue sheet says: some say MODE1/2352 of
+           the console's mode 2 discs, which emulators read all the same (the user data 8 bytes later) */
+        DiscTrack *t = &disc->tracks[i];
+        const uint8_t *raw = !t->audio && t->sector_size == DISC_RAW_SECTOR ? DiscRawSector(disc, t->index1) : NULL;
+
+        if (raw && !memcmp(raw, raw_sync, sizeof(raw_sync)) && (raw[15] == 1 || raw[15] == 2)) {
+            t->data_offset = raw[15] == 2 ? 24 : 16;
+        }
+    }
     if (disc->trackCount == 1 && !disc->tracks[0].audio) {
         /* its data track alone (many copies leave the music out): the music tracks are there, silent (the game
            counts and plays them as the disc's; with fewer it would divide by none, and play past the disc) */
@@ -390,7 +403,6 @@ static bool iso_volume(const uint8_t *data)
    in sector 16 says it is kept. */
 static Disc *open_bare(const char *path, char *error, int errorSize)
 {
-    static const uint8_t sync[12] = {0, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0};
     Disc *disc = calloc(1, sizeof(*disc));
     DiscFile *f;
     DiscTrack *t;
@@ -409,7 +421,7 @@ static Disc *open_bare(const char *path, char *error, int errorSize)
     }
     disc->fileCount = 1;
     raw = f->data + 16 * (size_t)DISC_RAW_SECTOR;
-    if (f->size > 17 * (size_t)DISC_RAW_SECTOR && !memcmp(raw, sync, sizeof(sync)) &&
+    if (f->size > 17 * (size_t)DISC_RAW_SECTOR && !memcmp(raw, raw_sync, sizeof(raw_sync)) &&
         (raw[15] == 1 || raw[15] == 2) && iso_volume(raw + (raw[15] == 2 ? 24 : 16))) {
         stride = DISC_RAW_SECTOR;
         mode = raw[15];

@@ -24,6 +24,8 @@ int PortIsDiscName(const char *name);
    message says why. Progress goes to the
    window's title (on the main thread) and to PortArchiveProgress. */
 int PortDiscImage(const char *path, char *cue, size_t cueSize, char *message, size_t messageSize);
+/* The file's name in path (after its last '/', or on Windows its last backslash). */
+const char *PortPathName(const char *path);
 /* How far the extraction going on (another thread's) is, in thousandths. */
 int PortArchiveProgress(void);
 

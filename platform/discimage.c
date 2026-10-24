@@ -160,7 +160,7 @@ static int GameTrack(const char *path, int *mode, int *sectorSize)
 
 /* ---- paths ---- */
 
-static const char *NameOf(const char *path)
+const char *PortPathName(const char *path)
 {
     const char *name = SDL_strrchr(path, '/');
 #ifdef _WIN32
@@ -176,7 +176,7 @@ static const char *NameOf(const char *path)
 static void Destination(const char *path, char *out, size_t size)
 {
     char *base = SDL_GetPrefPath("Psygnosis", "WipeoutXL");
-    const char *name = NameOf(path), *dot = SDL_strrchr(name, '.');
+    const char *name = PortPathName(path), *dot = SDL_strrchr(name, '.');
     int length = (int)(dot && dot > name ? (size_t)(dot - name) : strlen(name));
 
     if (length > 4 && !SDL_strncasecmp(name + length - 4, ".tar", 4)) {
@@ -312,13 +312,13 @@ static SDL_EnumerationResult SDLCALL SiblingEntry(void *user, const char *dir, c
 static int MakeCue(const char *bin, int mode, int sectorSize, const char *cuePath, char *message, size_t messageSize)
 {
     char dir[1100], cueDir[1100], path[1200];
-    const char *name = NameOf(bin), *at;
+    const char *name = PortPathName(bin), *at;
     int first = TrackNumber(name, &at), i, track = 1, relative;
     Siblings siblings;
     FILE *f;
 
     SDL_snprintf(dir, sizeof(dir), "%.*s", (int)(name - bin), bin);
-    SDL_snprintf(cueDir, sizeof(cueDir), "%.*s", (int)(NameOf(cuePath) - cuePath), cuePath);
+    SDL_snprintf(cueDir, sizeof(cueDir), "%.*s", (int)(PortPathName(cuePath) - cuePath), cuePath);
     relative = !strcmp(dir, cueDir);
     memset(&siblings, 0, sizeof(siblings));
     if (first > 0) {
@@ -554,7 +554,7 @@ static int ExtractOther(const char *archive, const char *folder, char *message, 
 
         if (archive_format(a) == ARCHIVE_FORMAT_RAW) {
             /* named as the archive, less its extension */
-            const char *base = NameOf(archive), *dot = SDL_strrchr(base, '.');
+            const char *base = PortPathName(archive), *dot = SDL_strrchr(base, '.');
 
             SDL_snprintf(raw, sizeof(raw), "%.*s", (int)(dot && dot > base ? (size_t)(dot - base) : strlen(base)), base);
             entryName = raw;
@@ -731,7 +731,7 @@ static int UnpackOldCopy(const char *folder, char *message, size_t messageSize)
                 (kind = ArchiveKind(path)) == NOT_ARCHIVE) {
                 continue;
             }
-            SDL_snprintf(dir, sizeof(dir), "%.*s", (int)(NameOf(path) - path), path);
+            SDL_snprintf(dir, sizeof(dir), "%.*s", (int)(PortPathName(path) - path), path);
             if (kind == CHD_IMAGE) {
                 SDL_snprintf(dir, sizeof(dir), "%s.unpacked/", path);
                 ok = UnpackChd(path, dir, message, messageSize);
@@ -810,7 +810,7 @@ static SDL_EnumerationResult SDLCALL LooseTrack(void *user, const char *dir, con
 static int UnpackLoose(const char *ecm, const char *folder, char *message, size_t messageSize)
 {
     char out[2100], path[2048], dir[1100];
-    const char *name = NameOf(ecm), *at;
+    const char *name = PortPathName(ecm), *at;
     LooseTracks tracks;
 
     SDL_snprintf(path, sizeof(path), "%s%s", folder, name);
@@ -977,7 +977,7 @@ static int BinImage(const char *bin, char *cue, size_t cueSize, char *message, s
 
     /* its own .cue, when it is beside it */
     memset(&search, 0, sizeof(search));
-    search.name = NameOf(bin);
+    search.name = PortPathName(bin);
     SDL_snprintf(dir, sizeof(dir), "%.*s", (int)(search.name - bin), bin);
     SDL_EnumerateDirectory(dir[0] ? dir : ".", CueEntry, &search);
     if (search.cue[0]) {
@@ -1005,7 +1005,7 @@ static int CueOfEcm(const char *cuePath, char *ecm, size_t ecmSize)
     if (quote2) {
         char bin[1200];
 
-        SDL_snprintf(bin, sizeof(bin), "%.*s%.*s", (int)(NameOf(cuePath) - cuePath), cuePath,
+        SDL_snprintf(bin, sizeof(bin), "%.*s%.*s", (int)(PortPathName(cuePath) - cuePath), cuePath,
                      (int)(quote2 - quote1 - 1), quote1 + 1);
         SDL_snprintf(ecm, ecmSize, "%s.ecm", bin);
         found = !SDL_GetPathInfo(bin, NULL) && PortIsEcm(ecm);
