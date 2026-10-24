@@ -998,6 +998,85 @@ static uint8_t *MakePicture(const char *path, size_t *size)
     return tim;
 }
 
+/* ---- the font ---- */
+
+/* drfonts.cmp: the three sizes of letters in their TIMs (the first three; the rest stand in), white and, the fifth's
+   palette, amber for the text of the other colour (the game draws text with its texels' colours as they are). */
+static uint8_t *MakeFonts(const char *path, size_t *size)
+{
+    const Shape *shape = ShapeOf(path);
+    uint8_t *page;
+    Buffer tims = {0}, out = {0};
+    int i, k;
+
+    if (!strstr(path, "\\drfonts.cmp") || !shape || shape->kind != SHAPE_CMP || shape->count < 5) {
+        return NULL;
+    }
+    page = SDL_calloc(1, 128 * 256);
+    SaturnDrawFont(page, 256, 16);
+    SaturnDrawFont(page, 256, 12);
+    SaturnDrawFont(page, 256, 8);
+    {
+        uint8_t word[4];
+
+        PutLe32(word, (uint32_t)shape->count);
+        Put(&out, word, 4);
+    }
+    for (i = 0; i < shape->count; i++) {
+        const Shape *s = &shape->list[i];
+        size_t before = tims.size;
+        uint8_t word[4];
+
+        if (i < 3 || i == 4) {
+            uint8_t head[8 + 12 + 32 + 12];
+            int w = s->r2[2], h = s->r2[3], y;
+            int r = i == 4 ? 248 : 248, g = i == 4 ? 176 : 248, b = i == 4 ? 0 : 248;
+            PutLe32(head, 0x10);
+            PutLe32(head + 4, 8);
+            PutLe32(head + 8, 12 + 32);
+            PutLe16(head + 12, s->r1[0]);
+            PutLe16(head + 14, s->r1[1]);
+            PutLe16(head + 16, 16);
+            PutLe16(head + 18, 1);
+            for (k = 0; k < 16; k++) {
+                int level = k ? 0x8000 | (r * k / 15 >> 3) | (g * k / 15 >> 3) << 5 | (b * k / 15 >> 3) << 10 : 0;
+
+                PutLe16(head + 20 + k * 2, level);
+            }
+            PutLe32(head + 52, (uint32_t)(12 + w * 2 * h));
+            PutLe16(head + 56, s->r2[0]);
+            PutLe16(head + 58, s->r2[1]);
+            PutLe16(head + 60, w);
+            PutLe16(head + 62, h);
+            Put(&tims, head, sizeof(head));
+            for (y = 0; y < h; y++) {
+                int py = s->r2[1] - 256 + y, px = (s->r2[0] - 576) * 4;
+                uint8_t row[512] = {0};
+
+                if (py >= 0 && py < 256 && px >= 0 && px / 2 + w * 2 <= 128 && i != 4) {
+                    memcpy(row, page + py * 128 + px / 2, (size_t)w * 2);
+                }
+                Put(&tims, row, (size_t)w * 2);
+            }
+        } else {
+            PutTim(&tims, s);
+        }
+        PutLe32(word, (uint32_t)(tims.size - before));
+        Put(&out, word, 4);
+    }
+    {
+        size_t packedSize;
+        uint8_t *packed = PortLzssStore(tims.data, tims.size, &packedSize);
+
+        Put(&out, packed, packedSize);
+        SDL_free(packed);
+    }
+    SDL_free(tims.data);
+    SDL_free(page);
+    *size = out.size;
+    return out.data;
+}
+
 /* ---- the files ---- */
 
 /* A file of the borrowed PlayStation disc (WIPEOUT_SATURN_BORROW), by the game's path (\wipeout2\...). */
@@ -1179,6 +1258,10 @@ static int Find(const char *path)
         size_t size = 0;
         uint8_t *data = MakePicture(path, &size);
         const Shape *shape;
+
+        if (!data) {
+            data = MakeFonts(path, &size);
+        }
 
         if (data) {
             return Remember(path, data, size);
