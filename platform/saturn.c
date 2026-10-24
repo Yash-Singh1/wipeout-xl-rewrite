@@ -7,10 +7,12 @@
    game reads are made here from the Saturn's (the game's file layer asks PortSaturnFileInfo and PortSaturnRead
    first, as for original.c's and region.c's files), each when first asked for.
 
-   Made so far: a track's vertices, faces, sections, view lists and faces' textures and flags (track.trv, .trf, .trs,
-   .vew in track.wad, and track.tex), and its texture library (library.cmp, .ttf). The rest of what the game reads
-   (scenery, skies, ships, sounds, menus) is not yet: while it is not, a PlayStation disc named by
-   WIPEOUT_SATURN_BORROW (development only) answers for it.
+   Made here: a track's vertices, faces, sections, view lists and faces' textures and flags (track.trv, .trf, .trs,
+   .vew in track.wad, and track.tex), its texture library (library.cmp, .ttf) and checkpoints; the title, copyright
+   and logo screens; the menus' boxes. Elsewhere: the models (ships, scenery, skies: saturn_models.c), the HUD's,
+   menus' and effects' images (saturn_art.c), the font (saturn_font.c), the sounds (saturn_sound.c) and movies
+   (saturn_movie.c). What the Saturn has nothing for is made from the file's shape (saturn_shapes.c: its images
+   see-through, its models empty), so the game finds every file it reads.
 
    A course (art\trackNN\courseNN.rbh, the PlayStation's track folder NN; .vri its textures) is, by block: 0 the
    sections (a u32 count, at 0x1b4 records of 172 bytes: junction, previous and next as byte offsets in the block,
@@ -42,7 +44,6 @@ static int32_t archiveLba;  /* CDIMAGE.ELF */
 static uint32_t archiveSize;
 static uint8_t *archive;    /* its entries after a 16-byte head: key, sector, size, sectors (big-endian) */
 static int entries;
-static Disc *borrow;        /* WIPEOUT_SATURN_BORROW */
 
 /* ---- reading ---- */
 
@@ -143,14 +144,6 @@ static void Check(void)
 
         /* the header's areas: J, or E for Europe */
         europe = DiscReadData(disc, 0, 1, header) && memchr(header + 0x40, 'E', 16) != NULL;
-    }
-    {
-        const char *path = SDL_getenv("WIPEOUT_SATURN_BORROW");
-        char error[256];
-
-        if (path) {
-            borrow = DiscOpen(path, error, sizeof(error));
-        }
     }
 }
 
@@ -986,7 +979,15 @@ static void PutStandIn(Buffer *b, const Shape *s, const char *name)
         uint8_t count[2];
 
         for (i = 0; i < s->count; i++) {
-            PutStandIn(&parts[i], s->list[i].part, s->list[i].name);
+            size_t length = 0;
+            uint8_t *model = SaturnMakeModel(s->list[i].name, &length); /* (the start wad's models) */
+
+            if (model) {
+                Put(&parts[i], model, length);
+                SDL_free(model);
+            } else {
+                PutStandIn(&parts[i], s->list[i].part, s->list[i].name);
+            }
         }
         PutLe16(count, s->count);
         Put(b, count, 2);
@@ -1383,85 +1384,10 @@ static uint8_t *MakeCheckpoints(int track, int shipClass, size_t *size)
 
 /* ---- the files ---- */
 
-/* A file of the borrowed PlayStation disc (WIPEOUT_SATURN_BORROW), by the game's path (\wipeout2\...). */
-static uint8_t *Borrowed(const char *path, size_t *size)
-{
-    char upper[256];
-    int32_t lba;
-    uint32_t length;
-    uint8_t *data;
-    size_t i;
-
-    if (!borrow) {
-        return NULL;
-    }
-    for (i = 0; path[i] && i + 1 < sizeof(upper); i++) {
-        upper[i] = (char)SDL_toupper((unsigned char)path[i]);
-    }
-    upper[i] = 0;
-    if (!DiscFindFile(borrow, upper, &lba, &length)) {
-        return NULL;
-    }
-    data = SDL_malloc((length + 2047) / 2048 * 2048);
-    if (!data || !DiscReadData(borrow, lba, (int)((length + 2047) / 2048), data)) {
-        SDL_free(data);
-        return NULL;
-    }
-    *size = length;
-    return data;
-}
-
 /* A track's wad: the game reads its parts in this order (track.c, init.c) */
 static const char *const wadParts[] = {"track.trv", "track.trf", "track.trs", "track.vew", "library.cmp",
                                        "library.ttf", "scene.cmp", "sky.cmp", "scene.prm", "sky.prm"};
 #define WAD_PARTS ((int)SDL_arraysize(wadParts))
-
-/* TMPMODELS: a file of a directory (development) */
-static uint8_t *TmpFile(const char *relative, size_t *size)
-{
-    const char *dir = SDL_getenv("WIPEOUT_SATURN_FILES");
-    char full[512];
-
-    if (!dir) {
-        return NULL;
-    }
-    SDL_snprintf(full, sizeof(full), "%s/%s", dir, relative);
-    return SDL_LoadFile(full, size);
-}
-
-/* A part of a wad the borrowed disc has (its own track's), the caller frees. */
-static uint8_t *BorrowedWadPart(int track, const char *name, size_t *size)
-{
-    char path[64];
-    size_t length, at;
-    uint8_t *wad;
-    int count, i;
-
-    SDL_snprintf(path, sizeof(path), "\\wipeout2\\track%02d\\track.wad", track);
-    wad = Borrowed(path, &length);
-    if (!wad || length < 2) {
-        SDL_free(wad);
-        return NULL;
-    }
-    count = wad[0] | wad[1] << 8;
-    at = 2 + (size_t)count * 25;
-    for (i = 0; i < count && at <= length; i++) {
-        const uint8_t *e = wad + 2 + i * 25;
-        size_t partSize = e[20] | e[21] << 8 | (size_t)e[22] << 16 | (size_t)e[23] << 24;
-
-        if (!SDL_strncasecmp((const char *)e, name, 16) && at + partSize <= length) {
-            uint8_t *part = SDL_malloc(partSize + 1);
-
-            memcpy(part, wad + at, partSize);
-            *size = partSize;
-            SDL_free(wad);
-            return part;
-        }
-        at += partSize;
-    }
-    SDL_free(wad);
-    return NULL;
-}
 
 static uint8_t *MakeTrackWad(int track, size_t *size, uint8_t **texFile, size_t *texSize)
 {
@@ -1479,20 +1405,14 @@ static uint8_t *MakeTrackWad(int track, size_t *size, uint8_t **texFile, size_t 
     FreeCourse(&c);
     for (i = 6; i < WAD_PARTS; i++) {
         size_t length = 0;
-        char relative[64];
         uint8_t *part;
 
-        SDL_snprintf(relative, sizeof(relative), "track%02d/%s", track, wadParts[i]);
-        part = TmpFile(relative, &length);
-        if (!part) {
-            part = BorrowedWadPart(track, wadParts[i], &length);
-        }
-
+        part = SaturnMakeTrackModel(track, wadParts[i], &length);
         if (part) {
             Put(&parts[i], part, length);
             SDL_free(part);
         } else {
-            /* not made yet: a stand-in */
+            /* (a track the Saturn lacks: a stand-in) */
             char path[64];
             const Shape *wadShape;
             int k;
@@ -1601,13 +1521,8 @@ static int Find(const char *path)
             data = MakeMenuLayout(path, &size);
         }
         if (!data && SDL_strrchr(path, '\\')) {
-            data = TmpFile(SDL_strrchr(path, '\\') + 1, &size);
+            data = SaturnMakeModel(SDL_strrchr(path, '\\') + 1, &size);
         }
-
-        if (data) {
-            return Remember(path, data, size);
-        }
-        data = Borrowed(path, &size);
 
         if (data) {
             return Remember(path, data, size);
@@ -1617,7 +1532,7 @@ static int Find(const char *path)
             Buffer b = {0};
 
             PutStandIn(&b, shape, SDL_strrchr(path, '\\') ? SDL_strrchr(path, '\\') + 1 : path);
-            printf("saturn.c: %s stands in\n", path);
+            printf("saturn.c: %s made from its shape\n", path);
             return Remember(path, b.data ? b.data : SDL_calloc(1, 1), b.size);
         }
     }

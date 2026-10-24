@@ -44,6 +44,23 @@ int SaturnFontGlyph(int glyph, int small, unsigned int *rgba, int w, int h);
 /* The font (saturn_font.c): the glyphs of a size (16, 12 or 8) drawn into a 4-bit page of 256 rows. */
 void SaturnDrawFont(unsigned char *page, int pageWidth, int size);
 
+/* The Saturn's models as the PlayStation's files (saturn_models.c), NULL for others; the caller frees (SDL_free).
+   Common: terry.prm/.cmp, telco.prm, rescu.prm/.cmp, wierd.prm/.cmp, wreck.prm/.cmp, harry.prm, june.prm, vecto.prm,
+   venom.prm, rapie.prm, phant.prm, and the race-start WAD's mine.prm/.cmp, shld.prm, sroid.prm/.cmp, light.prm/.cmp,
+   rock.prm, miss.prm, ebolt.prm. A track's (PlayStation track folders 1 2 6 7 8 13 17 20): scene.prm/.cmp,
+   sky.prm/.cmp. */
+unsigned char *SaturnMakeModel(const char *name, size_t *size);
+unsigned char *SaturnMakeTrackModel(int track, const char *name, size_t *size);
+/* The names the game looks scenery up by, for each scenery instance of a course in its order
+   (saturn_scene_names.c); the list ends with names NULL. */
+typedef struct SaturnSceneNames {
+    int track;
+    int count;
+    const char *names;           /* the distinct names, each ended by a NUL */
+    const unsigned short *index; /* each instance's name: its byte offset in names */
+} SaturnSceneNames;
+extern const SaturnSceneNames saturnSceneNames[];
+
 #ifdef __cplusplus
 }
 #endif
