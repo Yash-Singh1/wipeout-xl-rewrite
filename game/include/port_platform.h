@@ -97,6 +97,13 @@ int PortSaturnRead(int loc, int sectors, void *buffer);
 int PortPcData(void);
 int PortPcFileInfo(const char *pathname, int *loc, int *size);
 int PortPcRead(int loc, int sectors, void *buffer);
+/* The PC version's texture pages (game/src/pc): pageCount 256x256 pages of an atlas in PICS\HI-RES (hud2.tga) from
+   the PC's page firstPage on, as the PC's Load16BitBitmapTextures; a 640x480 picture of BLITSURF\HI-RES
+   (rstartxl.ppm) over the six pages from firstPage on (3 across, 2 down). A primitive reads PC page n with a texture
+   page of colour depth 3 numbered n + 1 (PcTPage, game/src/pc/pc.h); its colours are Direct3D's (255 white). The
+   number of pages loaded, 0 when the file is not there. */
+int PortPcLoadPages(const char *name, int firstPage, int pageCount);
+int PortPcLoadPicture(const char *name, int firstPage);
 /* The saves (platform/saves.c): the save in use (its card, 0 or 1, and the name after BASCUS-94351; -1 when
    none), remembered for the next start; whether the game saves itself; a save the debug console imported, to
    load now (its card, -1 when none); the outcome of the last autosave. */

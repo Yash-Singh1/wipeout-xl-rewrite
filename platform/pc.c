@@ -20,6 +20,7 @@
 #include "platform.h"
 #include "saturn_shapes.h"
 #include "psx/disc.h"
+#include "psx/gpu.h"
 #include "psx/psx_io.h"
 
 #define VIRTUAL_LOC 0x68000000 /* the sectors the files are read at: beyond any disc, apart from saturn.c's */
@@ -36,7 +37,7 @@ int PortPcDiscIs(const Disc *disc)
     int32_t lba;
     uint32_t size;
 
-    return disc && DiscFindFile(disc, "\\COMMON\\VECTO.PRM", &lba, &size) &&
+    return disc && DiscIsPcGame(disc) &&
            DiscFindFile(disc, "\\TRACK01\\TRACK.WAD", &lba, &size) &&
            !DiscFindFile(disc, "\\WIPEOUT2\\SOUND\\SAMPLES.WAD", &lba, &size);
 }
@@ -157,6 +158,119 @@ unsigned char *PortPcLoadFile(const char *path, size_t *size)
         *size = bytes;
         return data;
     }
+}
+
+/* ---- the PC version's texture pages ---- */
+
+/* A page's texels, from a 15-bit colour (0 see-through, the PC's colour key) to premultiplied RGBA. */
+static uint32_t Rgba15(int c)
+{
+    int r = c & 31, g = c >> 5 & 31, b = c >> 10 & 31;
+
+    return c & 0x7FFF ? (uint32_t)(r * 255 / 31) | (uint32_t)(g * 255 / 31) << 8 | (uint32_t)(b * 255 / 31) << 16 |
+                            0xFF000000u
+                      : 0;
+}
+
+int PortPcLoadPages(const char *name, int firstPage, int pageCount)
+{
+    char path[128];
+    size_t size = 0;
+    uint8_t *tga;
+    uint32_t *page;
+    int w, h, k, x, y;
+
+    SDL_snprintf(path, sizeof(path), "PICS\\HI-RES\\%s", name);
+    if (!(tga = PortPcLoadFile(path, &size))) {
+        return 0;
+    }
+    /* a TGA of 16-bit colours (A1R5G5B5: the PC's 15-bit colour, unused alpha), its rows from the top (as the PC
+       reads them: its descriptor says the bottom) */
+    w = tga[12] | tga[13] << 8;
+    h = tga[14] | tga[15] << 8;
+    if (size < 18 || tga[2] != 2 || tga[16] != 16 || size < (size_t)18 + tga[0] + (size_t)w * h * 2 || h > 256) {
+        SDL_free(tga);
+        return 0;
+    }
+    page = SDL_malloc(256 * 256 * sizeof(uint32_t));
+    for (k = 0; k < pageCount && k * 256 < w; k++) {
+        for (y = 0; y < 256; y++) {
+            for (x = 0; x < 256; x++) {
+                int row = y, column = k * 256 + x;
+                const uint8_t *p = tga + 18 + tga[0] + ((size_t)row * w + column) * 2;
+                int c = y < h && column < w ? p[0] | p[1] << 8 : 0;
+
+                /* (the file's X1R5G5B5 to the console's order: red in the low bits) */
+                page[y * 256 + x] = Rgba15((c >> 10 & 31) | (c & 0x3E0) | (c & 31) << 10);
+            }
+        }
+        GpuSetPortPage(firstPage + k + 1, page);
+    }
+    SDL_free(page);
+    SDL_free(tga);
+    return k;
+}
+
+int PortPcLoadPicture(const char *name, int firstPage)
+{
+    char path[128];
+    size_t size = 0;
+    uint8_t *ppm;
+    uint32_t *page;
+    int w = 0, h = 0, max = 0, used = 0, k, x, y;
+
+    SDL_snprintf(path, sizeof(path), "BLITSURF\\HI-RES\\%s", name);
+    if (!(ppm = PortPcLoadFile(path, &size))) {
+        return 0;
+    }
+    {
+        /* P6, a comment, the width, height and largest value, one white space, the RGB bytes */
+        char *text = SDL_malloc(size + 1);
+        char *p;
+
+        memcpy(text, ppm, size);
+        text[size] = 0;
+        p = text + 2;
+        for (k = 0; k < 3 && *p; ) {
+            if (*p == '#') {
+                while (*p && *p != '\n') {
+                    p++;
+                }
+            } else if (*p >= '0' && *p <= '9') {
+                int v = (int)SDL_strtol(p, &p, 10);
+
+                *(k == 0 ? &w : k == 1 ? &h : &max) = v;
+                k++;
+                continue;
+            }
+            p++;
+        }
+        used = (int)(p - text) + 1;
+        SDL_free(text);
+    }
+    if (memcmp(ppm, "P6", 2) || w <= 0 || h <= 0 || w > 768 || h > 512 || max != 255 ||
+        size < (size_t)used + (size_t)w * h * 3) {
+        SDL_free(ppm);
+        return 0;
+    }
+    /* the picture over 3 x 2 pages, left to right and top to bottom: at 640 x 480, the console's screen twice */
+    page = SDL_malloc(256 * 256 * sizeof(uint32_t));
+    for (k = 0; k < 6; k++) {
+        for (y = 0; y < 256; y++) {
+            for (x = 0; x < 256; x++) {
+                int px = k % 3 * 256 + x, py = k / 3 * 256 + y;
+                const uint8_t *p = ppm + used + ((size_t)py * w + px) * 3;
+
+                page[y * 256 + x] = px < w && py < h ? (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 |
+                                                           0xFF000000u
+                                                     : 0;
+            }
+        }
+        GpuSetPortPage(firstPage + k + 1, page);
+    }
+    SDL_free(page);
+    SDL_free(ppm);
+    return 1;
 }
 
 /* ---- files made ---- */

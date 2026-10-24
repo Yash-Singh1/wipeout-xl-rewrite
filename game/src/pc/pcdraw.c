@@ -12,8 +12,6 @@
 #include "pc.h"
 #include "../../../platform/psx/gte.h"
 
-extern u_long *OT2[];
-extern short CurrentScreen;
 
 #define OT2_ENTRIES 0x640
 #define POOL_BYTES (256 * 1024)

@@ -1,4 +1,5 @@
 #include "hud.h"
+#include "pc/pc.h"
 #include "hiscores.h"
 #include "ayrace.h"
 #include "include_asm_g8.h"
@@ -87,6 +88,9 @@ extern char            msgExtendedTime[];
 
 void InitText(void)
 {
+    if (PortPcData()) {
+        PcInitText(); /* Port: the PC version's text (pc/pctext.c) */
+    }
     void     *timPtr;
     int       i;
 
@@ -320,6 +324,10 @@ void fill_speedo(Speedo *speedo, ShipData *ships, ConfigData *game, int player)
 
 void AddTime(int time, int x, int y, int size, int colour, unsigned char flags)
 {
+    if (PortPcData()) {
+        PcAddTime(time, x, y, size, colour, flags); /* Port: the PC version's text (pc/pctext.c) */
+        return;
+    }
     int          j;
     int          length = 0;
     int          digits[20];
@@ -502,6 +510,10 @@ void AddTime(int time, int x, int y, int size, int colour, unsigned char flags)
 
 void AddText(unsigned char *textPointer, int x, int y, int size, int colour)
 {
+    if (PortPcData()) {
+        PcAddText((const char *)textPointer, x, y, size, colour); /* Port: the PC version's text (pc/pctext.c) */
+        return;
+    }
     unsigned char *text = textPointer;
     unsigned char  letter;
     Texture       *charTexture;
@@ -553,6 +565,10 @@ void AddText(unsigned char *textPointer, int x, int y, int size, int colour)
 
 void AddNumber(int number, int x, int y, int size, int colour)
 {
+    if (PortPcData()) {
+        PcAddNumber(number, x, y, size, colour); /* Port: the PC version's text (pc/pctext.c) */
+        return;
+    }
     int          digits[12];
     int          digitIndex, digitCount;
     int          glyphIndex;
@@ -608,6 +624,10 @@ void AddNumber(int number, int x, int y, int size, int colour)
 
 void AddJustifyNumber(int number, int xInput, int y, int size, int colour)
 {
+    if (PortPcData()) {
+        PcAddJustifyNumber(number, xInput, y, size, colour); /* Port: the PC version's text (pc/pctext.c) */
+        return;
+    }
     int          digits[12];
     int          zeroLocal = 0;
     int          digitIndex, digitCount;
@@ -760,6 +780,10 @@ void SetCharTextures(unsigned char size)
 
 void CentreText(unsigned char *text, int unusedX, int yInput, int sizeInput, int colour)
 {
+    if (PortPcData()) {
+        PcCentreText((const char *)text, unusedX, yInput, sizeInput, colour); /* Port: the PC version's text */
+        return;
+    }
     short         textWidth = 0;
     int          y = yInput;
     int          size = sizeInput;
@@ -832,6 +856,10 @@ void CentreText(unsigned char *text, int unusedX, int yInput, int sizeInput, int
 
 void CentreText2(unsigned char *text, int x, int y, int size, int colour)
 {
+    if (PortPcData()) {
+        PcCentreText2((const char *)text, x, y, size, colour); /* Port: the PC version's text (pc/pctext.c) */
+        return;
+    }
     short         textWidth = 0;
     unsigned char *scan, letter;
     u_short       width;

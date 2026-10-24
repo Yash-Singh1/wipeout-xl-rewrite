@@ -1,3 +1,4 @@
+#include "pc/pc.h"
 #include "functions.h"
 #include "portlink.h" /* Port: two players on one machine */
 #include "pad.h"
@@ -131,31 +132,40 @@ int PsxMain(void) { /* Port: was void main(void), noreturn; the platform owns th
     SetCharTextures(8);
     SetCharTextures(0xC);
     SetCharTextures(0x10);
-    while (frame < PortLogoFields(0xF0)) { /* Port: skip_logos (the original's do-while showed each one field) */
-        VSync(0);
-        frame += 1;
-    }
-    SetDispMask(0);
-    InitGameDisplay(1);
-    Load16BitTexture(REGION_STR("c:\\wipeout2\\textures\\rcopyxl.tim", "c:\\wipeout2\\textures\\copy2097.tim"), 1);
-    SetDispMask(1);
-    activateOT2 = 1;
-    frame = 0;
-    while (frame < PortLogoFields(PAL_TIME(0x3C))) {
-        VSync(0);
-        frame += 1;
-    }
-    Load16BitTexture(REGION_STR("c:\\wipeout2\\textures\\dolbynts.tim", "c:\\wipeout2\\textures\\dolbypal.tim"), 1);
-    frame = 0;
-    while (frame < PortLogoFields(PAL_TIME(0x3C))) {
-        VSync(0);
-        frame += 1;
-    }
-    Load16BitTexture(REGION_STR("c:\\wipeout2\\textures\\redbntsc.tim", "c:\\wipeout2\\textures\\redbpal.tim"), 1);
-    frame = 0;
-    while (frame < PortLogoFields(PAL_TIME(0x78))) {
-        VSync(0);
-        frame += 1;
+    if (PortPcData()) {
+        /* Port: the PC version's start (pc/pcscreens.c): its copyright picture in place of the logos */
+        SetDispMask(0);
+        InitGameDisplay(1);
+        SetDispMask(1);
+        PcLoadPages();
+        PcCopyrightScreen();
+    } else {
+        while (frame < PortLogoFields(0xF0)) { /* Port: skip_logos (the original's do-while showed each one field) */
+            VSync(0);
+            frame += 1;
+        }
+        SetDispMask(0);
+        InitGameDisplay(1);
+        Load16BitTexture(REGION_STR("c:\\wipeout2\\textures\\rcopyxl.tim", "c:\\wipeout2\\textures\\copy2097.tim"), 1);
+        SetDispMask(1);
+        activateOT2 = 1;
+        frame = 0;
+        while (frame < PortLogoFields(PAL_TIME(0x3C))) {
+            VSync(0);
+            frame += 1;
+        }
+        Load16BitTexture(REGION_STR("c:\\wipeout2\\textures\\dolbynts.tim", "c:\\wipeout2\\textures\\dolbypal.tim"), 1);
+        frame = 0;
+        while (frame < PortLogoFields(PAL_TIME(0x3C))) {
+            VSync(0);
+            frame += 1;
+        }
+        Load16BitTexture(REGION_STR("c:\\wipeout2\\textures\\redbntsc.tim", "c:\\wipeout2\\textures\\redbpal.tim"), 1);
+        frame = 0;
+        while (frame < PortLogoFields(PAL_TIME(0x78))) {
+            VSync(0);
+            frame += 1;
+        }
     }
     frame = 0;
     ShowLoadMessage();
@@ -211,6 +221,9 @@ int PsxMain(void) { /* Port: was void main(void), noreturn; the platform owns th
 restart_menu:
         if (menuRequested == 0) {
             menuTexture = Load16BitTexture(REGION_STR("c:\\wipeout2\\textures\\rstartxl.tim", "c:\\wipeout2\\textures\\startpal.tim"), 0);
+            if (PortPcData()) {
+                PcLoadTitlePicture(); /* Port: the PC version's title picture (pc/pcscreens.c) */
+            }
         }
         titleFrames = 0;
         if ((raceType != championshipType) || (raceContext == enabled)) {
@@ -288,11 +301,17 @@ music_done:
                         attractLoopFlag = menuRequested;
                         break;
                     }
-                    ShowMenuBackground(menuPrimitives, menuBackground, menuTexture);
+                    if (PortPcData()) {
+                        /* Port: the PC version's title screen (pc/pcscreens.c): its picture, its prompt */
+                        sprintf(pressStart, "PRESS %s", PortButtonLabel(PORT_BUTTON_START, "ENTER"));
+                        PcTitleFrame((promptTimer % PAL_TIME(30)) < REGION(0x15, 0x12), pressStart);
+                    } else {
+                        ShowMenuBackground(menuPrimitives, menuBackground, menuTexture);
+                    }
                     if (attractLoopFlag == enabled) {
                         SetInGameCDTrack(cdPlaySeconds, cdStatus, gameData, cdFlag);
                     }
-                    if ((promptTimer % PAL_TIME(30)) < REGION(0x15, 0x12)) {
+                    if (!PortPcData() && (promptTimer % PAL_TIME(30)) < REGION(0x15, 0x12)) {
                         sprintf(pressStart, "PRESS %s", PortButtonLabel(PORT_BUTTON_START, "START")); /* Port: the name of the key or button of the device in use */
                         AddText(pressStart, 0xA0, REGION(0xDC, 0xE4), 8, enabled);
                     }

@@ -1,3 +1,4 @@
+#include "pc/pc.h"
 #include "functions.h"
 #include "object2.h"
 #include "../../platform/trace.h" /* Port: lockstep test hooks */
@@ -176,6 +177,9 @@ void Swap(void)
     DRAWENV *draw;
 
     zero = 0;
+    if (PortPcData()) {
+        PcDrawEndFrame(); /* Port: the PC version's 2D of the frame, in its order (pc/pcdraw.c) */
+    }
     /* Port: frame interpolation: what is drawn below once the fields have passed */
     PsxUpcomingTables(OT[CurrentScreen] + 0x1FFF, activateOT2 ? OT2[CurrentScreen] + 0x63F : NULL, OT[CurrentScreen],
                       doubleBuffer[(CurrentScreen + 1) & 1].draw);

@@ -10,10 +10,21 @@
 
 #include "../../include/functions.h"
 
-/* ---- pcmain.c ---- */
+int PortPcData(void);
+extern short CurrentScreen;
 
-/* The PC version's flow from the first picture on (PsxMain hands over to it once the system is up). Never returns. */
-int PcMain(ConfigData *config);
+/* ---- pcscreens.c: the PC's screens around the menus (main.c) ---- */
+
+/* Its texture pages, as its main() loads them (but for the menus' scene, loaded with the menus). */
+void PcLoadPages(void);
+/* The copyright picture, until a key or its time. */
+void PcCopyrightScreen(void);
+/* The title picture loaded; one frame of the title screen, with the prompt or not. */
+int PcLoadTitlePicture(void);
+void PcTitleFrame(int prompt, const char *pressStart);
+/* The 640x480 picture loaded last (PortPcLoadPicture at PC_PAGE_PICTURE): its part from (x0, y0) to (x1, y1) of
+   the console's 320x240, drawn there (blit.c's AddBlit320). */
+void PcBlit(int x0, int y0, int x1, int y1, float depth);
 
 /* ---- pcdraw.c ---- */
 
@@ -51,6 +62,9 @@ void PcAddText(const char *text, int x, int y, int size, int colour);
 void PcAddNumber(int number, int x, int y, int size, int colour);
 void PcAddJustifyNumber(int number, int x, int y, int size, int colour);
 void PcCentreText(const char *text, int x, int y, int size, int colour);
+void PcCentreText2(const char *text, int x, int y, int size, int colour);
+void PcAddTime(int time, int x, int y, int size, int colour, u_char flags);
+void PcPrint(const char *text, int x, int y, int colour, int extendedSpacing);
 void PcSetTextQuad(POLY_FT4 *quad, short x, short y, u_char u, u_char v, u_char width, u_char height, short tpage,
                    int colour);
 extern float pcTextDepth; /* the PC's textDepth */

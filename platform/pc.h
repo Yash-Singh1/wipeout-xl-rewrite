@@ -24,6 +24,9 @@ const char *PortPcTitle(void);
 /* A file of the PC CD by its path from the CD's root (PICS\HI-RES\HUD2.TGA, any case), read whole; NULL when there
    is none. The caller frees (SDL_free). */
 unsigned char *PortPcLoadFile(const char *path, size_t *size);
+/* The PC version's texture pages (game/include/port_platform.h, PortPcLoadPages, PortPcLoadPicture). */
+int PortPcLoadPages(const char *name, int firstPage, int pageCount);
+int PortPcLoadPicture(const char *name, int firstPage);
 /* The game's samples.wad made from the PC's WAV sounds (pc_sound.c); NULL when one is missing. The caller frees. */
 unsigned char *PcMakeSamples(size_t *size);
 
