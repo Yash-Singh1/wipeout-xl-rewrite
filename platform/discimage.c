@@ -1,4 +1,4 @@
-/* Disc images as they are kept. A .cue sheet with its .bin tracks is used as it is (psx/disc.c). A disc's .bin (or
+/* Disc images as they are kept. A .cue sheet with its .bin or WAV tracks is used as it is (psx/disc.c). A disc's .bin (or
    .img) without its .cue is given one, made in the user's data folder (discs/<its name>/): its data track, and its
    audio tracks when they are beside it as "... (Track N).bin" (Redump's names, each starting with its 2-second
    pregap). An archive holding a disc image, known by its first bytes (else its name), is extracted once into

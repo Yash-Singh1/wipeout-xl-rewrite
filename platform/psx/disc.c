@@ -28,6 +28,8 @@ EM_JS(const uint8_t *, WebDiscFile, (const char *path, size_t *size), {
 typedef struct DiscFile {
     const uint8_t *data;
     size_t size;
+    size_t offset;   /* the PCM payload of a WAV (0 for a raw file); data and size keep the whole mapping */
+    uint8_t *tail;   /* a WAV's last sector, padded with silence when its samples leave it short */
     int32_t start;   /* LBA of its first sector */
     int32_t sectors; /* in the file */
     int32_t length;  /* on the disc: its sectors and the gaps the cue sheet puts among them (PREGAP) */
@@ -83,6 +85,81 @@ static void fail(char *error, int size, const char *format, const char *a)
     if (error && size > 0) {
         snprintf(error, (size_t)size, format, a);
     }
+}
+
+static uint16_t le16(const uint8_t *p)
+{
+    return (uint16_t)(p[0] | p[1] << 8);
+}
+
+static uint32_t le32(const uint8_t *p)
+{
+    return p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
+}
+
+/* A WAV's samples are already CD-DA: little-endian, signed 16-bit stereo at 44100 Hz. The cue's indexes count
+   from its first sample, including any pregap it holds. RIFF chunks can include tags and padding; neither is
+   part of the track. Some old rippers named these files BINARY in their .cue, so the bytes decide too. */
+static bool wave_file(DiscFile *f, const char *path, char *error, int errorSize)
+{
+    size_t at = 12, end, bytes = 0;
+    bool format = false;
+
+    if (f->size < 12 || memcmp(f->data, "RIFF", 4) || memcmp(f->data + 8, "WAVE", 4) ||
+        le32(f->data + 4) < 4 || le32(f->data + 4) > f->size - 8) {
+        goto damaged;
+    }
+    end = (size_t)le32(f->data + 4) + 8;
+    while (at < end) {
+        const uint8_t *chunk = f->data + at;
+        size_t length;
+
+        if (end - at < 8) {
+            goto damaged;
+        }
+        length = le32(chunk + 4);
+        at += 8;
+        if (length > end - at || (length & 1) > end - at - length) {
+            goto damaged;
+        }
+        if (!memcmp(chunk, "fmt ", 4)) {
+            const uint8_t *fmt = f->data + at;
+
+            if (format || length < 16) {
+                goto damaged;
+            }
+            if (le16(fmt) != 1 || le16(fmt + 2) != 2 || le32(fmt + 4) != 44100 ||
+                le32(fmt + 8) != 176400 || le16(fmt + 12) != 4 || le16(fmt + 14) != 16) {
+                fail(error, errorSize, "WAV must be 16-bit stereo PCM at 44100 Hz (%s)", path);
+                return false;
+            }
+            format = true;
+        } else if (!memcmp(chunk, "data", 4)) {
+            if (f->offset || !length || length % 4) {
+                goto damaged;
+            }
+            f->offset = at;
+            bytes = length;
+        }
+        at += length + (length & 1);
+    }
+    if (!format || !f->offset) {
+        goto damaged;
+    }
+    f->sectors = (int32_t)(bytes / DISC_RAW_SECTOR);
+    if (bytes % DISC_RAW_SECTOR) {
+        f->tail = calloc(1, DISC_RAW_SECTOR);
+        if (!f->tail) {
+            fail(error, errorSize, "cannot allocate WAV sector for %s", path);
+            return false;
+        }
+        memcpy(f->tail, f->data + f->offset + bytes - bytes % DISC_RAW_SECTOR, bytes % DISC_RAW_SECTOR);
+        f->sectors++;
+    }
+    return true;
+damaged:
+    fail(error, errorSize, "invalid or truncated WAV file %s", path);
+    return false;
 }
 
 static bool map_file(DiscFile *f, const char *path)
@@ -155,6 +232,7 @@ void DiscClose(Disc *disc)
     }
     for (i = 0; i < disc->fileCount; i++) {
         unmap_file(&disc->files[i]);
+        free(disc->files[i].tail);
     }
     free(disc);
 }
@@ -219,15 +297,15 @@ Disc *DiscOpen(const char *cuePath, char *error, int errorSize)
         }
         if (!strncmp(p, "FILE", 4)) {
             char *q1 = strchr(p, '"'), *q2 = q1 ? strchr(q1 + 1, '"') : NULL;
-            char name[1024], path[2048];
+            char name[1024], path[2048], type[32];
             DiscFile *f;
 
             if (!q1 || !q2 || disc->fileCount >= DISC_MAX_TRACKS) {
                 fail(error, errorSize, "unsupported FILE line in %s", cuePath);
                 goto bad;
             }
-            if (!strstr(q2, "BINARY")) {
-                fail(error, errorSize, "only BINARY files are supported (%s)", cuePath);
+            if (sscanf(q2 + 1, "%31s", type) != 1 || (strcmp(type, "BINARY") && strcmp(type, "WAVE"))) {
+                fail(error, errorSize, "only BINARY and WAVE files are supported (%s)", cuePath);
                 goto bad;
             }
             snprintf(name, sizeof(name), "%.*s", (int)(q2 - q1 - 1), q1 + 1);
@@ -238,12 +316,17 @@ Disc *DiscOpen(const char *cuePath, char *error, int errorSize)
                 fail(error, errorSize, "cannot read disc file %s", path);
                 goto bad;
             }
-            f->sectors = (int32_t)(f->size / DISC_RAW_SECTOR);
-            f->length = f->sectors;
-            f->start = disc->fileCount ? disc->files[disc->fileCount - 1].start +
-                                             disc->files[disc->fileCount - 1].length
-                                       : 0;
             disc->fileCount++;
+            f->sectors = (int32_t)(f->size / DISC_RAW_SECTOR);
+            if ((!strcmp(type, "WAVE") || (f->size >= 12 && !memcmp(f->data, "RIFF", 4) &&
+                                           !memcmp(f->data + 8, "WAVE", 4))) &&
+                !wave_file(f, path, error, errorSize)) {
+                goto bad;
+            }
+            f->length = f->sectors;
+            f->start = disc->fileCount > 1 ? disc->files[disc->fileCount - 2].start +
+                                               disc->files[disc->fileCount - 2].length
+                                         : 0;
         } else if (!strncmp(p, "TRACK", 5)) {
             int number;
             char mode[32] = "";
@@ -258,6 +341,10 @@ Disc *DiscOpen(const char *cuePath, char *error, int errorSize)
             current = disc->trackCount++;
             t->number = number;
             t->audio = !strcmp(mode, "AUDIO");
+            if (!t->audio && disc->files[disc->fileCount - 1].offset) {
+                fail(error, errorSize, "WAV file used for a data track in %s", cuePath);
+                goto bad;
+            }
             if (t->audio) {
                 t->data_offset = 0;
             } else if (!strcmp(mode, "MODE2/2352")) {
@@ -394,7 +481,8 @@ const uint8_t *DiscRawSector(const Disc *disc, int32_t lba)
             int32_t sector = FileSector(disc, i, lba);
 
             if (sector >= 0) {
-                return f->data + (size_t)sector * DISC_RAW_SECTOR;
+                return f->tail && sector == f->sectors - 1 ? f->tail
+                                                          : f->data + f->offset + (size_t)sector * DISC_RAW_SECTOR;
             }
             return lba < f->start + f->length ? silence : NULL; /* (a PREGAP the image leaves out) */
         }
@@ -418,13 +506,14 @@ void DiscPrefetch(const Disc *disc, int32_t lba, int sectors)
             if (sector < 0 || page <= 0) {
                 return;
             }
-            first = (size_t)sector * DISC_RAW_SECTOR;
+            first = f->offset + (size_t)sector * DISC_RAW_SECTOR;
             length = (size_t)sectors * DISC_RAW_SECTOR;
             if (first + length > f->size) {
                 length = f->size - first;
             }
+            length += first % (size_t)page;
             first -= first % (size_t)page;
-            madvise((void *)(f->data + first), length + (size_t)page, MADV_WILLNEED);
+            madvise((void *)(f->data + first), length, MADV_WILLNEED);
             return;
         }
     }
@@ -464,11 +553,6 @@ bool DiscReadData(const Disc *disc, int32_t lba, int count, void *out)
 }
 
 /* ---- ISO 9660 ----------------------------------------------------------------------- */
-
-static uint32_t le32(const uint8_t *p)
-{
-    return p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
-}
 
 static bool name_matches(const uint8_t *record, const char *component, size_t length)
 {

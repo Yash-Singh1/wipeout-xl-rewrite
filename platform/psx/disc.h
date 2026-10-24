@@ -1,5 +1,6 @@
 /* The user's disc image: a .cue sheet with raw 2352-byte-sector .bin files (one per
-   track, or one for the whole disc). Sector addresses here are LBAs: 0 is the first
+   track, or one for the whole disc), or WAV music tracks (16-bit stereo PCM at 44100 Hz).
+   Sector addresses here are LBAs: 0 is the first
    sector of track 1 (the console's 00:02:00); add 150 for the absolute minute:second:frame
    a drive reports. */
 #ifndef PSX_DISC_H
