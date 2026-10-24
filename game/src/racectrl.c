@@ -335,6 +335,9 @@ restart:
     Restart(&locals.resetData);InitRaceData(&pauseState);
     if(context!=one) attractDelayFrames=0;
     InitAttractMode(context,shipIndex);gameData->complete=0;SetUpFirstCheckPoint();
+    /* Port: the droid is drawn before the camera moves, with the last frame's view: on a restart that was the
+       paused race's, and the first frame showed it huge beside the track. The start's view is set first. */
+    if(CameraUpdate==UpdateCameraRaceStart && !PortTracing()) CameraUpdate(&raceCamera,&shipIndex[ownShip],&rescueData);
 frame:
     if(portPal) GetJoyPadPacketOnVsync(pauseState.stage); /* the European program: the link slave waits a field while a two-player pause is requested */
     buildGameKeyPad(padBuf1,playerControl);buildFixedPad(padBuf1);
