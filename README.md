@@ -37,9 +37,11 @@ real game.
 
 - Your copy of the PlayStation disc (Wipeout XL USA, or WipEout 2097 Europe):
   a `.cue` with its `.bin` tracks, a `.bin` without its `.cue`, or an archive
-  of either (`.7z`, `.zip`, `.rar`, `.tar`, `.gz` and the like). The music
-  plays from the disc's audio tracks, the intro and ending movies from its
-  movie files.
+  of either (`.7z`, `.zip`, `.rar`, `.tar`, `.gz` and the like). Older copies
+  with the data track packed with ECM (`.bin.ecm`) and the music tracks in
+  Monkey's Audio (`.ape`) work too, in an archive or as they are (choose the
+  `.ecm`). The music plays from the disc's audio tracks, the intro and ending
+  movies from its movie files.
 - Or the Sega Saturn's disc (Wipeout XL Japan, or WipEout 2097 Europe), in
   the same forms. The game is the PlayStation's, made from the Saturn's data:
   its tracks, scenery, ships, HUD, menus' art, font, sounds, music (Cold
@@ -150,4 +152,5 @@ the next start. Dear ImGui (`platform/third_party/imgui`, MIT) draws it.
 ## How it is built
 
 [docs/PLAN.md](docs/PLAN.md) describes the design; [docs/IO.md](docs/IO.md)
-the sound, CD, pad and card side.
+the sound, CD, pad and card side. [docs/THIRD_PARTY.md](docs/THIRD_PARTY.md) has the licenses of code adapted
+from others (Monkey's Audio's decoder).

@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 /* The file kinds the disc can be chosen as (for file dialogs: separated by ';'). */
-#define PORT_DISC_EXTENSIONS "cue;bin;img;7z;zip;rar;tar;gz;tgz;bz2;tbz2;xz;txz;zst;tzst"
+#define PORT_DISC_EXTENSIONS "cue;bin;img;ecm;7z;zip;rar;tar;gz;tgz;bz2;tbz2;xz;txz;zst;tzst"
 
 /* Whether a path is an archive: by its first bytes (7z, zip, rar, tar, gzip, bzip2, xz, zstd), else by its name. */
 int PortIsArchive(const char *path);

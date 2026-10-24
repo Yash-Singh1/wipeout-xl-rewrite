@@ -8,12 +8,17 @@
    the system "PLAYSTATION"), else such a .bin or .img, given a .cue as above. Which game it is, is for the caller.
    A .7z is read with the LZMA SDK's decoder (platform/third_party/lzma, public domain; a solid block is unpacked in
    memory, one at a time), the others with libarchive (zip, rar, tar, gzip, bzip2, xz, zstd; where the program was
-   built with it). */
+   built with it). Copies kept as discs were about 2009 are taken as they come: archives in the archive are unpacked
+   too, a track packed with ECM (".bin.ecm", ecm.c) or in Monkey's Audio (".ape", ape.c) is made its .bin again,
+   and a .cue naming them is made to name the .bins. Such a data track chosen by itself (its .ecm, or a .cue naming
+   its .bin when only the .ecm is there) is made a .bin in the user's data folder, with the .ape tracks beside it. */
 #include <SDL3/SDL.h>
 #include <stdio.h>
 #include <string.h>
 
+#include "ape.h"
 #include "discimage.h"
+#include "ecm.h"
 #include "psx/disc.h"
 
 #include "third_party/lzma/7z.h"
@@ -59,10 +64,12 @@ static int IsArchiveName(const char *name)
 
 int PortIsDiscName(const char *name)
 {
-    return HasExtension(name, "cue") || HasExtension(name, "bin") || HasExtension(name, "img") || IsArchiveName(name);
+    return HasExtension(name, "cue") || HasExtension(name, "bin") || HasExtension(name, "img") || HasExtension(name, "ecm") ||
+           IsArchiveName(name);
 }
 
-enum { NOT_ARCHIVE, ARCHIVE_7Z, ARCHIVE_OTHER };
+enum { NOT_ARCHIVE, ARCHIVE_7Z, ARCHIVE_OTHER, ECM_TRACK /* (a data track packed with ECM: made a .bin like an archive's
+                                                              image is extracted) */ };
 
 /* What the file's first bytes say it is; a file that cannot be read goes by its name. */
 static int ArchiveKind(const char *path)
@@ -274,7 +281,7 @@ static int TrackNumber(const char *name, const char **at)
 }
 
 typedef struct {
-    const char *prefix, *extension; /* the data track's name before "(Track N)", and its extension */
+    const char *prefix, *extension; /* the data track's name before "(Track N)", and what follows it (" [SLES-00327].bin") */
     size_t prefixLength;
     char *names[DISC_MAX_TRACKS + 1]; /* by track number */
 } Siblings;
@@ -312,7 +319,7 @@ static int MakeCue(const char *bin, int mode, const char *cuePath, char *message
         /* Redump's "Game (Track 01).bin" with "Game (Track 02).bin" and on: the audio tracks */
         siblings.prefix = name;
         siblings.prefixLength = (size_t)(at - name);
-        siblings.extension = SDL_strrchr(name, '.') ? SDL_strrchr(name, '.') : "";
+        siblings.extension = strchr(at, ')') ? strchr(at, ')') + 1 : "";
         SDL_EnumerateDirectory(dir[0] ? dir : ".", SiblingEntry, &siblings);
     }
     SDL_strlcpy(path, cuePath, sizeof(path));
@@ -593,6 +600,224 @@ static int ExtractOther(const char *archive, const char *folder, char *message, 
 #endif
 
 /* The note of an extraction: "size date\n" (then the .cue's path). */
+/* ---- copies kept as discs were about 2009: archives in the archive, .ecm and .ape tracks ---- */
+
+/* The listing of folder's files (relative to it), nearer the top first. */
+static Listing List(const char *folder)
+{
+    Listing listing = {folder, NULL, 0, 0};
+
+    SDL_EnumerateDirectory(folder, ListEntry, &listing);
+    if (listing.count) {
+        SDL_qsort(listing.paths, (size_t)listing.count, sizeof(char *), CompareListed);
+    }
+    return listing;
+}
+
+static void FreeListing(Listing *listing)
+{
+    int i;
+
+    for (i = 0; i < listing->count; i++) {
+        SDL_free(listing->paths[i]);
+    }
+    SDL_free(listing->paths);
+}
+
+/* The name a packed track is made into: "x.bin.ecm" -> "x.bin", "x.ecm" -> "x.bin", "x.ape" -> "x.bin". */
+static void Unpacked(const char *path, char *out, size_t size)
+{
+    size_t length = strlen(path) - 4; /* less ".ecm" or ".ape" */
+
+    SDL_snprintf(out, size, "%.*s", (int)length, path);
+    if (HasExtension(path, "ape") || (!HasExtension(out, "bin") && !HasExtension(out, "img"))) {
+        SDL_strlcat(out, ".bin", size);
+    }
+}
+
+/* Makes the packed track at path its .bin at out. */
+static int UnpackTrack(const char *path, const char *out, char *message, size_t messageSize)
+{
+    return HasExtension(path, "ape") ? PortApeDecode(path, out, message, messageSize)
+                                     : PortEcmDecode(path, out, message, messageSize);
+}
+
+/* A .cue naming packed tracks made to name their .bins: "x.bin.ecm" as "x.bin", "x.ape" WAVE as "x.bin" BINARY. */
+static void RenameInCue(const char *path)
+{
+    size_t size = 0;
+    char *text = (char *)SDL_LoadFile(path, &size), *line, *next, *out;
+    size_t used = 0;
+    int changed = 0;
+
+    if (!text) {
+        return;
+    }
+    out = (char *)SDL_malloc(size * 2 + 64);
+    for (line = text; out && *line; line = next) {
+        char *quote1 = NULL, *quote2 = NULL, name[1024], renamed[1100];
+        size_t length;
+
+        next = strchr(line, '\n');
+        next = next ? next + 1 : line + strlen(line);
+        length = (size_t)(next - line);
+        if (length > 4 && !SDL_strncasecmp(line + strspn(line, " \t"), "FILE", 4)) {
+            quote1 = strchr(line, '"');
+            quote2 = quote1 && quote1 < next ? strchr(quote1 + 1, '"') : NULL;
+        }
+        if (quote2 && quote2 < next && (size_t)(quote2 - quote1 - 1) < sizeof(name)) {
+            SDL_snprintf(name, sizeof(name), "%.*s", (int)(quote2 - quote1 - 1), quote1 + 1);
+            if (HasExtension(name, "ecm") || HasExtension(name, "ape")) {
+                Unpacked(name, renamed, sizeof(renamed));
+                used += (size_t)SDL_snprintf(out + used, size * 2 + 64 - used, "FILE \"%s\" BINARY\n", renamed);
+                changed = 1;
+                continue;
+            }
+        }
+        memcpy(out + used, line, length);
+        used += length;
+    }
+    if (out && changed) {
+        FILE *f = fopen(path, "wb");
+
+        if (f) {
+            fwrite(out, 1, used, f);
+            fclose(f);
+        }
+    }
+    SDL_free(out);
+    SDL_free(text);
+}
+
+/* In folder (extracted): the archives in it unpacked where they are (twice over at most), then its .ecm and .ape
+   tracks made .bins, and its .cues made to name them. */
+static int UnpackOldCopy(const char *folder, char *message, size_t messageSize)
+{
+    char path[2048], out[2100], dir[2048];
+    Listing listing;
+    int round, i, total = 0, done = 0, ok = 1;
+
+    for (round = 0; round < 2 && ok; round++) {
+        int found = 0;
+
+        listing = List(folder);
+        for (i = 0; ok && i < listing.count; i++) {
+            int kind;
+
+            SDL_snprintf(path, sizeof(path), "%s%s", folder, listing.paths[i]);
+            if (HasExtension(path, "bin") || HasExtension(path, "img") || HasExtension(path, "cue") ||
+                HasExtension(path, "ecm") || HasExtension(path, "ape") ||
+                (kind = ArchiveKind(path)) == NOT_ARCHIVE) {
+                continue;
+            }
+            SDL_snprintf(dir, sizeof(dir), "%.*s", (int)(NameOf(path) - path), path);
+            ok = kind == ARCHIVE_7Z ? Extract7z(path, dir, message, messageSize)
+                                    : ExtractOther(path, dir, message, messageSize);
+            SDL_RemovePath(path);
+            found = 1;
+        }
+        FreeListing(&listing);
+        if (!found) {
+            break;
+        }
+    }
+    listing = List(folder);
+    for (i = 0; i < listing.count; i++) {
+        total += HasExtension(listing.paths[i], "ecm") || HasExtension(listing.paths[i], "ape");
+    }
+    for (i = 0; ok && i < listing.count; i++) {
+        SDL_snprintf(path, sizeof(path), "%s%s", folder, listing.paths[i]);
+        if (!HasExtension(path, "ecm") && !HasExtension(path, "ape")) {
+            continue;
+        }
+        Unpacked(path, out, sizeof(out));
+        ok = UnpackTrack(path, out, message, messageSize);
+        SDL_RemovePath(path);
+        Progress(++done * 1000 / total);
+    }
+    for (i = 0; ok && i < listing.count; i++) {
+        SDL_snprintf(path, sizeof(path), "%s%s", folder, listing.paths[i]);
+        if (HasExtension(path, "cue")) {
+            RenameInCue(path);
+        }
+    }
+    FreeListing(&listing);
+    return ok;
+}
+
+typedef struct {
+    const char *prefix;  /* the data track's name before its "(Track N)" */
+    char suffix[256];    /* ... and what follows that up to its extensions (" [SLES-00327]") */
+    size_t prefixLength;
+    const char *dir, *folder;
+    int ok, count, done;
+    char *message;
+    size_t messageSize;
+} LooseTracks;
+
+static SDL_EnumerationResult SDLCALL LooseTrack(void *user, const char *dir, const char *name)
+{
+    LooseTracks *l = (LooseTracks *)user;
+    const char *at, *close;
+    char path[2048], out[2100], wanted[300];
+
+    (void)dir;
+    SDL_snprintf(wanted, sizeof(wanted), "%s.ape", l->suffix);
+    if (TrackNumber(name, &at) < 2 || (size_t)(at - name) != l->prefixLength ||
+        strncmp(name, l->prefix, l->prefixLength) || !(close = strchr(at, ')')) || SDL_strcasecmp(close + 1, wanted)) {
+        return SDL_ENUM_CONTINUE;
+    }
+    if (!l->folder) {
+        l->count++;
+        return SDL_ENUM_CONTINUE;
+    }
+    SDL_snprintf(path, sizeof(path), "%s%s", l->dir, name);
+    SDL_snprintf(out, sizeof(out), "%s%s", l->folder, name);
+    Unpacked(out, out, sizeof(out));
+    l->ok = PortApeDecode(path, out, l->message, l->messageSize);
+    Progress(++l->done * 1000 / (l->count + 1));
+    return l->ok ? SDL_ENUM_CONTINUE : SDL_ENUM_FAILURE;
+}
+
+/* A data track packed with ECM, chosen by itself: made a .bin in folder, with the .ape tracks beside it ("... (Track
+   N) ....ape", named as it is) made .bins there too. */
+static int UnpackLoose(const char *ecm, const char *folder, char *message, size_t messageSize)
+{
+    char out[2100], path[2048], dir[1100];
+    const char *name = NameOf(ecm), *at;
+    LooseTracks tracks;
+
+    SDL_snprintf(path, sizeof(path), "%s%s", folder, name);
+    MakeFolders(path);
+    Unpacked(path, out, sizeof(out));
+    Progress(0);
+    if (!PortEcmDecode(ecm, out, message, messageSize)) {
+        return 0;
+    }
+    memset(&tracks, 0, sizeof(tracks));
+    if (TrackNumber(name, &at) == 1) {
+        SDL_snprintf(dir, sizeof(dir), "%.*s", (int)(name - ecm), ecm);
+        tracks.prefix = name;
+        tracks.prefixLength = (size_t)(at - name);
+        SDL_strlcpy(tracks.suffix, strchr(at, ')') + 1, sizeof(tracks.suffix));
+        tracks.suffix[strlen(tracks.suffix) - 4] = 0; /* less ".ecm" */
+        if (HasExtension(tracks.suffix, "bin") || HasExtension(tracks.suffix, "img")) {
+            tracks.suffix[strlen(tracks.suffix) - 4] = 0;
+        }
+        tracks.dir = dir;
+        tracks.ok = 1;
+        tracks.message = message;
+        tracks.messageSize = messageSize;
+        SDL_EnumerateDirectory(dir[0] ? dir : ".", LooseTrack, &tracks); /* (counted, then made) */
+        tracks.folder = folder;
+        SDL_EnumerateDirectory(dir[0] ? dir : ".", LooseTrack, &tracks);
+        if (!tracks.ok) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 static void Note(const char *archive, char *out, size_t size)
 {
     SDL_PathInfo info;
@@ -632,8 +857,10 @@ static int ArchiveImage(const char *archive, int kind, char *cue, size_t cueSize
 
     Remove(folder);
     Progress(0);
-    ok = kind == ARCHIVE_7Z ? Extract7z(archive, folder, message, messageSize)
-                            : ExtractOther(archive, folder, message, messageSize);
+    ok = kind == ARCHIVE_7Z     ? Extract7z(archive, folder, message, messageSize)
+         : kind == ECM_TRACK ? UnpackLoose(archive, folder, message, messageSize)
+                             : ExtractOther(archive, folder, message, messageSize);
+    ok = ok && UnpackOldCopy(folder, message, messageSize);
     Title("Wipeout XL");
     if (ok && !FindImage(folder, relative, sizeof(relative))) {
         SDL_snprintf(message, messageSize, "There is no PlayStation disc image (a .cue with its .bin, or a .bin) in %s.",
@@ -709,11 +936,38 @@ static int BinImage(const char *bin, char *cue, size_t cueSize, char *message, s
     return MakeCue(bin, mode, cue, message, messageSize);
 }
 
+/* A .cue whose first file is not there but is beside it packed with ECM: that .ecm (into ecm), else 0. */
+static int CueOfEcm(const char *cuePath, char *ecm, size_t ecmSize)
+{
+    char *text = (char *)SDL_LoadFile(cuePath, NULL), *quote1, *quote2, *file;
+    int found = 0;
+
+    file = text ? SDL_strcasestr(text, "FILE") : NULL;
+    quote1 = file ? strchr(file, '"') : NULL;
+    quote2 = quote1 ? strchr(quote1 + 1, '"') : NULL;
+    if (quote2) {
+        char bin[1200];
+
+        SDL_snprintf(bin, sizeof(bin), "%.*s%.*s", (int)(NameOf(cuePath) - cuePath), cuePath,
+                     (int)(quote2 - quote1 - 1), quote1 + 1);
+        SDL_snprintf(ecm, ecmSize, "%s.ecm", bin);
+        found = !SDL_GetPathInfo(bin, NULL) && PortIsEcm(ecm);
+    }
+    SDL_free(text);
+    return found;
+}
+
 int PortDiscImage(const char *path, char *cue, size_t cueSize, char *message, size_t messageSize)
 {
     int kind = ArchiveKind(path);
+    char ecm[1200];
 
     cue[0] = 0;
+    if (kind == NOT_ARCHIVE && HasExtension(path, "ecm") && PortIsEcm(path)) {
+        kind = ECM_TRACK;
+    } else if (kind == NOT_ARCHIVE && HasExtension(path, "cue") && CueOfEcm(path, ecm, sizeof(ecm))) {
+        return ArchiveImage(ecm, ECM_TRACK, cue, cueSize, message, messageSize);
+    }
     if (kind != NOT_ARCHIVE) {
         return ArchiveImage(path, kind, cue, cueSize, message, messageSize);
     }
