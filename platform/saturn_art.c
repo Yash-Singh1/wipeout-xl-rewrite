@@ -580,6 +580,51 @@ static void Button(Canvas *c, int icon)
     }
 }
 
+/* ---- the rest ---- */
+
+/* The arrow over the other player's ship in a linked race (link.tim): pointing down, red, edged yellow. */
+static void LinkArrow(Canvas *c)
+{
+    int x, y;
+
+    for (y = 0; y < c->h; y++) {
+        for (x = 0; x < c->w; x++) {
+            float fx = x + 0.5f - c->w / 2.0f, fy = y + 0.5f, w = fy < 16 ? 5 : 15 - (fy - 16) * 15 / 14;
+            int inside = fy >= 2 && fy <= 30 && SDL_fabsf(fx) <= w;
+            int core = fy >= 4 && fy <= 27 && SDL_fabsf(fx) <= w - 2.5f;
+
+            if (inside) {
+                Plot(c, x, y, core ? 0xff1818e0u : 0xff10d8f0u);
+            }
+        }
+    }
+}
+
+/* The reflections of chrome (chrome.tim): grey clouds. */
+static void Chrome(Canvas *c)
+{
+    int x, y;
+
+    for (y = 0; y < c->h; y++) {
+        for (x = 0; x < c->w; x++) {
+            float v = SmoothNoise(x / 16.0f, y / 6.0f) * 0.6f + SmoothNoise(x / 6.0f, y / 3.0f) * 0.4f;
+            unsigned g = (unsigned)(32 + 200 * v);
+
+            Plot(c, x, y, g | g << 8 | g << 16 | 0xff000000u);
+        }
+    }
+}
+
+/* The memory card's icon (lucky.tim): the pilot. */
+static void CardIcon(Canvas *c)
+{
+    unsigned pilot[32 * 32] = {0};
+    Canvas image = {32, 32, pilot};
+
+    Sprite(&image, 44, 0, 0, 255);
+    Fit(c, &image, 0, 0, c->w, c->h);
+}
+
 /* ---- the PlayStation's TIMs ---- */
 
 /* The Saturn's art for a TIM (of a .cmp, its index) as RGBA: 0 when there is none. */
@@ -601,6 +646,12 @@ static int Draw(const char *name, int index, Canvas *c)
         Board(c);
     } else if (!strcmp(name, "smoke.cmp")) {
         Smoke(c, index);
+    } else if (!strcmp(name, "link.tim")) {
+        LinkArrow(c);
+    } else if (!strcmp(name, "chrome.tim")) {
+        Chrome(c);
+    } else if (!strcmp(name, "lucky.tim")) {
+        CardIcon(c);
     } else if (!strcmp(name, "ashbutt.cmp") && index < 10) {
         Button(c, index);
     } else if (!strcmp(name, "wofont.tim")) {
