@@ -1118,6 +1118,108 @@ static uint8_t *MakeSounds(const char *path, size_t *size)
     return wad;
 }
 
+/* ---- the checkpoints ---- */
+
+/* The arcade's checkpoints, from the Saturn program's table (found by its first values: on either disc): per track,
+   in its track table's order, 3 gates' section numbers (-4: none), then per track and class (Vector to Phantom) 3
+   seconds. Its section numbers are the Saturn's own (each section's, at +160); the game compares them with the
+   numbers it gives the sections itself (raceinit.c: from the first along the next, a branch of a junction flagged
+   16 numbered on the way), so each is made the game's. */
+static const int checkpointTracks[8] = {1, 8, 13, 20, 2, 17, 6, 7};
+
+static uint8_t *MakeCheckpoints(int track, int shipClass, size_t *size)
+{
+    static const uint8_t first[12] = {0, 5, 0, 139, 0xff, 0xfc, 0, 6, 0, 178, 0xff, 0xfc};
+    const Disc *disc = PsxIoDisc();
+    int32_t lba;
+    uint32_t length;
+    uint8_t *program, *found, *out;
+    Course c;
+    int row, i, k, *game;
+
+    for (row = 0; row < 8 && checkpointTracks[row] != track; row++) {
+    }
+    if (row == 8 || shipClass < 0 || shipClass > 3 || !DiscFindFile(disc, "\\0.AAA", &lba, &length)) {
+        return NULL;
+    }
+    program = SDL_malloc((length + 2047) / 2048 * 2048);
+    if (!program || !DiscReadData(disc, lba, (int)((length + 2047) / 2048), program)) {
+        SDL_free(program);
+        return NULL;
+    }
+    found = NULL;
+    for (i = 0; i + (int)sizeof(first) <= (int)length && !found; i += 2) {
+        if (!memcmp(program + i, first, sizeof(first))) {
+            found = program + i;
+        }
+    }
+    if (!found || found + 48 + 96 > program + length || !ReadCourse(track, &c)) {
+        SDL_free(program);
+        return NULL;
+    }
+    /* the game's numbers of the sections */
+    game = SDL_calloc(c.sectionCount, sizeof(int));
+    {
+        int section = 0, number = 0, guard = 0;
+
+#define LINK(s, k) (Be32(c.sections + SECTIONS_AT + (s) * SECTION + (k) * 4))
+#define INDEX(o) ((int)(((o) - SECTIONS_AT) / SECTION))
+        do {
+            uint32_t junction = LINK(section, 0);
+
+            game[section] = number;
+            if (junction != 0xFFFFFFFFu &&
+                (Be16(c.sections + SECTIONS_AT + INDEX(junction) * SECTION + 144) & 16)) {
+                int original = section, branch = INDEX(junction);
+
+                for (;;) {
+                    number++;
+                    game[branch] = number;
+                    branch = INDEX(LINK(branch, 2));
+                    if (LINK(branch, 0) != 0xFFFFFFFFu || ++guard > 100000) {
+                        break;
+                    }
+                }
+                section = INDEX(LINK(original, 2));
+                number++;
+                game[section] = number;
+                if (section == 0) {
+                    break;
+                }
+            }
+            section = INDEX(LINK(section, 2));
+            number++;
+        } while (section != 0 && section >= 0 && section < (int)c.sectionCount && ++guard < 100000);
+#undef LINK
+#undef INDEX
+    }
+    out = SDL_calloc(1, 36);
+    for (i = 0; i < 6; i++) {
+        int gate = -1, bonus = 0;
+
+        if (i < 3) {
+            int saturnNumber = (int16_t)Be16(found + row * 6 + i * 2);
+
+            for (k = 0; saturnNumber >= 0 && k < (int)c.sectionCount; k++) {
+                if ((int16_t)Be16(c.sections + SECTIONS_AT + k * SECTION + 160) == saturnNumber) {
+                    gate = game[k];
+                    break;
+                }
+            }
+            bonus = gate >= 0 ? found[48 + row * 12 + shipClass * 3 + i] : 0;
+        }
+        out[i * 6] = (uint8_t)gate;
+        out[i * 6 + 1] = (uint8_t)(gate >> 8);
+        out[i * 6 + 2] = (uint8_t)bonus;
+        out[i * 6 + 3] = (uint8_t)(bonus >> 8);
+    }
+    SDL_free(game);
+    FreeCourse(&c);
+    SDL_free(program);
+    *size = 36;
+    return out;
+}
+
 /* ---- the files ---- */
 
 /* A file of the borrowed PlayStation disc (WIPEOUT_SATURN_BORROW), by the game's path (\wipeout2\...). */
@@ -1275,6 +1377,14 @@ static int Find(const char *path)
     for (i = 0; i < madeCount; i++) {
         if (!strcmp(made[i].path, path)) {
             return i;
+        }
+    }
+    if (SDL_sscanf(path, "\\wipeout2\\track%d\\%31s", &track, tail) == 2 && !strncmp(tail, "cpoint", 6)) {
+        size_t size = 0;
+        uint8_t *chk = MakeCheckpoints(track, tail[6] - '0', &size);
+
+        if (chk) {
+            return Remember(path, chk, size);
         }
     }
     if (SDL_sscanf(path, "\\wipeout2\\track%d\\%31s", &track, tail) == 2 &&
