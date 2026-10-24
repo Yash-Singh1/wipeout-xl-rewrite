@@ -1814,6 +1814,13 @@ static void Console(void)
         if (ImGui::BeginTabItem("Game", nullptr, FirstTab("game"))) {
             TouchControls();
             ImGui::Separator();
+            bool vibration = !portSettings.noRumble;
+            if (ImGui::Checkbox("Controller vibration", &vibration)) {
+                portSettings.noRumble = !vibration;
+                Changed();
+            }
+            DisabledWrapped("The pads shake at a hit, as the picture does.");
+            ImGui::Separator();
             bool skip = portSettings.skipIntro != 0;
             if (ImGui::Checkbox("Skip the intro movie at start-up", &skip)) {
                 portSettings.skipIntro = skip;

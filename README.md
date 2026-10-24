@@ -11,6 +11,7 @@ The goal of this project is to keep the original behavior as much as possible wh
 - Higher render distance (configurable if you prefer older style)
 - Custom music
 - Touch controls for mobile and web (WIP)
+- Controller vibration: the pads shake at a hit, as the picture does
 - Autosave & converting save files
 - Minor culling & depth buffer fixes
 

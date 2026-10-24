@@ -76,4 +76,9 @@ bool PsxPadLoadScript(const char *text, char *error, int errorSize);
 /* Writes a port's BIOS buffer as the pad driver would (exposed for tests). */
 void PsxPadFillBuffer(int port, uint8_t *buffer, int length);
 
+/* The pads' motors (pad_sdl.c; nothing without SDL): a jolt of `amount` — the game's screen-shake units,
+   SetShake's, 2 a knock to 20 a rocket — or 0 to stop them. The game's own call is PortPadRumble
+   (platform/main.c), which keeps the setting and the tests' hidden runs out of this library. */
+void PsxPadRumble(int amount);
+
 #endif

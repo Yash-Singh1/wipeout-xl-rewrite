@@ -604,3 +604,46 @@ void PsxInputEvent(const SDL_Event *event)
         break;
     }
 }
+
+/* The pads' motors: a jolt of `amount` (the game's screen-shake units, SetShake's: 2 a knock to 20 a rocket),
+   or 0 to stop them. The pads that plugged into the console had none; the port's gamepads shake as the
+   picture does. A jolt that is still running keeps its strength and its time: a knock on a wall does not
+   end a rocket's. */
+void PsxPadRumble(int amount)
+{
+    static int running = 0;    /* the jolt that is running now */
+    static uint64_t until = 0; /* ... and the time it ends */
+    uint64_t now = SDL_GetTicks();
+    uint16_t low = 0, high = 0;
+    uint32_t duration = 0;
+    int mine, port;
+
+    if (!PortWindowFocused()) {
+        return;
+    }
+    if (amount > 0) {
+        if (amount > 20) {
+            amount = 20;
+        }
+        if (amount < running && now < until) {
+            return; /* the jolt that is running is the stronger of the two */
+        }
+        running = amount;
+        /* above a floor, so the lightest knock is still felt; 20 is the full strength */
+        low = (uint16_t)(8192 + (32767 - 8192) * amount / 20);
+        high = (uint16_t)(low / 2);
+        duration = (uint32_t)(100 + amount * 20);
+        until = now + duration;
+    } else {
+        running = 0;
+        until = 0;
+    }
+    /* one player: every gamepad is theirs; with the devices assigned (the two players' link), this
+       game's player's controller alone */
+    mine = routed ? GamepadPort(firstDevice) : -1;
+    for (port = 0; port < GAMEPADS; port++) {
+        if (gamepads[port] && (!routed || mine == port)) {
+            SDL_RumbleGamepad(gamepads[port], low, high, duration);
+        }
+    }
+}

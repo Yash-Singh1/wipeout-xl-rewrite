@@ -133,6 +133,16 @@ gamepad (PlayStation, Xbox, Nintendo, other), for the glyphs.
 Scripts (`padScript`): lines `field port BUTTONS` (names joined by `+`, `none`, or a hex mask;
 `twist=`, `i=`, `ii=`, `l=`), applied from that video field on.
 
+The pads' motors (the gamepads' vibration) shake as the picture does. The game says how hard a hit was,
+in the units `SetShake` shakes the screen by, and the gamepads run at that strength for as long
+(`PortPadRumble` in platform/main.c, `PsxPadRumble` in pad_sdl.c). The jolts come from the game's own
+impact feedback: `SetShake`'s moments (a weapon hit, the quake weapon, a menu landing, the knock of a
+ship that is losing control) and the hits that only sound — `DamageCollide` on the player's ship, so a
+wall or another ship taps the pad (not the pit lane's repair, which is no hit). A jolt that is still
+running keeps its strength and its time: a knock on a wall does not end a rocket's. The pads that
+plugged into the console had no motors; these are the port's own. The debug console's "Controller
+vibration" turns them off (`vibration` of wipeoutxl.ini), and the tests' hidden runs never shake.
+
 ## Memory card (libcard.c)
 
 A real 128 KiB card image per port (`memcard0.mcr`, `memcard1.mcr` in the save directory: the

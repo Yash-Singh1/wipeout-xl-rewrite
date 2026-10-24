@@ -9,6 +9,7 @@
 #include "platform.h"
 #include "psx/disc.h"
 #include "psx/gte.h"
+#include "psx/pad.h"
 #include "psx/psx_io.h"
 #include "region.h"
 #include "saturn.h"
@@ -532,3 +533,9 @@ int PortFadeRange(int *nearDistance, int *farDistance)
     return portSettings.fade;
 }
 
+void PortPadRumble(int amount)
+{
+    /* the player's setting, and never in the tests' hidden runs (which is also what stops a jolt that was
+       running when either of them changed) */
+    PsxPadRumble(portSettings.noRumble || portConfig.hidden ? 0 : amount);
+}
