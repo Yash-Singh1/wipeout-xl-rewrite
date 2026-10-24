@@ -28,4 +28,8 @@ struct Trail {
 
 extern Trail *shipTrails; /* one for each ship */
 
+/* Port: the projection (gte.h) of the point the next DrawFlare is drawn about, 0 for none: the flare gets its
+   depth, so the depth buffer hides it behind what is nearer (a wall a ship turns behind). */
+void PortFlareCentre(unsigned int handle);
+
 #endif

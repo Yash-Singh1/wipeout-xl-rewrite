@@ -496,8 +496,8 @@ u_long *PortFlareSlot(int distance)
     return flareSlot ? flareSlot : OT[CurrentScreen] + (distance >> 1);
 }
 
-/* The engine flares of the ships the far view drew, where DrawTrail puts a near ship's: the middle of its trail's
-   newest segment, the size and the table entry from the GTE's average depth of that segment's corners less 160. */
+/* The engine flares of the ships the far view drew, where DrawTrail puts a near ship's: where its trail's newest
+   segment would be, the size and the table entry from that point's depth less 160 (RotTransPers3's average). */
 void PortFarFlares(TrackCamera *camera)
 {
     PortView view;
@@ -509,16 +509,18 @@ void PortFarFlares(TrackCamera *camera)
     }
     CameraView(camera, &view);
     for (i = 0; i < 15; i++) {
-        Trail         *trail = &shipTrails[i];
-        TrailSegment  *now = &trail->segment[trail->current];
+        ShipData      *at = &shipIndex[i];
         PortFarVertex  centre;
         int            distance;
 
-        if (!(farShips & (1 << i)) || !now->active || !trail->segment[(trail->current + 1) % TRAIL_SEGMENTS].active) {
+        if (!(farShips & (1 << i))) {
             continue;
         }
-        PortFarProject(&view, (now->left.vx + now->right.vx) / 2.0, (now->left.vy + now->right.vy) / 2.0,
-                       (now->left.vz + now->right.vz) / 2.0, &centre);
+        /* where its trail's newest segment would be (UpdateShipTrails): the game keeps no trail for a ship out of
+           its view, and the trail's last segment was left where the ship went out of it (a flare stood there) */
+        PortFarProject(&view, at->ppivot.vx - ((at->unitVecNose.vx * 420) >> 12),
+                       at->ppivot.vy - ((at->unitVecNose.vy * 420) >> 12) - 15,
+                       at->ppivot.vz - ((at->unitVecNose.vz * 420) >> 12), &centre);
         if (centre.rejected) {
             continue;
         }
@@ -534,6 +536,7 @@ void PortFarFlares(TrackCamera *camera)
             int speed = (i != ownShip || !(ship->attr & RACING)) ? ship->speed >> 1 : ship->thrust >> 5;
             int sizeDistance = speed * 4 > 0 && distance > speed * 4 ? speed * 4 : distance;
 
+            PortFlareCentre(centre.handle);
             DrawFlare((short)(centre.screen & 0xFFFF), (short)(centre.screen >> 16), sizeDistance, i);
         }
         flareSlot = NULL;
