@@ -197,6 +197,11 @@ static uint8_t *Entry(const char *path, size_t *size)
     return NULL;
 }
 
+unsigned char *PortSaturnEntry(const char *path, size_t *size)
+{
+    return Entry(path, size);
+}
+
 /* A container's blocks: data, size and load flags. */
 #define MAX_BLOCKS 64
 typedef struct Blocks {

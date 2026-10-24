@@ -24,6 +24,7 @@
 
 #include "platform.h"
 #include "region.h"
+#include "saturn.h"
 #include "settings.h"
 #include "psx/disc.h"
 #include "psx/gpu.h"
@@ -437,6 +438,18 @@ void PsxPlayMovie(const char *program)
     }
     if (movie < 0 || (movie == 0 && portSettings.skipIntro)) {
         return; /* not a movie program, or the settings: no intro */
+    }
+    if (PortSaturnDisc()) {
+        /* the Saturn's own (saturn_movie.c): its intro (Wipeout XL's; the European disc has none) and endings */
+        static const char *const saturnMovies[] = {
+            "\\makecd\\project\\movies\\makexl.pmm", "\\makecd\\project\\movies\\xtro1.pmm",
+            "\\makecd\\project\\movies\\xtro2.pmm", "\\makecd\\project\\movies\\xtro3.pmm",
+            "\\makecd\\project\\movies\\xtro4.pmm"};
+
+        if (!SaturnPlayMovie(saturnMovies[movie])) {
+            PortLog("movie %s: not on the Saturn's disc; skipped\n", saturnMovies[movie]);
+        }
+        return;
     }
     if (!disc || !DiscFindFile(disc, movies[movie].file, &lba, &size)) {
         PortLog("movie %s: %s not on the disc; skipped\n", program, movies[movie].file);
