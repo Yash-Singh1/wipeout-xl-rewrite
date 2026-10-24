@@ -502,7 +502,7 @@ static int Assign(Book *book, uint16_t (*luts)[16], int count, int see)
     int i, j;
     double s[3], err;
 
-    qsort(luts, (size_t)count, sizeof(*luts), CompareLuts);
+    SDL_qsort(luts, (size_t)count, sizeof(*luts), CompareLuts);
     for (i = 0; i < book->count; i++) {
         if (book->palette[i].see != see) {
             continue;
