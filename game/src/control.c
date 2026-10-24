@@ -191,6 +191,7 @@ void UpdatePlayerShipStart(ShipData *shipIndex, Object **shipShapes, int shipNo,
     int targetThrust;
     int thrustDelta;
     short thrustVal;
+    int boostAt, stallAt, rumbleLevel; /* Port: the pads' motors at the launch (below) */
 
     if (!(shipIndex[ownShip].combatAttr & 0x8000)) {
         playerShip = &shipIndex[shipNo];
@@ -244,6 +245,20 @@ void UpdatePlayerShipStart(ShipData *shipIndex, Object **shipShapes, int shipNo,
             if (playerShip->thrust > playerShip->maxThrust) {
                 playerShip->thrust = playerShip->maxThrust;
             }
+        }
+        /* Port: the pads' motors growl with the launch thrust, rising to the window the start boosts in
+           (5/8 of the top thrust to 6/8, the amounts UpdatePlayerShip judges at the moment the race
+           starts), hardest inside it and quieter past it, where the start stalls */
+        if (shipNo == ownShip) {
+            boostAt = (playerShip->maxThrust >> 3) * 5;
+            stallAt = (playerShip->maxThrust >> 3) * 6;
+            rumbleLevel = 8;
+            if (playerShip->thrust < boostAt) {
+                rumbleLevel = playerShip->thrust * 8 / boostAt;
+            } else if (playerShip->thrust >= stallAt) {
+                rumbleLevel = 4;
+            }
+            PortPadRumbleLevel(rumbleLevel);
         }
     }
 }

@@ -94,6 +94,7 @@ static void Route(void);
 static PadDevice gamepad_device(SDL_Gamepad *g);
 static void SendSecondPlayer(void);
 static void ReceiveSecondPlayer(void);
+static void rumble_tick(void);
 
 static uint16_t key_buttons(size_t i, PadContext context)
 {
@@ -143,6 +144,7 @@ void PsxPadSdlField(void)
 {
     PadContext context = PsxPadContext();
 
+    rumble_tick(); /* the pads' motors, whose held level stops by itself */
     if (context != keyContext) {
         size_t i;
 
@@ -605,38 +607,57 @@ void PsxInputEvent(const SDL_Event *event)
     }
 }
 
-/* The pads' motors: a jolt of `amount` (the game's screen-shake units, SetShake's: 2 a knock to 20 a rocket),
-   or 0 to stop them. The pads that plugged into the console had none; the port's gamepads shake as the
-   picture does. A jolt that is still running keeps its strength and its time: a knock on a wall does not
-   end a rocket's. */
-void PsxPadRumble(int amount)
+/* The pads' motors. The pads that plugged into the console had none; the port's gamepads shake as the
+   picture does, and growl with the launch thrust. Two things can want them at once and the stronger wins:
+   a jolt (PsxPadRumble), a hit of `amount` that runs for its time and is not ended by a weaker one, and a
+   level (PsxPadRumbleLevel), held while the game keeps saying it and stopped a few fields after it stops.
+   Both are in the game's units: 2 a knock that is barely felt, 20 the full strength. */
+static int joltAmount;    /* the jolt that is running, and when it ends */
+static uint64_t joltUntil;
+static int holdLevel;     /* the level held, and how long it lives without the game saying it again */
+static uint64_t holdUntil;
+
+#define HOLD_MS 100 /* a held level's life without a call: a few fields */
+
+static uint16_t rumble_strength(int level)
 {
-    static int running = 0;    /* the jolt that is running now */
-    static uint64_t until = 0; /* ... and the time it ends */
+    return (uint16_t)(level * 32767 / 20);
+}
+
+static void rumble_apply(void)
+{
     uint64_t now = SDL_GetTicks();
     uint16_t low = 0, high = 0;
     uint32_t duration = 0;
-    int mine, port;
+    int level = 0, mine, port;
 
-    if (!PortWindowFocused()) {
-        return;
+    if (now >= joltUntil) {
+        joltAmount = 0;
+        joltUntil = 0;
     }
-    if (amount > 0) {
-        if (amount > 20) {
-            amount = 20;
-        }
-        if (amount < running && now < until) {
-            return; /* the jolt that is running is the stronger of the two */
-        }
-        running = amount;
-        /* above a floor, so the lightest knock is still felt; 20 is the full strength */
-        low = (uint16_t)(8192 + (32767 - 8192) * amount / 20);
+    if (now >= holdUntil) {
+        holdLevel = 0;
+        holdUntil = 0;
+    }
+    if (joltAmount > level) {
+        level = joltAmount;
+        duration = (uint32_t)(joltUntil - now);
+    }
+    if (holdLevel > level) {
+        level = holdLevel;
+        duration = HOLD_MS;
+    }
+    if (!PortWindowFocused()) {
+        level = 0; /* nothing runs while the game is in the background */
+    }
+    if (level > 0) {
+        low = rumble_strength(level);
         high = (uint16_t)(low / 2);
-        duration = (uint32_t)(100 + amount * 20);
-        until = now + duration;
+        if (duration < HOLD_MS) {
+            duration = HOLD_MS;
+        }
     } else {
-        running = 0;
-        until = 0;
+        duration = 0;
     }
     /* one player: every gamepad is theirs; with the devices assigned (the two players' link), this
        game's player's controller alone */
@@ -646,4 +667,51 @@ void PsxPadRumble(int amount)
             SDL_RumbleGamepad(gamepads[port], low, high, duration);
         }
     }
+}
+
+/* Once a field: a held level stops by itself when the game stops holding it. */
+static void rumble_tick(void)
+{
+    if (joltUntil || holdUntil) {
+        rumble_apply();
+    }
+}
+
+/* A jolt: a hit of `amount` (the game's screen-shake units, SetShake's: 2 a knock to 20 a rocket), or 0 to
+   stop. The pads shake as the picture does. */
+void PsxPadRumble(int amount)
+{
+    uint64_t now = SDL_GetTicks();
+
+    if (amount > 20) {
+        amount = 20;
+    }
+    if (amount > 0) {
+        if (amount < joltAmount && now < joltUntil) {
+            return; /* the jolt that is running is the stronger of the two */
+        }
+        joltAmount = amount;
+        joltUntil = now + (uint64_t)(100 + amount * 20);
+    } else {
+        joltAmount = 0;
+        joltUntil = 0;
+    }
+    rumble_apply();
+}
+
+/* A level held: the game says it again every frame it wants the motors at it (0 stops them), and they stop
+   by themselves a few fields after it stops saying. */
+void PsxPadRumbleLevel(int level)
+{
+    if (level > 20) {
+        level = 20;
+    }
+    if (level > 0) {
+        holdLevel = level;
+        holdUntil = SDL_GetTicks() + HOLD_MS;
+    } else {
+        holdLevel = 0;
+        holdUntil = 0;
+    }
+    rumble_apply();
 }

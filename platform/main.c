@@ -535,7 +535,12 @@ int PortFadeRange(int *nearDistance, int *farDistance)
 
 void PortPadRumble(int amount)
 {
-    /* the player's setting, and never in the tests' hidden runs (which is also what stops a jolt that was
-       running when either of them changed) */
+    /* the player's setting, and never in the tests' hidden runs (which is also what stops a jolt or a held
+       level that was running when either of them changed) */
     PsxPadRumble(portSettings.noRumble || portConfig.hidden ? 0 : amount);
+}
+
+void PortPadRumbleLevel(int level)
+{
+    PsxPadRumbleLevel(portSettings.noRumble || portConfig.hidden ? 0 : level);
 }

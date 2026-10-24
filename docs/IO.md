@@ -133,15 +133,26 @@ gamepad (PlayStation, Xbox, Nintendo, other), for the glyphs.
 Scripts (`padScript`): lines `field port BUTTONS` (names joined by `+`, `none`, or a hex mask;
 `twist=`, `i=`, `ii=`, `l=`), applied from that video field on.
 
-The pads' motors (the gamepads' vibration) shake as the picture does. The game says how hard a hit was,
-in the units `SetShake` shakes the screen by, and the gamepads run at that strength for as long
-(`PortPadRumble` in platform/main.c, `PsxPadRumble` in pad_sdl.c). The jolts come from the game's own
-impact feedback: `SetShake`'s moments (a weapon hit, the quake weapon, a menu landing, the knock of a
-ship that is losing control) and the hits that only sound — `DamageCollide` on the player's ship, so a
-wall or another ship taps the pad (not the pit lane's repair, which is no hit). A jolt that is still
-running keeps its strength and its time: a knock on a wall does not end a rocket's. The pads that
-plugged into the console had no motors; these are the port's own. The debug console's "Controller
-vibration" turns them off (`vibration` of wipeoutxl.ini), and the tests' hidden runs never shake.
+The pads' motors (the gamepads' vibration) shake as the picture does, and growl with the launch thrust
+(`PortPadRumble` and `PortPadRumbleLevel` in platform/main.c, `PsxPadRumble` and `PsxPadRumbleLevel` in
+pad_sdl.c). Both are in the game's own units, 2 a knock that is barely felt to 20 the full strength.
+
+A jolt is a hit. It comes from the game's impact feedback: `SetShake`'s moments (a weapon hit, the quake
+weapon, a menu landing, the knock of a ship that is losing control) and the hits that only sound —
+`DamageCollide` on the player's ship, so a wall or another ship taps the pad (not the pit lane's repair,
+which is no hit). A jolt that is still running keeps its strength and its time: a knock on a wall does
+not end a rocket's.
+
+A level is held: the game says it again every frame it wants the motors at it, and they stop a few fields
+after it stops saying. The one held now is the start's launch thrust (`UpdatePlayerShipStart`): it rises
+with the throttle to the window the start boosts in (5/8 of the ship's top thrust to 6/8, the amounts
+`UpdatePlayerShip` judges at the moment the race starts), is hardest inside it, and falls past it, where
+the start stalls — so the pad says when to let the throttle go. When a jolt and a level both want the
+motors, the stronger runs.
+
+The pads that plugged into the console had no motors; these are the port's own. The debug console's
+"Controller vibration" turns them off (`vibration` of wipeoutxl.ini), and the tests' hidden runs never
+shake.
 
 ## Memory card (libcard.c)
 

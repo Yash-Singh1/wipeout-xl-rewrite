@@ -72,6 +72,10 @@ void PortDisplayShake(int x, int y);
    or 0 to stop them. The pads that plugged into the console had no motors; the port's gamepads shake as the
    picture does. */
 void PortPadRumble(int amount);
+/* The pads' motors held at a level: the game says the level again every frame it wants them running at it
+   (0 stops them), and they stop by themselves a few fields after it stops saying. The launch thrust's
+   growl is this: it rises and falls with the throttle. */
+void PortPadRumbleLevel(int level);
 
 /* The original Wipeout's tracks (platform/original.c), raced as guests in Talon's Reach's slot (trackNum 0,
    folder 1): the ones the player's copy of the original has, their names and classes (XL's: 1 Venom,
