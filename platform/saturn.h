@@ -24,6 +24,16 @@ int SaturnPlayMovie(const char *path);
    in its order. The caller frees. */
 unsigned char *SaturnMakeSamples(const unsigned char *const *blocks, const unsigned int *sizes, int blockCount,
                                  const char *const *names, size_t *size);
+/* Its video memory images and containers (saturn.c): a .vri loaded into a copy of the VDP1 and VDP2 memories and
+   colour RAM (SDL_free it), the memory at a Saturn address; a container's block, unpacked (the caller frees). */
+typedef struct SaturnVideo SaturnVideo;
+SaturnVideo *SaturnLoadVideo(const char *path);
+unsigned char *SaturnVideoAt(SaturnVideo *v, unsigned int address, size_t bytes);
+unsigned char *SaturnBlock(const char *path, int block, size_t *size);
+/* The Saturn's art for one of the PlayStation's TIMs (saturn_art.c), by its name (of a .cmp, its index): its texels
+   (palette indices for depth 0 and 1, colours for 2) and palette. 0 when the Saturn has none. */
+int SaturnArtTim(const char *name, int index, int depth, int w, int h, unsigned short *clut, int clutSize,
+                 unsigned short *texels);
 /* The font (saturn_font.c): the glyphs of a size (16, 12 or 8) drawn into a 4-bit page of 256 rows. */
 void SaturnDrawFont(unsigned char *page, int pageWidth, int size);
 

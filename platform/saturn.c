@@ -672,7 +672,7 @@ static size_t Unpack(const uint8_t *in, size_t length, uint8_t *out, size_t size
 #define VDP1_RAM 0x25C00000u
 #define VDP2_RAM 0x25E00000u
 #define COLOUR_RAM 0x25F00000u
-typedef struct Video {
+typedef struct SaturnVideo {
     uint8_t vdp1[0x80000], vdp2[0x80000], cram[0x1000];
 } Video;
 
@@ -728,6 +728,22 @@ static int LoadVri(Video *v, const char *path)
     return 1;
 }
 
+SaturnVideo *SaturnLoadVideo(const char *path)
+{
+    Video *v = SDL_calloc(1, sizeof(Video));
+
+    if (v && !LoadVri(v, path)) {
+        SDL_free(v);
+        v = NULL;
+    }
+    return v;
+}
+
+unsigned char *SaturnVideoAt(SaturnVideo *v, unsigned int address, size_t bytes)
+{
+    return v ? VideoAt(v, address, bytes) : NULL;
+}
+
 /* A container's block as it is loaded: a PACK chunk is a packed block (u16 unpacked size, u16 packed size). The caller
    frees. */
 static uint8_t *BlockData(const char *path, int block, size_t *size)
@@ -764,6 +780,11 @@ static uint8_t *BlockData(const char *path, int block, size_t *size)
     return out;
 }
 
+unsigned char *SaturnBlock(const char *path, int block, size_t *size)
+{
+    return BlockData(path, block, size);
+}
+
 /* A VDP2 background as 15-bit pixels (the Saturn's colours are laid out as the PlayStation's): a map of 1-word
    pattern names (12 bits of character number, in 0x20-byte units, 4 of palette: 256 colours of colour RAM each),
    8-bit cells of 8x8 from `cells` (the lowest character number of the map is its first). 40x28 cells: 320x224. */
@@ -798,15 +819,64 @@ static void RenderBackground(Video *v, const uint8_t *map, size_t mapSize, uint3
 
 /* ---- stand-ins ---- */
 
-static void PutTim(Buffer *b, const Shape *s)
+/* A TIM of a shape: the Saturn's art for it (saturn_art.c, by the TIM's name and index in its .cmp), else nothing
+   (see-through). */
+static void PutTim(Buffer *b, const Shape *s, const char *name, int index)
 {
     uint8_t head[20];
     int depth = s->a & 7, pixels = s->r2[2] * 2 * s->r2[3];
+    int w = depth == 0 ? s->r2[2] * 4 : depth == 1 ? s->r2[2] * 2 : s->r2[2], h = s->r2[3];
+    int clutSize = (s->a & 8) ? s->r1[2] * s->r1[3] : 0;
     uint8_t *zeros;
+    unsigned short *texels, clut[256];
 
     if (s->a == 15) {
         return; /* an empty one of a sequence */
     }
+    texels = SDL_malloc((size_t)w * h * sizeof(unsigned short) + 1);
+    if (depth <= 2 && clutSize <= 256 && (depth == 2 || clutSize) &&
+        SaturnArtTim(name, index, depth, w, h, clut, clutSize, texels)) {
+        int i;
+
+        PutLe32(head, 0x10);
+        PutLe32(head + 4, (uint32_t)s->a);
+        Put(b, head, 8);
+        if (clutSize) {
+            PutLe32(head, (uint32_t)(12 + clutSize * 2));
+            PutLe16(head + 4, s->r1[0]);
+            PutLe16(head + 6, s->r1[1]);
+            PutLe16(head + 8, s->r1[2]);
+            PutLe16(head + 10, s->r1[3]);
+            Put(b, head, 12);
+            for (i = 0; i < clutSize; i++) {
+                uint8_t c[2];
+
+                PutLe16(c, clut[i]);
+                Put(b, c, 2);
+            }
+        }
+        PutLe32(head, (uint32_t)(12 + pixels));
+        PutLe16(head + 4, s->r2[0]);
+        PutLe16(head + 6, s->r2[1]);
+        PutLe16(head + 8, s->r2[2]);
+        PutLe16(head + 10, s->r2[3]);
+        Put(b, head, 12);
+        zeros = SDL_calloc(1, (size_t)pixels + 1);
+        for (i = 0; i < w * h; i++) {
+            if (depth == 0) {
+                zeros[i / 2] |= (uint8_t)((texels[i] & 15) << (i & 1 ? 4 : 0));
+            } else if (depth == 1) {
+                zeros[i] = (uint8_t)texels[i];
+            } else {
+                PutLe16(zeros + i * 2, texels[i]);
+            }
+        }
+        Put(b, zeros, (size_t)pixels);
+        SDL_free(zeros);
+        SDL_free(texels);
+        return;
+    }
+    SDL_free(texels);
     PutLe32(head, 0x10);
     PutLe32(head + 4, (uint32_t)s->a);
     Put(b, head, 8);
@@ -835,14 +905,15 @@ static void PutTim(Buffer *b, const Shape *s)
     SDL_free(zeros);
 }
 
-/* A file of a shape, nothing in it: images see-through, models without polygons, sounds silent. */
-static void PutStandIn(Buffer *b, const Shape *s)
+/* A file of a shape (`name` its name), nothing in it: images see-through (but for the Saturn's art), models without
+   polygons, sounds silent. */
+static void PutStandIn(Buffer *b, const Shape *s, const char *name)
 {
     int i;
 
     switch (s->kind) {
     case SHAPE_TIM:
-        PutTim(b, s);
+        PutTim(b, s, name, 0);
         break;
     case SHAPE_CMP: {
         Buffer tims = {0};
@@ -855,7 +926,7 @@ static void PutStandIn(Buffer *b, const Shape *s)
         for (i = 0; i < s->count; i++) {
             size_t before = tims.size;
 
-            PutTim(&tims, &s->list[i]);
+            PutTim(&tims, &s->list[i], name, i);
             PutLe32(word, (uint32_t)(tims.size - before));
             Put(b, word, 4);
         }
@@ -905,7 +976,7 @@ static void PutStandIn(Buffer *b, const Shape *s)
         uint8_t count[2];
 
         for (i = 0; i < s->count; i++) {
-            PutStandIn(&parts[i], s->list[i].part);
+            PutStandIn(&parts[i], s->list[i].part, s->list[i].name);
         }
         PutLe16(count, s->count);
         Put(b, count, 2);
@@ -1078,7 +1149,7 @@ static uint8_t *MakeFonts(const char *path, size_t *size)
                 Put(&tims, row, (size_t)w * 2);
             }
         } else {
-            PutTim(&tims, s);
+            PutTim(&tims, s, "drfonts.cmp", i);
         }
         PutLe32(word, (uint32_t)(tims.size - before));
         Put(&out, word, 4);
@@ -1320,7 +1391,7 @@ static uint8_t *MakeTrackWad(int track, size_t *size, uint8_t **texFile, size_t 
             wadShape = ShapeOf(path);
             for (k = 0; wadShape && k < wadShape->count; k++) {
                 if (!strcmp(wadShape->list[k].name, wadParts[i])) {
-                    PutStandIn(&parts[i], wadShape->list[k].part);
+                    PutStandIn(&parts[i], wadShape->list[k].part, wadParts[i]);
                 }
             }
         }
@@ -1429,7 +1500,7 @@ static int Find(const char *path)
         if (shape) {
             Buffer b = {0};
 
-            PutStandIn(&b, shape);
+            PutStandIn(&b, shape, SDL_strrchr(path, '\\') ? SDL_strrchr(path, '\\') + 1 : path);
             printf("saturn.c: %s stands in\n", path);
             return Remember(path, b.data ? b.data : SDL_calloc(1, 1), b.size);
         }
