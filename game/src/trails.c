@@ -38,11 +38,12 @@ void PortFlareCentre(unsigned int handle)
 }
 
 /* Port: a flare's corner, placed in 2D about its centre's projection, recorded where it stands in view space at
-   the centre's depth (a little nearer: the ship's own tail is not to hide it), so that the depth buffer hides it
-   behind what is nearer, and the pictures between two frames move it with the ship. */
+   the centre's depth (the ship's tail: the hull nearer than that hides it, as when the ship is seen from the side;
+   seen from behind, the depth buffer's slack keeps it over the tail), so that the depth buffer hides it behind
+   what is nearer, and the pictures between two frames move it with the ship. */
 static void BindFlareCorner(short *corner, const GtePrecise *centre, int x, int y, int k)
 {
-    double depth = centre->view[2] - 200.0 > centre->view[2] * 0.5 ? centre->view[2] - 200.0 : centre->view[2] * 0.5;
+    double depth = centre->view[2];
     double scale = depth / (double)(u_short)GteReadControl(26);
     int    dx = corner[0] - x, dy = corner[1] - y;
     uint32_t handle;
