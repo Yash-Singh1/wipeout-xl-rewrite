@@ -74,7 +74,7 @@ void PcRaceHud(ShipData *ships, int choice, ConfigData *config, int position)
 {
     ShipData *player = &ships[ownShip];
     int laps = classLaps[config->shipClass], row = lapTimeRows[config->shipClass];
-    int racingCount = 0, speed, lap, i;
+    int racingCount = 0, speed, lap, track, i;
     short autopilot;
     char text[96];
 
@@ -135,9 +135,9 @@ void PcRaceHud(ShipData *ships, int choice, ConfigData *config, int position)
         PcCentreText("PERFECT LAP", 120, 160, 8, 0);
     }
     if (trackNameScroll > -480 && cdMusicCount != 0) {
-        lap = cdMusicTrack != 0 ? cdMusicTrack - 1 : 0;
-        snprintf(text, sizeof(text), "CD TRACK: %d   %s [%s]", cdMusicTrack, GetCdTrackName(lap),
-                 (char *)GetCdTrackArtist(lap));
+        track = cdMusicTrack != 0 ? cdMusicTrack - 1 : 0;
+        snprintf(text, sizeof(text), "CD TRACK: %d   %s [%s]", cdMusicTrack, GetCdTrackName(track),
+                 GetCdTrackArtist(track));
         PcPrint(text, 16, (trackNameOffset >> 2) + 227, 0, 0);
     }
     for (i = 0; i < 15; i++) {
@@ -164,8 +164,8 @@ void PcRaceHud(ShipData *ships, int choice, ConfigData *config, int position)
     PcAddJustifyNumber(speed / 95, 250, 168, 16, 0);
 }
 
-/* A bar of the speedometer from its page: as long as `length` along its top edge, as `bottom` along its bottom one (its
-   end slanted as the panel is), and the energy's the other way round (its top edge the shorter: bottom < length). */
+/* A bar of the speedometer from its page (row v on): `top` long along its top edge, `bottom` along its bottom one, its
+   end slanted as the panel's is. */
 static void SpeedoBar(int x, int y, int v, int top, int bottom, float depth)
 {
     POLY_FT4 bar;
@@ -292,7 +292,8 @@ void PcDisplayRaceInfo(ConfigData *config, HiScoreData *score, ShipData *ships)
     }
     if (raceEndState != 2) {
         if ((raceType == 0 || raceType == 4) && finishPosition <= 3) {
-            DrawTeamShips(80, 0, 150, cardNum, 0, teamShip[0]);
+            /* Port: where the console's projection shows it (the PC's own, 80, 0, 150, is for its projection) */
+            DrawTeamShips(70, 0, 180, cardNum, 0, teamShip[0]);
         }
         PcAddText("RACE TIME", 15, 180, 8, 1);
         PcAddTime(raceType == 0 || raceType == 4 || raceType == 1 ? score->totalTime : total, 128, 180, 8, 0, 1);

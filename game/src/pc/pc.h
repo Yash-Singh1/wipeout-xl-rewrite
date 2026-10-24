@@ -74,6 +74,8 @@ void PcCentreText2(const char *text, int x, int y, int size, int colour);
 void PcAddTime(int time, int x, int y, int size, int colour, u_char flags);
 void PcPrint(const char *text, int x, int y, int colour, int extendedSpacing);
 void PcPrintCX(const char *text, int x, int y, int colour);
+/* The width of a text in the console's columns, in the font of that size (AddText's). */
+int PcTextWidth(const char *text, int size);
 void PcSetTextQuad(POLY_FT4 *quad, short x, short y, u_char u, u_char v, u_char width, u_char height, short tpage,
                    int colour);
 extern float pcTextDepth; /* the PC's textDepth */

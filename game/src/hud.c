@@ -4,9 +4,11 @@
 #include "ayrace.h"
 #include "include_asm_g8.h"
 
-/* Port: the PC version's text in place of the console's (pc/pctext.c), in its sizes and colours: the console's 12-line
-   font is the PC's 8-line one (as the PC's code has it where the console's has 12: the results, the warnings), the
-   console's own colour (1) the PC's white (0) and its other colour the PC's yellow (1). */
+/* Port: the PC version's text in place of the console's (pc/pctext.c), in its sizes and colours. Its letters are of
+   one size, 8 (its code has 8 where the console's has 12 or 16: the results, the warnings, the hall of fame), its
+   digits of two, 8 and 16 (the console's 12 is its 8); the console's own colour (1) is the PC's white (0), its other
+   colour the PC's yellow (1). */
+#define PC_TEXT_SIZE 8
 #define PC_SIZE(size) ((size) == 12 ? 8 : (size))
 #define PC_COLOUR(colour) ((colour) == 1 ? 0 : 1)
 
@@ -524,7 +526,7 @@ void AddTime(int time, int x, int y, int size, int colour, unsigned char flags)
 void AddText(unsigned char *textPointer, int x, int y, int size, int colour)
 {
     if (PortPcData()) {
-        PcAddText((const char *)textPointer, x, y, PC_SIZE(size), PC_COLOUR(colour)); /* Port: see PC_SIZE */
+        PcAddText((const char *)textPointer, x, y, PC_TEXT_SIZE, PC_COLOUR(colour)); /* Port: see PC_SIZE */
         return;
     }
     unsigned char *text = textPointer;
@@ -714,8 +716,9 @@ void AddDelEnd(unsigned char isDelete, int x, int y, int height, int colour)
     int       quadOffset;
 
     if (PortPcData()) {
-        /* Port: the PC version has no such signs (its names are typed): its text (pc/pctext.c) */
-        PcAddText(isDelete ? "DEL" : "END", x, y, height, PC_COLOUR(colour));
+        /* Port: the PC version has no such signs (its names are typed): its text (pc/pctext.c). The sign the name entry
+           asks for with 1 ends the name, with 0 deletes a letter (EnterHighScore). */
+        PcAddText(isDelete ? "END" : "DEL", x, y, PC_TEXT_SIZE, PC_COLOUR(colour));
         return;
     }
     quad->y0 = y; quad->y1 = y;
@@ -800,7 +803,7 @@ void CentreText(unsigned char *text, int unusedX, int yInput, int sizeInput, int
 {
     if (PortPcData()) {
         /* Port: see PC_SIZE */
-        PcCentreText((const char *)text, unusedX, yInput, PC_SIZE(sizeInput), PC_COLOUR(colour));
+        PcCentreText((const char *)text, unusedX, yInput, PC_TEXT_SIZE, PC_COLOUR(colour));
         return;
     }
     short         textWidth = 0;
@@ -876,7 +879,7 @@ void CentreText(unsigned char *text, int unusedX, int yInput, int sizeInput, int
 void CentreText2(unsigned char *text, int x, int y, int size, int colour)
 {
     if (PortPcData()) {
-        PcCentreText2((const char *)text, x, y, PC_SIZE(size), PC_COLOUR(colour)); /* Port: see PC_SIZE */
+        PcCentreText2((const char *)text, x, y, PC_TEXT_SIZE, PC_COLOUR(colour)); /* Port: see PC_SIZE */
         return;
     }
     short         textWidth = 0;

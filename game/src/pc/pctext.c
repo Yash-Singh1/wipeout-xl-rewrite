@@ -121,6 +121,11 @@ static int Width(const char *text, const PcFontGlyph *font)
     return width;
 }
 
+int PcTextWidth(const char *text, int size)
+{
+    return Width(text, Font(size));
+}
+
 static void Text(const char *text, int x, int y, int size, int colour)
 {
     const PcFontGlyph *font = Font(size);
