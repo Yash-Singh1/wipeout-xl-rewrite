@@ -1094,6 +1094,23 @@ static uint8_t *MakePicture(const char *path, size_t *size)
     return tim;
 }
 
+/* The title screen's picture, 320 x 224 of 15-bit colours. */
+int SaturnTitlePicture(unsigned short *pixels)
+{
+    Video *v = SDL_calloc(1, sizeof(Video));
+    size_t mapSize;
+    uint8_t *map;
+
+    LoadVri(v, europe ? "art\\title\\title2.vri" : "art\\title\\title.vri");
+    map = BlockData(europe ? "art\\title\\title2.rbh" : "art\\title\\title.rbh", 0, &mapSize);
+    if (map) {
+        RenderBackground(v, map, mapSize, 0x25E6E000u, pixels);
+    }
+    SDL_free(map);
+    SDL_free(v);
+    return map != NULL;
+}
+
 /* ---- the font ---- */
 
 /* drfonts.cmp: the three sizes of letters in their TIMs (the first three; the rest stand in), white and, the fifth's
@@ -1193,6 +1210,58 @@ static uint8_t *MakeSounds(const char *path, size_t *size)
     wad = SaturnMakeSamples(b.data, b.size, b.count, names, size);
     SDL_free(b.file);
     return wad;
+}
+
+/* ---- the menus' boxes ---- */
+
+/* menu.dat: the outlined boxes of the menus' screens (menus.c draws a box's four edges, white, and highlights the
+   selected item's box when it is active), 24 menus of 20 boxes (corners, each edge a LINE_F2 per screen buffer,
+   whether active), then the menu's number of boxes. The Saturn's menus are its own: these are the boxes the game's
+   menus place their items in. */
+static const struct {
+    unsigned char menu;
+    short x0, y0, x1, y1;
+    unsigned char active;
+} menuBoxes[] = {
+    {0, 21, 82, 111, 179, 1},   {0, 111, 82, 209, 179, 1},  {0, 209, 82, 306, 179, 1},  {0, 21, 179, 306, 196, 1},
+    {0, 112, 196, 209, 214, 1}, {0, 21, 169, 307, 179, 1},  {1, 146, 120, 146, 120, 0}, {1, 163, 82, 306, 179, 0},
+    {2, 160, 120, 160, 120, 0}, {2, 20, 82, 114, 179, 0},   {2, 114, 82, 306, 179, 0},  {2, 21, 179, 114, 196, 0},
+    {4, 148, 82, 306, 179, 0},  {9, 160, 120, 160, 120, 0}, {9, 21, 143, 113, 179, 1},  {9, 113, 143, 208, 179, 0},
+    {9, 208, 143, 306, 179, 1}, {9, 113, 179, 163, 196, 0}, {9, 163, 179, 208, 196, 0}, {9, 163, 179, 306, 188, 0},
+    {12, 21, 179, 125, 188, 0}, {12, 197, 179, 306, 188, 0}, {21, 21, 82, 115, 179, 1}, {21, 115, 82, 210, 179, 1},
+    {21, 210, 82, 306, 179, 1}, {21, 21, 168, 306, 179, 1}};
+#define MENU_BOX 140
+#define MENU_LAYOUT (20 * MENU_BOX + 8)
+
+static uint8_t *MakeMenuLayout(const char *path, size_t *size)
+{
+    uint8_t *out;
+    int counts[24] = {0}, i, edge;
+
+    if (strcmp(path, "\\wipeout2\\common\\menu.dat")) {
+        return NULL;
+    }
+    out = SDL_calloc(1, 24 * MENU_LAYOUT);
+    for (i = 0; i < (int)SDL_arraysize(menuBoxes); i++) {
+        int menu = menuBoxes[i].menu;
+        uint8_t *box = out + menu * MENU_LAYOUT + counts[menu] * MENU_BOX;
+
+        PutLe16(box, menuBoxes[i].x0);
+        PutLe16(box + 2, menuBoxes[i].y0);
+        PutLe16(box + 4, menuBoxes[i].x1);
+        PutLe16(box + 6, menuBoxes[i].y1);
+        for (edge = 0; edge < 8; edge++) {
+            PutLe32(box + 8 + edge * 16, 3u << 24); /* LINE_F2: 3 words */
+            box[8 + edge * 16 + 7] = 0x40;
+        }
+        PutLe16(box + 136, menuBoxes[i].active);
+        counts[menu]++;
+    }
+    for (i = 0; i < 24; i++) {
+        PutLe32(out + i * MENU_LAYOUT + 20 * MENU_BOX + 4, (uint32_t)counts[i]);
+    }
+    *size = 24 * MENU_LAYOUT;
+    return out;
 }
 
 /* ---- the checkpoints ---- */
@@ -1332,6 +1401,19 @@ static const char *const wadParts[] = {"track.trv", "track.trf", "track.trs", "t
                                        "library.ttf", "scene.cmp", "sky.cmp", "scene.prm", "sky.prm"};
 #define WAD_PARTS ((int)SDL_arraysize(wadParts))
 
+/* TMPMODELS: a file of a directory (development) */
+static uint8_t *TmpFile(const char *relative, size_t *size)
+{
+    const char *dir = SDL_getenv("WIPEOUT_SATURN_FILES");
+    char full[512];
+
+    if (!dir) {
+        return NULL;
+    }
+    SDL_snprintf(full, sizeof(full), "%s/%s", dir, relative);
+    return SDL_LoadFile(full, size);
+}
+
 /* A part of a wad the borrowed disc has (its own track's), the caller frees. */
 static uint8_t *BorrowedWadPart(int track, const char *name, size_t *size)
 {
@@ -1382,7 +1464,14 @@ static uint8_t *MakeTrackWad(int track, size_t *size, uint8_t **texFile, size_t 
     FreeCourse(&c);
     for (i = 6; i < WAD_PARTS; i++) {
         size_t length = 0;
-        uint8_t *part = BorrowedWadPart(track, wadParts[i], &length);
+        char relative[64];
+        uint8_t *part;
+
+        SDL_snprintf(relative, sizeof(relative), "track%02d/%s", track, wadParts[i]);
+        part = TmpFile(relative, &length);
+        if (!part) {
+            part = BorrowedWadPart(track, wadParts[i], &length);
+        }
 
         if (part) {
             Put(&parts[i], part, length);
@@ -1492,6 +1581,12 @@ static int Find(const char *path)
         }
         if (!data) {
             data = MakeSounds(path, &size);
+        }
+        if (!data) {
+            data = MakeMenuLayout(path, &size);
+        }
+        if (!data && SDL_strrchr(path, '\\')) {
+            data = TmpFile(SDL_strrchr(path, '\\') + 1, &size);
         }
 
         if (data) {

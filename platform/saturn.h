@@ -36,6 +36,8 @@ unsigned char *SaturnBlock(const char *path, int block, size_t *size);
    (palette indices for depth 0 and 1, colours for 2) and palette. 0 when the Saturn has none. */
 int SaturnArtTim(const char *name, int index, int depth, int w, int h, unsigned short *clut, int clutSize,
                  unsigned short *texels);
+/* The title screen's picture (saturn.c), 320 x 224 15-bit colours. */
+int SaturnTitlePicture(unsigned short *pixels);
 /* A glyph of the PlayStation's font (A-Z, 0-9, ':', '.') as the Saturn's HUD draws it (saturn_art.c), white RGBA, its
    big letters (16 lines) or small (8). */
 int SaturnFontGlyph(int glyph, int small, unsigned int *rgba, int w, int h);
