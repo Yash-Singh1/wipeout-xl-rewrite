@@ -881,7 +881,9 @@ static void Vertex(GpuVertex *v, uint32_t xy, const GtePrecise *precise)
         precise = &moved; /* between the frame before and this one */
     }
     if (precise) {
-        v->x = precise->x + (float)state.offsetX;
+        /* (one placed on the screen without a depth, a corner of the PC version's 2D (game/src/pc/pcdraw.c), goes
+           with the HUD element it belongs to) */
+        v->x = precise->x + (float)state.offsetX + (precise->z == 0.0f ? hudShift : 0.0f);
         v->y = precise->y + (float)state.offsetY;
         v->w = precise->z;
         v->a = (uint8_t)(precise->fade * 255.0f + 0.5f);

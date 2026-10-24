@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "pc.h"
+#include "../../include/port_platform.h"
 #include "../../../platform/psx/gte.h"
 
 
@@ -24,6 +25,8 @@ static struct {
     int entry;
 } made[MAX_PRIMS];
 static int madeCount;
+static int centredFrom = -1; /* PcCentred: where in the pool the packets to stay in place begin */
+static int blinkFrame;       /* the PC's blinkFrame (display.c): sixtieths of a second */
 
 u_short PcTPage(int page, int abr)
 {
@@ -130,6 +133,21 @@ void PcDrawPacket(float depth, const void *packet, int bytes)
     }
 }
 
+void PcCentred(int on)
+{
+    if (on) {
+        centredFrom = poolUsed[CurrentScreen];
+    } else if (centredFrom >= 0) {
+        PortHudCentred(pool[CurrentScreen] + centredFrom, pool[CurrentScreen] + poolUsed[CurrentScreen]);
+        centredFrom = -1;
+    }
+}
+
+int PcBlink(void)
+{
+    return blinkFrame % 30 < 20;
+}
+
 void PcDrawEndFrame(void)
 {
     int i;
@@ -139,5 +157,6 @@ void PcDrawEndFrame(void)
         AddPrim(OT2[CurrentScreen] + made[i].entry, made[i].prim);
     }
     madeCount = 0;
+    blinkFrame += 2; /* (a frame is two fields) */
     poolUsed[CurrentScreen ^ 1] = 0; /* the next frame's (the other screen's, two frames old) */
 }
