@@ -34,7 +34,7 @@ extern "C" {
 
 static SDL_Window *window;
 static ImGuiStyle baseStyle; /* the style at a scale of 1 (FitToWindow) */
-static bool ready, open;
+static bool ready, consoleOpen;
 static char saveDirEdit[1024];
 static char originalEdit[1024];     // the original Wipeout's disc image or folder, as typed or chosen
 static char originalMessage[300];   // what opening it found
@@ -99,7 +99,7 @@ extern "C" void DebugUiShutdown(void)
 
 extern "C" void DebugUiShowRecorder(void)
 {
-    open = true;
+    consoleOpen = true;
     showRecorder = true;
     // tests: WIPEOUT_FRAMECAP_PICK=x,y picks a pixel of the newest shown frame
     const char *pick = SDL_getenv("WIPEOUT_FRAMECAP_PICK");
@@ -130,12 +130,12 @@ extern "C" void DebugUiTab(void)
 
 extern "C" int DebugUiOpen(void)
 {
-    return ready && open;
+    return ready && consoleOpen;
 }
 
 extern "C" void DebugUiSetOpen(int on)
 {
-    open = ready && on;
+    consoleOpen = ready && on;
 }
 
 extern "C" int DebugUiEvent(const SDL_Event *event)
@@ -144,14 +144,14 @@ extern "C" int DebugUiEvent(const SDL_Event *event)
         return 0;
     }
     if (event->type == SDL_EVENT_KEY_DOWN && event->key.scancode == SDL_SCANCODE_GRAVE && !event->key.repeat) {
-        open = !open;
+        consoleOpen = !consoleOpen;
         return 1;
     }
     if (event->type == SDL_EVENT_KEY_DOWN && event->key.scancode == SDL_SCANCODE_TAB && !event->key.repeat) {
         DebugUiTab();
         return 1;
     }
-    if (!open) {
+    if (!consoleOpen) {
         return 0;
     }
     ImGui_ImplSDL3_ProcessEvent(event);
@@ -244,7 +244,7 @@ static float RecordedSeconds(void)
 // While a RECORD_WITH_TAB recording is made (and a while after it stops), with the console closed: in the corner.
 static bool RecorderNoteWanted(void)
 {
-    return !open && (FrameCapTaking() || (recordingStopped && SDL_GetTicks() - recordingStopped < 4000));
+    return !consoleOpen && (FrameCapTaking() || (recordingStopped && SDL_GetTicks() - recordingStopped < 4000));
 }
 
 static void RecorderNote(void)
@@ -1730,7 +1730,7 @@ static void Console(void)
     // see-through: the game goes on behind it
     ImGui::SetNextWindowBgAlpha(0.8f);
     float width = 720 * ImGui::GetIO().FontGlobalScale;
-    if (!ImGui::Begin("Wipeout XL debug console   (~ closes it)", &open,
+    if (!ImGui::Begin("Wipeout XL debug console   (~ closes it)", &consoleOpen,
                       ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
                           ImGuiWindowFlags_NoSavedSettings)) {
         ImGui::End();
@@ -1933,7 +1933,7 @@ extern "C" void DebugUiRender(void)
         return;
     }
     Rates();
-    if (!open && !portSettings.showFps && !RecorderNoteWanted() && !TouchShown()) {
+    if (!consoleOpen && !portSettings.showFps && !RecorderNoteWanted() && !TouchShown()) {
         return;
     }
     int width, height;
@@ -1948,7 +1948,7 @@ extern "C" void DebugUiRender(void)
     if (RecorderNoteWanted()) {
         RecorderNote();
     }
-    if (open) {
+    if (consoleOpen) {
         Console();
     }
     TouchDraw();
