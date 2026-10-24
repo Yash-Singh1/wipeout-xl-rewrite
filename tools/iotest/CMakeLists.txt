@@ -22,3 +22,28 @@ foreach(t spu_oracle adpcm adsr voice reverb disc cd cdda music pad card libspu 
         set_tests_properties(${t} PROPERTIES ENVIRONMENT "SDL_AUDIODRIVER=dummy;WIPEOUT_NO_GAMEPAD=1")
     endif()
 endforeach()
+
+# Disc-image conversion by itself: no psxio link, and generated fixtures need no game disc. The first build
+# exercises CHD's raw-DEFLATE fallback; the other uses zlib when it is present.
+if(NOT TARGET SDL3::SDL3)
+    find_package(SDL3 CONFIG QUIET)
+endif()
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(TARGET SDL3::SDL3 AND Python3_Interpreter_FOUND)
+    set(CHD_SOURCES chd_decode.c ../../platform/chd.c
+        ../../platform/third_party/lzma/LzmaDec.c ../../platform/third_party/lzma/7zAlloc.c)
+    add_executable(chd_decode ${CHD_SOURCES})
+    target_include_directories(chd_decode PRIVATE ../../platform)
+    target_compile_options(chd_decode PRIVATE -Wall -Wextra)
+    target_link_libraries(chd_decode PRIVATE SDL3::SDL3)
+    add_test(NAME chd COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_chd.py $<TARGET_FILE:chd_decode>)
+    find_package(ZLIB QUIET)
+    if(ZLIB_FOUND)
+        add_executable(chd_decode_zlib ${CHD_SOURCES})
+        target_include_directories(chd_decode_zlib PRIVATE ../../platform)
+        target_compile_definitions(chd_decode_zlib PRIVATE PORT_HAVE_ZLIB)
+        target_compile_options(chd_decode_zlib PRIVATE -Wall -Wextra)
+        target_link_libraries(chd_decode_zlib PRIVATE SDL3::SDL3 ZLIB::ZLIB)
+        add_test(NAME chd_zlib COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_chd.py $<TARGET_FILE:chd_decode_zlib>)
+    endif()
+endif()

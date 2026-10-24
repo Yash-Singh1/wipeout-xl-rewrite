@@ -36,12 +36,15 @@ real game.
 ## What you need
 
 - Your copy of the PlayStation disc (Wipeout XL USA, or WipEout 2097 Europe):
-  a `.cue` with its `.bin` tracks, a `.bin` without its `.cue`, or an archive
-  of either (`.7z`, `.zip`, `.rar`, `.tar`, `.gz` and the like). Older copies
+  a `.cue` with its `.bin` or WAV tracks, a `.bin` without its `.cue`, a
+  `.chd`, or an archive of an image (`.7z`, `.zip`, `.rar`, `.tar`, `.gz` and the like). Older copies
   with the data track packed with ECM (`.bin.ecm`) and the music tracks in
   Monkey's Audio (`.ape`) work too, in an archive or as they are (choose the
-  `.ecm`). The music plays from the disc's audio tracks, the intro and ending
-  movies from its movie files.
+  `.ecm`). A version 5 CD CHD is converted once to a raw bin/cue pair in the
+  user's data folder, like ECM. CD ZLIB, LZMA and FLAC, and the general ZLIB,
+  LZMA and Huffman codecs work; parent-dependent images, older CHD versions
+  and non-CD images do not. The music plays from the disc's audio tracks,
+  the intro and ending movies from its movie files.
 - Or the Sega Saturn's disc (Wipeout XL Japan, or WipEout 2097 Europe), in
   the same forms. The game is the PlayStation's, made from the Saturn's data:
   its tracks, scenery, ships, HUD, menus' art, font, sounds, music (Cold

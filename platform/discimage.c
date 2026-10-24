@@ -11,12 +11,14 @@
    built with it). Copies kept as discs were about 2009 are taken as they come: archives in the archive are unpacked
    too, a track packed with ECM (".bin.ecm", ecm.c) or in Monkey's Audio (".ape", ape.c) is made its .bin again,
    and a .cue naming them is made to name the .bins. Such a data track chosen by itself (its .ecm, or a .cue naming
-   its .bin when only the .ecm is there) is made a .bin in the user's data folder, with the .ape tracks beside it. */
+   its .bin when only the .ecm is there) is made a .bin in the user's data folder, with the .ape tracks beside it.
+   A version 5 CD CHD is made a raw .bin and .cue there too (chd.c), once, with the same note and progress. */
 #include <SDL3/SDL.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "ape.h"
+#include "chd.h"
 #include "discimage.h"
 #include "ecm.h"
 #include "psx/disc.h"
@@ -64,12 +66,11 @@ static int IsArchiveName(const char *name)
 
 int PortIsDiscName(const char *name)
 {
-    return HasExtension(name, "cue") || HasExtension(name, "bin") || HasExtension(name, "img") || HasExtension(name, "ecm") ||
-           IsArchiveName(name);
+    return HasExtension(name, "cue") || HasExtension(name, "bin") || HasExtension(name, "img") ||
+           HasExtension(name, "ecm") || HasExtension(name, "chd") || IsArchiveName(name);
 }
 
-enum { NOT_ARCHIVE, ARCHIVE_7Z, ARCHIVE_OTHER, ECM_TRACK /* (a data track packed with ECM: made a .bin like an archive's
-                                                              image is extracted) */ };
+enum { NOT_ARCHIVE, ARCHIVE_7Z, ARCHIVE_OTHER, CHD_IMAGE, ECM_TRACK };
 
 /* What the file's first bytes say it is; a file that cannot be read goes by its name. */
 static int ArchiveKind(const char *path)
@@ -83,13 +84,16 @@ static int ArchiveKind(const char *path)
         {0, 4, "PK\x05\x06", ARCHIVE_OTHER},       {0, 6, "Rar!\x1A\x07", ARCHIVE_OTHER},
         {0, 2, "\x1F\x8B", ARCHIVE_OTHER},         {0, 3, "BZh", ARCHIVE_OTHER},
         {0, 6, "\xFD" "7zXZ\0", ARCHIVE_OTHER},    {0, 4, "\x28\xB5\x2F\xFD", ARCHIVE_OTHER},
-        {257, 5, "ustar", ARCHIVE_OTHER},
+        {257, 5, "ustar", ARCHIVE_OTHER},          {0, 8, "MComprHD", CHD_IMAGE},
     };
     unsigned char head[264];
     size_t got = 0, i;
     FILE *f = path ? fopen(path, "rb") : NULL;
 
     if (!f) {
+        if (path && HasExtension(path, "chd")) {
+            return CHD_IMAGE;
+        }
         return path && IsArchiveName(path) ? (HasExtension(path, "7z") ? ARCHIVE_7Z : ARCHIVE_OTHER) : NOT_ARCHIVE;
     }
     got = fread(head, 1, sizeof(head), f);
@@ -689,6 +693,17 @@ static void RenameInCue(const char *path)
     SDL_free(text);
 }
 
+/* A CD CHD, made its .bin and .cue in folder. */
+static int UnpackChd(const char *path, const char *folder, char *message, size_t messageSize)
+{
+    char bin[2200], cue[2200];
+
+    SDL_snprintf(bin, sizeof(bin), "%sdisc.bin", folder);
+    SDL_snprintf(cue, sizeof(cue), "%sdisc.cue", folder);
+    MakeFolders(bin);
+    return PortChdDecode(path, bin, cue, Progress, message, messageSize);
+}
+
 /* In folder (extracted): the archives in it unpacked where they are (twice over at most), then its .ecm and .ape
    tracks made .bins, and its .cues made to name them. */
 static int UnpackOldCopy(const char *folder, char *message, size_t messageSize)
@@ -711,8 +726,13 @@ static int UnpackOldCopy(const char *folder, char *message, size_t messageSize)
                 continue;
             }
             SDL_snprintf(dir, sizeof(dir), "%.*s", (int)(NameOf(path) - path), path);
-            ok = kind == ARCHIVE_7Z ? Extract7z(path, dir, message, messageSize)
-                                    : ExtractOther(path, dir, message, messageSize);
+            if (kind == CHD_IMAGE) {
+                SDL_snprintf(dir, sizeof(dir), "%s.unpacked/", path);
+                ok = UnpackChd(path, dir, message, messageSize);
+            } else {
+                ok = kind == ARCHIVE_7Z ? Extract7z(path, dir, message, messageSize)
+                                       : ExtractOther(path, dir, message, messageSize);
+            }
             SDL_RemovePath(path);
             found = 1;
         }
@@ -858,6 +878,7 @@ static int ArchiveImage(const char *archive, int kind, char *cue, size_t cueSize
     Remove(folder);
     Progress(0);
     ok = kind == ARCHIVE_7Z     ? Extract7z(archive, folder, message, messageSize)
+         : kind == CHD_IMAGE ? UnpackChd(archive, folder, message, messageSize)
          : kind == ECM_TRACK ? UnpackLoose(archive, folder, message, messageSize)
                              : ExtractOther(archive, folder, message, messageSize);
     ok = ok && UnpackOldCopy(folder, message, messageSize);
