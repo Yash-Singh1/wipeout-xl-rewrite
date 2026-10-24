@@ -26,6 +26,8 @@
 #define VIRTUAL_LOC 0x68000000 /* the sectors the files are read at: beyond any disc, apart from saturn.c's */
 #define VIRTUAL_SPAN 0x1000
 
+static void PutLe32(uint8_t *p, uint32_t v);
+
 static int checked;
 static int pc;              /* the PC version's files are in use */
 static char folder[1024];   /* ... from this folder (else the disc image) */
@@ -103,10 +105,56 @@ int PortPcFolderIs(const char *path)
            !FolderPath(path, "WIPEOUT2", found, sizeof(found));
 }
 
-void PortPcUseFolder(const char *path)
+int PortPcUseFolder(const char *path, char *disc, size_t discSize, char *message, size_t messageSize)
 {
+    /* an ISO 9660 volume with an empty root: 16 sectors of nothing, its descriptor, the set's end, the root */
+    static uint8_t image[19 * 2048];
+    char *base = SDL_GetPrefPath("Psygnosis", "WipeoutXL");
+    uint8_t *pvd = image + 16 * 2048, *root = image + 18 * 2048;
+    int i;
+
+    memset(image, 0, sizeof(image));
+    pvd[0] = 1;
+    memcpy(pvd + 1, "CD001", 5);
+    pvd[6] = 1;
+    memcpy(pvd + 40, "WIPEOUT XL PC FOLDER            ", 32);
+    PutLe32(pvd + 80, 19); /* the volume's sectors */
+    pvd[120] = pvd[123] = 1;               /* one volume in the set, this one */
+    pvd[128] = 0x00, pvd[129] = 0x08;      /* 2048-byte blocks */
+    for (i = 0; i < 2; i++) {
+        /* the root's record in the descriptor, and its "." and ".." */
+        uint8_t *record = i == 0 ? pvd + 156 : root;
+        int k;
+
+        for (k = 0; k < (i == 0 ? 1 : 2); k++, record += 34) {
+            record[0] = 34;
+            PutLe32(record + 2, 18);
+            PutLe32(record + 10, 2048);
+            record[25] = 2; /* a directory */
+            record[28] = 1;
+            record[32] = 1;
+            record[33] = (uint8_t)k;
+        }
+    }
+    image[17 * 2048] = 255;
+    memcpy(image + 17 * 2048 + 1, "CD001", 5);
+    image[17 * 2048 + 6] = 1;
+    if (portConfig.hidden && portConfig.savePath) {
+        /* (tests: beside their saves, not in the player's folder) */
+        SDL_snprintf(disc, discSize, "%s/pc-folder.iso", portConfig.savePath);
+    } else {
+        SDL_snprintf(disc, discSize, "%sdiscs", base ? base : "./");
+        SDL_CreateDirectory(disc);
+        SDL_snprintf(disc, discSize, "%sdiscs/pc-folder.iso", base ? base : "./");
+    }
+    SDL_free(base);
+    if (!SDL_SaveFile(disc, image, sizeof(image))) {
+        SDL_snprintf(message, messageSize, "Could not write %s: %s", disc, SDL_GetError());
+        return 0;
+    }
     SDL_strlcpy(folder, path, sizeof(folder));
     checked = 0;
+    return 1;
 }
 
 static void Check(void)

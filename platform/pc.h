@@ -15,8 +15,10 @@ struct Disc;
 int PortPcDiscIs(const struct Disc *disc);
 /* Whether a folder holds them (the CD's files copied, or an installed copy with them). */
 int PortPcFolderIs(const char *path);
-/* Uses the PC version's files in a folder from now on (no disc image: the game plays without music). */
-void PortPcUseFolder(const char *path);
+/* Uses the PC version's files in a folder from now on, the game playing without music: an empty disc image (a data
+   track with nothing on it) is made in the user's data folder to stand in for the CD, its path into disc. 0 (and
+   why, into message) when it cannot be. */
+int PortPcUseFolder(const char *path, char *disc, size_t discSize, char *message, size_t messageSize);
 /* Whether the PC version's files are in use (the disc in use, or a folder given). */
 int PortPcData(void);
 /* The PC version's name, for the debug console. */

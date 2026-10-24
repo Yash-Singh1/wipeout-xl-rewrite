@@ -359,7 +359,11 @@ int main(int argc, char **argv)
 
         for (;;) {
             image.path = portConfig.discPath;
-            if (PortIsArchive(image.path) && !portConfig.hidden) {
+            if (PortPcFolderIs(image.path)) {
+                /* the PC CD-ROM version's files in a folder (pc.c): an empty disc stands in for its CD */
+                image.ok = PortPcUseFolder(image.path, image.result, sizeof(image.result), image.message,
+                                           sizeof(image.message));
+            } else if (PortIsArchive(image.path) && !portConfig.hidden) {
                 RunShowing(ImageJob, &image, "Unpacking the disc image (only this once)...", PortArchiveProgress);
             } else {
                 ImageJob(&image);
@@ -373,7 +377,7 @@ int main(int argc, char **argv)
                 /* ... and it is the game: the sound bank of its \WIPEOUT2 tree (on the disc of every release:
                    region.c's two, the Japanese and the prototype's), the Sega Saturn disc (saturn.c), or the PC
                    CD-ROM version's (pc.c). */
-                image.ok = disc && (PortSaturnDiscIs(disc) || PortPcDiscIs(disc) ||
+                image.ok = disc && (PortSaturnDiscIs(disc) || PortPcDiscIs(disc) || PortPcData() ||
                                     DiscFindFile(disc, "\\WIPEOUT2\\SOUND\\SAMPLES.WAD", &lba, &size));
                 if (disc && !image.ok) {
                     SDL_snprintf(image.message, sizeof(image.message),

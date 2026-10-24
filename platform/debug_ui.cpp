@@ -1155,6 +1155,13 @@ static void UseDisc(const char *path)
     char cue[1200];
 
     SDL_strlcpy(discEdit, path, sizeof(discEdit));
+    if (PortPcFolderIs(path)) {
+        // the PC CD-ROM version's files in a folder (pc.c): used as they are
+        SDL_strlcpy(portSettings.discPath, path, sizeof(portSettings.discPath));
+        Changed();
+        discMessage[0] = 0;
+        return;
+    }
     if (StartUnpack(path, UNPACK_XL, discMessage)) {
         return;
     }
@@ -1233,7 +1240,8 @@ static void XlDisc(void)
     }
     ImGui::TextUnformatted("Wipeout XL disc image");
     ImGui::TextWrapped("Wipeout XL (USA) or WipEout 2097 (Europe) for the PlayStation, or Wipeout XL (Japan) or WipEout "
-                       "2097 (Europe) for the Sega Saturn or the PC CD-ROM: a .cue, a .bin, or an archive of them.");
+                       "2097 (Europe) for the Sega Saturn or the PC CD-ROM: a .cue, a .bin, an .iso, or an archive of "
+                       "them; the PC CD-ROM's files may be a folder too.");
     ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "In use: %s",
                        PortSaturnDisc() ? PortSaturnTitle()
                        : PortPcData()   ? PortPcTitle()
@@ -1241,6 +1249,10 @@ static void XlDisc(void)
     UnpackProgress(UNPACK_XL);
     if (ImGui::Button("Browse...##disc")) {
         PickerOpen(&discPicker, false, discEdit);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("... or a folder##disc")) {
+        PickerOpen(&discPicker, true, discEdit); // (the PC CD-ROM's files copied)
     }
     ImGui::SameLine();
     ImGui::SetNextItemWidth(-ImGui::CalcTextSize("Use this").x - ImGui::GetStyle().ItemSpacing.x -
