@@ -28,13 +28,25 @@ EM_JS(const uint8_t *, WebDiscFile, (const char *path, size_t *size), {
 typedef struct DiscFile {
     const uint8_t *data;
     size_t size;
-    size_t offset;   /* the PCM payload of a WAV (0 for a raw file); data and size keep the whole mapping */
+    size_t offset;   /* where the sectors start: the PCM payload of a WAV, a track in an .mdf (0 for a raw file);
+                        data and size keep the whole mapping */
+    int stride;      /* bytes from one sector to the next: 2352, 2048 (user data alone: cooked), or 2448 (with the
+                        subchannel) */
+    bool cooked;     /* its sectors are 2048 bytes of user data, to be given a sync and header */
     uint8_t *tail;   /* a WAV's last sector, padded with silence when its samples leave it short */
     int32_t start;   /* LBA of its first sector */
     int32_t sectors; /* in the file */
     int32_t length;  /* on the disc: its sectors and the gaps the cue sheet puts among them (PREGAP) */
     void *handle; /* platform mapping handle */
 } DiscFile;
+
+/* The raw sector made for a cooked one is in the caller's thread's own buffer (the music is read by another
+   thread). */
+#if defined(_MSC_VER) && !defined(__clang__)
+#define THREAD_LOCAL __declspec(thread)
+#else
+#define THREAD_LOCAL _Thread_local
+#endif
 
 /* A PREGAP: sectors of silence on the disc that its image leaves out (a track's pregap the cue sheet names
    instead of the file holding it), in the file `file`. */
@@ -266,7 +278,380 @@ static void dir_of(const char *path, char *out, size_t size)
     snprintf(out, size, "%.*s", (int)(slash - path + 1), path);
 }
 
-Disc *DiscOpen(const char *cuePath, char *error, int errorSize)
+/* The tracks' ends and the lead-out once the tracks' starts (index0 and index1, -1 for none) are known; a data track
+   alone gets the silent music tracks. */
+static bool finish_layout(Disc *disc, const int32_t *index0, const int32_t *index1, const char *name, char *error,
+                          int errorSize)
+{
+    int i;
+
+    if (!disc->trackCount) {
+        fail(error, errorSize, "no tracks in %s", name);
+        return false;
+    }
+    for (i = 0; i < disc->trackCount; i++) {
+        DiscTrack *t = &disc->tracks[i];
+
+        if (index1[i] < 0) {
+            fail(error, errorSize, "track without INDEX 01 in %s", name);
+            return false;
+        }
+        t->index1 = index1[i];
+        t->index0 = index0[i] >= 0 ? index0[i] : index1[i];
+    }
+    for (i = 0; i < disc->trackCount; i++) {
+        DiscTrack *t = &disc->tracks[i];
+        const DiscFile *last = &disc->files[disc->fileCount - 1];
+
+        t->end = i + 1 < disc->trackCount ? disc->tracks[i + 1].index0 : last->start + last->length;
+        if (t->end <= t->index1 || (i && t->index0 < disc->tracks[i - 1].index1)) {
+            fail(error, errorSize, "inconsistent track layout in %s", name);
+            return false;
+        }
+    }
+    disc->leadOut = disc->tracks[disc->trackCount - 1].end;
+    if (disc->trackCount == 1 && !disc->tracks[0].audio) {
+        /* its data track alone (many copies leave the music out): the music tracks are there, silent (the game
+           counts and plays them as the disc's; with fewer it would divide by none, and play past the disc) */
+        for (i = 1; i <= SILENT_TRACKS; i++) {
+            DiscTrack *t = &disc->tracks[disc->trackCount++];
+
+            t->number = i + 1;
+            t->audio = true;
+            t->data_offset = 0;
+            t->sector_size = DISC_RAW_SECTOR;
+            t->index0 = disc->leadOut;
+            t->index1 = disc->leadOut + 150;
+            t->end = t->index1 + SILENT_TRACK_SECTORS;
+            disc->leadOut = t->end;
+        }
+    }
+    return true;
+}
+
+static bool has_extension(const char *path, const char *extension)
+{
+    size_t length = strlen(path), n = strlen(extension);
+    size_t i;
+
+    if (length <= n || path[length - n - 1] != '.') {
+        return false;
+    }
+    for (i = 0; i < n; i++) {
+        if (tolower((unsigned char)path[length - n + i]) != extension[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* Maps the file beside path that has the same name with another extension (written in lower case here): as it is
+   written lower case, else upper case, as an image's descriptor and data are often named. */
+static bool map_beside(DiscFile *f, const char *path, const char *extension)
+{
+    char name[2048], *dot;
+    int upper, i;
+
+    snprintf(name, sizeof(name), "%s", path);
+    dot = strrchr(name, '.');
+    if (!dot || strlen(extension) + 2 > sizeof(name) - (size_t)(dot - name)) {
+        return false;
+    }
+    for (upper = 0; upper < 2; upper++) {
+        for (i = 0; extension[i]; i++) {
+            dot[1 + i] = (char)(upper ? toupper((unsigned char)extension[i]) : extension[i]);
+        }
+        dot[1 + i] = 0;
+        if (map_file(f, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Sets up a file whose sectors are all one kind, from its first byte: raw (2352 bytes) or cooked (2048). */
+static void set_sectors(DiscFile *f, int stride, size_t offset, int32_t start)
+{
+    f->stride = stride;
+    f->cooked = stride == 2048;
+    f->offset = offset;
+    f->start = start;
+    f->sectors = f->size > offset ? (int32_t)((f->size - offset) / (size_t)stride) : 0;
+    f->length = f->sectors;
+}
+
+/* Whether a volume descriptor (ISO 9660: type 1, "CD001") is at data. */
+static bool iso_volume(const uint8_t *data)
+{
+    return data[0] == 1 && !memcmp(data + 1, "CD001", 5);
+}
+
+/* The data track by itself: an .iso (2048-byte sectors), or a .bin or .img of raw sectors, as the volume descriptor
+   in sector 16 says it is kept. */
+static Disc *open_bare(const char *path, char *error, int errorSize)
+{
+    static const uint8_t sync[12] = {0, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0};
+    Disc *disc = calloc(1, sizeof(*disc));
+    DiscFile *f;
+    DiscTrack *t;
+    int32_t index = 0;
+    const uint8_t *raw;
+    int stride, mode = 1;
+
+    if (!disc) {
+        return NULL;
+    }
+    f = &disc->files[0];
+    if (!map_file(f, path)) {
+        fail(error, errorSize, "cannot read disc file %s", path);
+        free(disc);
+        return NULL;
+    }
+    disc->fileCount = 1;
+    raw = f->data + 16 * (size_t)DISC_RAW_SECTOR;
+    if (f->size > 17 * (size_t)DISC_RAW_SECTOR && !memcmp(raw, sync, sizeof(sync)) &&
+        (raw[15] == 1 || raw[15] == 2) && iso_volume(raw + (raw[15] == 2 ? 24 : 16))) {
+        stride = DISC_RAW_SECTOR;
+        mode = raw[15];
+    } else if (f->size > 17 * 2048 && iso_volume(f->data + 16 * 2048)) {
+        stride = 2048;
+    } else {
+        fail(error, errorSize, "%s is not a data track (it has no ISO 9660 volume)", path);
+        goto bad;
+    }
+    set_sectors(f, stride, 0, 0);
+    t = &disc->tracks[disc->trackCount++];
+    t->number = 1;
+    t->data_offset = mode == 2 ? 24 : 16;
+    t->sector_size = stride;
+    if (!finish_layout(disc, &index, &index, path, error, errorSize)) {
+        goto bad;
+    }
+    return disc;
+bad:
+    DiscClose(disc);
+    return NULL;
+}
+
+/* A CloneCD .ccd, with the .img beside it: raw sectors of every track in one file, from the disc's first. Its tracks
+   are the [TRACK n] sections, MODE= 0 for audio, 1 or 2 for data, and INDEX 0= and INDEX 1= sectors. */
+static Disc *open_ccd(const char *path, char *error, int errorSize)
+{
+    Disc *disc = calloc(1, sizeof(*disc));
+    FILE *ccd = path ? fopen(path, "r") : NULL;
+    char line[256];
+    int32_t index0[DISC_MAX_TRACKS], index1[DISC_MAX_TRACKS];
+    int mode[DISC_MAX_TRACKS];
+    int current = -1, i;
+
+    if (!disc) {
+        if (ccd) {
+            fclose(ccd);
+        }
+        return NULL;
+    }
+    if (!ccd) {
+        fail(error, errorSize, "cannot open CloneCD descriptor %s", path ? path : "(none)");
+        free(disc);
+        return NULL;
+    }
+    while (fgets(line, sizeof(line), ccd)) {
+        const char *p = line;
+        int number, value;
+
+        while (isspace((unsigned char)*p)) {
+            p++;
+        }
+        if (*p == '[') {
+            current = -1;
+            if (sscanf(p, "[TRACK %d]", &number) == 1) {
+                if (disc->trackCount >= DISC_MAX_TRACKS) {
+                    fail(error, errorSize, "too many tracks in %s", path);
+                    goto bad;
+                }
+                current = disc->trackCount++;
+                disc->tracks[current].number = number;
+                index0[current] = index1[current] = -1;
+                mode[current] = -1;
+            }
+        } else if (current >= 0) {
+            if (sscanf(p, "MODE=%d", &value) == 1) {
+                mode[current] = value;
+            } else if (sscanf(p, "INDEX 0=%d", &value) == 1) {
+                index0[current] = value;
+            } else if (sscanf(p, "INDEX 1=%d", &value) == 1) {
+                index1[current] = value;
+            }
+        }
+    }
+    fclose(ccd);
+    ccd = NULL;
+    for (i = 0; i < disc->trackCount; i++) {
+        DiscTrack *t = &disc->tracks[i];
+
+        if (mode[i] < 0 || mode[i] > 2) {
+            fail(error, errorSize, "a track has no usable MODE in %s", path);
+            goto bad;
+        }
+        t->audio = mode[i] == 0;
+        t->data_offset = mode[i] == 2 ? 24 : mode[i] == 1 ? 16 : 0;
+        t->sector_size = DISC_RAW_SECTOR;
+    }
+    if (!map_beside(&disc->files[0], path, "img")) {
+        fail(error, errorSize, "cannot read the .img beside %s", path);
+        goto bad;
+    }
+    disc->fileCount = 1;
+    set_sectors(&disc->files[0], DISC_RAW_SECTOR, 0, 0);
+    if (!finish_layout(disc, index0, index1, path, error, errorSize)) {
+        goto bad;
+    }
+    return disc;
+bad:
+    if (ccd) {
+        fclose(ccd);
+    }
+    DiscClose(disc);
+    return NULL;
+}
+
+static uint64_t le64(const uint8_t *p)
+{
+    return le32(p) | (uint64_t)le32(p + 4) << 32;
+}
+
+/* The whole of a small file (an .mds), or NULL. */
+static uint8_t *read_whole(const char *path, size_t *size)
+{
+    FILE *f = fopen(path, "rb");
+    uint8_t *data = NULL;
+    long length;
+
+    if (f && !fseek(f, 0, SEEK_END) && (length = ftell(f)) > 0 && length < (4 << 20) && !fseek(f, 0, SEEK_SET) &&
+        (data = malloc((size_t)length)) != NULL && fread(data, 1, (size_t)length, f) == (size_t)length) {
+        *size = (size_t)length;
+    } else {
+        free(data);
+        data = NULL;
+    }
+    if (f) {
+        fclose(f);
+    }
+    return data;
+}
+
+/* An Alcohol 120% .mds, with the .mdf beside it: the first (only) session's track blocks say each track's mode, sector
+   size (2352, 2448 with subchannel, or 2048), first sector (its INDEX 01) and where it starts in the .mdf. A track
+   runs to the next one's start, so a pregap the image holds is the previous track's tail. */
+static Disc *open_mds(const char *path, char *error, int errorSize)
+{
+    Disc *disc = calloc(1, sizeof(*disc));
+    size_t size = 0, k;
+    uint8_t *mds = disc ? read_whole(path, &size) : NULL;
+    const uint8_t *session;
+    int32_t index0[DISC_MAX_TRACKS], index1[DISC_MAX_TRACKS];
+    int32_t length[DISC_MAX_TRACKS]; /* a track's own count of sectors (0: not said) */
+    int32_t pregap[DISC_MAX_TRACKS]; /* its pregap's sectors before index1 (0: none or not said) */
+    uint64_t offset[DISC_MAX_TRACKS];
+    int stride[DISC_MAX_TRACKS];
+    size_t blocks, tracksAt;
+    int i;
+
+    if (!disc) {
+        return NULL;
+    }
+    if (!mds) {
+        fail(error, errorSize, "cannot read Alcohol descriptor %s", path);
+        goto bad;
+    }
+    if (size < 88 || memcmp(mds, "MEDIA DESCRIPTOR", 16) || le32(mds + 80) > size - 24) {
+        fail(error, errorSize, "%s is not an Alcohol 120%% descriptor", path);
+        goto bad;
+    }
+    if (le16(mds + 18) >= 0x10 || le16(mds + 20) != 1) {
+        fail(error, errorSize, "only single-session CD images are supported (%s)", path);
+        goto bad;
+    }
+    session = mds + le32(mds + 80);
+    blocks = session[10];
+    tracksAt = le32(session + 20);
+    if (tracksAt > size || blocks * 80 > size - tracksAt) {
+        fail(error, errorSize, "damaged Alcohol descriptor %s", path);
+        goto bad;
+    }
+    for (k = 0; k < blocks; k++) {
+        const uint8_t *block = mds + tracksAt + k * 80;
+        DiscTrack *t;
+        uint32_t extra = le32(block + 12);
+        int sectorBytes = le16(block + 16), n;
+
+        if (block[4] < 1 || block[4] > 99) {
+            continue; /* (the session's first, last and lead-out entries) */
+        }
+        if (disc->trackCount >= DISC_MAX_TRACKS) {
+            fail(error, errorSize, "too many tracks in %s", path);
+            goto bad;
+        }
+        n = disc->trackCount++;
+        t = &disc->tracks[n];
+        t->number = block[4];
+        t->audio = block[0] == 0xA9;
+        if (!t->audio && (block[0] < 0xAA || block[0] > 0xAD)) {
+            fail(error, errorSize, "unsupported track mode in %s", path);
+            goto bad;
+        }
+        if ((sectorBytes != 2352 && sectorBytes != 2448 && (sectorBytes != 2048 || t->audio))) {
+            fail(error, errorSize, "unsupported sector size in %s", path);
+            goto bad;
+        }
+        stride[n] = sectorBytes;
+        t->sector_size = sectorBytes == 2048 ? 2048 : DISC_RAW_SECTOR;
+        t->data_offset = t->audio ? 0 : sectorBytes == 2048 || block[0] == 0xAA ? 16 : 24;
+        index0[n] = -1;
+        index1[n] = (int32_t)le32(block + 36);
+        offset[n] = le64(block + 40);
+        pregap[n] = extra && extra <= size - 8 ? (int32_t)le32(mds + extra) : 0;
+        length[n] = extra && extra <= size - 8 ? (int32_t)le32(mds + extra + 4) : 0;
+    }
+    for (i = 0; i < disc->trackCount; i++) {
+        DiscFile *f = &disc->files[i];
+        int32_t span = i + 1 < disc->trackCount ? index1[i + 1] - index1[i] : length[i];
+
+        if (!map_beside(f, path, "mdf")) {
+            fail(error, errorSize, "cannot read the .mdf beside %s", path);
+            goto bad;
+        }
+        disc->fileCount++;
+        if (index1[i] < 0 || offset[i] > f->size) {
+            fail(error, errorSize, "damaged track in %s", path);
+            goto bad;
+        }
+        set_sectors(f, stride[i], (size_t)offset[i], index1[i]);
+        if (length[i] > 0 && length[i] < f->sectors) {
+            f->sectors = length[i]; /* (what follows is the next track's pregap) */
+        }
+        if (span > 0 && span < f->sectors) {
+            f->sectors = span;
+        }
+        f->length = span > 0 ? span : f->sectors;
+        /* a pregap the descriptor names, in the room the previous track leaves */
+        index0[i] = pregap[i] > 0 && i && index1[i] - pregap[i] >= index1[i - 1] + disc->files[i - 1].sectors
+                        ? index1[i] - pregap[i]
+                        : -1;
+    }
+    free(mds);
+    if (!finish_layout(disc, index0, index1, path, error, errorSize)) {
+        DiscClose(disc);
+        return NULL;
+    }
+    return disc;
+bad:
+    free(mds);
+    DiscClose(disc);
+    return NULL;
+}
+
+static Disc *open_cue(const char *cuePath, char *error, int errorSize)
 {
     Disc *disc = calloc(1, sizeof(*disc));
     FILE *cue = cuePath ? fopen(cuePath, "r") : NULL;
@@ -318,10 +703,14 @@ Disc *DiscOpen(const char *cuePath, char *error, int errorSize)
             }
             disc->fileCount++;
             f->sectors = (int32_t)(f->size / DISC_RAW_SECTOR);
+            f->stride = 0; /* (the first TRACK in the file says) */
             if ((!strcmp(type, "WAVE") || (f->size >= 12 && !memcmp(f->data, "RIFF", 4) &&
                                            !memcmp(f->data + 8, "WAVE", 4))) &&
                 !wave_file(f, path, error, errorSize)) {
                 goto bad;
+            }
+            if (f->offset) {
+                f->stride = DISC_RAW_SECTOR;
             }
             f->length = f->sectors;
             f->start = disc->fileCount > 1 ? disc->files[disc->fileCount - 2].start +
@@ -331,6 +720,8 @@ Disc *DiscOpen(const char *cuePath, char *error, int errorSize)
             int number;
             char mode[32] = "";
             DiscTrack *t;
+            DiscFile *f;
+            int stride;
 
             if (sscanf(p + 5, "%d %31s", &number, mode) != 2 || disc->trackCount >= DISC_MAX_TRACKS ||
                 !disc->fileCount) {
@@ -341,19 +732,37 @@ Disc *DiscOpen(const char *cuePath, char *error, int errorSize)
             current = disc->trackCount++;
             t->number = number;
             t->audio = !strcmp(mode, "AUDIO");
-            if (!t->audio && disc->files[disc->fileCount - 1].offset) {
+            f = &disc->files[disc->fileCount - 1];
+            if (!t->audio && f->offset) {
                 fail(error, errorSize, "WAV file used for a data track in %s", cuePath);
                 goto bad;
             }
+            t->sector_size = DISC_RAW_SECTOR;
             if (t->audio) {
                 t->data_offset = 0;
             } else if (!strcmp(mode, "MODE2/2352")) {
                 t->data_offset = 24;
             } else if (!strcmp(mode, "MODE1/2352")) {
                 t->data_offset = 16;
+            } else if (!strcmp(mode, "MODE1/2048")) {
+                t->data_offset = 16; /* (in the raw sector made up for it) */
+                t->sector_size = 2048;
             } else {
-                fail(error, errorSize, "unsupported track mode in %s (need 2352-byte sectors)", cuePath);
+                fail(error, errorSize, "unsupported track mode in %s (need MODE1/2048, MODE1/2352 or MODE2/2352)",
+                     cuePath);
                 goto bad;
+            }
+            stride = t->sector_size;
+            if (f->stride && f->stride != stride) {
+                fail(error, errorSize, "sector sizes mixed in one file in %s", cuePath);
+                goto bad;
+            }
+            if (!f->stride) {
+                /* the file's first track decides how its sectors are counted */
+                f->stride = stride;
+                f->cooked = stride == 2048;
+                f->sectors = (int32_t)(f->size / (size_t)stride);
+                f->length = f->sectors;
             }
             fileOf[current] = disc->fileCount - 1;
             pregap = 0;
@@ -398,45 +807,13 @@ Disc *DiscOpen(const char *cuePath, char *error, int errorSize)
     }
     fclose(cue);
     cue = NULL;
-    if (!disc->trackCount) {
-        fail(error, errorSize, "no tracks in %s", cuePath);
+    for (i = 0; i < disc->fileCount; i++) {
+        if (!disc->files[i].stride) {
+            disc->files[i].stride = DISC_RAW_SECTOR; /* (a file no track is in) */
+        }
+    }
+    if (!finish_layout(disc, index0, index1, cuePath, error, errorSize)) {
         goto bad;
-    }
-    for (i = 0; i < disc->trackCount; i++) {
-        DiscTrack *t = &disc->tracks[i];
-
-        if (index1[i] < 0) {
-            fail(error, errorSize, "track without INDEX 01 in %s", cuePath);
-            goto bad;
-        }
-        t->index1 = index1[i];
-        t->index0 = index0[i] >= 0 ? index0[i] : index1[i];
-    }
-    for (i = 0; i < disc->trackCount; i++) {
-        DiscTrack *t = &disc->tracks[i];
-        const DiscFile *last = &disc->files[disc->fileCount - 1];
-
-        t->end = i + 1 < disc->trackCount ? disc->tracks[i + 1].index0 : last->start + last->length;
-        if (t->end <= t->index1 || (i && t->index0 < disc->tracks[i - 1].index1)) {
-            fail(error, errorSize, "inconsistent track layout in %s", cuePath);
-            goto bad;
-        }
-    }
-    disc->leadOut = disc->tracks[disc->trackCount - 1].end;
-    if (disc->trackCount == 1 && !disc->tracks[0].audio) {
-        /* its data track alone (many copies leave the music out): the music tracks are there, silent (the game
-           counts and plays them as the disc's; with fewer it would divide by none, and play past the disc) */
-        for (i = 1; i <= SILENT_TRACKS; i++) {
-            DiscTrack *t = &disc->tracks[disc->trackCount++];
-
-            t->number = i + 1;
-            t->audio = true;
-            t->data_offset = 0;
-            t->index0 = disc->leadOut;
-            t->index1 = disc->leadOut + 150;
-            t->end = t->index1 + SILENT_TRACK_SECTORS;
-            disc->leadOut = t->end;
-        }
     }
     return disc;
 bad:
@@ -445,6 +822,20 @@ bad:
     }
     DiscClose(disc);
     return NULL;
+}
+
+Disc *DiscOpen(const char *path, char *error, int errorSize)
+{
+    if (path && has_extension(path, "ccd")) {
+        return open_ccd(path, error, errorSize);
+    }
+    if (path && has_extension(path, "mds")) {
+        return open_mds(path, error, errorSize);
+    }
+    if (path && (has_extension(path, "iso") || has_extension(path, "bin") || has_extension(path, "img"))) {
+        return open_bare(path, error, errorSize);
+    }
+    return open_cue(path, error, errorSize);
 }
 
 int DiscTrackCount(const Disc *disc)
@@ -462,9 +853,26 @@ int32_t DiscLeadOut(const Disc *disc)
     return disc->leadOut;
 }
 
+/* A cooked sector as the drive gives it: the sync, the header (the sector's minute, second and frame address, in
+   BCD, and mode 1) and the 2048 bytes of data; the error detection and correction codes are left zero. */
+void DiscMakeRawSector(uint8_t *raw, int32_t lba, const uint8_t *data)
+{
+    int32_t address = lba + 150;
+
+    memset(raw, 0xFF, 12);
+    raw[0] = raw[11] = 0;
+    raw[12] = (uint8_t)(address / 4500 / 10 << 4 | address / 4500 % 10);
+    raw[13] = (uint8_t)(address / 75 % 60 / 10 << 4 | address / 75 % 60 % 10);
+    raw[14] = (uint8_t)(address % 75 / 10 << 4 | address % 75 % 10);
+    raw[15] = 1;
+    memcpy(raw + 16, data, 2048);
+    memset(raw + 2064, 0, DISC_RAW_SECTOR - 2064);
+}
+
 const uint8_t *DiscRawSector(const Disc *disc, int32_t lba)
 {
     static const uint8_t silence[DISC_RAW_SECTOR];
+    static THREAD_LOCAL uint8_t made[DISC_RAW_SECTOR];
     const DiscFile *last = &disc->files[disc->fileCount - 1];
     int i;
 
@@ -481,8 +889,16 @@ const uint8_t *DiscRawSector(const Disc *disc, int32_t lba)
             int32_t sector = FileSector(disc, i, lba);
 
             if (sector >= 0) {
-                return f->tail && sector == f->sectors - 1 ? f->tail
-                                                          : f->data + f->offset + (size_t)sector * DISC_RAW_SECTOR;
+                const uint8_t *data = f->data + f->offset + (size_t)sector * (size_t)f->stride;
+
+                if (f->tail && sector == f->sectors - 1) {
+                    return f->tail;
+                }
+                if (f->cooked) {
+                    DiscMakeRawSector(made, lba, data);
+                    return made;
+                }
+                return data;
             }
             return lba < f->start + f->length ? silence : NULL; /* (a PREGAP the image leaves out) */
         }
@@ -506,8 +922,8 @@ void DiscPrefetch(const Disc *disc, int32_t lba, int sectors)
             if (sector < 0 || page <= 0) {
                 return;
             }
-            first = f->offset + (size_t)sector * DISC_RAW_SECTOR;
-            length = (size_t)sectors * DISC_RAW_SECTOR;
+            first = f->offset + (size_t)sector * (size_t)f->stride;
+            length = (size_t)sectors * (size_t)f->stride;
             if (first + length > f->size) {
                 length = f->size - first;
             }
@@ -577,7 +993,8 @@ static bool name_matches(const uint8_t *record, const char *component, size_t le
     return true;
 }
 
-bool DiscFindFile(const Disc *disc, const char *path, int32_t *lba, uint32_t *size)
+/* The file (or, with wantDirectory, the folder) at path. */
+static bool find_entry(const Disc *disc, const char *path, bool wantDirectory, int32_t *lba, uint32_t *size)
 {
     uint8_t sector[2048];
     int32_t dirLba;
@@ -624,7 +1041,7 @@ bool DiscFindFile(const Disc *disc, const char *path, int32_t *lba, uint32_t *si
                 const uint8_t *rec = sector + pos;
                 bool isDir = (rec[25] & 2) != 0;
 
-                if (name_matches(rec, p, length) && isDir != last) {
+                if (name_matches(rec, p, length) && isDir == (last ? wantDirectory : true)) {
                     if (last) {
                         *lba = (int32_t)le32(rec + 2);
                         *size = le32(rec + 10);
@@ -643,4 +1060,18 @@ bool DiscFindFile(const Disc *disc, const char *path, int32_t *lba, uint32_t *si
         }
         p = end;
     }
+}
+
+bool DiscFindFile(const Disc *disc, const char *path, int32_t *lba, uint32_t *size)
+{
+    return find_entry(disc, path, false, lba, size);
+}
+
+bool DiscIsPcGame(const Disc *disc)
+{
+    int32_t lba;
+    uint32_t size;
+
+    return find_entry(disc, "\\COMMON", true, &lba, &size) && find_entry(disc, "\\TRACK01", true, &lba, &size) &&
+           find_entry(disc, "\\COMMON\\VECTO.PRM", false, &lba, &size);
 }
