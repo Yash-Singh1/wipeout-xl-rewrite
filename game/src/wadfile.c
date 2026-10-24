@@ -94,6 +94,7 @@ void closewadfile(WADFILE *wad)
 {
     do { } while (0);
     while (loadFrame < 0);
+    LoadScreenFinish(); /* Port: the loading screen shows 100% */
     WDclose(wad->handle);
     DFree(heap, (char *)wad);
     VSyncCallback(0);

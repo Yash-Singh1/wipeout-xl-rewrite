@@ -606,6 +606,7 @@ void WDclose(int handle);
 int WDopen(char *name, int unused1, int unused2);
 void WDread(int unused, u_char *destArg, int count);
 void VsyncFunc(void);
+void LoadScreenFinish(void);
 
 /* wadfile.c */
 void closewadfile(WADFILE *wad);

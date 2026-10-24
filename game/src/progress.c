@@ -15,6 +15,7 @@ extern s32            scanPhase;
 extern u8             vsyncBusy;
 extern int            lastWadCurrent;
 extern int            loadTicks;
+static int            shownPercent; /* Port: the percentage the loading screen showed last */
 extern s32           *particleLife;
 extern s32           *particleX;
 extern s32           *particleY;
@@ -237,6 +238,7 @@ void InitPop(void)
     } while (i < 0x80);
     scanPhase = 0;
     loadPercent = 0;
+    shownPercent = 0; /* Port */
     /* Port: screenFills[1] was the separate symbol screenFill1 (adjacent words). */
     screenFills[0] = BlockFill(0, 0x50, 0x140, 0x64, 0, 0, 0x2E);
     screenFills[1] = BlockFill(0, 0x150, 0x140, 0x64, 0, 0, 0x2E);
@@ -329,6 +331,7 @@ void VsyncFunc(void)
         AddJustifyNumber((loadPercent / 100) % 10, 0x30, 0x61, 0xC, 1);
         AddJustifyNumber((loadPercent / 10) % 10, 0x42, 0x61, 0xC, 1);
         AddJustifyNumber(loadPercent % 10, 0x54, 0x61, 0xC, 1);
+        shownPercent = loadPercent; /* Port: for LoadScreenFinish */
         Print(loadInstructionLine0, 0x20, 0x70, 8);
         if ((short)loadFrame >= 0x47) {
             Print(loadInstructionLine2, 0x20, 0x78, 8);
@@ -555,5 +558,19 @@ printShipName:
         PortWideLoadScreen(); /* Port: widescreen shows the loading screen wide */
         CallbackSwap();
         vsyncBusy = 0;
+    }
+}
+
+
+/* Port: the loading screen is drawn in the vertical blanks that pass while the disc is read, and the
+   wad's last bytes come from the cache with no blank after them, so it could leave the screen at 97%.
+   It shows 100% before the race. */
+void LoadScreenFinish(void)
+{
+    int fields;
+
+    loadPercent = 100;
+    for (fields = 0; shownPercent != 100 && fields < 4; fields++) {
+        VSync(0);
     }
 }
