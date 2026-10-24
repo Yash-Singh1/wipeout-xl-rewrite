@@ -101,8 +101,8 @@ int PortIsArchive(const char *path)
     return ArchiveKind(path) != NOT_ARCHIVE;
 }
 
-/* Whether the 2352-byte sector holds a PlayStation disc's volume descriptor (sector 16 of its data track); its
-   mode (1 or 2) into *mode. */
+/* Whether the 2352-byte sector holds a PlayStation disc's volume descriptor (sector 16 of its data track), or a
+   Sega Saturn disc's (saturn.c); its mode (1 or 2) into *mode. */
 static int PlayStationVolume(const unsigned char *sector, int *mode)
 {
     static const unsigned char sync[12] = {0, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0};
@@ -113,7 +113,8 @@ static int PlayStationVolume(const unsigned char *sector, int *mode)
     }
     *mode = sector[15];
     data = sector + (*mode == 2 ? 24 : 16);
-    return data[0] == 1 && !memcmp(data + 1, "CD001", 5) && !memcmp(data + 8, "PLAYSTATION", 11);
+    return data[0] == 1 && !memcmp(data + 1, "CD001", 5) &&
+           (!memcmp(data + 8, "PLAYSTATION", 11) || !memcmp(data + 8, "SEGA SEGASATURN", 15));
 }
 
 /* Whether a .bin or .img is a PlayStation disc's data track; its mode into *mode. */
