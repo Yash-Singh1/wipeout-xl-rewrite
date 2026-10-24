@@ -28,7 +28,7 @@
    missile or electro bolt models (it draws sprites): plain cones stand in. Its sky is not a model but a VDP2 scroll
    screen (skyNN.rbh: 1-word pattern names of 8-bit 8x8 cells, 4 pages of 64x64 cells side by side, a 2048 x 512
    panorama, its colours in colour RAM): its picture's band, at a quarter of the size, goes round a 16-sided
-   cylinder, 2048 pixels taken as 360 degrees and the horizon 60% down the band. */
+   cylinder, twice round (the Saturn scrolls it a pixel per unit of heading, 4096 a turn), the horizon 60% down the band. */
 #include <SDL3/SDL.h>
 #include <math.h>
 #include <stdint.h>
@@ -1954,8 +1954,9 @@ static uint8_t *MakeSky(int track, int wantCmp, size_t *size)
     uint16_t cram[256], clut[256];
     uint8_t *img = SkyPanorama(track, cram), *small, *px;
     int top, bottom, W = SKY_W / SKY_SHRINK, Hb, x, y, t, k, timCount = SKY_W / SKY_SHRINK / SKY_TIM_W;
-    double vstep, pxPerDeg = SKY_W / 360.0, horizon, eTop, eBottom;
-    int vertex[2 * SKY_SEGMENTS + 2][3];
+    /* the Saturn scrolls its sky a pixel per unit of the camera's heading (4096 a turn): the picture goes round twice */
+    double vstep, pxPerDeg = 2 * SKY_W / 360.0, horizon, eTop, eBottom;
+    int vertex[4 * SKY_SEGMENTS + 2][3];
     Region r;
     Buffer tims = {0}, prims = {0}, out = {0};
     size_t timSizes[8];
@@ -1970,8 +1971,39 @@ static uint8_t *MakeSky(int track, int wantCmp, size_t *size)
     vstep = (double)(bottom - top) / Hb;
     small = SDL_calloc((size_t)(W * Hb), 1);
     for (y = 0; y < Hb; y++) {
+        int y0 = top + (int)(y * vstep), y1 = SDL_max(y0 + 1, top + (int)((y + 1) * vstep));
+
         for (x = 0; x < W; x++) {
-            small[y * W + x] = img[(top + (int)(y * vstep)) * SKY_W + x * SKY_SHRINK];
+            /* the average of the pixels it stands for, as the nearest of the colours (one in four, the mountains
+               were noise) */
+            int sum[3] = {0, 0, 0}, n = 0, best = 0, bestDistance = 1 << 30, i, j, c;
+
+            for (j = y0; j < y1; j++) {
+                for (i = x * SKY_SHRINK; i < (x + 1) * SKY_SHRINK; i++) {
+                    int rgb[3];
+
+                    Rgb5(cram[img[j * SKY_W + i]], rgb);
+                    for (c = 0; c < 3; c++) {
+                        sum[c] += rgb[c];
+                    }
+                    n++;
+                }
+            }
+            for (k = 0; k < 256; k++) {
+                int rgb[3], d = 0;
+
+                Rgb5(cram[k], rgb);
+                for (c = 0; c < 3; c++) {
+                    int e = rgb[c] * n - sum[c];
+
+                    d += e * e;
+                }
+                if (d < bestDistance) {
+                    bestDistance = d;
+                    best = k;
+                }
+            }
+            small[y * W + x] = (uint8_t)best;
         }
     }
     for (k = 0; k < 256; k++) {
@@ -2001,7 +2033,9 @@ static uint8_t *MakeSky(int track, int wantCmp, size_t *size)
         return cmp;
     }
     SDL_free(tims.data);
-    /* a cylinder from the band's top to its bottom, closed by flat caps of the top and bottom rows' colours */
+    /* a cylinder from the band's top to its bottom, closed by caps of the top and bottom rows' colours: rings at 70
+       degrees up and down, then a point overhead and one underfoot (a triangle with that corner, beside the camera,
+       is left out, so the rings keep the caps in view) */
     horizon = top + 0.6 * (bottom - top);
     eTop = (horizon - top) / pxPerDeg;
     eBottom = (horizon - bottom) / pxPerDeg;
@@ -2013,11 +2047,15 @@ static uint8_t *MakeSky(int track, int wantCmp, size_t *size)
         vertex[k][2] = vertex[SKY_SEGMENTS + k][2] = sz;
         vertex[k][1] = -(int)(SKY_RADIUS * tan(eTop * (M_PI / 180.0)));
         vertex[SKY_SEGMENTS + k][1] = -(int)(SKY_RADIUS * tan(eBottom * (M_PI / 180.0)));
+        vertex[2 * SKY_SEGMENTS + k][0] = vertex[3 * SKY_SEGMENTS + k][0] = sx / 3;
+        vertex[2 * SKY_SEGMENTS + k][2] = vertex[3 * SKY_SEGMENTS + k][2] = sz / 3;
+        vertex[2 * SKY_SEGMENTS + k][1] = -(int)(SKY_RADIUS / 3 * tan(70 * (M_PI / 180.0)));
+        vertex[3 * SKY_SEGMENTS + k][1] = (int)(SKY_RADIUS / 3 * tan(70 * (M_PI / 180.0)));
     }
-    vertex[2 * SKY_SEGMENTS][0] = vertex[2 * SKY_SEGMENTS][2] = 0;
-    vertex[2 * SKY_SEGMENTS][1] = -2 * SKY_RADIUS;
-    vertex[2 * SKY_SEGMENTS + 1][0] = vertex[2 * SKY_SEGMENTS + 1][2] = 0;
-    vertex[2 * SKY_SEGMENTS + 1][1] = 2 * SKY_RADIUS;
+    vertex[4 * SKY_SEGMENTS][0] = vertex[4 * SKY_SEGMENTS][2] = 0;
+    vertex[4 * SKY_SEGMENTS][1] = -2 * SKY_RADIUS;
+    vertex[4 * SKY_SEGMENTS + 1][0] = vertex[4 * SKY_SEGMENTS + 1][2] = 0;
+    vertex[4 * SKY_SEGMENTS + 1][1] = 2 * SKY_RADIUS;
     for (x = 0; x < SKY_W; x++) {
         int a[3], b[3];
 
@@ -2034,11 +2072,14 @@ static uint8_t *MakeSky(int track, int wantCmp, size_t *size)
     }
     SDL_free(img);
     for (k = 0; k < SKY_SEGMENTS; k++) {
-        int k2 = (k + 1) % SKY_SEGMENTS, per = SKY_SEGMENTS / timCount;
+        int k2 = (k + 1) % SKY_SEGMENTS, per = SKY_SEGMENTS / (2 * timCount);
         double segment = (double)SKY_TIM_W / per;
         int u0 = (int)((k % per) * segment), u1 = SDL_min(SKY_TIM_W - 1, (int)((k % per + 1) * segment));
         int quad[4] = {k, k2, SKY_SEGMENTS + k, SKY_SEGMENTS + k2};
-        int up[3] = {2 * SKY_SEGMENTS, k2, k}, down[3] = {2 * SKY_SEGMENTS + 1, SKY_SEGMENTS + k, SKY_SEGMENTS + k2};
+        int upper[4] = {2 * SKY_SEGMENTS + k, 2 * SKY_SEGMENTS + k2, k, k2};
+        int lower[4] = {SKY_SEGMENTS + k, SKY_SEGMENTS + k2, 3 * SKY_SEGMENTS + k, 3 * SKY_SEGMENTS + k2};
+        int up[3] = {4 * SKY_SEGMENTS, 2 * SKY_SEGMENTS + k2, 2 * SKY_SEGMENTS + k};
+        int down[3] = {4 * SKY_SEGMENTS + 1, 3 * SKY_SEGMENTS + k, 3 * SKY_SEGMENTS + k2};
         uint8_t uv[8] = {(uint8_t)u0, 0, (uint8_t)u1, 0, (uint8_t)u0, (uint8_t)(Hb - 1), (uint8_t)u1, (uint8_t)(Hb - 1)};
         int c;
 
@@ -2047,7 +2088,7 @@ static uint8_t *MakeSky(int track, int wantCmp, size_t *size)
         for (c = 0; c < 4; c++) {
             PutBe16(&prims, quad[c]);
         }
-        PutBe16(&prims, k / per);
+        PutBe16(&prims, k / per % timCount);
         PutBe16(&prims, 0);
         PutBe16(&prims, 0);
         Put(&prims, uv, 8);
@@ -2055,10 +2096,12 @@ static uint8_t *MakeSky(int track, int wantCmp, size_t *size)
         for (c = 0; c < 4; c++) {
             PutColour(&prims, grey);
         }
+        PutFlat(&prims, upper, 4, 0, topRgb, 1);
+        PutFlat(&prims, lower, 4, 0, bottomRgb, 1);
         PutFlat(&prims, up, 3, 0, topRgb, 1);
         PutFlat(&prims, down, 3, 0, bottomRgb, 1);
     }
-    PutObject(&out, "sky", vertex, 2 * SKY_SEGMENTS + 2, zero, &prims, 3 * SKY_SEGMENTS);
+    PutObject(&out, "sky", vertex, 4 * SKY_SEGMENTS + 2, zero, &prims, 5 * SKY_SEGMENTS);
     SDL_free(prims.data);
     *size = out.size;
     return out.data;
