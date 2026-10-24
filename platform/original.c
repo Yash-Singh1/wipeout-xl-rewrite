@@ -19,6 +19,7 @@
 #include "discimage.h"
 #include "original.h"
 #include "platform.h"
+#include "saturn.h"
 #include "settings.h"
 #include "psx/disc.h"
 
@@ -1383,6 +1384,9 @@ static int PlaceImage(Layout *l, int w, int h, int *x, int *y)
     if (l->shelfY + h > 256) {
         l->page++;
         l->shelfX = l->shelfY = l->shelfH = 0;
+    }
+    while (PortSaturnDisc() && l->page % 16 >= 3 && l->page % 16 <= 5) {
+        l->page++; /* (x 192-383: the Saturn's ships and other models kept for the whole game, saturn_models.c) */
     }
     if (l->page >= IMAGE_PAGES) {
         return 0;

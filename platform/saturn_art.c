@@ -28,8 +28,8 @@
 
 static int loaded;
 static SaturnVideo *video, *menuVideo;
-static unsigned char *pieces, *hudMap, *sprites, *menuSprites;
-static size_t piecesSize, hudMapSize, spritesSize, menuSpritesSize;
+static unsigned char *pieces, *hudMap, *sprites, *menuSprites, *models;
+static size_t piecesSize, hudMapSize, spritesSize, menuSpritesSize, modelsSize;
 
 static unsigned Be16(const unsigned char *p)
 {
@@ -49,6 +49,7 @@ static int Load(void)
         pieces = SaturnBlock("art\\common\\objects.rbh", 0, &piecesSize);
         hudMap = SaturnBlock("art\\common\\objects.rbh", 1, &hudMapSize);
         sprites = SaturnBlock("art\\common\\objects.rbh", 4, &spritesSize);
+        models = SaturnBlock("art\\common\\objects.rbh", 3, &modelsSize);
         menuVideo = SaturnLoadVideo("art\\super\\super.vri");
         menuSprites = SaturnBlock("art\\super\\super.rbh", 2, &menuSpritesSize);
     }
@@ -460,6 +461,36 @@ static void Board(Canvas *c)
     Fit(c, &image, 2, 2, c->w - 4, c->h - 4);
 }
 
+/* The start droid's screen (cdroid.cmp: start, final lap, the other laps, the pick droid's arrow): the Saturn's
+   screen models 16-19 (one quad, a 32 x 40 picture; 21-24 the same brighter, for the blink). The game lays a
+   picture's x along the quad's first corner to its second where the Saturn lays its texture's y: turned over. */
+static void StartScreen(Canvas *c, int model)
+{
+    unsigned at, groups, srca, colr;
+    int x, y;
+
+    if (!models || modelsSize < 4 + (size_t)model * 4 + 4 || (at = Be32(models + model * 4)) + 32 > modelsSize ||
+        (groups = Be32(models + at)) + 28 > modelsSize) {
+        return;
+    }
+    srca = Be16(models + groups + 12 + 8);
+    colr = Be16(models + groups + 12 + 14);
+    for (y = 0; y < c->h; y++) {
+        for (x = 0; x < c->w; x++) {
+            int u = y * 32 / c->h, v = x * 40 / c->w;
+            const unsigned char *texel = SaturnVideoAt(video, VDP1_RAM + srca * 8u + (unsigned)(v * 32 + u) / 2, 1);
+            const unsigned char *colour;
+
+            if (texel) {
+                colour = SaturnVideoAt(video, VDP1_RAM + colr * 8u + (u & 1 ? *texel & 15 : *texel >> 4) * 2, 2);
+                if (colour) {
+                    Plot(c, x, y, Rgb(Be16(colour), 255)); /* (texel 0 drawn: the screens' groups ask for it) */
+                }
+            }
+        }
+    }
+}
+
 /* Talon's Reach's smoke (smoke.cmp, 25 frames of a column, 32 x 96, risen 4 lines a frame): billows of yellow
    and brown, semi-transparent. */
 static float Noise(int x, int y)
@@ -648,6 +679,8 @@ static int Draw(const char *name, int index, Canvas *c)
         Piece(c, index ? 15 + index : 29, 0, 0, 128);
     } else if (strstr(name, "red.cmp") && strlen(name) <= 12) {
         Board(c);
+    } else if (!strcmp(name, "cdroid.cmp") && index < 4) {
+        StartScreen(c, 16 + index);
     } else if (!strcmp(name, "smoke.cmp")) {
         Smoke(c, index);
     } else if (!strcmp(name, "link.tim")) {

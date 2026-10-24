@@ -32,6 +32,7 @@
 #include <SDL3/SDL.h>
 #include <math.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "original.h"
@@ -602,32 +603,44 @@ static void MakeRegion(Region *r, int which)
 
     memset(r, 0, sizeof(*r));
     switch (which) {
+    /* the models kept for the whole game (the ships, droids, weapons...) and their palettes all lie in x 192-383:
+       the guest tracks' textures leave that alone (original.c: the original's are right of x 640, Wipeout 64's
+       pages skip it), so racing one does not spoil them; their palettes below their pages and in rows 1004-1009 */
     case R_TERRY: /* (and the silly ships, in its place) */
         AddPage(r, 192, 512, 256);
-        AddPage(r, 192, 768, 236);
+        AddPage(r, 192, 768, 220);
         AddPage(r, 256, 512, 256);
-        AddCluts(r, 192, 1024, 1004);
-        AddCluts(r, 192, 1024, 1005);
+        AddCluts(r, 192, 384, 1004);
+        AddCluts(r, 192, 384, 1005);
+        AddCluts(r, 192, 384, 1006);
+        AddCluts(r, 192, 384, 1007);
+        for (x = 988; x < 1004; x++) {
+            AddCluts(r, 192, 256, x);
+        }
         break;
     case R_RESCU:
         AddPage(r, 256, 768, 120);
-        AddCluts(r, 192, 1024, 1006);
+        AddCluts(r, 192, 288, 1008);
         break;
     case R_WRECK:
-        AddPage(r, 256, 888, 116);
-        AddCluts(r, 192, 512, 1007);
+        AddPage(r, 256, 888, 100);
+        for (x = 988; x < 1004; x++) {
+            AddCluts(r, 256, 320, x);
+        }
         break;
     case R_WEAPONS:
         AddPage(r, 320, 512, 64);
-        AddCluts(r, 512, 1024, 1007);
+        AddCluts(r, 288, 384, 1008);
         break;
     case R_SROID:
         AddPage(r, 320, 576, 192);
-        AddCluts(r, 192, 1024, 1008);
+        AddCluts(r, 192, 384, 1009);
         break;
     case R_LIGHT:
-        AddPage(r, 320, 768, 236);
-        AddCluts(r, 192, 1024, 1009);
+        AddPage(r, 320, 768, 220);
+        for (x = 988; x < 1004; x++) {
+            AddCluts(r, 320, 384, x);
+        }
         break;
     case R_SKY:
         AddPage(r, 384, 512, 256);
@@ -681,7 +694,7 @@ static int PlaceTim(Region *r, int w, int h, int *x, int *y)
 }
 
 /* A palette slot (16 colours), or 16 in a row from a multiple of 256 (256 colours). */
-static void PlaceClut(Region *r, int colours, int *x, int *y)
+static int PlaceClut(Region *r, int colours, int *x, int *y)
 {
     int i, k;
 
@@ -696,10 +709,11 @@ static void PlaceClut(Region *r, int colours, int *x, int *y)
             *y = cy;
             memmove(&r->clut[i], &r->clut[i + colours / 16], (size_t)(r->cluts - i - colours / 16) * sizeof(r->clut[0]));
             r->cluts -= colours / 16;
-            return;
+            return 1;
         }
     }
     *x = *y = 0;
+    return 0;
 }
 
 static void PutTim4(Buffer *b, const uint8_t *px, int w, int h, const uint16_t clut[16], int x, int y, int cx, int cy)
@@ -950,8 +964,10 @@ static void BuildAtlas(Atlas *a, const Book *book, Region *r, Buffer *tims, size
             m->u = mx;
             m->v = my;
         }
-        PlaceTim(r, w4 / 4, b->h, &x, &y);
-        PlaceClut(r, 16, &cx, &cy);
+        n = PlaceTim(r, w4 / 4, b->h, &x, &y);
+        if (!PlaceClut(r, 16, &cx, &cy) || !n) {
+            printf("saturn_models.c: no room in video memory for a %d x %d texture\n", w4, b->h);
+        }
         for (n = 0; n < 16; n++) {
             const Palette *p = &book->palette[b->palette];
 
@@ -1721,7 +1737,8 @@ unsigned char *SaturnMakeModel(const char *name, size_t *size)
     static const Part wreck[] = {{"hull", 26, -1, -1}};
     static const Part mine[] = {{"top", 14, -1, -1}};
     static const Part shield[] = {{"shield", 32, -1, -1}};
-    static const Part sroid[] = {{"screen", 15, 16, -1}, {"screen", 15, 16, -1}}; /* the droid and a screen */
+    /* the droid and its screen, the screen first: the game lays cdroid.cmp's pictures on an object's first polygon */
+    static const Part sroid[] = {{"screen", 16, 15, -1}, {"screen", 16, 15, -1}};
     /* the game tints light1's first FT4s (up to 8, stopping at another kind): the lamp first, the bar as GT4 */
     static const Part light[] = {{"light1", 1, 0, 1}};
     static const struct {
