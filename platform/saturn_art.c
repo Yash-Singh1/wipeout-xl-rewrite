@@ -412,6 +412,91 @@ static void SmallFont(Canvas *c)
     }
 }
 
+/* ---- the tracks' animated boards and smoke ---- */
+
+/* An image scaled into a rectangle of a canvas, keeping its shape, centred (each pixel the average of what it
+   covers). */
+static void Fit(Canvas *c, const Canvas *image, int x, int y, int w, int h)
+{
+    float scale = SDL_min((float)w / image->w, (float)h / image->h);
+    int ox = x + (int)((w - image->w * scale) / 2), oy = y + (int)((h - image->h * scale) / 2), i, k;
+
+    for (k = 0; k < (int)(image->h * scale); k++) {
+        for (i = 0; i < (int)(image->w * scale); i++) {
+            int x0 = (int)(i / scale), y0 = (int)(k / scale), x1 = SDL_max(x0 + 1, (int)((i + 1) / scale)),
+                y1 = SDL_max(y0 + 1, (int)((k + 1) / scale)), sx, sy, n = 0;
+            unsigned r = 0, g = 0, b = 0, a = 0;
+
+            for (sy = y0; sy < y1 && sy < image->h; sy++) {
+                for (sx = x0; sx < x1 && sx < image->w; sx++) {
+                    unsigned p = image->rgba[sy * image->w + sx];
+
+                    r += p & 0xff, g += (p >> 8) & 0xff, b += (p >> 16) & 0xff, a += p >> 24, n++;
+                }
+            }
+            if (n && a / n >= 128) {
+                Plot(c, ox + i, oy + k, r / n | g / n << 8 | b / n << 16 | 0xff000000u);
+            }
+        }
+    }
+}
+
+/* A track's animated boards (the PlayStation's *red.cmp, two pictures it alternates): the game's logo on the
+   menus' blue. */
+static void Board(Canvas *c)
+{
+    unsigned logo[232 * 31] = {0};
+    Canvas image = {232, 31, logo};
+    int i;
+
+    for (i = 0; i < c->w * c->h; i++) {
+        c->rgba[i] = 0xff401808u;
+    }
+    MenuSprite(&image, PortSaturnEurope(), 0, 0);
+    Fit(c, &image, 2, 2, c->w - 4, c->h - 4);
+}
+
+/* Talon's Reach's smoke (smoke.cmp, 25 frames of a column, 32 x 96, risen 4 lines a frame): billows of yellow
+   and brown, semi-transparent. */
+static float Noise(int x, int y)
+{
+    unsigned h = (unsigned)x * 374761393u + (unsigned)y * 668265263u;
+
+    h = (h ^ (h >> 13)) * 1274126177u;
+    return (float)((h ^ (h >> 16)) & 0xffff) / 65535.0f;
+}
+
+static float SmoothNoise(float x, float y)
+{
+    int ix = (int)SDL_floorf(x), iy = (int)SDL_floorf(y);
+    float fx = x - ix, fy = y - iy, a = Noise(ix, iy), b = Noise(ix + 1, iy), c = Noise(ix, iy + 1),
+          d = Noise(ix + 1, iy + 1);
+
+    fx = fx * fx * (3 - 2 * fx);
+    fy = fy * fy * (3 - 2 * fy);
+    return (a + (b - a) * fx) + ((c + (d - c) * fx) - (a + (b - a) * fx)) * fy;
+}
+
+static void Smoke(Canvas *c, int frame)
+{
+    int x, y;
+
+    for (y = 0; y < c->h; y++) {
+        for (x = 0; x < c->w; x++) {
+            float rise = (float)(y + frame * 4), across = SDL_fabsf(x + 0.5f - c->w / 2.0f) / (c->w / 2.0f);
+            float density = SmoothNoise(x / 6.0f, rise / 8.0f) * 0.6f + SmoothNoise(x / 3.0f, rise / 4.0f) * 0.4f;
+            float edge = density - across * 0.9f - (y < 12 ? (12 - y) / 12.0f : 0);
+
+            if (edge > 0.05f) {
+                float heat = SDL_min(1.0f, edge * 2.5f);
+                unsigned r = (unsigned)(96 + 104 * heat), g = (unsigned)(56 + 124 * heat), b = (unsigned)(16 * (1 - heat));
+
+                Plot(c, x, y, r | g << 8 | b << 16 | 128u << 24);
+            }
+        }
+    }
+}
+
 /* ---- the PlayStation's TIMs ---- */
 
 /* The Saturn's art for a TIM (of a .cmp, its index) as RGBA: 0 when there is none. */
@@ -429,6 +514,10 @@ static int Draw(const char *name, int index, Canvas *c)
         Sprite(c, 44, 0, 0, 255);
     } else if (!strcmp(name, "wepicon.cmp") && index < 14) {
         Piece(c, index ? 15 + index : 29, 0, 0, 128);
+    } else if (strstr(name, "red.cmp") && strlen(name) <= 12) {
+        Board(c);
+    } else if (!strcmp(name, "smoke.cmp")) {
+        Smoke(c, index);
     } else if (!strcmp(name, "wofont.tim")) {
         SmallFont(c);
     } else if (!strcmp(name, "menutims.cmp") && index < 8) {
