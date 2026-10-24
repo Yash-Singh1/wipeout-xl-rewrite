@@ -104,6 +104,8 @@ int PortPcRead(int loc, int sectors, void *buffer);
    number of pages loaded, 0 when the file is not there. */
 int PortPcLoadPages(const char *name, int firstPage, int pageCount);
 int PortPcLoadPicture(const char *name, int firstPage);
+/* The game closes, as when the window is closed (the PC version's menus quit; platform/video.c). */
+void PortQuit(void);
 /* The saves (platform/saves.c): the save in use (its card, 0 or 1, and the name after BASCUS-94351; -1 when
    none), remembered for the next start; whether the game saves itself; a save the debug console imported, to
    load now (its card, -1 when none); the outcome of the last autosave. */

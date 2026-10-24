@@ -51,6 +51,8 @@ void PcDrawG4(float depth, const POLY_G4 *poly, int blendMode, int space);
 void PcDrawPacket(float depth, const void *packet, int bytes);
 /* The frame's primitives linked into OT2[CurrentScreen] by depth, front last (from Swap, display.c). */
 void PcDrawEndFrame(void);
+/* From this depth on, primitives are a backdrop behind the 3D (at the far end of OT[]); 2 (none) but in the menus. */
+extern float pcBackdropDepth;
 
 /* The PC's own names for them (d3dpoly.c, d3d.c). */
 #define DrawPolyFT4(z, poly, blend) PcDrawFT4((z), (poly), (blend), PC_SPACE_320)
@@ -68,9 +70,17 @@ void PcCentreText(const char *text, int x, int y, int size, int colour);
 void PcCentreText2(const char *text, int x, int y, int size, int colour);
 void PcAddTime(int time, int x, int y, int size, int colour, u_char flags);
 void PcPrint(const char *text, int x, int y, int colour, int extendedSpacing);
+void PcPrintCX(const char *text, int x, int y, int colour);
+/* The width of a text in the console's columns, in the font of size 8 or 16. */
+int PcTextWidth(const char *text, int size);
 void PcSetTextQuad(POLY_FT4 *quad, short x, short y, u_char u, u_char v, u_char width, u_char height, short tpage,
                    int colour);
 extern float pcTextDepth; /* the PC's textDepth */
+
+/* ---- pcmenus.c: the PC's menus (menus.c) ---- */
+
+/* The menus until the player starts a race (0) or leaves them idle for the attract mode (1); main.c's MenuControl. */
+int PcMenuControl(ConfigData *config, int timeout);
 
 /* The PC's texture pages (main.c, racectrl.c): where its atlases are loaded. */
 enum {

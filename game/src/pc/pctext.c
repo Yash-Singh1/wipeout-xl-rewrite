@@ -247,3 +247,43 @@ void PcPrint(const char *text, int x, int y, int colour, int extendedSpacing)
         }
     }
 }
+
+void PcPrintCX(const char *text, int x, int y, int colour)
+{
+    const char *scan;
+    int width = 0;
+    u_char letter;
+
+    for (scan = text; (letter = (u_char)*scan++) != 0;) {
+        letter = letter >= 32 && letter < 96 ? glyphIndex[letter] : 50;
+        width += letter == 50 ? 4 : letter == 8 || letter == 37 ? 3 : fontGlyphs12[letter].advance >> 1;
+    }
+    x -= width >> 1;
+    while ((letter = (u_char)*text++) != 0) {
+        const PcFontGlyph *glyph;
+
+        letter = letter >= 32 && letter < 96 ? glyphIndex[letter] : 50;
+        if (letter == 50) {
+            x += 4;
+            continue;
+        }
+        glyph = &fontGlyphs12[letter];
+        if (letter == 8 || letter == 37) {
+            /* I and . drawn narrower */
+            PcSetTextQuad(&textQuad, (short)x, (short)y, (u_char)(glyph->vramX + 2), (u_char)glyph->vramY,
+                          (u_char)(glyph->width - 3), 10, 32, colour);
+            DrawScaledTexturedQuad(pcTextDepth, &textQuad, 0);
+            x += (glyph->width - 3) >> 1;
+        } else {
+            PcSetTextQuad(&textQuad, (short)x, (short)y, (u_char)glyph->vramX, (u_char)glyph->vramY,
+                          (u_char)glyph->width, 10, 32, colour);
+            DrawScaledTexturedQuad(pcTextDepth, &textQuad, 0);
+            x += glyph->advance >> 1;
+        }
+    }
+}
+
+int PcTextWidth(const char *text, int size)
+{
+    return Width(text, Font(size));
+}

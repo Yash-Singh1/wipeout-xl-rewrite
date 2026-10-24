@@ -326,7 +326,11 @@ music_done:
             if ((raceContext == 0) && (menuRequested == enabled)) {
                 savedTextureTableCount = TextureTableCount;
                 ShowLoadMessage();
-                raceContext = MenuControl(gameData, menuTexture, &raceContext, timeout);
+                if (PortPcData()) {
+                    raceContext = PcMenuControl(gameData, timeout); /* Port: the PC version's menus (pc/pcmenus.c) */
+                } else {
+                    raceContext = MenuControl(gameData, menuTexture, &raceContext, timeout);
+                }
                 TextureTableCount = savedTextureTableCount;
                 if (raceContext == menuRequested) {
                     menuRequested = 0;
