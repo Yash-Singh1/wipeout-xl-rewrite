@@ -51,6 +51,9 @@ int PortScreenMargin(void);
 void PortWideScene(void);
 void PortWideBackdrop(const void *packet);
 void PortWideLoadScreen(void);
+/* ... and a menu that fills the sides with its own backdrop (the PC CD's menus: their tiles drawn across them), each
+   frame. */
+void PortWideMenu(void);
 /* A packet the game places at a projected point of the scene but links into the ordering table's front entry,
    where the HUD is (the other player's sign over a near ship, the missile lock's boxes): widescreen's and the
    split window's HUD handling leave it where the scene puts it. */

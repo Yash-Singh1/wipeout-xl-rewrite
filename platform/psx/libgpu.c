@@ -369,6 +369,11 @@ void PortWideBackdrop(const void *packet)
     GpuWideMenu();
 }
 
+void PortWideMenu(void)
+{
+    GpuWideMenu();
+}
+
 void PortWideLoadScreen(void)
 {
     GpuWideLoadScreen(); /* (as a menu without a backdrop: only the fills across the screen reach the sides) */

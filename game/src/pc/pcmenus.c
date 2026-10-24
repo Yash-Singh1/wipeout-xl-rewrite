@@ -132,9 +132,9 @@ static Object *controllerModels[4];
 
 /* The backdrop: the tiles over the whole screen (BACKGRND), the three bands of panels (TESTMENU) and their place,
    the lines of the menus' boxes. */
-#define TILES_ACROSS 10 /* the PC's 640x480 in tiles of 64x60 */
+#define TILE_WIDTH 64 /* (of the PC's 640x480) */
+#define TILE_HEIGHT 60
 #define TILES_DOWN 8
-static POLY_FT4 menuTiles[TILES_ACROSS * TILES_DOWN];
 static POLY_FT4 menuBackPolys[14];
 static RECT menuBackdropRects[14];
 static POLY_F4 boxEdge;
@@ -354,27 +354,29 @@ static void PcInitMenuState(ConfigData *config)
     deviceType = savedDeviceType;
 }
 
-/* The tiles over the whole screen, in a checker of BACKGRND's two (InitMenuBackground). */
-static void PcInitMenuBackground(void)
+/* The tiles over the whole screen, in a checker of BACKGRND's two (InitMenuBackground). Port: from the
+   screen's left edge to its right, widescreen's sides too, the PC's 640 columns where they were. */
+static void DrawMenuBackground(void)
 {
-    int row, col;
+    int margin = PortScreenMargin() * 2, first = -((margin + TILE_WIDTH - 1) / TILE_WIDTH), row, col;
+    POLY_FT4 tile;
 
+    SetPolyFT4(&tile);
+    tile.r0 = tile.g0 = tile.b0 = 0x80;
+    tile.tpage = 5;
     for (row = 0; row < TILES_DOWN; row++) {
-        for (col = 0; col < TILES_ACROSS; col++) {
-            POLY_FT4 *tile = &menuTiles[row * TILES_ACROSS + col];
-            int x = col * 64, y = row * 60, v = (row + col) % 2 ? 60 : 0;
+        for (col = first; col * TILE_WIDTH < 640 + margin; col++) {
+            int x = col * TILE_WIDTH, y = row * TILE_HEIGHT, v = (row + col) & 1 ? TILE_HEIGHT : 0;
 
-            SetPolyFT4(tile);
-            tile->r0 = tile->g0 = tile->b0 = 0x80;
-            tile->tpage = 5;
-            tile->x0 = x, tile->y0 = y;
-            tile->x1 = x + 64, tile->y1 = y;
-            tile->x2 = x, tile->y2 = y + 60;
-            tile->x3 = x + 64, tile->y3 = y + 60;
-            tile->u0 = 0, tile->v0 = v;
-            tile->u1 = 63, tile->v1 = v;
-            tile->u2 = 0, tile->v2 = v + 59;
-            tile->u3 = 63, tile->v3 = v + 59;
+            tile.x0 = x, tile.y0 = y;
+            tile.x1 = x + TILE_WIDTH, tile.y1 = y;
+            tile.x2 = x, tile.y2 = y + TILE_HEIGHT;
+            tile.x3 = x + TILE_WIDTH, tile.y3 = y + TILE_HEIGHT;
+            tile.u0 = 0, tile.v0 = v;
+            tile.u1 = TILE_WIDTH - 1, tile.v1 = v;
+            tile.u2 = 0, tile.v2 = v + TILE_HEIGHT - 1;
+            tile.u3 = TILE_WIDTH - 1, tile.v3 = v + TILE_HEIGHT - 1;
+            DrawPixelTexturedQuad(0.99f, &tile, 0);
         }
     }
 }
@@ -1707,7 +1709,6 @@ int PcMenuControl(ConfigData *config, int timeout)
     SetShake(0);
     PcInitMenuState(config);
     Init2DParticle();
-    PcInitMenuBackground();
     SetPolyF4(&boxEdge);
     boxEdge.r0 = boxEdge.g0 = boxEdge.b0 = 255;
     LoadCardTexture(); /* Port: the memory card saves' icon (the PlayStation's: blank with the PC's data) */
@@ -1751,9 +1752,8 @@ int PcMenuControl(ConfigData *config, int timeout)
             QuitQuestion(keys);
         }
         /* Port: the tiles first, the panels over them at the same depth (the PC draws its pages in order) */
-        for (i = 0; i < TILES_ACROSS * TILES_DOWN; i++) {
-            DrawPixelTexturedQuad(0.99f, &menuTiles[i], 0);
-        }
+        PortWideMenu(); /* Port: widescreen's sides are the menus' too */
+        DrawMenuBackground();
         for (i = 0; i < 14; i++) {
             DrawScaledTexturedQuad(0.99f, &menuBackPolys[i], 0);
         }
