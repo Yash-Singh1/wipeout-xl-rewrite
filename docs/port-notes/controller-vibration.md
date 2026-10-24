@@ -29,12 +29,13 @@ computes.
   (`UpdatePlayerShipStart`) ramps `playerShip->thrust` as the throttle is held, and at the moment the
   race starts `UpdatePlayerShip` (`updateCount == PAL_TIME(90)`) boosts the ship for a thrust of
   `5/8 * maxThrust` to `6/8 * maxThrust` (its `launchThrust * 5` .. `launchThrust * 3 << 1`) and stalls
-  it at `6/8` and above. The level rises with the throttle to 8 at that window's floor, is 8 through it,
-  and is 4 past it: hard in the amount that boosts, quiet in the amount that stalls. The division is
-  only in the branch where `boostAt > 0` (`thrust < boostAt` is false when it is 0), so there is none by
-  zero. The function is not called for a demonstration: when the game goes to attract mode it moves the
-  player's ship to `UpdateDroneShipStart`/`UpdateDroneShip` and clears `RACING` (ayrace.c,
-  `CheckShipDestroyed`), and the level stops by itself a few fields later (below).
+  it at `6/8` and above. The level is **0 outside that window** and rises 4 to 7 across it: silent
+  everywhere the start neither boosts nor stalls, and only a buzz in the band the boost is in. (The first
+  version rose with the throttle from nothing and held 4 past the window, which buzzed the pad for 96% of
+  the countdown — see Testing.) The division is only in the branch where `boostAt < stallAt` holds, so
+  there is none by zero. The function is not called for a demonstration: when the game goes to attract
+  mode it moves the player's ship to `UpdateDroneShipStart`/`UpdateDroneShip` and clears `RACING`
+  (ayrace.c, `CheckShipDestroyed`), and the level stops by itself a few fields later (below).
 
 ## platform/
 
@@ -62,6 +63,29 @@ computes.
 * `debug_ui.cpp`: "Controller vibration" and its "Strength" slider (50-300%) in the debug console's Game
   tab.
 
+## Testing
+
+There is no pad to feel in a hidden run, and the traces record nothing of the motors, so the launch buzz
+is checked with `WIPEOUT_RUMBLE_LOG` and a scripted run (on Windows run it with `Start-Process -Wait`:
+the program is a GUI application and a shell's `2>` neither waits for it nor captures it):
+
+    WIPEOUT_HIDDEN=1 WIPEOUT_MUTE=1 WIPEOUT_FIXED_STEP=1 WIPEOUT_NO_GAMEPAD=1 \
+    WIPEOUT_FRAMES=3000 WIPEOUT_RUMBLE_LOG=1 WIPEOUT_KEYS=keys.txt WIPEOUT_SAVE_DIR=save/ \
+    WIPEOUT_XL_DISC="Wipeout 2097 (Europe).cue" wipeoutxl.exe
+
+`keys.txt` walks the menus to an arcade race the way `tools/trace/scenarios/make_races.py` does it
+(Return at field 120, then Up, Right, Right, Return), attaches a virtual gamepad just after the race has
+finished loading (field 770: the run logs `loading: ends at field 762`) and holds its south button —
+the throttle, Cross — from field 780 to the end. The countdown is 166 fields and the throttle climbs
+19 a field to `maxThrust` (700 in this race), so a line's number is the throttle's amount.
+
+The first version buzzed on 159 of the 166 fields (96%): the level rose with the throttle from nothing
+and then held 4 all the way past the window to `maxThrust`. With the window-only mapping it buzzes on 5
+(3%) — the fields whose throttle is 437 to 513, inside `boostAt`..`stallAt` = 435..521 — and not at 418
+below or 532 above. That band is the HUD's too: the thrust marker is `thrust / (maxThrust / 104)` pixels
+across a 96-pixel bar, so 435..521 is 72 to 87 pixels, the band between the third and second last
+indicators from the right.
+
 ## Oracle
 
 `tools/oracle32.py diff B0` was **not** run: this machine's LLVM has no MIPS backend ("unable to create
@@ -87,8 +111,8 @@ other findings are pre-existing `struct X`/`X` typedef pairs and this toolchain'
   packet has no room for it and the game's own screen shake is not sent either.
 * The web build's Gamepad API has no rumble in every browser; `SDL_RumbleGamepad` fails quietly there.
 * No `WIPEOUT_RUMBLE` environment override, unlike the other settings; say if the tests want one.
-* The levels of the launch growl (8 in the window, 4 past it) and the strength curve are tuned by
-  reasoning, not by hand: there is no rumble-capable pad in this environment. The first version was
-  reported weak on a DualShock 4, which is why the curve is now a square root and both motors run; the
-  "Strength" slider (50-300%) is the player's own tuning on top. The numbers are one line each
-  (`control.c`) and `rumble_strength` (pad_sdl.c).
+* The buzz's levels (4 to 7 across the window) and the strength curve are tuned by reasoning, not by
+  hand: there is no rumble-capable pad in this environment. The first version was reported weak on a
+  DualShock 4, which is why the curve is now a square root and both motors run; the "Strength" slider
+  (50-300%) is the player's own tuning on top. The numbers are one line each (`control.c`) and
+  `rumble_strength` (pad_sdl.c).

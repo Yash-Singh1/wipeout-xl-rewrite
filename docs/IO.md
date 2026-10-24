@@ -144,12 +144,14 @@ which is no hit). A jolt that is still running keeps its strength and its time: 
 not end a rocket's.
 
 A level is held: the game says it again every frame it wants the motors at it, and they stop a few fields
-after it stops saying. The one held now is the start's launch thrust (`UpdatePlayerShipStart`): it rises
-with the throttle to the window the start boosts in (5/8 of the ship's top thrust to 6/8, the amounts
-`UpdatePlayerShip` judges at the moment the race starts), is hardest inside it, and falls past it, where
-the start stalls — so the pad says when to let the throttle go. That window is what an analogue throttle
-could be held in and a digital face button cannot: the growl is the feedback the analogue one gave. When
-a jolt and a level both want the motors, the stronger runs.
+after it stops saying. The one held now is the start's launch thrust (`UpdatePlayerShipStart`), and it
+buzzes **only inside the window the start boosts in** — 5/8 of the ship's top thrust to 6/8, the amounts
+`UpdatePlayerShip` judges at the moment the race starts, which is the band between the third and second
+last indicators of the HUD's thrust marker — rising across it as it nears the edge where the start stalls,
+and silent everywhere else. That window is what an analogue throttle could be held in and a digital face
+button cannot: the buzz is the feedback the analogue one gave. `WIPEOUT_RUMBLE_LOG=1` writes what the
+motors are asked, one line a request, which is how this is checked without a pad (see
+docs/port-notes/controller-vibration.md). When a jolt and a level both want the motors, the stronger runs.
 
 The pads that plugged into the console had no motors; these are the port's own. The debug console's
 "Controller vibration" turns them off and its "Strength" scales them (`vibration` and `vibration_strength`

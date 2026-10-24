@@ -246,17 +246,15 @@ void UpdatePlayerShipStart(ShipData *shipIndex, Object **shipShapes, int shipNo,
                 playerShip->thrust = playerShip->maxThrust;
             }
         }
-        /* Port: the pads' motors growl with the launch thrust, rising to the window the start boosts in
-           (5/8 of the top thrust to 6/8, the amounts UpdatePlayerShip judges at the moment the race
-           starts), hardest inside it and quieter past it, where the start stalls */
+        /* Port: the pads' motors buzz only in the window the start boosts in - the throttle's amount, for
+           the digital face buttons the original had an analogue throttle to judge it with - rising across
+           it as it nears the edge where the start stalls, and silent everywhere else */
         if (shipNo == ownShip) {
             boostAt = (playerShip->maxThrust >> 3) * 5;
             stallAt = (playerShip->maxThrust >> 3) * 6;
-            rumbleLevel = 8;
-            if (playerShip->thrust < boostAt) {
-                rumbleLevel = playerShip->thrust * 8 / boostAt;
-            } else if (playerShip->thrust >= stallAt) {
-                rumbleLevel = 4;
+            rumbleLevel = 0;
+            if (playerShip->thrust >= boostAt && playerShip->thrust < stallAt) {
+                rumbleLevel = 4 + (playerShip->thrust - boostAt) * 4 / (stallAt - boostAt);
             }
             PortPadRumbleLevel(rumbleLevel);
         }
