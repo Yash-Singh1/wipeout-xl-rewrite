@@ -151,7 +151,7 @@ static const struct {
 static void PcDoButton(short x, short y, short icon, const char *text)
 {
     POLY_FT4 quad;
-    int labelShift = 0;
+    int labelShift;
 
     /* Port: a gamepad's button where the PC draws its key (with the keyboard, or before the player has touched
        anything, the PC's own key) */
@@ -293,18 +293,18 @@ static void PcLoadModel(Object **models, int capacity, const char *name, int own
 static void PcLoadMenuLineData(void)
 {
     char path[] = "c:\\wipeout2\\common\\menu.dat";
+    size_t size = PC_MENU_LAYOUTS * sizeof(MenuLayout);
     int length = FileLength(path);
     char *buffer;
     int i, j;
 
-    memset(menuLayout, 0, PC_MENU_LAYOUTS * sizeof(MenuLayout));
+    memset(menuLayout, 0, size);
     if (length <= 0) {
         return;
     }
     buffer = DAlloc(reserveHeap, length + 0x20);
     if (LoadFile(path, buffer) == length) {
-        memcpy(menuLayout, buffer, length < (int)(PC_MENU_LAYOUTS * sizeof(MenuLayout)) ? (size_t)length
-                                                                                     : PC_MENU_LAYOUTS * sizeof(MenuLayout));
+        memcpy(menuLayout, buffer, (size_t)length < size ? (size_t)length : size);
     }
     DFree(reserveHeap, buffer);
     /* (NormaliseMenuBoxes) */
@@ -672,7 +672,8 @@ static void EnterMenu(int next)
 /* ---- the screens ---- */
 
 /* Port: a name entered letter by letter (the PC's typed EnterName): Up and Down change the cursor's letter, Left
-   and Right move the cursor, Accept or Back ends the entry. Returns whether it is still being entered. */
+   and Right move the cursor, Accept or Back ends the entry (Accept then goes on to the menu). Returns whether it is
+   still being entered. */
 static int EditName(NameEntry *name)
 {
     static const char letters[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789- ";
@@ -706,7 +707,7 @@ static int EditName(NameEntry *name)
     if (GetMenuKey(MENU_ACCEPT) || GetMenuKey(MENU_BACK)) {
         name->editing = 0;
     }
-    keysPressed &= ~(KEY_ACCEPT | KEY_BACK); /* (the keys are the name's, not the menu's) */
+    keysPressed &= ~KEY_BACK; /* (Back ends the name, not the screen; Accept goes on to the menu's, as the PC's Enter) */
     return name->editing;
 }
 
@@ -791,7 +792,9 @@ static void PcDispHiScores(ConfigData *config, int raceMode)
 /* The preferences: weapons on or off, the default view and the default name. */
 static void PcDisplayConfig(ConfigData *config)
 {
-    if (defaultName.editing) {
+    int wasEditing = defaultName.editing;
+
+    if (wasEditing) {
         EditName(&defaultName);
     } else {
         if (GetMenuKey(MENU_UP)) {
@@ -857,8 +860,8 @@ static void PcDisplayConfig(ConfigData *config)
             PcAddText("DEFAULT NAME", 30, 130, 8, 1);
         }
         PcPrintCX("NAME IS USED AS DEFAULT HIGH SCORE ENTRY", 160, 186, 0);
-        /* Port: Accept here enters the name (the PC typed it on this row), Accept again ends it */
-        if (!defaultName.editing && GetMenuKey(MENU_ACCEPT)) {
+        /* Port: Accept here enters the name (the PC typed it on this row); Accept again accepts the screen */
+        if (!wasEditing && GetMenuKey(MENU_ACCEPT)) {
             Sound(SOUND_MENU_SELECT);
             defaultName.editing = 1;
             defaultName.cursor = 0;
@@ -1758,6 +1761,7 @@ int PcMenuControl(ConfigData *config, int timeout)
     PcInitMenuBackground();
     SetPolyF4(&boxEdge);
     boxEdge.r0 = boxEdge.g0 = boxEdge.b0 = 255;
+    LoadCardTexture(); /* Port: the memory card saves' icon (the PlayStation's: blank with the PC's data) */
     PcLoadModel(controllerModels, 4, "cntrl", 1);
     PcLoadMenuLineData();
     PcLoadModel(menuModels, 10, "harry", 0);
