@@ -164,6 +164,31 @@ static void Sprite(Canvas *c, int sprite, int x, int y, unsigned alpha)
     }
 }
 
+/* ---- the font ---- */
+
+/* One of the PlayStation font's glyphs (A-Z, 0-9, ':', '.') as the Saturn's HUD letters draw it, white: its big ones
+   (pieces 76-101 the letters, 24 x 16; 0-9 the digits 1-9 and 0, 16 x 16; 30 and 31 ':' and '.', 8 x 16) or its
+   small ones (202-227, 16 x 8; 190-199; 200, 201: 8 x 8), into w x h. */
+int SaturnFontGlyph(int glyph, int small, unsigned *rgba, int w, int h)
+{
+    Canvas c = {w, h, rgba};
+    int piece;
+
+    if (!Load() || glyph < 0 || glyph > 37) {
+        return 0;
+    }
+    if (glyph < 26) {
+        piece = (small ? 202 : 76) + glyph;
+    } else if (glyph < 36) {
+        piece = small ? 190 + glyph - 26 : glyph == 26 ? 9 : glyph - 27;
+    } else {
+        piece = (small ? 200 : 30) + glyph - 36;
+    }
+    memset(rgba, 0, (size_t)w * h * sizeof(unsigned));
+    Piece(&c, piece, 0, 0, 255);
+    return 1;
+}
+
 /* ---- the speedometer ---- */
 
 /* The frame as the PlayStation's spbile2.tim has it (the Saturn's is a pixel to the right and down). */
