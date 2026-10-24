@@ -1,2 +1,4 @@
 // The program's icon: the PC version's (D3D.EXE's), which Explorer, the taskbar and the window show
 1 ICON "wipeoutxl.ico"
+// The application manifest (wipeoutxl.manifest): file names in UTF-8
+1 24 "wipeoutxl.manifest"

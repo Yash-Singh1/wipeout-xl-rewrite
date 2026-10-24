@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "platform.h"
+#include "psx/disc.h"
 #include "psx/gte.h"
 #include "psx/psx_io.h"
 #include "region.h"
@@ -71,6 +72,8 @@ static const char *ChooseDisc(void)
     if (portConfig.hidden) {
         return NULL;
     }
+    chosenDisc = NULL;
+    SDL_SetAtomicInt(&discDialogDone, 0);
     SDL_ShowOpenFileDialog(DiscChosen, NULL, NULL, cue, SDL_arraysize(cue), NULL, false);
     while (!SDL_GetAtomicInt(&discDialogDone)) {
         SDL_Event event;
@@ -79,11 +82,7 @@ static const char *ChooseDisc(void)
             break;
         }
     }
-    if (chosenDisc) {
-        SDL_strlcpy(portSettings.discPath, chosenDisc, sizeof(portSettings.discPath));
-        PortSettingsSave();
-    }
-    return chosenDisc;
+    return chosenDisc; /* (kept in the settings once it opens) */
 #endif
 }
 
@@ -247,6 +246,7 @@ int main(int argc, char **argv)
 {
     const char *value;
     int i, w, h, recordReplay = 0;
+    int discFromSettings = 0; /* the disc is the settings' (or the dialog's), not one given (--disc) */
 
     for (i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--link-slave")) {
@@ -336,6 +336,7 @@ int main(int argc, char **argv)
         return 1;
     }
 #ifndef PORT_MOBILE
+    discFromSettings = !portConfig.discPath;
     if (!portConfig.discPath && !(portConfig.discPath = ChooseDisc())) {
         Usage();
         return 1;
@@ -354,19 +355,48 @@ int main(int argc, char **argv)
            it (discimage.c) */
         static DiscJob image;
 
-        image.path = portConfig.discPath;
-        if (PortIsArchive(image.path) && !portConfig.hidden) {
-            RunShowing(ImageJob, &image, "Unpacking the disc image (only this once)...", PortArchiveProgress);
-        } else {
-            ImageJob(&image);
-        }
-        if (!image.ok) {
+        for (;;) {
+            image.path = portConfig.discPath;
+            if (PortIsArchive(image.path) && !portConfig.hidden) {
+                RunShowing(ImageJob, &image, "Unpacking the disc image (only this once)...", PortArchiveProgress);
+            } else {
+                ImageJob(&image);
+            }
+            if (image.ok) {
+                /* its cue sheet read now, before it is kept as the disc to start with */
+                Disc *disc = DiscOpen(image.result, image.message, sizeof(image.message));
+
+                image.ok = disc != NULL;
+                DiscClose(disc);
+            }
+            if (image.ok) {
+                break;
+            }
             SDL_Log("%s", image.message);
+#ifndef PORT_MOBILE
+            if (discFromSettings && !portConfig.hidden) {
+                /* the one chosen last time, or just now: forgotten first (else the game would stop with it at every
+                   start), then the player picks another */
+                portSettings.discPath[0] = 0;
+                PortSettingsSave();
+            }
+#endif
             if (!portConfig.hidden) {
                 SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Wipeout XL", image.message, NULL);
             }
+#ifndef PORT_MOBILE
+            if (discFromSettings && !portConfig.hidden && (portConfig.discPath = ChooseDisc())) {
+                continue;
+            }
+#endif
             return 1;
         }
+#ifndef PORT_MOBILE
+        if (discFromSettings && strcmp(portSettings.discPath, portConfig.discPath) != 0) {
+            SDL_strlcpy(portSettings.discPath, portConfig.discPath, sizeof(portSettings.discPath));
+            PortSettingsSave();
+        }
+#endif
         portConfig.discGiven = portConfig.discPath;
         portConfig.discPath = image.result;
     }
