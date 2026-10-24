@@ -13,6 +13,8 @@
    - the weapon icons (wepicon.cmp): pieces 16-29, the same 14, the PlayStation's first last;
    - the pilot icon (pilot.tim): sprite 44;
    - the explosions (explode.cmp: a fireball of 16 frames, then a flash of 16): sprites 0-15 and 17-32;
+   - the menus' panel, text box, arrow, sound icons and logo (menutims.cmp): the front end's sprites (art\super\super.rbh
+     block 2 and .vri) 24, 8, 9, 10, 11 and 0 (1 for 2097), the same drawings;
    - the ships' shadows (shadow1.tim: one ship's outline in each bit of a pixel, shadow2.tim the fifth): sprites
      52, 50, 53, 54 and 51, the same outlines. */
 #include <SDL3/SDL.h>
@@ -25,9 +27,9 @@
 #define COLOUR_RAM 0x25F00000u
 
 static int loaded;
-static SaturnVideo *video;
-static unsigned char *pieces, *hudMap, *sprites;
-static size_t piecesSize, hudMapSize, spritesSize;
+static SaturnVideo *video, *menuVideo;
+static unsigned char *pieces, *hudMap, *sprites, *menuSprites;
+static size_t piecesSize, hudMapSize, spritesSize, menuSpritesSize;
 
 static unsigned Be16(const unsigned char *p)
 {
@@ -47,6 +49,8 @@ static int Load(void)
         pieces = SaturnBlock("art\\common\\objects.rbh", 0, &piecesSize);
         hudMap = SaturnBlock("art\\common\\objects.rbh", 1, &hudMapSize);
         sprites = SaturnBlock("art\\common\\objects.rbh", 4, &spritesSize);
+        menuVideo = SaturnLoadVideo("art\\super\\super.vri");
+        menuSprites = SaturnBlock("art\\super\\super.rbh", 2, &menuSpritesSize);
     }
     return video && pieces && hudMap && sprites;
 }
@@ -123,45 +127,65 @@ static void MapCells(Canvas *c, int cx, int cy, int cw, int ch, int x, int y)
     }
 }
 
-/* A VDP1 sprite's first part (4-bit with its colour table, or 15-bit) at (x, y). */
-static void Sprite(Canvas *c, int sprite, int x, int y, unsigned alpha)
+/* A VDP1 sprite of a table (its parts, each where the entry puts it: 4-bit with a colour table, 8-bit from a bank
+   of colour RAM, or 15-bit) at (x, y). */
+static void SpriteOf(Canvas *c, SaturnVideo *v, const unsigned char *table, size_t tableSize, int sprite, int x,
+                     int y, unsigned alpha)
 {
-    unsigned at, mode, table, source, w, h, i, k;
+    unsigned at, mode, colours, part, parts;
 
-    if (spritesSize < 8 || sprite >= (int)Be32(sprites) || 4 + sprite * 4 + 4 > (int)spritesSize) {
+    if (!v || !table || tableSize < 8 || sprite >= (int)Be32(table) || 4 + sprite * 4 + 4 > (int)tableSize) {
         return;
     }
-    at = Be32(sprites + 4 + sprite * 4);
-    if (at + 16 > spritesSize) {
+    at = Be32(table + 4 + sprite * 4);
+    if (at + 16 > tableSize) {
         return;
     }
-    mode = (Be16(sprites + at + 4) >> 3) & 7;
-    table = Be16(sprites + at + 6) * 8u;
-    source = Be16(sprites + at + 12) * 8u;
-    w = (Be16(sprites + at + 14) >> 8) * 8;
-    h = Be16(sprites + at + 14) & 0xff;
-    for (k = 0; k < h; k++) {
-        for (i = 0; i < w; i++) {
-            const unsigned char *p;
+    parts = Be16(table + at);
+    mode = (Be16(table + at + 4) >> 3) & 7;
+    colours = Be16(table + at + 6);
+    for (part = 0; part < parts && at + 16 + part * 8 <= tableSize; part++) {
+        const unsigned char *p = table + at + 8 + part * 8;
+        /* (the first part's place is the sprite's handle: the others' from it) */
+        int px = x + (int16_t)Be16(p) - (int16_t)Be16(table + at + 8);
+        int py = y + (int16_t)Be16(p + 2) - (int16_t)Be16(table + at + 10);
+        unsigned source = Be16(p + 4) * 8u, w = (Be16(p + 6) >> 8) * 8, h = Be16(p + 6) & 0xff, i, k;
 
-            if (mode == 1) {
-                p = SaturnVideoAt(video, VDP1_RAM + source + (k * w + i) / 2, 1);
-                if (p) {
-                    unsigned index = i & 1 ? *p & 15 : *p >> 4;
-                    const unsigned char *colour = SaturnVideoAt(video, VDP1_RAM + table + index * 2, 2);
+        for (k = 0; k < h; k++) {
+            for (i = 0; i < w; i++) {
+                const unsigned char *texel, *colour = NULL;
 
-                    if (index && colour) {
-                        Plot(c, x + (int)i, y + (int)k, Rgb(Be16(colour), alpha));
+                if (mode == 1) {
+                    texel = SaturnVideoAt(v, VDP1_RAM + source + (k * w + i) / 2, 1);
+                    if (texel && (i & 1 ? *texel & 15 : *texel >> 4)) {
+                        colour = SaturnVideoAt(v, VDP1_RAM + colours * 8u + (i & 1 ? *texel & 15 : *texel >> 4) * 2, 2);
                     }
+                } else if (mode == 4) {
+                    texel = SaturnVideoAt(v, VDP1_RAM + source + k * w + i, 1);
+                    if (texel && *texel) {
+                        colour = SaturnVideoAt(v, COLOUR_RAM + ((colours & 0xff00) | *texel) * 2, 2);
+                    }
+                } else if (mode == 5) {
+                    texel = SaturnVideoAt(v, VDP1_RAM + source + (k * w + i) * 2, 2);
+                    colour = texel && (Be16(texel) & 0x8000) ? texel : NULL;
                 }
-            } else if (mode == 5) {
-                p = SaturnVideoAt(video, VDP1_RAM + source + (k * w + i) * 2, 2);
-                if (p && (Be16(p) & 0x8000)) {
-                    Plot(c, x + (int)i, y + (int)k, Rgb(Be16(p), alpha));
+                if (colour) {
+                    Plot(c, px + (int)i, py + (int)k, Rgb(Be16(colour), alpha));
                 }
             }
         }
     }
+}
+
+/* The race art's sprites, the front end's. */
+static void Sprite(Canvas *c, int sprite, int x, int y, unsigned alpha)
+{
+    SpriteOf(c, video, sprites, spritesSize, sprite, x, y, alpha);
+}
+
+static void MenuSprite(Canvas *c, int sprite, int x, int y)
+{
+    SpriteOf(c, menuVideo, menuSprites, menuSpritesSize, sprite, x, y, 255);
 }
 
 /* ---- the font ---- */
@@ -292,6 +316,44 @@ static const unsigned char energyColours[5][3] = {
     {232, 0, 32}, {200, 0, 96}, {152, 0, 136}, {80, 0, 112}, {56, 0, 96}};
 static const unsigned char revsColours[1][3] = {{240, 8, 8}};
 
+/* ---- the front end ---- */
+
+/* The menus' panel (menutims.cmp's first): the Saturn's top and bottom, its sides down the open middle. */
+static void MenuPanel(Canvas *c)
+{
+    int x, y, top = 51, bottom = 147;
+
+    MenuSprite(c, 24, 0, 0);
+    for (y = top; y < bottom && y < c->h; y++) {
+        for (x = 0; x < c->w; x++) {
+            unsigned above = c->rgba[(top - 1) * c->w + x];
+            int bright = (above & 0xff) + ((above >> 8) & 0xff) + ((above >> 16) & 0xff) > 3 * 128;
+
+            if ((x < 4 || x >= c->w - 4) && (above >> 24) && bright) {
+                c->rgba[y * c->w + x] = above;
+            }
+        }
+    }
+}
+
+/* A thin green ring (menutims.cmp's eighth). */
+static void Ring(Canvas *c)
+{
+    int x, y;
+    float r = c->w / 2.0f - 2;
+
+    for (y = 0; y < c->h; y++) {
+        for (x = 0; x < c->w; x++) {
+            float d = SDL_fabsf(SDL_sqrtf((x + 0.5f - c->w / 2.0f) * (x + 0.5f - c->w / 2.0f) +
+                                          (y + 0.5f - c->h / 2.0f) * (y + 0.5f - c->h / 2.0f)) - r);
+
+            if (d < 1.0f) {
+                Plot(c, x, y, 0xff009000u);
+            }
+        }
+    }
+}
+
 /* ---- the PlayStation's TIMs ---- */
 
 /* The Saturn's art for a TIM (of a .cmp, its index) as RGBA: 0 when there is none. */
@@ -309,6 +371,28 @@ static int Draw(const char *name, int index, Canvas *c)
         Sprite(c, 44, 0, 0, 255);
     } else if (!strcmp(name, "wepicon.cmp") && index < 14) {
         Piece(c, index ? 15 + index : 29, 0, 0, 128);
+    } else if (!strcmp(name, "menutims.cmp") && index != 5 && index < 8) {
+        switch (index) {
+        case 0:
+            MenuPanel(c);
+            break;
+        case 1:
+            MenuSprite(c, 8, 0, 0);
+            break;
+        case 2:
+            MenuSprite(c, 9, (c->w - 16) / 2, (c->h - 18) / 2);
+            break;
+        case 3:
+        case 4:
+            MenuSprite(c, 7 + index, 0, 0);
+            break;
+        case 6:
+            MenuSprite(c, PortSaturnEurope(), PortSaturnEurope() ? 4 : 0, 0);
+            break;
+        default:
+            Ring(c);
+            break;
+        }
     } else if (!strcmp(name, "explode.cmp") && index < 32) {
         Sprite(c, index < 16 ? index : index + 1, 0, (c->h - 64) / 2, 128);
     } else {

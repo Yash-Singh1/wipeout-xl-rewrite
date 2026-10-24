@@ -160,6 +160,12 @@ int PortSaturnDisc(void)
     return saturn;
 }
 
+int PortSaturnEurope(void)
+{
+    Check();
+    return saturn && europe;
+}
+
 const char *PortSaturnTitle(void)
 {
     return europe ? "WipEout 2097 (Europe, Sega Saturn)" : "Wipeout XL (Japan, Sega Saturn)";

@@ -16,6 +16,8 @@ int PortSaturnDiscIs(const struct Disc *disc);
 /* Whether the disc in use is; its name. */
 int PortSaturnDisc(void);
 const char *PortSaturnTitle(void);
+/* Whether it is WipEout 2097 (Europe). */
+int PortSaturnEurope(void);
 /* An entry of the Saturn's archive by its path (art\track01\course01.rbh), read whole; the caller frees. */
 unsigned char *PortSaturnEntry(const char *path, size_t *size);
 /* Plays one of its movies (saturn_movie.c), by its path in the archive; 0 when it cannot. */
