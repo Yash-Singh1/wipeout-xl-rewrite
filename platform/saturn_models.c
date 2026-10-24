@@ -205,7 +205,8 @@ static int ReadModel(const uint8_t *blk, size_t blkSize, const uint8_t *verts, s
             for (k = 0; k < 4; k++) {
                 q->corner[k] = Clamp(Be16(r + k * 2) / 12, 0, nv ? nv - 1 : 0);
             }
-            q->flags = flags;
+            /* a billboard's texel 0 is see-through (the trees: their groups ask for it drawn, black) */
+            q->flags = m->billboard ? flags & ~SPD : flags;
             if (flags & TEXTURED) {
                 q->srca = Be16(r + 8);
                 q->size = Be16(r + 10);
