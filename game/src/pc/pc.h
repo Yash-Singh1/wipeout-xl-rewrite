@@ -65,6 +65,8 @@ int PcBlink(void);
 /* The primitives made from PcCentred(1) to PcCentred(0) stay where they are put with widescreen (PortHudCentred): a
    menu over the race, not an element of the HUD at a side of the screen. */
 void PcCentred(int on);
+/* From this depth on, primitives are a backdrop behind the 3D (at the far end of OT[]); 2 (none) but in the menus. */
+extern float pcBackdropDepth;
 
 /* The PC's own names for them (d3dpoly.c, d3d.c). */
 #define DrawPolyFT4(z, poly, blend) PcDrawFT4((z), (poly), (blend), PC_SPACE_320)
@@ -113,6 +115,10 @@ void PcDoButton(int x, int y, int icon, const char *text);
    (InGameConfirm), each frame of the pause: the console's choices and input, the PC's drawing. */
 void PcInGameReset(struct PauseMenu *pause, ConfigData *game);
 void PcInGameConfirm(u_char *confirmed, int mode, u_char *selection, int *frameCount);
+/* ---- pcmenus.c: the PC's menus (menus.c) ---- */
+
+/* The menus until the player starts a race (0) or leaves them idle for the attract mode (1); main.c's MenuControl. */
+int PcMenuControl(ConfigData *config, int timeout);
 
 /* The PC's texture pages (main.c, racectrl.c): where its atlases are loaded. */
 enum {

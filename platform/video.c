@@ -269,6 +269,15 @@ int PortWindowFocused(void)
 
 void PortAutoSaveAtExit(void); /* (game/src/portsave.c) */
 
+void PortQuit(void)
+{
+    SDL_Event event;
+
+    SDL_zero(event);
+    event.type = SDL_EVENT_QUIT;
+    SDL_PushEvent(&event); /* (the next PortPumpEvents closes the game) */
+}
+
 int PortPumpEvents(void)
 {
     SDL_Event event;

@@ -45,6 +45,10 @@ a track's whole textures `TRACKnn\TRACKTEX.CMP`, 128x128 each, in place of the t
   textured from an atlas page that the GPU layer holds as a full-colour image.
 - The controllers stay the port's: the PC's keyboard prompts become the device's buttons and names
   (keyglyphs.c), as on the PlayStation disc.
+- The PC's menus (`game/src/pc/pcmenus.c`) keep the port's saves: their load and save screen lists the saves of
+  the first memory card, as the PlayStation's menus do, and the options are kept by the autosave. Names are entered
+  letter by letter (the PC typed them); the controller screen's device choice changes nothing, and its key
+  redefinition is left out (the port's controls are its own settings').
 
 ## Race textures, loading, movies and music
 
