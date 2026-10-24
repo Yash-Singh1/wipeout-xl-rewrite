@@ -121,6 +121,15 @@ void PcDrawG4(float depth, const POLY_G4 *poly, int blendMode, int space)
     Corner(&p->x3, poly->x3, poly->y3, space);
 }
 
+void PcDrawPacket(float depth, const void *packet, int bytes)
+{
+    void *p = Make(bytes, depth);
+
+    if (p) {
+        memcpy(p, packet, (size_t)bytes);
+    }
+}
+
 void PcDrawEndFrame(void)
 {
     int i;

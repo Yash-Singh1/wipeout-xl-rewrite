@@ -46,6 +46,9 @@ void PcDrawFT4(float depth, const POLY_FT4 *poly, int blendMode, int space);
 /* A flat quad (the PC's DrawPolyF4, 320x240) and a Gouraud one (DrawPolyG4). */
 void PcDrawF4(float depth, const POLY_F4 *poly, int space);
 void PcDrawG4(float depth, const POLY_G4 *poly, int blendMode, int space);
+/* A primitive of the console's kind as it is (its corners in 320x240, its texture the console's or a port page's: a
+   controller glyph PortButtonGlyph made), at a depth among the PC's. */
+void PcDrawPacket(float depth, const void *packet, int bytes);
 /* The frame's primitives linked into OT2[CurrentScreen] by depth, front last (from Swap, display.c). */
 void PcDrawEndFrame(void);
 
