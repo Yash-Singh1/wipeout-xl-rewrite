@@ -108,9 +108,14 @@ void PcDrawWeaponIcons(ShipData *ship);
 /* The race's results (DisplayRaceInfo) and the continues left in a challenge (DisplayContinues). */
 void PcDisplayRaceInfo(ConfigData *config, HiScoreData *score, ShipData *ships);
 void PcDisplayContinues(int x, int y);
-/* A button's picture and its label (DoButton): icon the console's (0 circle, 1 cross, 3 triangle, 4/5 arrows), drawn
-   as the device's glyph (PortButtonGlyph) or, for a device without one, as the PC's key. */
-void PcDoButton(int x, int y, int icon, const char *text);
+/* A button's picture and its label (DoButton): one of the PC's keys (hud.c's buttonIcons), drawn as the glyph of the
+   device's button for it (PortButtonGlyph), or as the PC's key with the keyboard or a device without one. */
+enum { PC_KEY_SPACE, PC_KEY_ESCAPE, PC_KEY_ENTER, PC_KEY_LEFT, PC_KEY_RIGHT };
+void PcDoButton(int x, int y, int key, const char *text);
+/* The PC's key for one of the console's icons (DoButton's). */
+int PcKeyOfIcon(int icon);
+/* A box of the PC's menus over a race or the menus (DrawMenuBox), its corners in 640x480: fill and border. */
+void PcDrawMenuBox(int x0, int y0, int x1, int y1, float fillDepth, float borderDepth);
 /* The pause menu (InGameReset, with DrawPauseMenu's look) and its question before a restart or quit
    (InGameConfirm), each frame of the pause: the console's choices and input, the PC's drawing. */
 void PcInGameReset(struct PauseMenu *pause, ConfigData *game);

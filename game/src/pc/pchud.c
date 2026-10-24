@@ -48,11 +48,12 @@ static const u_char weaponHeight[13] = {70, 64, 74, 4, 64, 64, 64, 64, 64, 64, 3
 
 /* The keys the PC shows in its button prompts (DoButton), in its first HUD page: ESC, ENTER, the left and right
    arrows. */
-typedef struct KeyIcon {
+/* The PC's keys in its HUD page (hud.c's buttonIcons), by PcKey. */
+static const struct {
     u_char u, v, width, height;
-} KeyIcon;
-enum { KEY_ESCAPE, KEY_ENTER, KEY_LEFT, KEY_RIGHT };
-static const KeyIcon keyIcons[4] = {{158, 162, 30, 30}, {158, 194, 30, 30}, {160, 226, 32, 16}, {194, 226, 32, 16}};
+} keyIcons[] = {{0, 0, 30, 30}, {158, 162, 30, 30}, {158, 194, 30, 30}, {160, 226, 32, 16}, {194, 226, 32, 16}};
+/* ... and the console's icon (DoButton's: 0 circle, 1 cross, 3 triangle, 4/5 arrows) the device's glyph replaces */
+static const u_char consoleIcons[] = {0, 3, 1, 4, 5};
 
 /* The row of the lap times' heading for each class (as many laps as the class races). */
 static const short lapTimeRows[4] = {180, 170, 160, 150};
@@ -298,7 +299,7 @@ void PcDisplayRaceInfo(ConfigData *config, HiScoreData *score, ShipData *ships)
         PcAddText("RACE TIME", 15, 180, 8, 1);
         PcAddTime(raceType == 0 || raceType == 4 || raceType == 1 ? score->totalTime : total, 128, 180, 8, 0, 1);
     }
-    PcDoButton(127, 210, 1, "CONTINUE");
+    PcDoButton(127, 210, PC_KEY_ENTER, "CONTINUE");
 }
 
 void PcDisplayContinues(int x, int y)
@@ -322,33 +323,36 @@ void PcDisplayContinues(int x, int y)
     }
 }
 
-void PcDoButton(int x, int y, int icon, const char *text)
+int PcKeyOfIcon(int icon)
+{
+    return icon == 3 ? PC_KEY_ESCAPE : icon == 4 ? PC_KEY_LEFT : icon == 5 ? PC_KEY_RIGHT : PC_KEY_ENTER;
+}
+
+void PcDoButton(int x, int y, int key, const char *text)
 {
     POLY_FT4 button;
-    const KeyIcon *key = &keyIcons[icon == 3 ? KEY_ESCAPE : icon == 4 ? KEY_LEFT : icon == 5 ? KEY_RIGHT : KEY_ENTER];
     int shift;
 
-    /* the device's glyph for the console's icon (the keyboard's are the PC's own keys), else the PC's key */
+    /* Port: a gamepad's button where the PC draws its key (with the keyboard, or before the player has touched
+       anything, the PC's own key) */
     SetPolyFT4(&button);
     button.r0 = button.g0 = button.b0 = 128;
     button.tpage = 0;
-    shift = PortButtonGlyph(&button, icon, x, y);
-    if (button.tpage != 0) {
+    shift = PortButtonGlyph(&button, consoleIcons[key], x, y);
+    if (button.tpage != 0 && !PortShowsKeys()) {
         PcDrawPacket(0.1f, &button, sizeof(button));
     } else {
-        PcSetTextQuad(&button, (short)x, (short)y, key->u, key->v, key->width, key->height, 32, 0);
+        shift = 0;
+        PcSetTextQuad(&button, (short)x, (short)y, keyIcons[key].u, keyIcons[key].v, keyIcons[key].width,
+                      keyIcons[key].height, 32, 0);
         DrawScaledTexturedQuad(0.1f, &button, 0);
     }
-    if (key == &keyIcons[KEY_ESCAPE]) {
-        PcPrint(text, x - 25, y + 6, 0, 0);
-    } else {
-        PcPrint(text, x + 18 + shift, y + 6, 0, 0);
-    }
+    PcPrint(text, key == PC_KEY_ESCAPE ? x - 25 : x + 18 + shift, y + 6, 0, 0);
 }
 
 /* A box of the pause menu, its corners in 640x480 (DrawMenuBox): its fill and its border, each a texel of the HUD's
    page. */
-static void DrawMenuBox(int x0, int y0, int x1, int y1, float fillDepth, float borderDepth)
+void PcDrawMenuBox(int x0, int y0, int x1, int y1, float fillDepth, float borderDepth)
 {
     POLY_FT4 box;
 
@@ -390,9 +394,9 @@ static void DrawPauseMenu(struct PauseMenu *pause, ConfigData *game, int audio)
 
     PcCentred(1);
     pcTextDepth = 0.05f;
-    DrawMenuBox(140, 120, 500, 320, 0.06f, 0.07f);
+    PcDrawMenuBox(140, 120, 500, 320, 0.06f, 0.07f);
     if (audio) {
-        DrawMenuBox(150, 300, 490, 440, 0.03f, 0.04f);
+        PcDrawMenuBox(150, 300, 490, 440, 0.03f, 0.04f);
         pcTextDepth = 0.01f;
         if (audioRow != 0 || PcBlink()) {
             PcCentreText("CD TRACK", 0, 155, 8, 0);
@@ -527,7 +531,7 @@ void PcInGameConfirm(u_char *confirmed, int mode, u_char *selection, int *frameC
     }
     PcCentred(1);
     pcTextDepth = 0.05f;
-    DrawMenuBox(120, 170, 520, 280, 0.06f, 0.07f);
+    PcDrawMenuBox(120, 170, 520, 280, 0.06f, 0.07f);
     PcCentreText("ARE YOU SURE YOU", 77, 95, 8, 0);
     PcCentreText(mode == 1 ? "WANT TO RESTART ?" : "WANT TO QUIT ?", mode == 1 ? 90 : 105, 105, 8, 0);
     PcAddText("YES", 75, 120, 8, *selection != 0 && PcBlink());

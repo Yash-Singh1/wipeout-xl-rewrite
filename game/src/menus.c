@@ -812,7 +812,7 @@ void DoButton(short x, short y, int requestedIcon, char *text)
     int frameSpace[2];
     int labelShift;
     if(PortPcData()) {
-        PcDoButton(x,y,requestedIcon,text); /* Port: the PC version's (pc/pchud.c) */
+        PcDoButton(x,y,PcKeyOfIcon(requestedIcon),text); /* Port: the PC version's (pc/pchud.c) */
         return;
     }
     if(buttonCount<30) {

@@ -76,7 +76,6 @@ enum { SOUND_WEAPON_HIT = 5, SOUND_MENU_MOVE = 8, SOUND_MENU_SELECT = 9, SOUND_M
 enum { RACE_ARCADE = 0, RACE_TIME_TRIAL = 1, RACE_CHALLENGE = 4, RACE_ATTRACT = 99 };
 
 /* The PC's button icons (hud.c's buttonIcons, in HUD2): DoButton's icon numbers. */
-enum { ICON_SPACE, ICON_ESCAPE, ICON_ENTER, ICON_LEFT, ICON_RIGHT };
 
 /* The settings a screen changes until it is left (the PC's menuState). */
 static struct {
@@ -143,56 +142,6 @@ static POLY_F4 boxEdge;
 /* ---- drawing helpers (hud.c, ayrace.c) ---- */
 
 /* A console icon for each of the PC's: the one the port's glyphs replace (controls.h). */
-static const u_char consoleIcons[] = {0, 3, 1, 4, 5};
-static const struct {
-    u_char u, v, width, height;
-} buttonIcons[] = {{0, 0, 30, 30}, {158, 162, 30, 30}, {158, 194, 30, 30}, {160, 226, 32, 16}, {194, 226, 32, 16}};
-
-static void PcDoButton(short x, short y, short icon, const char *text)
-{
-    POLY_FT4 quad;
-    int labelShift;
-
-    /* Port: a gamepad's button where the PC draws its key (with the keyboard, or before the player has touched
-       anything, the PC's own key) */
-    SetPolyFT4(&quad);
-    quad.r0 = quad.g0 = quad.b0 = 128;
-    quad.tpage = 0;
-    labelShift = PortButtonGlyph(&quad, consoleIcons[icon], x, y);
-    if (quad.tpage != 0 && !PortShowsKeys()) {
-        PcDrawPacket(0.1f, &quad, sizeof(quad));
-    } else {
-        labelShift = 0;
-        PcSetTextQuad(&quad, x, y, buttonIcons[icon].u, buttonIcons[icon].v, buttonIcons[icon].width,
-                      buttonIcons[icon].height, 32, 0);
-        DrawScaledTexturedQuad(0.1f, &quad, 0);
-    }
-    if (icon == ICON_ESCAPE) {
-        PcPrint(text, x - 25, y + 6, 0, 0);
-    } else {
-        PcPrint(text, x + 18 + labelShift, y + 6, 0, 0);
-    }
-}
-
-/* A box of the quit question: its fill and its border, two texels of HUD2 drawn over the area (640x480). */
-static void PcDrawMenuBox(short x0, short y0, short x1, short y1, float fillDepth, float borderDepth)
-{
-    POLY_FT4 poly;
-
-    PcSetTextQuad(&poly, 60, 80, 109, 56, 1, 1, 32, 0);
-    poly.x0 = x0 + 2, poly.y0 = y0 + 2;
-    poly.x1 = x1 - 2, poly.y1 = y0 + 2;
-    poly.x2 = x0 + 2, poly.y2 = y1 - 2;
-    poly.x3 = x1 - 2, poly.y3 = y1 - 2;
-    DrawScaledTexturedQuad(fillDepth, &poly, 0);
-    PcSetTextQuad(&poly, 60, 80, 109, 62, 1, 1, 32, 0);
-    poly.x0 = x0, poly.y0 = y0;
-    poly.x1 = x1, poly.y1 = y0;
-    poly.x2 = x0, poly.y2 = y1;
-    poly.x3 = x1, poly.y3 = y1;
-    DrawScaledTexturedQuad(borderDepth, &poly, 0);
-}
-
 /* An option's backdrop in the main menu: a texel of HUD2 over the option's box, lighter when it is chosen. (The
    PC's software renderer fills the lower two instead.) */
 static void PcDrawMenuOptionBackdrop(short x, short y, short width, short height, short option, short selected)
@@ -752,10 +701,10 @@ static void PcDispHiScores(ConfigData *config, int raceMode)
     }
     if (blinkFlag) {
         if (menu[currMenu].selection < maxTracks - 1) {
-            PcDoButton(275, 184, ICON_RIGHT, "");
+            PcDoButton(275, 184, PC_KEY_RIGHT, "");
         }
         if (menu[currMenu].selection > 0) {
-            PcDoButton(30, 184, ICON_LEFT, "");
+            PcDoButton(30, 184, PC_KEY_LEFT, "");
         }
     }
     shownTrack = menu[currMenu].selection;
@@ -903,10 +852,10 @@ static void PcSelectController(void)
     }
     if (blinkFlag) {
         if (deviceType < 2) {
-            PcDoButton(275, 110, ICON_RIGHT, "");
+            PcDoButton(275, 110, PC_KEY_RIGHT, "");
         }
         if (deviceType > 0) {
-            PcDoButton(30, 110, ICON_LEFT, "");
+            PcDoButton(30, 110, PC_KEY_LEFT, "");
         }
     }
     PcCentreText(name, 0, 110, 8, blinkFlag ? 0 : 1);
@@ -1189,10 +1138,10 @@ static void PcClassSelect(ConfigData *config)
     PcPrint(descriptions[menuState.trackNum][1], 117, 189, 0, 0);
     if (blinkFlag) {
         if (menuState.trackSelection < trackCount - 1) {
-            PcDoButton(280, 163, ICON_RIGHT, "");
+            PcDoButton(280, 163, PC_KEY_RIGHT, "");
         }
         if (menuState.trackSelection > 0) {
-            PcDoButton(125, 163, ICON_LEFT, "");
+            PcDoButton(125, 163, PC_KEY_LEFT, "");
         }
     }
     PortTwoSided(1); /* Port: the track model's surfaces shown from behind too (as the PlayStation's menus) */
@@ -1522,11 +1471,11 @@ static void PcShowMenu(ConfigData *config)
         }
     }
     if (currMenu == PC_MENU_AUDIO || currMenu == PC_MENU_CONTROLLER || currMenu == PC_MENU_PREFERENCES) {
-        PcDoButton(30, 198, ICON_ENTER, "ACCEPT");
+        PcDoButton(30, 198, PC_KEY_ENTER, "ACCEPT");
     } else if (currMenu != PC_MENU_ARCADE_TIMES && currMenu != PC_MENU_TIME_TRIAL_TIMES) {
-        PcDoButton(30, 198, ICON_ENTER, "SELECT");
+        PcDoButton(30, 198, PC_KEY_ENTER, "SELECT");
     }
-    PcDoButton(278, 198, ICON_ESCAPE, currMenu != PC_MENU_MAIN ? "BACK" : "QUIT");
+    PcDoButton(278, 198, PC_KEY_ESCAPE, currMenu != PC_MENU_MAIN ? "BACK" : "QUIT");
     if (currMenu == PC_MENU_CLASS) {
         PcClassSelect(config);
     }
