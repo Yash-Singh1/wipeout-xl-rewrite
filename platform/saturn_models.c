@@ -433,11 +433,12 @@ typedef struct Palette {
 typedef struct Book {
     Palette *palette;
     int count, capacity;
+    int uniform; /* a palette's light the same on the three channels: for models the game lights itself */
 } Book;
 
-/* The per-channel scales s that make `base` (16 colours) closest to `lut`; the largest difference; 0 when a channel
-   has light where the base has none. */
-static int Fit(const uint16_t base[16], const uint16_t lut[16], int skip0, double s[3], double *err)
+/* The per-channel scales s that make `base` (16 colours) closest to `lut` (with `uniform`, one scale for all three);
+   the largest difference; 0 when a channel has light where the base has none. */
+static int Fit(const uint16_t base[16], const uint16_t lut[16], int skip0, int uniform, double s[3], double *err)
 {
     int c, k, b[16][3], l[16][3];
 
@@ -465,6 +466,17 @@ static int Fit(const uint16_t base[16], const uint16_t lut[16], int skip0, doubl
             *err = 99;
             return 0;
         }
+    }
+    if (uniform) {
+        long num = 0, den = 0;
+
+        for (k = skip0 ? 1 : 0; k < 16; k++) {
+            for (c = 0; c < 3; c++) {
+                num += (long)b[k][c] * l[k][c];
+                den += (long)b[k][c] * b[k][c];
+            }
+        }
+        s[0] = s[1] = s[2] = den ? (double)num / (double)den : 0;
     }
     *err = 0;
     for (k = skip0 ? 1 : 0; k < 16; k++) {
@@ -508,7 +520,7 @@ static int Assign(Book *book, uint16_t (*luts)[16], int count, int see)
             continue;
         }
         for (j = 0; j < count; j++) {
-            if (!Fit(book->palette[i].words, luts[j], see, s, &err) || err > 3.0) {
+            if (!Fit(book->palette[i].words, luts[j], see, book->uniform, s, &err) || err > 3.0) {
                 break;
             }
         }
@@ -531,7 +543,7 @@ static void Light(const Book *book, int i, const uint16_t lut[16], int see, uint
     double s[3], err;
     int c;
 
-    if (!Fit(book->palette[i].words, lut, see, s, &err)) {
+    if (!Fit(book->palette[i].words, lut, see, book->uniform, s, &err)) {
         rgb[0] = rgb[1] = rgb[2] = 128;
         return;
     }
@@ -1070,6 +1082,44 @@ static void AssignPalettes(Converter *cv)
 {
     int *order = SDL_calloc((size_t)cv->texCount + 1, sizeof(int)), i, k;
 
+    if (cv->book.uniform) {
+        /* the game lights these models itself, in place of a polygon's colour: a palette per colour scheme (a
+           texture can be drawn in several), each the brightest of its LUTs */
+        uint16_t (*all)[16] = NULL;
+        int *see = NULL, n = 0, j;
+
+        for (i = 0; i < cv->texCount; i++) {
+            for (j = 0; j < cv->tex[i].lutCount; j++) {
+                all = SDL_realloc(all, (size_t)(n + 1) * sizeof(*all));
+                see = SDL_realloc(see, (size_t)(n + 1) * sizeof(*see));
+                memcpy(all[n], cv->tex[i].luts[j], sizeof(all[0]));
+                see[n++] = cv->tex[i].see;
+            }
+        }
+        for (i = 0; i < n; i++) { /* brightest first (a selection: keeps the pairs together) */
+            int best = i;
+
+            for (j = i + 1; j < n; j++) {
+                if (CompareLuts(all[j], all[best]) < 0) {
+                    best = j;
+                }
+            }
+            if (best != i) {
+                uint16_t t[16];
+                int st = see[i];
+
+                memcpy(t, all[i], sizeof(t));
+                memcpy(all[i], all[best], sizeof(t));
+                memcpy(all[best], t, sizeof(t));
+                see[i] = see[best];
+                see[best] = st;
+            }
+            Assign(&cv->book, &all[i], 1, see[i]);
+        }
+        SDL_free(all);
+        SDL_free(see);
+    }
+
     for (i = 0; i < cv->texCount; i++) {
         int v = i;
 
@@ -1090,6 +1140,10 @@ static void AssignPalettes(Converter *cv)
                 memmove(t->luts[n++], t->luts[j], sizeof(t->luts[0]));
             }
         }
+        if (cv->book.uniform) { /* its brightest scheme's (the others' polygons find theirs: PaletteOf) */
+            SDL_qsort(t->luts, (size_t)n, sizeof(*t->luts), CompareLuts);
+            n = 1;
+        }
         t->palette = Assign(&cv->book, t->luts, n, t->see);
     }
     SDL_free(order);
@@ -1106,6 +1160,11 @@ static int PaletteOf(Converter *cv, SaturnVideo *v, const Poly *p, uint8_t rgb[3
         const TexturePalette *t = &cv->tex[i];
 
         if (t->video == v && t->srca == p->srca && t->size == p->size && t->see == see && t->palette >= 0) {
+            double s[3], err;
+
+            if (cv->book.uniform && (!Fit(cv->book.palette[t->palette].words, lut, see, 1, s, &err) || err > 3.0)) {
+                break; /* drawn in another colour scheme: its own palette */
+            }
             Light(&cv->book, t->palette, lut, see, rgb);
             return t->palette;
         }
@@ -1518,6 +1577,7 @@ static uint8_t *MakeObjects(const char *container, const char *video, int region
         return NULL;
     }
     StartConverter(&cv, region, gouraud);
+    cv.book.uniform = region == R_TERRY || region == R_RESCU; /* the ships and rescue droid: lit by the game */
     for (i = 0; i < count; i++) {
         if (parts[i].model < ms.count) {
             PrepareModel(&cv, &ms.model[parts[i].model], v);
@@ -1761,7 +1821,16 @@ static uint8_t *MakeScene(int track, int wantCmp, size_t *size)
     }
     AssignPalettes(&cv);
     for (i = 0; i < ms.count; i++) {
-        AddModel(&cv, SceneName(track, i, buffer, sizeof(buffer)), &ms.model[i], v, ms.model[i].position);
+        const char *name = SceneName(track, i, buffer, sizeof(buffer));
+
+        if (!strncmp(name, "redb", 4)) {
+            /* the PlayStation's Red Bull boards: the game lays its two pictures on their first four quads as a 2 x 2
+               grid (RedBullAnimate), which the Saturn's (a row of four, its own advert) are not. Flat-shaded, the
+               game leaves them, and the Saturn's advert shows. */
+            AddModelSplit(&cv, name, &ms.model[i], v, ms.model[i].position, 0, 0);
+        } else {
+            AddModel(&cv, name, &ms.model[i], v, ms.model[i].position);
+        }
     }
     prm = BuildPrm(&cv, &prmSize, &tims, &timSizes, &timCount);
     if (wantCmp) {
