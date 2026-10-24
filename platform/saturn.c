@@ -793,8 +793,10 @@ unsigned char *SaturnBlock(const char *path, int block, size_t *size)
 
 /* A VDP2 background as 15-bit pixels (the Saturn's colours are laid out as the PlayStation's): a map of 1-word
    pattern names (12 bits of character number, in 0x20-byte units, 4 of palette: 256 colours of colour RAM each),
-   8-bit cells of 8x8 from `cells` (the lowest character number of the map is its first). 40x28 cells: 320x224. */
-static void RenderBackground(Video *v, const uint8_t *map, size_t mapSize, uint32_t cells, uint16_t *pixels)
+   8-bit cells of 8x8 from `cells` (the lowest character number of the map is its first), or 4-bit ones (their 16
+   colours from `colours` on, by the pattern name's palette). 40x28 cells: 320x224. */
+static void RenderBackground(Video *v, const uint8_t *map, size_t mapSize, uint32_t cells, int fourBit, int colours,
+                             uint16_t *pixels)
 {
     int first = 0xfff, x, y, i;
 
@@ -812,9 +814,11 @@ static void RenderBackground(Video *v, const uint8_t *map, size_t mapSize, uint3
                 continue;
             }
             w = Be16(map + at);
-            cell = VideoAt(v, cells + (uint32_t)((w & 0xfff) - first) * 0x20, 64);
+            cell = VideoAt(v, cells + (uint32_t)((w & 0xfff) - first) * 0x20, fourBit ? 32 : 64);
             if (cell) {
-                int index = ((w >> 12) & 15) * 256 + cell[(y % 8) * 8 + x % 8];
+                int nibbles = cell[(y % 8) * 4 + x % 8 / 2];
+                int index = fourBit ? colours + ((w >> 12) & 15) * 16 + (x & 1 ? nibbles & 15 : nibbles >> 4)
+                                    : ((w >> 12) & 15) * 256 + cell[(y % 8) * 8 + x % 8];
 
                 colour = index * 2 + 1 < (int)sizeof(v->cram) ? Be16(v->cram + index * 2) & 0x7FFF : 0;
             }
@@ -1027,19 +1031,20 @@ static const Shape *ShapeOf(const char *path)
 /* ---- pictures ---- */
 
 /* The PlayStation's 16-bit pictures the Saturn has: its title screen (Wipeout XL's on the Japanese disc, WipEout
-   2097's on the European) and copyright screen, centred in the PlayStation's (320x240 or 256 for the Saturn's
-   320x224). */
+   2097's on the European), copyright screen, its maker's logo for the PlayStation's (SEGA's, 4-bit) and its
+   publisher's (GameBank's, the Japanese disc's) for the sponsor's, centred in the PlayStation's picture (320 or 640
+   wide, the Saturn's doubled; 240 or 256 lines for its 224). */
 static uint8_t *MakePicture(const char *path, size_t *size)
 {
     const char *art = NULL;
     uint32_t cells = 0;
-    int block = 0;
+    int block = 0, fourBit = 0, colours = 0;
     const Shape *shape = ShapeOf(path);
     Video *v;
     uint8_t *map, *tim;
     size_t mapSize;
     uint16_t *pixels;
-    int w, h, x, y, top;
+    int w, h, x, y, top, wide;
 
     if (strstr(path, "\\rstartxl.tim") || strstr(path, "\\startpal.tim")) {
         art = europe ? "art\\title\\title2" : "art\\title\\title";
@@ -1048,6 +1053,15 @@ static uint8_t *MakePicture(const char *path, size_t *size)
         art = "art\\title\\logos";
         block = europe ? 0 : 1;
         cells = europe ? 0x25E28000u : 0x25E08000u;
+    } else if (strstr(path, "\\sce_logo.tim")) {
+        art = "art\\title\\logos";
+        block = 2;
+        cells = 0x25E48000u;
+        fourBit = 1;
+        colours = 0x200;
+    } else if (strstr(path, "\\redbntsc.tim") && !europe) {
+        art = "art\\gb_logo\\gamebank";
+        cells = 0x25E08000u;
     }
     if (!art || !shape || shape->kind != SHAPE_TIM || (shape->a & 7) != 2) {
         return NULL;
@@ -1066,9 +1080,10 @@ static uint8_t *MakePicture(const char *path, size_t *size)
         return NULL;
     }
     pixels = SDL_calloc(320 * 224, sizeof(uint16_t));
-    RenderBackground(v, map, mapSize, cells, pixels);
+    RenderBackground(v, map, mapSize, cells, fourBit, colours, pixels);
     w = shape->r2[2];
     h = shape->r2[3];
+    wide = w >= 640 ? 2 : 1;
     top = (h - 224) / 2;
     *size = 20 + (size_t)w * h * 2;
     tim = SDL_calloc(1, *size);
@@ -1081,9 +1096,9 @@ static uint8_t *MakePicture(const char *path, size_t *size)
     PutLe16(tim + 18, h);
     for (y = 0; y < h; y++) {
         for (x = 0; x < w; x++) {
-            int sy = y - top, sx = x - (w - 320) / 2;
+            int sy = y - top, sx = (x - (w - 320 * wide) / 2) / wide;
 
-            if (sy >= 0 && sy < 224 && sx >= 0 && sx < 320) {
+            if (sy >= 0 && sy < 224 && sx >= 0 && sx < 320 && x >= (w - 320 * wide) / 2) {
                 PutLe16(tim + 20 + ((size_t)y * w + x) * 2, pixels[sy * 320 + sx]);
             }
         }
@@ -1104,7 +1119,7 @@ int SaturnTitlePicture(unsigned short *pixels)
     LoadVri(v, europe ? "art\\title\\title2.vri" : "art\\title\\title.vri");
     map = BlockData(europe ? "art\\title\\title2.rbh" : "art\\title\\title.rbh", 0, &mapSize);
     if (map) {
-        RenderBackground(v, map, mapSize, 0x25E6E000u, pixels);
+        RenderBackground(v, map, mapSize, 0x25E6E000u, 0, 0, pixels);
     }
     SDL_free(map);
     SDL_free(v);
