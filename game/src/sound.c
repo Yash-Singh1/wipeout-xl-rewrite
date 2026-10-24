@@ -1,5 +1,6 @@
 #include "functions.h"
 #include "include_asm_g8.h"
+#include "pc/pc.h" /* Port: the PC version's music */
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
 extern int           remoteSamp1;
@@ -573,6 +574,9 @@ int InitCD(CdlLOC *locs, int unused)
     mode = 5;
     CdControlB(0xE, &mode, 0);
     count = CdGetToc(locs);
+    if (PortPcData() && count < 2) {
+        count = 0; /* Port: as the PC's CdCountTracks, a CD with no audio tracks has no music */
+    }
     i = 1;
     cdMusicCount = count;
     if (i < count) {

@@ -30,6 +30,11 @@ void PcBlit(int x0, int y0, int x1, int y1, float depth);
 
 void PcLoadScreen(int frame, int percent);
 
+/* ---- pcmusic.c: the PC CD's songs, by the game's track index (0 the random play) ---- */
+
+const char *PcCdTrackName(int track);
+const char *PcCdTrackArtist(int track);
+
 /* ---- pcdraw.c ---- */
 
 /* The texture page code of PC page n (0-62) for a primitive: colour depth 3 (the port's pages, gpu.h), its number
