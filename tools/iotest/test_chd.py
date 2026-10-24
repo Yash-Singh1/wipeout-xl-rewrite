@@ -212,6 +212,24 @@ def main():
         run()
         assert binary.read_bytes() == b"".join(f[:SECTOR] for f in frames[:4]) + bytes(4 * SECTOR) + b"".join(f[:SECTOR] for f in frames[8:])
 
+        # A mode 1 data track: raw as it is, and cooked (2048 bytes of data per frame) made raw with a header.
+        make_chd(image, frames[:4], tracks=["TRACK:1 TYPE:MODE1_RAW SUBTYPE:NONE FRAMES:4"])
+        run()
+        assert "TRACK 01 MODE1/2352" in cue.read_text()
+        assert binary.read_bytes() == b"".join(f[:SECTOR] for f in frames[:4])
+        make_chd(image, frames[:4], tracks=["TRACK:1 TYPE:MODE1 SUBTYPE:NONE FRAMES:4"])
+        run()
+        assert "TRACK 01 MODE1/2352" in cue.read_text()
+
+        def bcd(v):
+            return v // 10 << 4 | v % 10
+        cooked = b""
+        for lba, f in enumerate(frames[:4]):
+            address = lba + 150
+            cooked += (b"\0" + b"\xff" * 10 + b"\0" + bytes([bcd(address // 4500), bcd(address // 75 % 60),
+                                                         bcd(address % 75), 1]) + f[:2048] + bytes(288))
+        assert binary.read_bytes() == cooked
+
         # A valid map whose self references loop must fail, too.
         make_chd(image, frames, types=[5, 5, 5])
         run(False)

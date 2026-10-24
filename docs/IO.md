@@ -90,7 +90,9 @@ Decisions, each from the retail recording or the hardware description:
 
 ## CD (disc.c, cdrom.c, libcd.c)
 
-The disc is the user's .cue/.bin image (mapped read-only). The drive models Setloc, Play,
+The disc is the user's image (mapped read-only): a .cue with its .bin (2352-byte sectors) or .iso (2048) or WAV tracks, an
+.iso by itself, a CloneCD .ccd/.img, or an Alcohol 120% .mds/.mdf (one session). Sectors are always given raw: a 2048-byte
+track's are made up with the sync and header (`DiscMakeRawSector`). The drive models Setloc, Play,
 ReadN/ReadS, SeekL/P, Pause, Stop, Standby, Init, Mute/Demute, Setmode, Getparam, GetlocL/P,
 GetTN/GetTD, GetID, ReadTOC with the first response after 1.5 ms, second responses (INT2)
 delayed by the motion involved, and seeks of 4 ms to about 0.6 s by distance. Data reads deliver a
