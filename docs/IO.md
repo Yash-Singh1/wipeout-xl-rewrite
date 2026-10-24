@@ -147,12 +147,13 @@ A level is held: the game says it again every frame it wants the motors at it, a
 after it stops saying. The one held now is the start's launch thrust (`UpdatePlayerShipStart`): it rises
 with the throttle to the window the start boosts in (5/8 of the ship's top thrust to 6/8, the amounts
 `UpdatePlayerShip` judges at the moment the race starts), is hardest inside it, and falls past it, where
-the start stalls — so the pad says when to let the throttle go. When a jolt and a level both want the
-motors, the stronger runs.
+the start stalls — so the pad says when to let the throttle go. That window is what an analogue throttle
+could be held in and a digital face button cannot: the growl is the feedback the analogue one gave. When
+a jolt and a level both want the motors, the stronger runs.
 
 The pads that plugged into the console had no motors; these are the port's own. The debug console's
-"Controller vibration" turns them off (`vibration` of wipeoutxl.ini), and the tests' hidden runs never
-shake.
+"Controller vibration" turns them off and its "Strength" scales them (`vibration` and `vibration_strength`
+of wipeoutxl.ini), and the tests' hidden runs never shake.
 
 ## Memory card (libcard.c)
 

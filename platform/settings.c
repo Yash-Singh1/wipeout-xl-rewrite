@@ -88,6 +88,8 @@ static void Set(const char *key, const char *value)
         portSettings.touchOpacity = SDL_clamp(number, 10, 100);
     } else if (!strcmp(key, "vibration")) {
         portSettings.noRumble = number == 0;
+    } else if (!strcmp(key, "vibration_strength") && number > 0) {
+        portSettings.rumbleStrength = SDL_clamp(number, 50, 300);
     }
 }
 
@@ -214,7 +216,7 @@ int PortSettingsSave(void)
             "render_scale = %d\nhd_textures = %d\nhd_pack = %s\nwipeout64 = %s\n"
             "custom_music = %d\nmusic_shuffle = %d\nmusic_folder = %s\nsave_slot = %s\nautosave = %d\n"
             "touch_controls = %d\ntouch_size = %d\ntouch_opacity = %d\ndepth_buffer = %d\nskip_logos = %d\nrecord_rate = %d\n"
-            "video_standard = %d\nvibration = %d\n",
+            "video_standard = %d\nvibration = %d\nvibration_strength = %d\n",
             portSettings.showFps, portSettings.farView, portSettings.fade, portSettings.fadeNear, portSettings.fadeFar,
             portSettings.widescreen, portSettings.frameRate,
             portSettings.frameCap, portSettings.skipIntro,
@@ -225,7 +227,8 @@ int PortSettingsSave(void)
             portSettings.musicShuffle, portSettings.musicFolder, portSettings.saveSlot, !portSettings.noAutoSave,
             portSettings.touchControls, portSettings.touchSize ? portSettings.touchSize : 100,
             portSettings.touchOpacity ? portSettings.touchOpacity : 60, !portSettings.consoleDepth, portSettings.skipLogos,
-            portSettings.recordRate ? portSettings.recordRate : 60, portSettings.videoStandard, !portSettings.noRumble);
+            portSettings.recordRate ? portSettings.recordRate : 60, portSettings.videoStandard, !portSettings.noRumble,
+            portSettings.rumbleStrength ? portSettings.rumbleStrength : 100);
     fclose(file);
     return 1;
 }

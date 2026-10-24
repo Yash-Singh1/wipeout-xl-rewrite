@@ -11,7 +11,7 @@ The goal of this project is to keep the original behavior as much as possible wh
 - Higher render distance (configurable if you prefer older style)
 - Custom music
 - Touch controls for mobile and web (WIP)
-- Controller vibration: the pads shake at a hit, as the picture does
+- Controller vibration: the pads shake at a hit, as the picture does, and growl with the launch thrust, so the throttle can be judged on the digital face buttons. The start's boost wants the throttle held at one precise amount (5/8 of the ship's top thrust to 6/8, and nothing above it, where the start stalls), which the original gets from an analogue throttle - the neGcon's button I, or the analogue stick - and a digital button cannot show: the growl is that feedback. Its strength is a slider in the debug console
 - Autosave & converting save files
 - Minor culling & depth buffer fixes
 

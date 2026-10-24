@@ -611,7 +611,7 @@ void PsxInputEvent(const SDL_Event *event)
    picture does, and growl with the launch thrust. Two things can want them at once and the stronger wins:
    a jolt (PsxPadRumble), a hit of `amount` that runs for its time and is not ended by a weaker one, and a
    level (PsxPadRumbleLevel), held while the game keeps saying it and stopped a few fields after it stops.
-   Both are in the game's units: 2 a knock that is barely felt, 20 the full strength. */
+   Both are in the game's units: 2 a knock, 20 the full strength. */
 static int joltAmount;    /* the jolt that is running, and when it ends */
 static uint64_t joltUntil;
 static int holdLevel;     /* the level held, and how long it lives without the game saying it again */
@@ -621,7 +621,9 @@ static uint64_t holdUntil;
 
 static uint16_t rumble_strength(int level)
 {
-    return (uint16_t)(level * 32767 / 20);
+    /* the square root of the level's share of the scale: the light knocks are felt and the rocket keeps
+       its lead over them (a pad's motors are weakest exactly where the levels are lowest) */
+    return (uint16_t)(SDL_sqrtf((float)level / 20.0f) * 32767.0f);
 }
 
 static void rumble_apply(void)
@@ -652,7 +654,7 @@ static void rumble_apply(void)
     }
     if (level > 0) {
         low = rumble_strength(level);
-        high = (uint16_t)(low / 2);
+        high = low; /* both motors: the small one is the buzz a growl is felt through */
         if (duration < HOLD_MS) {
             duration = HOLD_MS;
         }

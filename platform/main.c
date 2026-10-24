@@ -533,14 +533,22 @@ int PortFadeRange(int *nearDistance, int *farDistance)
     return portSettings.fade;
 }
 
+/* The level at the strength the player asked for (0: the scale's own), in the game's units. */
+static int RumbleLevel(int level)
+{
+    int strength = portSettings.rumbleStrength > 0 ? portSettings.rumbleStrength : 100;
+
+    return level * strength / 100;
+}
+
 void PortPadRumble(int amount)
 {
     /* the player's setting, and never in the tests' hidden runs (which is also what stops a jolt or a held
        level that was running when either of them changed) */
-    PsxPadRumble(portSettings.noRumble || portConfig.hidden ? 0 : amount);
+    PsxPadRumble(portSettings.noRumble || portConfig.hidden ? 0 : RumbleLevel(amount));
 }
 
 void PortPadRumbleLevel(int level)
 {
-    PsxPadRumbleLevel(portSettings.noRumble || portConfig.hidden ? 0 : level);
+    PsxPadRumbleLevel(portSettings.noRumble || portConfig.hidden ? 0 : RumbleLevel(level));
 }

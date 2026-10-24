@@ -40,11 +40,12 @@ computes.
 
 * `psx/pad.h`, `psx/pad_sdl.c`: `PsxPadRumble(int amount)` (a jolt) and `PsxPadRumbleLevel(int level)`
   (a level held), both in the game's units, 2 to 20. `rumble_apply` runs the open gamepads with
-  `SDL_RumbleGamepad` (the big motor at the strength, the fine one at half) at whichever of the two is
-  stronger, and stops them when both have passed. The strength is `level * 32767 / 20`, linear now so
-  that a held level can be genuinely slight (this drops the floor the first version had, which put every
-  level at a quarter of the motors and up; the `DamageCollide` tap went from 3 to 4 with it, so a wall
-  still taps).
+  `SDL_RumbleGamepad` at whichever of the two is stronger, and stops them when both have passed.
+  The strength is `32767 * sqrt(level / 20)`: the square root because a pad's motors are weakest exactly
+  where the levels are lowest, so the knocks are felt and the rocket keeps its lead over them. Both
+  motors run at that strength — the small one is the buzz a growl is felt through (a DualShock's right),
+  which the half-strength fine motor of the earlier version was not. (This replaces that version's
+  `level * 32767 / 20`, and the `DamageCollide` tap went from 3 to 4 with it, so a wall still taps.)
   A jolt runs `100 + amount * 20` ms and a weaker one that comes while it runs does not end it (a wall
   scrape does not end a rocket's). A level lives `HOLD_MS` (100 ms) after the last call, refreshed every
   frame by `UpdatePlayerShipStart`, and `rumble_tick` — from `PsxPadSdlField`, once a field — stops the
@@ -52,11 +53,14 @@ computes.
   with the two players' link devices assigned, the first player's controller alone. Nothing runs while
   the window is not focused.
 * `main.c`: `PortPadRumble` and `PortPadRumbleLevel` pass `0` when the player has turned the motors off
-  (`portSettings.noRumble`) or this is a test's hidden run, which also stops what was running. They live
+  (`portSettings.noRumble`) or this is a test's hidden run, which also stops what was running, and scale
+  the level by the strength the player set (`portSettings.rumbleStrength`, 0: the scale's own). They live
   here with `PortLogoFields`, `PortFarViewEnabled` and `PortFadeRange`, the other hooks that read the
   settings; `psxio` (which `tools/iotest` links without `platform/`) must not depend on them.
-* `settings.h`, `settings.c`: `noRumble`, saved as `vibration = %d` (the `autosave`/`noAutoSave` idiom).
-* `debug_ui.cpp`: "Controller vibration" in the debug console's Game tab.
+* `settings.h`, `settings.c`: `noRumble` (saved as `vibration = %d`, the `autosave`/`noAutoSave` idiom)
+  and `rumbleStrength` (`vibration_strength = %d`, 0: 100 like `touchSize`).
+* `debug_ui.cpp`: "Controller vibration" and its "Strength" slider (50-300%) in the debug console's Game
+  tab.
 
 ## Oracle
 
@@ -84,5 +88,7 @@ other findings are pre-existing `struct X`/`X` typedef pairs and this toolchain'
 * The web build's Gamepad API has no rumble in every browser; `SDL_RumbleGamepad` fails quietly there.
 * No `WIPEOUT_RUMBLE` environment override, unlike the other settings; say if the tests want one.
 * The levels of the launch growl (8 in the window, 4 past it) and the strength curve are tuned by
-  reasoning, not by hand: there is no rumble-capable pad in this environment. They are one line each
-  (control.c) and `rumble_strength` (pad_sdl.c).
+  reasoning, not by hand: there is no rumble-capable pad in this environment. The first version was
+  reported weak on a DualShock 4, which is why the curve is now a square root and both motors run; the
+  "Strength" slider (50-300%) is the player's own tuning on top. The numbers are one line each
+  (`control.c`) and `rumble_strength` (pad_sdl.c).
