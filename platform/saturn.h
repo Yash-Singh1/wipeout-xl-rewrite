@@ -3,6 +3,8 @@
 #ifndef PORT_SATURN_H
 #define PORT_SATURN_H
 
+#include <stddef.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -14,6 +16,10 @@ int PortSaturnDiscIs(const struct Disc *disc);
 /* Whether the disc in use is; its name. */
 int PortSaturnDisc(void);
 const char *PortSaturnTitle(void);
+/* The sounds (saturn_sound.c): samples.wad from the Saturn's sound container's blocks, with the PlayStation's names
+   in its order. The caller frees. */
+unsigned char *SaturnMakeSamples(const unsigned char *const *blocks, const unsigned int *sizes, int blockCount,
+                                 const char *const *names, size_t *size);
 /* The font (saturn_font.c): the glyphs of a size (16, 12 or 8) drawn into a 4-bit page of 256 rows. */
 void SaturnDrawFont(unsigned char *page, int pageWidth, int size);
 

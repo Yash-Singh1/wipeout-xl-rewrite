@@ -95,6 +95,12 @@ int PortSaturnDiscIs(const Disc *disc)
            DiscFindFile(disc, "\\CDIMAGE.ELF", &lba, &size) && DiscFindFile(disc, "\\0.AAA", &lba, &size);
 }
 
+/* The Saturn's music (its CD tracks 2-11, as its own banners name them), in place of the PlayStation's names. */
+extern char *cdTrackNames[13], *cdTrackArtists[13];
+static char *const saturnTracks[10] = {"KINKONG", "PLASTICITY", "MESSIJ RECEIVED XTNO", "BODY IN MOTION", "CANADA",
+                                       "TENATION", "SURGEON", "BODY IN MOTION PLUS", "HAKAPIK MURDER",
+                                       "MESSIJ RECEIVED"};
+
 static void Check(void)
 {
     const Disc *disc = PsxIoDisc();
@@ -124,6 +130,14 @@ static void Check(void)
         }
     }
     saturn = 1;
+    {
+        int i;
+
+        for (i = 0; i < 12; i++) {
+            cdTrackNames[i + 1] = i < 10 ? saturnTracks[i] : "";
+            cdTrackArtists[i + 1] = i < 10 ? "COLD STORAGE" : "";
+        }
+    }
     {
         uint8_t header[2048];
 
@@ -1077,6 +1091,28 @@ static uint8_t *MakeFonts(const char *path, size_t *size)
     return out.data;
 }
 
+/* ---- the sounds ---- */
+
+static uint8_t *MakeSounds(const char *path, size_t *size)
+{
+    const Shape *shape = ShapeOf(path);
+    const char *names[39];
+    Blocks b;
+    uint8_t *wad;
+    int i;
+
+    if (strcmp(path, "\\wipeout2\\sound\\samples.wad") || !shape || shape->kind != SHAPE_WAD || shape->count != 39 ||
+        !ReadBlocks("sound\\gamesnds.rbh", &b)) {
+        return NULL;
+    }
+    for (i = 0; i < 39; i++) {
+        names[i] = shape->list[i].name;
+    }
+    wad = SaturnMakeSamples(b.data, b.size, b.count, names, size);
+    SDL_free(b.file);
+    return wad;
+}
+
 /* ---- the files ---- */
 
 /* A file of the borrowed PlayStation disc (WIPEOUT_SATURN_BORROW), by the game's path (\wipeout2\...). */
@@ -1261,6 +1297,9 @@ static int Find(const char *path)
 
         if (!data) {
             data = MakeFonts(path, &size);
+        }
+        if (!data) {
+            data = MakeSounds(path, &size);
         }
 
         if (data) {
