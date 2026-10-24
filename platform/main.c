@@ -11,6 +11,7 @@
 #include "psx/gte.h"
 #include "psx/psx_io.h"
 #include "region.h"
+#include "pc.h"
 #include "saturn.h"
 #include "debug_ui.h"
 #include "discimage.h"
@@ -370,15 +371,14 @@ int main(int argc, char **argv)
                 uint32_t size;
 
                 /* ... and it is the game: the sound bank of its \WIPEOUT2 tree (on the disc of every release:
-                   region.c's two, the Japanese and the prototype's), or the Sega Saturn disc (saturn.c). The PC
-                   CD-ROM version's image is a .bin with music tracks too, but its files are not the game's,
-                   and the game would crash on them. */
-                image.ok = disc && (PortSaturnDiscIs(disc) ||
+                   region.c's two, the Japanese and the prototype's), the Sega Saturn disc (saturn.c), or the PC
+                   CD-ROM version's (pc.c). */
+                image.ok = disc && (PortSaturnDiscIs(disc) || PortPcDiscIs(disc) ||
                                     DiscFindFile(disc, "\\WIPEOUT2\\SOUND\\SAMPLES.WAD", &lba, &size));
                 if (disc && !image.ok) {
                     SDL_snprintf(image.message, sizeof(image.message),
                                  "%s is not Wipeout XL (SCUS-94351) or WipEout 2097 (SLES-00327): the game's "
-                                 "files are not on it. The PC CD-ROM version is not the game either.",
+                                 "files are not on it, nor the Sega Saturn's or the PC CD-ROM version's.",
                                  image.path);
                 }
                 DiscClose(disc);
