@@ -1,4 +1,5 @@
 #include "effects.h"
+#include "pc/pc.h"
 #include "weapon.h"
 
 /* Globals shared with other modules. */
@@ -1853,6 +1854,10 @@ void DrawWeaponIcons(POLY_FT4 *icons, Texture **textures, ShipData *ship)
     u_short   tpage;
     POLY_FT4 *poly;
 
+    if (PortPcData()) {
+        PcDrawWeaponIcons(ship); /* Port: the PC version's weapon panel (pc/pchud.c) */
+        return;
+    }
     if (ship->weapon != 0) {
         textureIndex = ship->weapon - 1;
         icons[CurrentScreen].u0 = textures[textureIndex]->u0;

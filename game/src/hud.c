@@ -4,6 +4,14 @@
 #include "ayrace.h"
 #include "include_asm_g8.h"
 
+/* Port: the PC version's text in place of the console's (pc/pctext.c), in its sizes and colours. Its letters are of
+   one size, 8 (its code has 8 where the console's has 12 or 16: the results, the warnings, the hall of fame), its
+   digits of two, 8 and 16 (the console's 12 is its 8); the console's own colour (1) is the PC's white (0), its other
+   colour the PC's yellow (1). */
+#define PC_TEXT_SIZE 8
+#define PC_SIZE(size) ((size) == 12 ? 8 : (size))
+#define PC_COLOUR(colour) ((colour) == 1 ? 0 : 1)
+
 /* Font textures are loaded at consecutive texture-table slots; the last one is the dimmed colour. */
 extern short   hudTexIndex16;
 extern short   hudTexIndex12;
@@ -122,6 +130,9 @@ void InitSpeedo(Speedo *speedo)
     speedoSpeedTex = WADLoadTexture(textureWad, 1);
     speedoShieldTex = WADLoadTexture(textureWad, 1);
     speedoMarkerTex = WADLoadTexture(textureWad, 1);
+    if (PortPcData()) {
+        PcInitPanelQuads(); /* Port: the PC version's speedometer and weapon panels (pc/pchud.c) */
+    }
     screen = 0;
     do {
         SetPolyFT4(&speedo->frame[screen]);
@@ -238,6 +249,10 @@ void fill_speedo(Speedo *speedo, ShipData *ships, ConfigData *game, int player)
     int energyTop;
     int thrustTop, thrustBottom;
 
+    if (PortPcData()) {
+        PcFillSpeedo(ships, game, player); /* Port: the PC version's speedometer (pc/pchud.c) */
+        return;
+    }
     dividers = speedDividerTable;
     unused = speedDividerTableAlt;
     if (CameraUpdate == UpdateCameraAttractInternal) speed = ships[ownShip].speed * 7;
@@ -325,7 +340,7 @@ void fill_speedo(Speedo *speedo, ShipData *ships, ConfigData *game, int player)
 void AddTime(int time, int x, int y, int size, int colour, unsigned char flags)
 {
     if (PortPcData()) {
-        PcAddTime(time, x, y, size, colour, flags); /* Port: the PC version's text (pc/pctext.c) */
+        PcAddTime(time, x, y, PC_SIZE(size), PC_COLOUR(colour), flags); /* Port: see PC_SIZE */
         return;
     }
     int          j;
@@ -511,7 +526,7 @@ void AddTime(int time, int x, int y, int size, int colour, unsigned char flags)
 void AddText(unsigned char *textPointer, int x, int y, int size, int colour)
 {
     if (PortPcData()) {
-        PcAddText((const char *)textPointer, x, y, size, colour); /* Port: the PC version's text (pc/pctext.c) */
+        PcAddText((const char *)textPointer, x, y, PC_TEXT_SIZE, PC_COLOUR(colour)); /* Port: see PC_SIZE */
         return;
     }
     unsigned char *text = textPointer;
@@ -566,7 +581,7 @@ void AddText(unsigned char *textPointer, int x, int y, int size, int colour)
 void AddNumber(int number, int x, int y, int size, int colour)
 {
     if (PortPcData()) {
-        PcAddNumber(number, x, y, size, colour); /* Port: the PC version's text (pc/pctext.c) */
+        PcAddNumber(number, x, y, PC_SIZE(size), PC_COLOUR(colour)); /* Port: see PC_SIZE */
         return;
     }
     int          digits[12];
@@ -625,7 +640,7 @@ void AddNumber(int number, int x, int y, int size, int colour)
 void AddJustifyNumber(int number, int xInput, int y, int size, int colour)
 {
     if (PortPcData()) {
-        PcAddJustifyNumber(number, xInput, y, size, colour); /* Port: the PC version's text (pc/pctext.c) */
+        PcAddJustifyNumber(number, xInput, y, PC_SIZE(size), PC_COLOUR(colour)); /* Port: see PC_SIZE */
         return;
     }
     int          digits[12];
@@ -700,6 +715,12 @@ void AddDelEnd(unsigned char isDelete, int x, int y, int height, int colour)
     u_short    texturePage, clut;
     int       quadOffset;
 
+    if (PortPcData()) {
+        /* Port: the PC version has no such signs (its names are typed): its text (pc/pctext.c). The sign the name entry
+           asks for with 1 ends the name, with 0 deletes a letter (EnterHighScore). */
+        PcAddText(isDelete ? "END" : "DEL", x, y, PC_TEXT_SIZE, PC_COLOUR(colour));
+        return;
+    }
     quad->y0 = y; quad->y1 = y;
     quad->x0 = x; quad->x1 = right; quad->x2 = x;
     quad->y2 = bottom; quad->x3 = right; quad->y3 = bottom;
@@ -781,7 +802,8 @@ void SetCharTextures(unsigned char size)
 void CentreText(unsigned char *text, int unusedX, int yInput, int sizeInput, int colour)
 {
     if (PortPcData()) {
-        PcCentreText((const char *)text, unusedX, yInput, sizeInput, colour); /* Port: the PC version's text */
+        /* Port: see PC_SIZE */
+        PcCentreText((const char *)text, unusedX, yInput, PC_TEXT_SIZE, PC_COLOUR(colour));
         return;
     }
     short         textWidth = 0;
@@ -857,7 +879,7 @@ void CentreText(unsigned char *text, int unusedX, int yInput, int sizeInput, int
 void CentreText2(unsigned char *text, int x, int y, int size, int colour)
 {
     if (PortPcData()) {
-        PcCentreText2((const char *)text, x, y, size, colour); /* Port: the PC version's text (pc/pctext.c) */
+        PcCentreText2((const char *)text, x, y, PC_TEXT_SIZE, PC_COLOUR(colour)); /* Port: see PC_SIZE */
         return;
     }
     short         textWidth = 0;
@@ -1004,11 +1026,16 @@ void UpdateRaceHud(ShipData *shipIndex, Speedo *speedo, int choice, ConfigData *
         if (choice == -1 && shipIndex[ownShip].lap < classLaps[gameData->shipClass] + 1)
             shipIndex[ownShip].lapTimes[lap - 1] += 2;
         if (!(shipIndex[ownShip].attr & 64)) goto finishShips;
-        if (shipIndex[ownShip].lap < classLaps[gameData->shipClass] + 1)
-            AddTime(shipIndex[ownShip].lapTimes[lap - 1], 16, REGION(201, 222), 16, 1, 1);
-        else AddTime(shipIndex[ownShip].lapTimes[classLaps[gameData->shipClass] - 1], 16, REGION(201, 222), 16, 1, 1);
+        if (!PortPcData()) { /* Port: the PC version's HUD shows it with the rest (below) */
+            if (shipIndex[ownShip].lap < classLaps[gameData->shipClass] + 1)
+                AddTime(shipIndex[ownShip].lapTimes[lap - 1], 16, REGION(201, 222), 16, 1, 1);
+            else
+                AddTime(shipIndex[ownShip].lapTimes[classLaps[gameData->shipClass] - 1], 16, REGION(201, 222), 16, 1, 1);
+        }
     }
-    if (shipIndex[ownShip].attr & 64) {
+    if (PortPcData() && (shipIndex[ownShip].attr & 64)) {
+        PcRaceHud(shipIndex, choice, gameData, position); /* Port: the PC version's HUD (pc/pchud.c) */
+    } else if (shipIndex[ownShip].attr & 64) {
         if (shipIndex[ownShip].combatAttr & 0x4000) {
             Print(msgLapTimes, 22, locals.rows.y[gameData->shipClass] - 8, 8);
             for (i = 0; i < classLaps[gameData->shipClass] - 1; i++) {
@@ -1282,6 +1309,10 @@ void DisplayRaceInfo(ConfigData *state, HiScoreData *context, ShipData *scene)
     u_char endState;
     u_char laps;
 
+    if (PortPcData()) {
+        PcDisplayRaceInfo(state, context, scene); /* Port: the PC version's results (pc/pchud.c) */
+        return;
+    }
     total = 0;
     racing = 0;
     maxShips = 12;
@@ -1516,6 +1547,10 @@ void DisplayContinues(Texture *texture, int x, int y)
     short lx, ty;
     POLY_FT4 *poly;
 
+    if (PortPcData()) {
+        PcDisplayContinues(x, y); /* Port: the PC version's (pc/pchud.c) */
+        return;
+    }
     if (continuesLeft) {
         do {
             width += (u_short)texture->textureW * 4;

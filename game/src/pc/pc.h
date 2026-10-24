@@ -51,6 +51,11 @@ void PcDrawG4(float depth, const POLY_G4 *poly, int blendMode, int space);
 void PcDrawPacket(float depth, const void *packet, int bytes);
 /* The frame's primitives linked into OT2[CurrentScreen] by depth, front last (from Swap, display.c). */
 void PcDrawEndFrame(void);
+/* Whether what the PC blinks is shown this frame: its blinkFlag (display.c), on for two thirds of each half second. */
+int PcBlink(void);
+/* The primitives made from PcCentred(1) to PcCentred(0) stay where they are put with widescreen (PortHudCentred): a
+   menu over the race, not an element of the HUD at a side of the screen. */
+void PcCentred(int on);
 
 /* The PC's own names for them (d3dpoly.c, d3d.c). */
 #define DrawPolyFT4(z, poly, blend) PcDrawFT4((z), (poly), (blend), PC_SPACE_320)
@@ -68,9 +73,37 @@ void PcCentreText(const char *text, int x, int y, int size, int colour);
 void PcCentreText2(const char *text, int x, int y, int size, int colour);
 void PcAddTime(int time, int x, int y, int size, int colour, u_char flags);
 void PcPrint(const char *text, int x, int y, int colour, int extendedSpacing);
+void PcPrintCX(const char *text, int x, int y, int colour);
+/* The width of a text in the console's columns, in the font of that size (AddText's). */
+int PcTextWidth(const char *text, int size);
 void PcSetTextQuad(POLY_FT4 *quad, short x, short y, u_char u, u_char v, u_char width, u_char height, short tpage,
                    int colour);
 extern float pcTextDepth; /* the PC's textDepth */
+
+/* ---- pchud.c: the PC's race HUD and its screens over a race (hud.c, ayrace.c), over the race every disc plays ----
+
+   The PlayStation's functions hand over to these while the PC's data is in use; the race's state stays the
+   PlayStation code's (ShipData, ConfigData, PauseMenu), these draw it as the PC does. */
+
+/* The speedometer's two panels and the weapon's two (InitPanelQuads), from the HUD's pages. */
+void PcInitPanelQuads(void);
+/* The HUD's texts while racing (DrawRaceHud) and what UpdateRaceHud updates for them: position (CalcPosition's) and
+   lap, the lap times, the checkpoint time, autopilot, rear lock, perfect lap, wrong way, the CD track's name. */
+void PcRaceHud(ShipData *ships, int choice, ConfigData *config, int position);
+/* The speedometer: its panels and its speed, thrust and energy bars (fill_speedo). */
+void PcFillSpeedo(ShipData *ships, ConfigData *config, int choice);
+/* The weapon's panel and the icon of the weapon held (DrawWeaponIcons). */
+void PcDrawWeaponIcons(ShipData *ship);
+/* The race's results (DisplayRaceInfo) and the continues left in a challenge (DisplayContinues). */
+void PcDisplayRaceInfo(ConfigData *config, HiScoreData *score, ShipData *ships);
+void PcDisplayContinues(int x, int y);
+/* A button's picture and its label (DoButton): icon the console's (0 circle, 1 cross, 3 triangle, 4/5 arrows), drawn
+   as the device's glyph (PortButtonGlyph) or, for a device without one, as the PC's key. */
+void PcDoButton(int x, int y, int icon, const char *text);
+/* The pause menu (InGameReset, with DrawPauseMenu's look) and its question before a restart or quit
+   (InGameConfirm), each frame of the pause: the console's choices and input, the PC's drawing. */
+void PcInGameReset(struct PauseMenu *pause, ConfigData *game);
+void PcInGameConfirm(u_char *confirmed, int mode, u_char *selection, int *frameCount);
 
 /* The PC's texture pages (main.c, racectrl.c): where its atlases are loaded. */
 enum {
