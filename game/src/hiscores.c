@@ -1,5 +1,6 @@
 #include "functions.h"
 #include "hiscores.h"
+#include "pc/pc.h"
 #include "include_asm_g8.h"
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
@@ -220,22 +221,27 @@ void EnterHighScore(ConfigData *gameData, HiScoreData *hiScoreData)
     short charY = 185;
     short select;
     int scoreTrack;
+    int charX = hiScoreData->charX;
 
+    if (PortPcData()) {
+        /* Port: the letter being chosen after the name as the PC's font spaces it */
+        charX = 40 + PcTextWidth((const char *)hiScoreData->nameEntered, 8);
+    }
     if (hiScoreData->numChars != 4 && hiScoreData->userEntry) {
         hiScoreData->dispChar[1] = 0;
         hiScoreData->dispChar[0] = hiScoreData->currChar;
         if (hiScoreData->userEntry) {
             if (hiScoreData->toggleDisplay % 3 == 0) {
                 if (hiScoreData->charVal == 26 || hiScoreData->charVal == 27) {
-                    AddDelEnd((unsigned char)(hiScoreData->charVal - 26), hiScoreData->charX, 185, 16, 1);
+                    AddDelEnd((unsigned char)(hiScoreData->charVal - 26), charX, 185, 16, 1);
                 } else {
-                    AddText(hiScoreData->dispChar, hiScoreData->charX, 185, 16, 1);
+                    AddText(hiScoreData->dispChar, charX, 185, 16, 1);
                 }
             } else {
                 if (hiScoreData->charVal == 26 || hiScoreData->charVal == 27) {
-                    AddDelEnd((unsigned char)(hiScoreData->charVal - 26), hiScoreData->charX, 185, 16, 0);
+                    AddDelEnd((unsigned char)(hiScoreData->charVal - 26), charX, 185, 16, 0);
                 } else {
-                    AddText(hiScoreData->dispChar, hiScoreData->charX, 185, 16, 0);
+                    AddText(hiScoreData->dispChar, charX, 185, 16, 0);
                 }
             }
         }

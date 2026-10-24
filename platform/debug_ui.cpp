@@ -19,6 +19,7 @@ extern "C" {
 #include "touch.h"
 #include "hdtex.h"
 #include "region.h"
+#include "pc.h"
 #include "saturn.h"
 #include "music.h"
 #include "saves.h"
@@ -1100,11 +1101,12 @@ static bool CheckDisc(const char *path, char *message, size_t size)
     }
     bool ok = ((DiscFindFile(disc, "\\SCUS_943.51", &lba, &length) || DiscFindFile(disc, "\\SLES_003.27", &lba, &length)) &&
                DiscFindFile(disc, "\\WIPEOUT2\\TEXTURES\\MENUTIMS.CMP", &lba, &length)) ||
-              PortSaturnDiscIs(disc); // (the Sega Saturn's: saturn.c)
+              PortSaturnDiscIs(disc) || // (the Sega Saturn's: saturn.c)
+              PortPcDiscIs(disc);       // (the PC CD-ROM version's: pc.c)
     DiscClose(disc);
     if (!ok) {
         SDL_snprintf(message, size, "That is not Wipeout XL (USA) or WipEout 2097 (Europe) for the PlayStation (its program, "
-                                    "SCUS_943.51 or SLES_003.27, and WIPEOUT2 folder), nor the Sega Saturn's.");
+                                    "SCUS_943.51 or SLES_003.27, and WIPEOUT2 folder), nor the Sega Saturn's or the PC CD-ROM version's.");
     }
     return ok;
 }
@@ -1153,6 +1155,13 @@ static void UseDisc(const char *path)
     char cue[1200];
 
     SDL_strlcpy(discEdit, path, sizeof(discEdit));
+    if (PortPcFolderIs(path)) {
+        // the PC CD-ROM version's files in a folder (pc.c): used as they are
+        SDL_strlcpy(portSettings.discPath, path, sizeof(portSettings.discPath));
+        Changed();
+        discMessage[0] = 0;
+        return;
+    }
     if (StartUnpack(path, UNPACK_XL, discMessage)) {
         return;
     }
@@ -1231,13 +1240,19 @@ static void XlDisc(void)
     }
     ImGui::TextUnformatted("Wipeout XL disc image");
     ImGui::TextWrapped("Wipeout XL (USA) or WipEout 2097 (Europe) for the PlayStation, or Wipeout XL (Japan) or WipEout "
-                       "2097 (Europe) for the Sega Saturn: a .cue, a .bin, or an archive of them.");
+                       "2097 (Europe) for the Sega Saturn or the PC CD-ROM: a .cue, a .bin, an .iso, or an archive of "
+                       "them; the PC CD-ROM's files may be a folder too.");
     ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "In use: %s",
                        PortSaturnDisc() ? PortSaturnTitle()
+                       : PortPcData()   ? PortPcTitle()
                        : PortRegionEurope() ? "WipEout 2097 (Europe)" : "Wipeout XL (USA)");
     UnpackProgress(UNPACK_XL);
     if (ImGui::Button("Browse...##disc")) {
         PickerOpen(&discPicker, false, discEdit);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("... or a folder##disc")) {
+        PickerOpen(&discPicker, true, discEdit); // (the PC CD-ROM's files copied)
     }
     ImGui::SameLine();
     ImGui::SetNextItemWidth(-ImGui::CalcTextSize("Use this").x - ImGui::GetStyle().ItemSpacing.x -

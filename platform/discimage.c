@@ -1,11 +1,14 @@
-/* Disc images as they are kept. A .cue sheet with its .bin or WAV tracks is used as it is (psx/disc.c). A disc's .bin (or
-   .img) without its .cue is given one, made in the user's data folder (discs/<its name>/): its data track, and its
-   audio tracks when they are beside it as "... (Track N).bin" (Redump's names, each starting with its 2-second
-   pregap). An archive holding a disc image, known by its first bytes (else its name), is extracted once into
+/* Disc images as they are kept. A .cue sheet with its .bin or WAV tracks is used as it is (psx/disc.c), and so is an
+   .iso (the data track by itself), a CloneCD .ccd (with its .img) and an Alcohol 120% .mds (with its .mdf). A disc's
+   .bin (or .img) without its .cue is given one, made in the user's data folder (discs/<its name>/): its data track, and
+   its audio tracks when they are beside it as "... (Track N).bin" (Redump's names, each starting with its 2-second
+   pregap); an .img or .mdf with its .ccd or .mds beside it is that instead.
+   An archive holding a disc image, known by its first bytes (else its name), is extracted once into
    discs/<the archive's name>/, with a note of the archive's size and date and where the image's .cue is; while the
    note matches, the extracted image is used as it is. The image in it is found by what it is, not by its name or
-   any checksum: a .cue whose first track is a PlayStation disc's (raw 2352-byte sectors, an ISO 9660 volume of
-   the system "PLAYSTATION"), else such a .bin or .img, given a .cue as above. Which game it is, is for the caller.
+   any checksum: a .cue, .ccd or .mds, or an .iso, whose first track is a game disc's (an ISO 9660 volume of the
+   system "PLAYSTATION", or the PC game's files: DiscIsPcGame), else such a .bin or .img, given a .cue as above.
+   Which game it is, is for the caller.
    A .7z is read with the LZMA SDK's decoder (platform/third_party/lzma, public domain; a solid block is unpacked in
    memory, one at a time), the others with libarchive (zip, rar, tar, gzip, bzip2, xz, zstd; where the program was
    built with it). Copies kept as discs were about 2009 are taken as they come: archives in the archive are unpacked
@@ -67,7 +70,8 @@ static int IsArchiveName(const char *name)
 int PortIsDiscName(const char *name)
 {
     return HasExtension(name, "cue") || HasExtension(name, "bin") || HasExtension(name, "img") ||
-           HasExtension(name, "ecm") || HasExtension(name, "chd") || IsArchiveName(name);
+           HasExtension(name, "iso") || HasExtension(name, "ccd") || HasExtension(name, "mds") ||
+           HasExtension(name, "mdf") || HasExtension(name, "ecm") || HasExtension(name, "chd") || IsArchiveName(name);
 }
 
 enum { NOT_ARCHIVE, ARCHIVE_7Z, ARCHIVE_OTHER, CHD_IMAGE, ECM_TRACK };
@@ -112,45 +116,42 @@ int PortIsArchive(const char *path)
     return ArchiveKind(path) != NOT_ARCHIVE;
 }
 
-/* Whether the 2352-byte sector holds a PlayStation disc's volume descriptor (sector 16 of its data track), or a
-   Sega Saturn disc's (saturn.c); its mode (1 or 2) into *mode. */
-static int PlayStationVolume(const unsigned char *sector, int *mode)
+/* Whether a disc's volume descriptor (sector 16 of its data track) is a PlayStation disc's, or a Sega Saturn disc's
+   (saturn.c); or the disc holds the PC game's files. */
+static int GameDisc(const Disc *disc)
 {
-    static const unsigned char sync[12] = {0, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0};
-    const unsigned char *data;
+    const uint8_t *sector = DiscRawSector(disc, 16);
+    const uint8_t *data = sector ? sector + DiscTrackInfo(disc, 0)->data_offset : NULL;
 
-    if (memcmp(sector, sync, sizeof(sync)) || (sector[15] != 1 && sector[15] != 2)) {
-        return 0;
-    }
-    *mode = sector[15];
-    data = sector + (*mode == 2 ? 24 : 16);
-    return data[0] == 1 && !memcmp(data + 1, "CD001", 5) &&
-           (!memcmp(data + 8, "PLAYSTATION", 11) || !memcmp(data + 8, "SEGA SEGASATURN", 15));
+    return (data && data[0] == 1 && !memcmp(data + 1, "CD001", 5) &&
+            (!memcmp(data + 8, "PLAYSTATION", 11) || !memcmp(data + 8, "SEGA SEGASATURN", 15))) ||
+           DiscIsPcGame(disc);
 }
 
-/* Whether a .bin or .img is a PlayStation disc's data track; its mode into *mode. */
-static int PlayStationImage(const char *path, int *mode)
+/* Whether an image opens as a game disc: a .cue, .ccd, .mds or .iso, or a .bin or .img of the data track alone. */
+static int GameImage(const char *path)
 {
-    unsigned char sector[DISC_RAW_SECTOR];
-    FILE *f = fopen(path, "rb");
-    int ok;
+    Disc *disc = DiscOpen(path, NULL, 0);
+    int ok = disc && GameDisc(disc);
 
-    if (!f) {
-        return 0;
+    if (disc) {
+        DiscClose(disc);
     }
-    ok = !fseek(f, 16L * DISC_RAW_SECTOR, SEEK_SET) && fread(sector, 1, sizeof(sector), f) == sizeof(sector) &&
-         PlayStationVolume(sector, mode);
-    fclose(f);
     return ok;
 }
 
-/* Whether a .cue opens as a PlayStation disc. */
-static int PlayStationCue(const char *path)
+/* The data track of a .bin or .img that is a game disc's: its mode (1 or 2) into *mode and its sector size (2352 raw,
+   or 2048) into *sectorSize. */
+static int GameTrack(const char *path, int *mode, int *sectorSize)
 {
     Disc *disc = DiscOpen(path, NULL, 0);
-    const uint8_t *sector = disc ? DiscRawSector(disc, 16) : NULL;
-    int mode, ok = sector && PlayStationVolume(sector, &mode);
+    const DiscTrack *track = disc ? DiscTrackInfo(disc, 0) : NULL;
+    int ok = track && GameDisc(disc);
 
+    if (ok) {
+        *mode = track->data_offset == 24 ? 2 : 1;
+        *sectorSize = track->sector_size;
+    }
     if (disc) {
         DiscClose(disc);
     }
@@ -306,8 +307,9 @@ static SDL_EnumerationResult SDLCALL SiblingEntry(void *user, const char *dir, c
     return SDL_ENUM_CONTINUE;
 }
 
-/* Writes a .cue at cuePath for the data track bin (of the mode found) and the audio tracks beside it. */
-static int MakeCue(const char *bin, int mode, const char *cuePath, char *message, size_t messageSize)
+/* Writes a .cue at cuePath for the data track bin (of the mode and sector size found) and the audio tracks beside
+   it. */
+static int MakeCue(const char *bin, int mode, int sectorSize, const char *cuePath, char *message, size_t messageSize)
 {
     char dir[1100], cueDir[1100], path[1200];
     const char *name = NameOf(bin), *at;
@@ -336,7 +338,8 @@ static int MakeCue(const char *bin, int mode, const char *cuePath, char *message
         }
         return 0;
     }
-    fprintf(f, "FILE \"%s\" BINARY\n  TRACK 01 MODE%d/2352\n    INDEX 01 00:00:00\n", relative ? name : bin, mode);
+    fprintf(f, "FILE \"%s\" BINARY\n  TRACK 01 MODE%d/%d\n    INDEX 01 00:00:00\n", relative ? name : bin, mode,
+            sectorSize);
     for (i = first + 1; first > 0 && i <= DISC_MAX_TRACKS; i++) {
         if (siblings.names[i]) {
             track++;
@@ -400,34 +403,37 @@ static int CompareListed(const void *a, const void *b)
     return Depth(x) != Depth(y) ? Depth(x) - Depth(y) : SDL_strcasecmp(x, y);
 }
 
-/* The PlayStation disc image among the files extracted into folder: its .cue (made, for a .bin without one),
-   relative to folder, into cue. */
+/* The game disc image among the files extracted into folder: a .cue, .ccd, .mds or .iso (the first of them by that
+   order), else a .bin or .img (given a .cue, made for it), relative to folder, into cue. */
 static int FindImage(const char *folder, char *cue, size_t cueSize)
 {
+    static const char *const described[] = {"cue", "ccd", "mds", "iso"};
     Listing listing = {folder, NULL, 0, 0};
     char path[2048], made[2048], message[256];
-    int i, mode, found = 0;
+    int i, k, mode, sectorSize, found = 0;
 
     SDL_EnumerateDirectory(folder, ListEntry, &listing);
     if (listing.count) {
         SDL_qsort(listing.paths, (size_t)listing.count, sizeof(char *), CompareListed);
     }
-    for (i = 0; !found && i < listing.count; i++) {
-        SDL_snprintf(path, sizeof(path), "%s%s", folder, listing.paths[i]);
-        if (HasExtension(path, "cue") && PlayStationCue(path)) {
-            SDL_strlcpy(cue, listing.paths[i], cueSize);
-            found = 1;
+    for (k = 0; !found && k < (int)SDL_arraysize(described); k++) {
+        for (i = 0; !found && i < listing.count; i++) {
+            SDL_snprintf(path, sizeof(path), "%s%s", folder, listing.paths[i]);
+            if (HasExtension(path, described[k]) && GameImage(path)) {
+                SDL_strlcpy(cue, listing.paths[i], cueSize);
+                found = 1;
+            }
         }
     }
     for (i = 0; !found && i < listing.count; i++) {
         SDL_snprintf(path, sizeof(path), "%s%s", folder, listing.paths[i]);
-        if ((HasExtension(path, "bin") || HasExtension(path, "img")) && PlayStationImage(path, &mode)) {
+        if ((HasExtension(path, "bin") || HasExtension(path, "img")) && GameTrack(path, &mode, &sectorSize)) {
             char *dot;
 
             SDL_strlcpy(made, path, sizeof(made));
             dot = SDL_strrchr(made, '.');
             SDL_strlcpy(dot, ".cue", sizeof(made) - (size_t)(dot - made));
-            if (MakeCue(path, mode, made, message, sizeof(message))) {
+            if (MakeCue(path, mode, sectorSize, made, message, sizeof(message))) {
                 SDL_strlcpy(cue, made + strlen(folder), cueSize);
                 found = 1;
             }
@@ -884,8 +890,8 @@ static int ArchiveImage(const char *archive, int kind, char *cue, size_t cueSize
     ok = ok && UnpackOldCopy(folder, message, messageSize);
     Title("Wipeout XL");
     if (ok && !FindImage(folder, relative, sizeof(relative))) {
-        SDL_snprintf(message, messageSize, "There is no PlayStation disc image (a .cue with its .bin, or a .bin) in %s.",
-                     archive);
+        SDL_snprintf(message, messageSize,
+                     "There is no game disc image (a .cue with its .bin, a .ccd, .mds or .iso, or a .bin) in %s.", archive);
         ok = 0;
     }
     if (!ok) {
@@ -933,11 +939,41 @@ static SDL_EnumerationResult SDLCALL CueEntry(void *user, const char *dir, const
     return s->cue[0] ? SDL_ENUM_SUCCESS : SDL_ENUM_CONTINUE;
 }
 
+/* A descriptor beside an image's data (.img of a .ccd, .mdf of a .mds): its path into out, 1 if it is there. The
+   extension is tried as written here, then in capitals. */
+static int DescriptorBeside(const char *path, const char *extension, char *out, size_t size)
+{
+    char *dot;
+    int upper, i;
+
+    SDL_strlcpy(out, path, size);
+    dot = SDL_strrchr(out, '.');
+    if (!dot || strlen(extension) + 2 > size - (size_t)(dot - out)) {
+        return 0;
+    }
+    for (upper = 0; upper < 2; upper++) {
+        for (i = 0; extension[i]; i++) {
+            dot[1 + i] = (char)(upper ? SDL_toupper(extension[i]) : extension[i]);
+        }
+        dot[1 + i] = 0;
+        if (SDL_GetPathInfo(out, NULL)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static int BinImage(const char *bin, char *cue, size_t cueSize, char *message, size_t messageSize)
 {
     CueSearch search;
     char dir[1100], folder[1100];
-    int mode;
+    int mode, sectorSize;
+
+    /* the image of a CloneCD or Alcohol disc: its descriptor */
+    if ((HasExtension(bin, "img") && DescriptorBeside(bin, "ccd", cue, cueSize)) ||
+        (HasExtension(bin, "mdf") && DescriptorBeside(bin, "mds", cue, cueSize))) {
+        return 1;
+    }
 
     /* its own .cue, when it is beside it */
     memset(&search, 0, sizeof(search));
@@ -948,13 +984,13 @@ static int BinImage(const char *bin, char *cue, size_t cueSize, char *message, s
         SDL_strlcpy(cue, search.cue, cueSize);
         return 1;
     }
-    if (!PlayStationImage(bin, &mode)) {
-        SDL_snprintf(message, messageSize, "%s is not a PlayStation disc's data track (raw 2352-byte sectors).", bin);
+    if (!GameTrack(bin, &mode, &sectorSize)) {
+        SDL_snprintf(message, messageSize, "%s is not the data track of a PlayStation or PC game disc.", bin);
         return 0;
     }
     Destination(bin, folder, sizeof(folder));
     SDL_snprintf(cue, cueSize, "%s%s", folder, "disc.cue");
-    return MakeCue(bin, mode, cue, message, messageSize);
+    return MakeCue(bin, mode, sectorSize, cue, message, messageSize);
 }
 
 /* A .cue whose first file is not there but is beside it packed with ECM: that .ecm (into ecm), else 0. */
@@ -992,7 +1028,7 @@ int PortDiscImage(const char *path, char *cue, size_t cueSize, char *message, si
     if (kind != NOT_ARCHIVE) {
         return ArchiveImage(path, kind, cue, cueSize, message, messageSize);
     }
-    if (HasExtension(path, "bin") || HasExtension(path, "img")) {
+    if (HasExtension(path, "bin") || HasExtension(path, "img") || HasExtension(path, "mdf")) {
         return BinImage(path, cue, cueSize, message, messageSize);
     }
     SDL_strlcpy(cue, path, cueSize);

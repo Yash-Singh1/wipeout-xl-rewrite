@@ -36,15 +36,15 @@ void PortRaceControls(int steering, const unsigned short *bindings)
 /* ---- names of buttons ---- */
 
 typedef struct ButtonNames {
-    const char *start, *l1, *l2, *r1, *r2;
+    const char *start, *l1, *l2, *r1, *r2, *accept;
 } ButtonNames;
 
 /* The font has capitals, digits and a few marks: the Switch's plus is spelled out. */
-static const ButtonNames keyboardNames = {"ENTER", "Q", "A", "E", "D"};
-static const ButtonNames xboxNames = {"MENU", "LB", "LT", "RB", "RT"};
-static const ButtonNames nintendoNames = {"PLUS", "L", "ZL", "R", "ZR"};
+static const ButtonNames keyboardNames = {"ENTER", "Q", "A", "E", "D", "ENTER"};
+static const ButtonNames xboxNames = {"MENU", "LB", "LT", "RB", "RT", "A"};
+static const ButtonNames nintendoNames = {"PLUS", "L", "ZL", "R", "ZR", "B"};
 /* (a Saturn pad's C and Z go to different places on each adapter: those keep the console's names) */
-static const ButtonNames saturnNames = {"START", "L", NULL, "R", NULL};
+static const ButtonNames saturnNames = {"START", "L", NULL, "R", NULL, "A"};
 
 char *PortButtonLabel(PortButton button, char *console)
 {
@@ -64,6 +64,7 @@ char *PortButtonLabel(PortButton button, char *console)
     case PORT_BUTTON_L2: name = names->l2; break;
     case PORT_BUTTON_R1: name = names->r1; break;
     case PORT_BUTTON_R2: name = names->r2; break;
+    case PORT_BUTTON_ACCEPT: name = names->accept; break;
     default: return console;
     }
     return name ? (char *)name : console;

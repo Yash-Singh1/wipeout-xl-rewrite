@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "pc.h"
 #include "platform.h"
 #include "region.h"
 #include "saturn.h"
@@ -438,6 +439,16 @@ void PsxPlayMovie(const char *program)
     }
     if (movie < 0 || (movie == 0 && portSettings.skipIntro)) {
         return; /* not a movie program, or the settings: no intro */
+    }
+    if (PortPcData()) {
+        /* the PC's own (pc_movie.c): MPEG-1 files, its intro and endings */
+        static const char *const pcMovies[] = {"MPEG\\WXLINTR.MPG", "MPEG\\XTRO1.MPG", "MPEG\\XTRO2.MPG",
+                                               "MPEG\\XTRO3.MPG", "MPEG\\XTRO4.MPG"};
+
+        if (!PortPcPlayMovie(pcMovies[movie])) {
+            PortLog("movie %s: not on the PC CD; skipped\n", pcMovies[movie]);
+        }
+        return;
     }
     if (PortSaturnDisc()) {
         /* the Saturn's own (saturn_movie.c): its intro (Wipeout XL's; the European disc has none) and endings */

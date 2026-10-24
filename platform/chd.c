@@ -6,13 +6,16 @@
 
    The CD codecs cdzl and cdlz split the sectors from their subchannels, compress each separately, and leave
    out sync and ECC where they can be made again. cdlz uses LZMA, not Huffman. cdfl holds headerless FLAC frames
-   for the sectors, then deflated subchannels. The general zlib, lzma and huff codecs work too. No parent image,
-   older CHD, cooked sector, GD-ROM, DVD or hard disk image is accepted. */
+   for the sectors, then deflated subchannels. The general zlib, lzma and huff codecs work too. A track of type MODE1
+   (2048-byte sectors, as made from an .iso) is written as raw sectors with a made-up sync and header
+   (DiscMakeRawSector).
+   No parent image, older CHD, other cooked sector, GD-ROM, DVD or hard disk image is accepted. */
 #include <SDL3/SDL.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "chd.h"
+#include "psx/disc.h"
 #include "third_party/lzma/LzmaDec.h"
 #include "third_party/lzma/7zAlloc.h"
 #ifdef PORT_HAVE_ZLIB
@@ -827,6 +830,7 @@ static int Hunk(Chd *c, uint32_t number)
 typedef struct {
     uint32_t frames, pregap, postgap;
     int audio, mode, stored;
+    int cooked; /* 2048-byte sectors of user data */
 } Track;
 
 static int ReadTracks(Chd *c, Track *tracks, unsigned *count)
@@ -867,7 +871,8 @@ static int ReadTracks(Chd *c, Track *tracks, unsigned *count)
             t->postgap = (uint32_t)postgap;
             t->stored = pgtype[0] == 'V';
             t->audio = !strcmp(type, "AUDIO");
-            t->mode = !strcmp(type, "MODE1_RAW") ? 1 : !strcmp(type, "MODE2_RAW") ? 2 : 0;
+            t->cooked = !strcmp(type, "MODE1");
+            t->mode = t->cooked || !strcmp(type, "MODE1_RAW") ? 1 : !strcmp(type, "MODE2_RAW") ? 2 : 0;
             if ((!t->audio && !t->mode) || (t->pregap && t->stored && strcmp(pgtype + 1, type))) {
                 return 0;
             }
@@ -1005,7 +1010,11 @@ int PortChdDecode(const char *in, const char *bin, const char *cue, void (*progr
                     progress((int)((uint64_t)hunk * 1000 / c.hunks));
                 }
             }
-            memcpy(raw, c.hunk + offset, CD_SECTOR);
+            if (t->cooked) {
+                DiscMakeRawSector(raw, (int32_t)output, c.hunk + offset);
+            } else {
+                memcpy(raw, c.hunk + offset, CD_SECTOR);
+            }
             if (t->audio) {
                 for (i = 0; i < CD_SECTOR; i += 2) {
                     uint8_t byte = raw[i];

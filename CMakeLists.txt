@@ -6,7 +6,7 @@ set(CMAKE_C_EXTENSIONS ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # ---- The PlayStation game: game/src/*.c is the decompilation's C, compiled natively. ----
-file(GLOB GAME_SOURCES ${CMAKE_SOURCE_DIR}/game/src/*.c)
+file(GLOB GAME_SOURCES ${CMAKE_SOURCE_DIR}/game/src/*.c ${CMAKE_SOURCE_DIR}/game/src/pc/*.c)
 list(SORT GAME_SOURCES)
 add_library(game STATIC ${GAME_SOURCES})
 # (its headers for its own quoted includes only: its malloc.h is not the C library's, which Android's stdlib.h
