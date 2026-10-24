@@ -518,6 +518,7 @@ void PortFarFlares(TrackCamera *camera)
         }
         /* where its trail's newest segment would be (UpdateShipTrails): the game keeps no trail for a ship out of
            its view, and the trail's last segment was left where the ship went out of it (a flare stood there) */
+        GteKeyNext(0, GteKeyMix((uint64_t)(uintptr_t)at, 0x464152464Cull)); /* frame interpolation: the ship's */
         PortFarProject(&view, at->ppivot.vx - ((at->unitVecNose.vx * 420) >> 12),
                        at->ppivot.vy - ((at->unitVecNose.vy * 420) >> 12) - 15,
                        at->ppivot.vz - ((at->unitVecNose.vz * 420) >> 12), &centre);

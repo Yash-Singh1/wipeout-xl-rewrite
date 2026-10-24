@@ -55,6 +55,28 @@ static void BindFlareCorner(short *corner, const GtePrecise *centre, int x, int 
     GteBindPrecise(corner, handle);
 }
 
+/* Port: frame interpolation (gte.h): segment `i`'s left edge, middle or right edge (side 0, 1, 2), known by the
+   trail and the segment's age (0: the newest, at the ship's tail). From one frame to the next each age moves up to
+   where the next younger segment was, so the pictures between two frames slide the trail along with the ship
+   instead of leaving it where the frame has it. */
+static uint64_t TrailKey(Trail *trail, int i, int side)
+{
+    uint64_t segment = GteKeyMix(GteKeyMix((uint64_t)(uintptr_t)trail, 0x545241494Cull),
+                                 (uint64_t)((i - trail->current + TRAIL_SEGMENTS) % TRAIL_SEGMENTS));
+
+    return GteKeyMix(segment, (uint64_t)side);
+}
+
+/* Port: the keys of the next projection's three vertices, segment `i`'s left edge, middle and right edge. */
+static void KeyTrailSegment(Trail *trail, int i)
+{
+    int side;
+
+    for (side = 0; side < 3; side++) {
+        GteKeyNext(side, TrailKey(trail, i, side));
+    }
+}
+
 void DrawFlare(int x, int y, int distance, int ship) {
     int speed, value, half, quarter, size;
     ShipData *s;
@@ -550,6 +572,9 @@ void DrawTrailLoRes(TrackCamera *camera, Trail *trail, int ship) {
                     vertex[3].vy = trail->segment[n].left.vy + cam[1];
                     vertex[3].vz = trail->segment[n].left.vz + cam[2];
                     poly = &trail->segment[i].leftHalf[CurrentScreen];
+                    GteKeyNext(0, TrailKey(trail, i, 0)); /* Port: frame interpolation */
+                    GteKeyNext(1, TrailKey(trail, i, 1));
+                    GteKeyNext(2, TrailKey(trail, n, 0));
                     depth = RotTransPers3(&vertex[0], &vertex[1], &vertex[3], (int *)&screen[0], (int *)&screen[1], (int *)&screen[3], &segmentP, &flag);
                     if (!(flag & 0x80460000)) {
                         depth -= 160;
@@ -666,7 +691,9 @@ void DrawTrail(TrackCamera *camera, Trail *trail, int ship) {
                     ws.vertex[4].vx = ((lx + rx) >> 1) + cam[0];
                     ws.vertex[4].vy = ((ly + ry) >> 1) + cam[1];
                     ws.vertex[4].vz = ((lz + rz) >> 1) + cam[2];
+                    KeyTrailSegment(trail, n); /* Port: frame interpolation */
                     RotTransPers3(&ws.vertex[3], &ws.vertex[4], &ws.vertex[5], (int *)&ws.screen[3], (int *)&ws.screen[4], (int *)&ws.screen[5], &ws.p, &ws.flag);
+                    KeyTrailSegment(trail, i); /* Port */
                     depth = RotTransPers3(&ws.vertex[0], &ws.vertex[1], &ws.vertex[2], (int *)&ws.screen[0], (int *)&ws.screen[1], (int *)&ws.screen[2], &ws.p, &ws.flag);
                     if (!(ws.flag & 0x80460000)) {
                         depth -= 160;
