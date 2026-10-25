@@ -4679,7 +4679,9 @@ afterTrackDescription:
         if (PortOriginalDrawPicture(selection->trackSelection, 146, 99)) {
         } else if (model) {
             PortTwoSided(1);
-            DrawTeamShips(330, -170, 1350, heading, 220, model); /* (smaller than XL's models: nearer) */
+            /* (seen from higher than XL's: Wipeout 64's are their tracks' landscapes, which hide the track from XL's
+               angle; further off, as they then stand taller) */
+            DrawTeamShips(330, -170, 1750, heading, 640, model);
             PortTwoSided(0);
         }
         PrintCX((u_char *)PortRaceTrackName(selection->actTrackNum), 160, 90);
