@@ -5829,6 +5829,14 @@ void EnterName(ConfigData *gameData, HiScoreData *data)
         if (!(keysDown & 0xC01)) {
             select = keysPressed & 0x2000;
         }
+        {
+            int typed = PortNameTyped(data->numChars, (keysDown & 0xA0) != 0, data->charVal);
+
+            if (typed >= 0) {
+                data->charVal = typed; /* Port: typed on the keyboard */
+                select = 1;
+            }
+        }
         if (select != 0 && data->charVal == 26) {
             if (data->numChars > 0) {
                 Sound(9);

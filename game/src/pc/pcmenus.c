@@ -624,16 +624,32 @@ static void EnterMenu(int next)
 
 /* ---- the screens ---- */
 
-/* Port: a name entered letter by letter (the PC's typed EnterName): Up and Down change the cursor's letter, Left
-   and Right move the cursor, Accept or Back ends the entry (Accept then goes on to the menu). Returns whether it is
-   still being entered. */
+/* Port: a name typed on the keyboard, as the PC's EnterName (Backspace blanks the letter before the cursor), or
+   entered letter by letter with the pad: Up and Down change the cursor's letter, Left and Right move the cursor.
+   Accept or Back ends the entry (Accept then goes on to the menu). Returns whether it is still being entered. */
 static int EditName(NameEntry *name)
 {
     static const char letters[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789- ";
-    char *at = &name->text[name->cursor];
+    char *at;
     const char *letter;
-    int count = (int)sizeof(letters) - 1, k;
+    int count = (int)sizeof(letters) - 1, k, key;
 
+    PortNameEntry(PORT_NAME_LETTERS | PORT_NAME_MORE);
+    while ((key = PortNameKey()) != 0) {
+        if (key == '\b') {
+            if (name->cursor > 0 && (name->text[name->cursor] == ' ' || name->cursor < name->length - 1)) {
+                name->cursor--;
+            }
+            name->text[name->cursor] = ' ';
+        } else {
+            name->text[name->cursor] = (char)key;
+            if (name->cursor < name->length - 1) {
+                name->cursor++;
+            }
+        }
+        Sound(SOUND_MENU_MOVE);
+    }
+    at = &name->text[name->cursor];
     if (*at == 0) {
         *at = ' ';
     }

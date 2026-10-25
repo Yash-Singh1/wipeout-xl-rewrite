@@ -1,4 +1,5 @@
 #include "functions.h"
+#include "../../platform/controls.h" /* Port: a name typed on the keyboard */
 #include "hiscores.h"
 #include "pc/pc.h"
 #include "include_asm_g8.h"
@@ -216,6 +217,38 @@ void DisplayScoreTab(ConfigData *config, HiScoreData *score)
 }
 
 
+/* Port: the keyboard types the name being entered (EnterHighScore, EnterName), as the PC version's did: a letter is
+   chosen at once, Backspace deletes, and Enter ends the name typed (after letters picked with the arrows, Enter
+   takes the cursor's, as the console's Cross does). What the key typed chooses of the letter picker's (0-25 a
+   letter, 26 delete, 27 end), or -1: `letters` the name has, `picked` the picker moved this frame, `current` its
+   choice. */
+int PortNameTyped(int letters, int picked, int current)
+{
+    static int typing; /* (the name's last change was typed) */
+    int key;
+
+    PortNameEntry(PORT_NAME_LETTERS | PORT_NAME_ENTER);
+    if (picked) {
+        typing = 0;
+    }
+    key = PortNameKey();
+    if (key >= 'A' && key <= 'Z') {
+        if (letters >= 3) {
+            return -1; /* (three letters at most) */
+        }
+        typing = 1;
+        return key - 'A';
+    }
+    if (key == '\b') {
+        typing = 1;
+        return 26;
+    }
+    if (key == '\n') {
+        return typing ? 27 : current;
+    }
+    return -1;
+}
+
 void EnterHighScore(ConfigData *gameData, HiScoreData *hiScoreData)
 {
     short charY = 185;
@@ -265,6 +298,14 @@ void EnterHighScore(ConfigData *gameData, HiScoreData *hiScoreData)
         }
         if (hiScoreData->padDelay > 0) hiScoreData->padDelay--;
         select = GetMenuKey(5);
+        {
+            int typed = PortNameTyped(hiScoreData->numChars, (keysDown & 0xA0) != 0, hiScoreData->charVal);
+
+            if (typed >= 0) {
+                hiScoreData->charVal = typed; /* Port: typed on the keyboard */
+                select = 1;
+            }
+        }
         if (select && hiScoreData->charVal == 26) {
             if (hiScoreData->numChars >= 1) {
                 PlayNote(9, 255, 15, 15, 256);

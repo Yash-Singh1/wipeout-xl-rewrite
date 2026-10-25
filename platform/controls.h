@@ -28,6 +28,14 @@ int PortShowsKeys(void);
 /* The password symbols are the face buttons as shapes, not prompts: they stay the console's. */
 void PortConsoleGlyphs(int forced);
 
+/* A name the player types (the Hall of Fame's, the PC front end's): each frame it is being entered the game says
+   which keys are the name's, PORT_NAME_*. Those keys then press no buttons; each one typed is given by PortNameKey:
+   'A' to 'Z', '0' to '9', ' ' and '-', '\b' (Backspace) and '\n' (Enter); 0 when none is waiting. The pad's
+   buttons and the arrow keys go on driving the game's own letter picker. */
+enum { PORT_NAME_LETTERS = 1, PORT_NAME_MORE = 2 /* digits, the space and the hyphen */, PORT_NAME_ENTER = 4 };
+void PortNameEntry(int keys);
+int PortNameKey(void);
+
 /* Names of buttons in the game's text. The console's own text is returned for a PlayStation pad
    and when there is nothing better; otherwise the name of the key or button of the device. */
 typedef enum {

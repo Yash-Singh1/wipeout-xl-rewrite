@@ -67,6 +67,10 @@ PadDevice PsxPadLastDevice(void);
 
 /* Touch controls (platform/touch.cpp): the buttons the fingers hold in a context, pressed with the keyboard's
    (pad_sdl.c asks each time the keyboard's buttons are worked out); PsxPadTouchChanged when they changed. */
+/* The name being typed (controls.h's PortNameEntry): the keys that are the name's, those typed. */
+void PsxPadNameEntry(int keys);
+int PsxPadNameKey(void);
+
 void PsxPadSetTouchSource(uint16_t (*buttons)(PadContext context));
 void PsxPadTouchChanged(void);
 

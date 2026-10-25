@@ -22,6 +22,16 @@
 
 /* ---- the game's calls ---- */
 
+void PortNameEntry(int keys)
+{
+    PsxPadNameEntry(keys);
+}
+
+int PortNameKey(void)
+{
+    return PsxPadNameKey();
+}
+
 void PortRaceControls(int steering, const unsigned short *bindings)
 {
     uint16_t actions[PAD_ACTIONS];
