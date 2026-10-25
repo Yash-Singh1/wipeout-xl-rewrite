@@ -12,6 +12,7 @@
 #include "psx/pad.h"
 #include "psx/psx_io.h"
 #include "region.h"
+#include "pc.h"
 #include "saturn.h"
 #include "debug_ui.h"
 #include "discimage.h"
@@ -40,7 +41,7 @@ static void Usage(void)
             "  WIPEOUT_CD_SPEED (drive speed-up; 1 = the console's, default 1000), WIPEOUT_SAVE_DIR (memory cards; default: the user's data folder),\n"
             "  WIPEOUT_KEYS (scripted keys and gamepad), WIPEOUT_VRAM_DUMP (video memory picture at the end of a run),\n"
             "  WIPEOUT_RUMBLE_LOG (what the pads' motors are asked, one line a request),\n"
-            "  WIPEOUT_FAR_VIEW (0: the console's draw distance; 2: the whole track even while tracing),\n"
+            "  WIPEOUT_FAR_VIEW (0: the console's draw distance; 2: the whole track even while tracing), WIPEOUT_FAR_FLARES,\n"
             "  WIPEOUT_MOVIES (play the movies in fixed-step runs too), WIPEOUT_WAV (the mixed audio, fixed-step),\n"
             "  WIPEOUT_MUSIC (a music folder in place of the disc's music)\n");
 }
@@ -360,7 +361,11 @@ int main(int argc, char **argv)
 
         for (;;) {
             image.path = portConfig.discPath;
-            if (PortIsArchive(image.path) && !portConfig.hidden) {
+            if (PortPcFolderIs(image.path)) {
+                /* the PC CD-ROM version's files in a folder (pc.c): an empty disc stands in for its CD */
+                image.ok = PortPcUseFolder(image.path, image.result, sizeof(image.result), image.message,
+                                           sizeof(image.message));
+            } else if (PortIsArchive(image.path) && !portConfig.hidden) {
                 RunShowing(ImageJob, &image, "Unpacking the disc image (only this once)...", PortArchiveProgress);
             } else {
                 ImageJob(&image);
@@ -372,16 +377,15 @@ int main(int argc, char **argv)
                 uint32_t size;
 
                 /* ... and it is the game: the sound bank of its \WIPEOUT2 tree (on the disc of every release:
-                   region.c's two, the Japanese and the prototype's), or the Sega Saturn disc (saturn.c). The PC
-                   CD-ROM version's image is a .bin with music tracks too, but its files are not the game's,
-                   and the game would crash on them. */
-                image.ok = disc && (PortSaturnDiscIs(disc) ||
+                   region.c's two, the Japanese and the prototype's), the Sega Saturn disc (saturn.c), or the PC
+                   CD-ROM version's (pc.c). */
+                image.ok = disc && (PortSaturnDiscIs(disc) || PortPcDiscIs(disc) || PortPcData() ||
                                     DiscFindFile(disc, "\\WIPEOUT2\\SOUND\\SAMPLES.WAD", &lba, &size));
                 if (disc && !image.ok) {
                     SDL_snprintf(image.message, sizeof(image.message),
-                                 "%s is not Wipeout XL (SCUS-94351) or WipEout 2097 (SLES-00327): the game's "
-                                 "files are not on it. The PC CD-ROM version is not the game either.",
-                                 image.path);
+                                 "%s is not Wipeout XL (SCUS-94351) or WipEout 2097 (SLES-00327).\n\n"
+                                 "The game's files are not on it, nor the Sega Saturn's or the PC CD-ROM version's.",
+                                 PortPathName(image.path));
                 }
                 DiscClose(disc);
             }
@@ -525,6 +529,11 @@ int PortFarViewEnabled(void)
         mode = value && SDL_atoi(value) == 2 ? 2 : SDL_getenv("WIPEOUT_TRACE") ? 0 : 1;
     }
     return mode == 2 || (mode == 1 && portSettings.farView);
+}
+
+int PortFarFlaresEnabled(void)
+{
+    return portSettings.farFlares;
 }
 
 int PortFadeRange(int *nearDistance, int *farDistance)

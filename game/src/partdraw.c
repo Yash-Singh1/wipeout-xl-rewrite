@@ -4,6 +4,7 @@
 #include "sparks.h"
 #include "drawasm.h"
 #include "../../platform/psx/gte.h"
+#include "portinterp.h"
 
 extern short CurrentScreen;
 extern u_long *OT[2];
@@ -50,6 +51,10 @@ static void SetStreakColour(LINE_G2 *line, int type, int level)
    particles also move by their velocity and age by one; one that dies or leaves the screen is freed.
    A particle's first drawn frame has no previous position and so draws nothing.  The console's loop
    counted 127 entries of the 128. */
+/* Port: frame interpolation: which particle a table entry holds. A new one (its flags cleared: the Add functions reuse
+   entries in turn, alive or not) is not moved from where the entry's last one was. */
+static uint32_t particleSerial[PARTICLE_COUNT];
+
 void AsmDrawParticles(SParticle *particles, Skeleton *camera, int mode)
 {
     SParticle *particle;
@@ -68,6 +73,9 @@ void AsmDrawParticles(SParticle *particles, Skeleton *camera, int mode)
 
         if (particle->type == 0) {
             continue;
+        }
+        if (!particle->flags) {
+            particleSerial[particle - particles]++; /* Port: a new particle */
         }
         x = particle->pos.vx;
         y = particle->pos.vy;
@@ -107,13 +115,24 @@ void AsmDrawParticles(SParticle *particles, Skeleton *camera, int mode)
         }
         GteWriteData(0, (x & 0xFFFF) | (int)((u_int)y << 16));
         GteWriteData(1, z);
-        GteKeyNext(0, (uint64_t)(uintptr_t)particle); /* Port: frame interpolation (gte.h) */
+        GteKeyNext(0, GteKeyMix((uint64_t)(uintptr_t)particle, particleSerial[particle - particles])); /* Port: frame interpolation (gte.h) */
         GteExecute(GTE_RTPS);
         flag = GteReadControl(31);
         line->x1 = (short)particle->pos.pad;
         line->y1 = (short)(particle->pos.pad >> 16);
         line->x0 = (short)GteReadData(14);
         line->y0 = (short)(GteReadData(14) >> 16);
+        /* Port: frame interpolation: the head bound to its projection (found by its pixel, it could take another
+           point's, and stayed put between frames), and the tail, where the head was in the frame before, going there
+           smoothly too (it stood still between frames, then jumped). Not in the particle's first frame (not drawn: its
+           tail is the entry's last particle's), nor with a head too near the camera to have a precise projection. */
+        if (GtePreciseHandle(15)) {
+            GteBindPrecise(&line->x0, GtePreciseHandle(15));
+            if (particle->flags) {
+                PortBindScreen(&line->x1, GteKeyMix(GteKeyMix((uint64_t)(uintptr_t)particle,
+                                                              particleSerial[particle - particles]), 0x5441494Cull));
+            }
+        }
         particle->pos.pad = GteReadData(14);
         if ((u_int)flag & GTE_REJECT) {
             particle->type = 0;

@@ -98,11 +98,21 @@ static uint64_t SourceKey(const void *v)
     return distance > -(1 << 20) && distance < (1 << 20) ? 0 : (uint64_t)(uintptr_t)v;
 }
 
+/* The key of the vertex in GTE slot `slot`: its address, or for a temporary the key its caller gave (GteKeyNext). */
+static void KeySource(int slot, const void *v)
+{
+    uint64_t key = SourceKey(v);
+
+    if (key) {
+        GteKeyNext(slot, key);
+    }
+}
+
 int RotTransPers(SVECTOR *v0, int *sxy, int *p, int *flag)
 {
     GteWriteData(0, Word(v0, 0));
     GteWriteData(1, Word(v0, 4));
-    GteKeyNext(0, SourceKey(v0));
+    KeySource(0, v0);
     GteExecute(0x4A180001); /* rtps */
     *sxy = GteReadData(14);
     GteBindPrecise(sxy, GtePreciseHandle(14));
@@ -119,9 +129,9 @@ int RotTransPers3(SVECTOR *v0, SVECTOR *v1, SVECTOR *v2, int *sxy0, int *sxy1, i
     GteWriteData(3, Word(v1, 4));
     GteWriteData(4, Word(v2, 0));
     GteWriteData(5, Word(v2, 4));
-    GteKeyNext(0, SourceKey(v0));
-    GteKeyNext(1, SourceKey(v1));
-    GteKeyNext(2, SourceKey(v2));
+    KeySource(0, v0);
+    KeySource(1, v1);
+    KeySource(2, v2);
     GteExecute(0x4A280030); /* rtpt */
     *sxy0 = GteReadData(12);
     *sxy1 = GteReadData(13);
@@ -140,7 +150,7 @@ void RotTransPersN(SVECTOR *v0, DVECTOR *sxy, u_short *sz, u_short *flag, int n)
     do {
         GteWriteData(0, Word(v0, 0));
         GteWriteData(1, Word(v0, 4));
-        GteKeyNext(0, SourceKey(v0));
+        KeySource(0, v0);
         GteExecute(0x4A180001); /* rtps */
         v0++;
         n--;

@@ -1,4 +1,5 @@
 #include "functions.h"
+#include "pc/pc.h"
 #include "portlink.h" /* Port: two players on one machine */
 #include "portorig.h" /* Port: the original Wipeout's tracks */
 #include "menus.h"
@@ -810,6 +811,10 @@ void DoButton(short x, short y, int requestedIcon, char *text)
     POLY_FT4 (*polys)[2];
     int frameSpace[2];
     int labelShift;
+    if(PortPcData()) {
+        PcDoButton(x,y,PcKeyOfIcon(requestedIcon),text); /* Port: the PC version's (pc/pchud.c) */
+        return;
+    }
     if(buttonCount<30) {
         if(playerControl[0].head==2 && (unsigned short)requestedIcon<4) iconNo+=6;
         if((unsigned short)(iconNo-10)<2) texture=textureTable[4 + buttonTextures];
@@ -5823,6 +5828,14 @@ void EnterName(ConfigData *gameData, HiScoreData *data)
         select = 0;
         if (!(keysDown & 0xC01)) {
             select = keysPressed & 0x2000;
+        }
+        {
+            int typed = PortNameTyped(data->numChars, (keysDown & 0xA0) != 0, data->charVal);
+
+            if (typed >= 0) {
+                data->charVal = typed; /* Port: typed on the keyboard */
+                select = 1;
+            }
         }
         if (select != 0 && data->charVal == 26) {
             if (data->numChars > 0) {

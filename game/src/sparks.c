@@ -1,5 +1,7 @@
 #include "functions.h"
 #include "sparks.h"
+#include "portinterp.h"
+#include "../../platform/psx/gte.h" /* Port: frame interpolation */
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
 extern int           snowCount;
@@ -438,6 +440,11 @@ void InitExplode(void)
 
 #define EXPLODE_QUAD(i) (&explodePrims[i][CurrentScreen])
 
+/* Port: frame interpolation (portinterp.h): which explosion a table entry holds. Its life only falls while it plays,
+   so a rise is a new one; it is not moved from where the entry's last one was. */
+static short    explodeLife[EXPLOSION_COUNT];
+static uint32_t explodeSerial[EXPLOSION_COUNT];
+
 void DrawExplode(void)
 {
     SVECTOR vertex;
@@ -459,7 +466,11 @@ void DrawExplode(void)
     partpos++;
     for (i = 0; i < EXPLOSION_COUNT; i++) {
         if (explosions[i].life <= 0) {
+            explodeLife[i] = 0; /* Port */
             continue;
+        }
+        if (explosions[i].life > explodeLife[i]) {
+            explodeSerial[i]++; /* Port: a new explosion */
         }
         if (explosions[i].blend != 1) {
             explosions[i].y -= 60;
@@ -469,6 +480,7 @@ void DrawExplode(void)
         } else {
             explosions[i].life = explosions[i].life - 1;
         }
+        explodeLife[i] = explosions[i].life; /* Port */
         frame = explosions[i].life;
         if (frame >= 15 || explosions[i].flash != 1) {
             if (frame >= 17 || explosions[i].flash != 0) {
@@ -500,6 +512,9 @@ void DrawExplode(void)
         vertex.vx = x;
         vertex.vz = z;
         vertex.vy = relPos.vy;
+        /* Port: frame interpolation: the explosion's centre, moving with its ship when it is one's */
+        GteKeyNext(0, GteKeyMix(GteKeyMix(0x4558504C4F4445ull, (uint64_t)i), explodeSerial[i]) |
+                          (explosions[i].ship >= 0 ? GTE_KEY_MOVING : 0));
         depth = RotTransPers(&vertex, (int *)&sxy, &p, &flag);
         left = sxy.vx;
         top = sxy.vy;
@@ -528,6 +543,15 @@ void DrawExplode(void)
         explodePrims[i][CurrentScreen].y2 = top + radius;
         explodePrims[i][CurrentScreen].x3 = left + radius;
         explodePrims[i][CurrentScreen].y3 = top + radius;
+        {
+            /* Port: frame interpolation: the corners go with the centre between frames */
+            uint32_t centre = PortProjection(&sxy);
+
+            PortBindAbout(&explodePrims[i][CurrentScreen].x0, centre, sxy.vx, sxy.vy, 0);
+            PortBindAbout(&explodePrims[i][CurrentScreen].x1, centre, sxy.vx, sxy.vy, 1);
+            PortBindAbout(&explodePrims[i][CurrentScreen].x2, centre, sxy.vx, sxy.vy, 2);
+            PortBindAbout(&explodePrims[i][CurrentScreen].x3, centre, sxy.vx, sxy.vy, 3);
+        }
         explodePrims[i][CurrentScreen].r0 = explosions[i].r;
         explodePrims[i][CurrentScreen].g0 = explosions[i].g;
         explodePrims[i][CurrentScreen].b0 = explosions[i].b;
@@ -746,6 +770,10 @@ void InitRing(void)
 }
 
 
+/* Port: frame interpolation (portinterp.h): which ring a table entry holds (as explodeSerial). */
+static short    ringLife[RING_COUNT];
+static uint32_t ringSerial[RING_COUNT];
+
 void DrawRing(void)
 {
     SVECTOR vertex;
@@ -765,8 +793,13 @@ void DrawRing(void)
     exdelay = (exdelay - 96) & 4095;
     SetSkeletonTransform(cameraPtr->camPos->super);
     for (i = 0; i < RING_COUNT; i++) {
-        if (rings[i].life <= 0) continue;
+        if (rings[i].life <= 0) {
+            ringLife[i] = 0; /* Port */
+            continue;
+        }
+        if (rings[i].life > ringLife[i]) ringSerial[i]++; /* Port: a new ring */
         rings[i].life--;
+        ringLife[i] = rings[i].life; /* Port */
         rings[i].y -= 15;
         if (rings[i].life >= 17) continue;
         age = 16 - rings[i].life;
@@ -779,6 +812,7 @@ void DrawRing(void)
         z = rings[i].z + camera.vz;
         z = (z >= 0) ? z : -z;
         if (z > 32767) continue;
+        GteKeyNext(0, GteKeyMix(GteKeyMix(0x52494E47ull, (uint64_t)i), ringSerial[i])); /* Port: frame interpolation */
         depth = RotTransPers(&vertex, (int *)&sxy, &p, &flag);
         sx = sxy.vx;
         sy = sxy.vy;
@@ -809,6 +843,16 @@ void DrawRing(void)
             prim->y2 = sy + ((inner * cos0) >> 12);
             prim->x3 = sx + ((inner * sin1) >> 12);
             prim->y3 = sy + ((inner * cos1) >> 12);
+            {
+                /* Port: frame interpolation: each point of the ring (outer 0-15, inner 16-31) with the centre, the
+                   ring growing smoothly between frames */
+                uint32_t centre = PortProjection(&sxy);
+
+                PortBindAbout(&prim->x0, centre, sx, sy, (uint64_t)k);
+                PortBindAbout(&prim->x1, centre, sx, sy, (uint64_t)((k + 1) & 15));
+                PortBindAbout(&prim->x2, centre, sx, sy, (uint64_t)(16 + k));
+                PortBindAbout(&prim->x3, centre, sx, sy, (uint64_t)(16 + ((k + 1) & 15)));
+            }
             AddPrim(OT[CurrentScreen] + (depth >> 1), &ringPrims[CurrentScreen][k][i]);
         }
     }
@@ -1017,6 +1061,29 @@ void AddRing(int x, int y, int z, int unused)
 
 extern POLY_G3 missileFlarePrims[2][4][8];
 
+/* Port: frame interpolation (portinterp.h): the weapon whose flare is drawn next (AddEffects), the flare's points known
+   by it, the pass and the point, so the star turns and goes with its missile or rocket between frames. */
+static const void *flareOwner;
+
+void PortFlareOwner(const void *weapon)
+{
+    flareOwner = weapon;
+}
+
+static uint64_t FlareKey(uint64_t kind, int pass)
+{
+    return GteKeyMix(GteKeyMix(kind, (uint64_t)(uintptr_t)flareOwner), (uint64_t)pass) | GTE_KEY_MOVING;
+}
+
+static void BindFlareTriangle(POLY_G3 *triangle, const DVECTOR *sxy, int t)
+{
+    uint32_t centre = PortProjection(sxy);
+
+    PortBindAbout(&triangle->x0, centre, sxy->vx, sxy->vy, (uint64_t)(t * 3));
+    PortBindAbout(&triangle->x1, centre, sxy->vx, sxy->vy, (uint64_t)(t * 3 + 1));
+    PortBindAbout(&triangle->x2, centre, sxy->vx, sxy->vy, (uint64_t)(t * 3 + 2));
+}
+
 void DrawMissileFlare(int xpos, int ypos, int zpos)
 {
     SVECTOR vertex;
@@ -1025,6 +1092,7 @@ void DrawMissileFlare(int xpos, int ypos, int zpos)
     VECTOR camera;
     int savedAngle;
     int pass;
+    int k; /* Port */
     int depth, x, y, z, extent, trig, product, sx, sy;
     int absZ;
     short radius, full, half;
@@ -1048,6 +1116,7 @@ void DrawMissileFlare(int xpos, int ypos, int zpos)
         if (x > 32767) continue;
         absZ = (z >= 0) ? z : -z;
         if (absZ > 32767) continue;
+        GteKeyNext(0, FlareKey(0x4D4953534C45ull, pass)); /* Port: frame interpolation */
         depth = RotTransPers(&vertex, (int *)&sxy, &p, &flag);
         sx = sxy.vx;
         sy = sxy.vy;
@@ -1117,6 +1186,9 @@ void DrawMissileFlare(int xpos, int ypos, int zpos)
         product = half * trig;
         missileFlarePrims[CurrentScreen][3][missflareat].y1 = sy + (product >> 12);
         AddPrim(OT[CurrentScreen] + (depth >> 1), &missileFlarePrims[CurrentScreen][3][missflareat]);
+        for (k = 0; k < 4; k++) {
+            BindFlareTriangle(&missileFlarePrims[CurrentScreen][k][missflareat], &sxy, k); /* Port: frame interpolation */
+        }
     }
     pitsparkat = savedAngle;
 }
@@ -1132,6 +1204,7 @@ void DrawRocketFlare(int xpos, int ypos, int zpos)
     VECTOR camera;
     int savedAngle;
     int pass;
+    int k; /* Port */
     int depth, x, y, z, extent, trig, product, sx, sy;
     int absZ;
     short radius, full, half;
@@ -1155,6 +1228,7 @@ void DrawRocketFlare(int xpos, int ypos, int zpos)
         if (x > 32767) continue;
         absZ = (z >= 0) ? z : -z;
         if (absZ > 32767) continue;
+        GteKeyNext(0, FlareKey(0x524F434B4554ull, pass)); /* Port: frame interpolation */
         depth = RotTransPers(&vertex, (int *)&sxy, &p, &flag);
         sx = sxy.vx;
         sy = sxy.vy;
@@ -1224,6 +1298,9 @@ void DrawRocketFlare(int xpos, int ypos, int zpos)
         product = half * trig;
         rocketFlarePrims[CurrentScreen][3][rockang].y1 = sy + (product >> 12);
         AddPrim(OT[CurrentScreen] + (depth >> 1), &rocketFlarePrims[CurrentScreen][3][rockang]);
+        for (k = 0; k < 4; k++) {
+            BindFlareTriangle(&rocketFlarePrims[CurrentScreen][k][rockang], &sxy, k); /* Port: frame interpolation */
+        }
     }
     exdelay = savedAngle;
 }

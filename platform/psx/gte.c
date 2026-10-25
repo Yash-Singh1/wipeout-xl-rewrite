@@ -330,7 +330,7 @@ uint64_t GteKeyMix(uint64_t a, uint64_t b)
     v ^= v >> 31;
     v *= 0xBF58476D1CE4E5B9ull;
     v ^= v >> 29;
-    v &= ~GTE_KEY_WORLD; /* (only the track's keys have it) */
+    v &= ~(GTE_KEY_WORLD | GTE_KEY_MOVING); /* (only the track's keys have the first, what moves with a ship the second) */
     return v ? v : 1;
 }
 
@@ -438,7 +438,9 @@ static PastEntry *FitPast(int i)
 {
     const GtePrecise *p = &records[i].value;
 
-    return p->key && (p->key & motionKeys) == motionKeys && p->view[2] > 0.0f ? PastSlot(p->key, 0) : NULL;
+    return p->key && (p->key & motionKeys) == motionKeys && !(p->key & GTE_KEY_MOVING) && p->view[2] > 0.0f
+               ? PastSlot(p->key, 0)
+               : NULL;
 }
 
 /* Solves the n equations of the n x width rows of a (row-major) for each of the width - n columns on the right, in
@@ -686,14 +688,16 @@ static void FitMotion(void)
    without the pictures between moving.) The view's motion is fitted at the same time. */
 static int CameraCut(void)
 {
-    int i, matched = 0, far = 0;
+    /* (every seventh, or every one when that would not make 8: a menu's model alone, which was taken for a cut in
+       every frame and so not turned between frames) */
+    int i, matched = 0, far = 0, step = recordCount < 8 * 7 ? 1 : 7;
 
     if (cutCheckedFrame == preciseFrame) {
         return cut;
     }
     cutCheckedFrame = preciseFrame;
     ChooseFitKeys();
-    for (i = 0; i < recordCount; i += 7) {
+    for (i = 0; i < recordCount; i += step) {
         PastEntry *entry = FitPast(i);
 
         if (entry) {
@@ -708,22 +712,39 @@ static int CameraCut(void)
     return cut;
 }
 
-int GteInterpolate(const GtePrecise *p, float along, GtePrecise *out)
+/* Where projection p was in the frame before, in view space: under its key; not there (or it jumped), what moves with
+   a ship (GTE_KEY_MOVING) where its anchor was, and what stands still where the view's motion brings it from.
+   *found: the frame before's projection under its key, or NULL. 0: none of these. */
+static int PastView(const GtePrecise *p, double was[3], PastEntry **found)
 {
-    PastEntry *entry;
-    double h = (double)(uint16_t)gte.control[H], was[3], x, y, z;
+    PastEntry *entry = PastSlot(p->key, 0);
     int r;
 
-    if (!keepPast || !p->key || p->view[2] <= 0.0f || pastFrame != preciseFrame - 1 || CameraCut()) {
-        return 0;
-    }
-    entry = PastSlot(p->key, 0);
+    *found = NULL;
     if (entry && !Jumped(entry->view, p->view)) {
         for (r = 0; r < 3; r++) {
             was[r] = entry->view[r];
         }
-    } else if (motionValid) {
-        /* new in this frame (or another thing under its key): where the view's motion brings it from */
+        *found = entry;
+        return 1;
+    }
+    if (p->key & GTE_KEY_MOVING) {
+        float at[3];
+
+        if (!p->anchor || !(entry = PastSlot(p->anchor, 0))) {
+            return 0;
+        }
+        for (r = 0; r < 3; r++) {
+            at[r] = entry->view[r] + p->anchorOffset[r];
+            was[r] = at[r];
+        }
+        return !Jumped(at, p->view);
+    }
+    if (!motionValid) {
+        return 0;
+    }
+    /* new in this frame (or another thing under its key): where the view's motion brings it from */
+    {
         double d[3];
 
         for (r = 0; r < 3; r++) {
@@ -732,8 +753,17 @@ int GteInterpolate(const GtePrecise *p, float along, GtePrecise *out)
         for (r = 0; r < 3; r++) {
             was[r] = motionR[0][r] * d[0] + motionR[1][r] * d[1] + motionR[2][r] * d[2];
         }
-        entry = NULL;
-    } else {
+    }
+    return 1;
+}
+
+int GteInterpolate(const GtePrecise *p, float along, GtePrecise *out)
+{
+    PastEntry *entry;
+    double h = (double)(uint16_t)gte.control[H], was[3], x, y, z;
+
+    if (!keepPast || !p->key || p->view[2] <= 0.0f || pastFrame != preciseFrame - 1 || CameraCut() ||
+        !PastView(p, was, &entry)) {
         return 0;
     }
     x = was[0] + (p->view[0] - was[0]) * along;
@@ -755,6 +785,7 @@ int GteInterpolate(const GtePrecise *p, float along, GtePrecise *out)
 int GteViewAt(const GtePrecise *p, float along, double view[3])
 {
     PastEntry *entry;
+    double was[3];
     int r;
 
     if (p->view[0] == 0.0f && p->view[1] == 0.0f && p->view[2] == 0.0f) {
@@ -763,26 +794,12 @@ int GteViewAt(const GtePrecise *p, float along, double view[3])
     for (r = 0; r < 3; r++) {
         view[r] = p->view[r];
     }
-    if (along >= 1.0f || !keepPast || !p->key || pastFrame != preciseFrame - 1 || CameraCut()) {
+    if (along >= 1.0f || !keepPast || !p->key || pastFrame != preciseFrame - 1 || CameraCut() ||
+        !PastView(p, was, &entry)) {
         return 1; /* (where the frame has it: as GteInterpolate leaves a vertex it cannot move) */
     }
-    entry = PastSlot(p->key, 0);
-    if (entry && !Jumped(entry->view, p->view)) {
-        for (r = 0; r < 3; r++) {
-            view[r] = entry->view[r] + (p->view[r] - entry->view[r]) * along;
-        }
-    } else if (motionValid) {
-        double d[3], was[3];
-
-        for (r = 0; r < 3; r++) {
-            d[r] = p->view[r] - motionT[r];
-        }
-        for (r = 0; r < 3; r++) {
-            was[r] = motionR[0][r] * d[0] + motionR[1][r] * d[1] + motionR[2][r] * d[2];
-        }
-        for (r = 0; r < 3; r++) {
-            view[r] = was[r] + (p->view[r] - was[r]) * along;
-        }
+    for (r = 0; r < 3; r++) {
+        view[r] = was[r] + (p->view[r] - was[r]) * along;
     }
     return 1;
 }
@@ -813,6 +830,18 @@ void GteRecordView(uint32_t handle, double x, double y, double z)
     }
 }
 
+void GteRecordAnchor(uint32_t handle, uint64_t anchor, double dx, double dy, double dz)
+{
+    int32_t record = HandleRecord(handle);
+
+    if (record >= 0) {
+        records[record].value.anchor = anchor;
+        records[record].value.anchorOffset[0] = (float)dx;
+        records[record].value.anchorOffset[1] = (float)dy;
+        records[record].value.anchorOffset[2] = (float)dz;
+    }
+}
+
 static int backgroundOn; /* (GteSetBackground) */
 
 void GteSetBackground(int on)
@@ -840,6 +869,7 @@ static uint32_t RecordPrecise(uint32_t sxy, float x, float y, float z)
     record->value.background = backgroundOn;
     record->value.key = 0;
     record->value.view[0] = record->value.view[1] = record->value.view[2] = 0.0f;
+    record->value.anchor = 0;
     record->key = sxy;
     record->previous = slot->latest;
     slot->latest = recordCount++;
@@ -1192,12 +1222,15 @@ static void Rtp(int v, int last, int sf)
     sy = (int32_t)(SetMac0((int64_t)n * gte.data[IR2] + c[OFY]) >> 16);
     PushSxy(sx, sy);
     if (gtePrecision) {
-        /* The same projection without the integer steps. */
+        /* The same projection without the integer steps, nor IR1 and IR2's saturation: a vertex more than 32767 to
+           the side came out pressed towards the middle of the screen, unflagged (the game's tests leave those bits
+           out), where widescreen shows it, and was left without a precise position (the far view then took the
+           game's culling of its polygons, judged on the pressed positions, as certain: they were missing). */
         double x = (double)Check44(0, mac1) / 4096.0;
         double y = (double)Check44(1, mac2) / 4096.0;
         double z = (double)Check44(2, mac3) / 4096.0;
         double h = (double)(uint16_t)c[H];
-        if (z > 0.0 && h < z * 2.0 && x > -32768.0 && x < 32767.0 && y > -32768.0 && y < 32767.0) {
+        if (z > 0.0 && h < z * 2.0) {
             float px = (float)(c[OFX] / 65536.0 + x * h / z);
             float py = (float)(c[OFY] / 65536.0 + y * h / z);
             if (px > -1024.0f && px < 1024.0f && py > -1024.0f && py < 1024.0f) {

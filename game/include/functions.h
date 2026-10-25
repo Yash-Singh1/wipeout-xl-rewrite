@@ -729,6 +729,7 @@ void SfxUnInitReverb(void);
 void CheckForHiScore(ConfigData *config, HiScoreData *score, ShipData *ships, int shipNum, u8 lap);
 void DisplayScoreTab(ConfigData *arg0, HiScoreData *arg1);
 void EnterHighScore(ConfigData *gameData, HiScoreData *hiScoreData);
+int PortNameTyped(int letters, int picked, int current); /* Port: a name typed on the keyboard (hiscores.c) */
 void InitScoreTabData(HiScoreData *arg0);
 void ScoreTabInit(ConfigData *arg0);
 

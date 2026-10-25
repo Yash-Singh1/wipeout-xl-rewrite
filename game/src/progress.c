@@ -1,6 +1,7 @@
 #include "functions.h"
 #include "portorig.h" /* Port: the original Wipeout's tracks */
 #include "ghost.h"
+#include "pc/pc.h" /* Port: the PC version's loading screen */
 #include "include_asm_g8.h"
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
@@ -280,7 +281,8 @@ void DrawBox(int x, int y, int w, int h, u_char r, u_char g, u_char b)
     DrawLine(x, bottom, x, y, r, g, b);
 }
 
-void VsyncFunc(void)
+/* The PlayStation's loading screen: the text and the bars, drawn into the frame being built. */
+static void DrawLoadScreen(void)
 {
     u_char      *shipName;
     short        x;
@@ -288,7 +290,6 @@ void VsyncFunc(void)
     short        tintG;
     short        tintB;
     short        nextY;
-    short        nextX;
     short        phase;
     int         digitX1;
     int         digitX2;
@@ -300,15 +301,248 @@ void VsyncFunc(void)
     int         digit3;
     int         digit4;
     int         digit5;
-    int         bufferIndex;
-    u_long      *orderTable;
-    u_short      startCount;
     u_char      *heightPtrUp;
     u_char      *heightPtrDown;
     u_char       trackType;
     u_char       heightUp;
     u_char       heightDown;
     int         action;
+    short        nextX;
+
+    AddText(loadScreenTitle, 0xA0, 0x56, 8, 1);
+    AddJustifyNumber((loadPercent / 100) % 10, 0x30, 0x61, 0xC, 1);
+    AddJustifyNumber((loadPercent / 10) % 10, 0x42, 0x61, 0xC, 1);
+    AddJustifyNumber(loadPercent % 10, 0x54, 0x61, 0xC, 1);
+    Print(loadInstructionLine0, 0x20, 0x70, 8);
+    if ((short)loadFrame >= 0x47) {
+        Print(loadInstructionLine2, 0x20, 0x78, 8);
+    }
+    if ((short)loadFrame >= 0x1F) {
+        Print(loadInstructionLine1, 0x20, 0x7F, 8);
+    }
+    if ((short)loadFrame >= 0x33) {
+        Print(loadInstructionLine3, 0x20, 0x86, 8);
+    }
+    if ((short)loadFrame >= 0x15) {
+        Print(loadInstructionLine4, 0x20, 0x8D, 8);
+    }
+    if ((short)loadFrame >= 0x29) {
+        Print(loadInstructionLine5, 0x20, 0x94, 8);
+    }
+    if ((short)loadFrame >= 0x3D) {
+        Print(loadInstructionLine6, 0x20, 0x9B, 8);
+    }
+    if (tempGameData->shipClass == 0) {
+        Print(classVectorLabel, 0x50, 0x94, 8);
+    }
+    if (tempGameData->shipClass == 1) {
+        Print(classVenomLabel, 0x50, 0x94, 8);
+    }
+    if (tempGameData->shipClass == 2) {
+        Print(classRapierLabel, 0x50, 0x94, 8);
+    }
+    if (tempGameData->shipClass == 3) {
+        Print(classPhantomLabel, 0x50, 0x94, 8);
+    }
+    if ((u_int)ownShip < 3U) {
+        shipName = shipTeamNames0;
+        goto printShipName;
+    }
+    if ((u_int)(ownShip - 3) < 3U) {
+        shipName = shipTeamNames1;
+        goto printShipName;
+    }
+    if ((u_int)(ownShip - 6) < 3U) {
+        shipName = shipTeamNames2;
+        goto printShipName;
+    }
+    if ((u_int)(ownShip - 9) < 3U) {
+        shipName = shipTeamNames3;
+        goto printShipName;
+    }
+    if ((u_int)(ownShip - 0xC) < 3U) {
+        shipName = shipTeamNames4;
+printShipName:
+        Print(shipName, 0x50, 0x9B, 8);
+    }
+    Print((u_char *)PortRaceTrackName(tempGameData->actTrackNum), 0x50, 0x78, 8); /* Port: an original track's name */
+    trackType = tempGameData->actTrackNum;
+    if (trackType == 1 && PortOriginalTrack() >= 0) {
+        trackType = 0; /* Port: an original track: its own lines, in Talon's Reach's colour */
+        Print((u_char *)"A CIRCUIT OF THE", 0x50, 0x7F, 8);
+        Print((u_char *)"ORIGINAL WIPEOUT", 0x50, 0x86, 8);
+        Print((u_char *)(tempGameData->shipClass == 2 ? "RAPIER CLASS" : "VENOM CLASS"), 0x50, 0x8D, 8);
+        tintR = 0xFF;
+        tintG = 0;
+        tintB = 0;
+    }
+    switch (trackType) {
+    case 1:
+        Print(track1DescriptionLine0, 0x50, 0x7F, 8);
+        Print(track1DescriptionLine1, 0x50, 0x86, 8);
+        Print(track1DescriptionLine2, 0x50, 0x8D, 8);
+        tintR = 0xFF;
+        tintG = 0;
+        tintB = 0;
+        break;
+    case 2:
+        Print(track2DescriptionLine0, 0x50, 0x7F, 8);
+        Print(track2DescriptionLine1, 0x50, 0x86, 8);
+        Print(track2DescriptionLine2, 0x50, 0x8D, 8);
+        tintR = 0;
+        tintG = 0xFF;
+        tintB = 0;
+        break;
+    case 6:
+        Print(track6DescriptionLine0, 0x50, 0x7F, 8);
+        Print(track6DescriptionLine1, 0x50, 0x86, 8);
+        Print(track6DescriptionLine2, 0x50, 0x8D, 8);
+        tintR = 0;
+        tintG = 0;
+        tintB = 0xFF;
+        break;
+    case 7:
+        Print(track7DescriptionLine0, 0x50, 0x7F, 8);
+        Print(track7DescriptionLine1, 0x50, 0x86, 8);
+        Print(track7DescriptionLine2, 0x50, 0x8D, 8);
+        tintR = 0xFF;
+        tintG = 0xFF;
+        tintB = 0;
+        break;
+    case 8:
+        Print(track8DescriptionLine0, 0x50, 0x7F, 8);
+        Print(track8DescriptionLine1, 0x50, 0x86, 8);
+        Print(track8DescriptionLine2, 0x50, 0x8D, 8);
+        tintR = 0xFF;
+        tintG = 0;
+        tintB = 0xFF;
+        break;
+    case 13:
+        Print(track13DescriptionLine0, 0x50, 0x7F, 8);
+        Print(track13DescriptionLine1, 0x50, 0x86, 8);
+        Print(track13DescriptionLine2, 0x50, 0x8D, 8);
+        tintR = 0;
+        tintG = 0xFF;
+        tintB = 0xFF;
+        break;
+    case 17:
+        Print(track17DescriptionLine0, 0x50, 0x7F, 8);
+        Print(track17DescriptionLine1, 0x50, 0x86, 8);
+        Print(track17DescriptionLine2, 0x50, 0x8D, 8);
+        tintR = 0x80;
+        tintG = 0x20;
+        tintB = 0xFF;
+        break;
+    case 20:
+        Print(track20DescriptionLine0, 0x50, 0x7F, 8);
+        Print(track20DescriptionLine1, 0x50, 0x86, 8);
+        Print(track20DescriptionLine2, 0x50, 0x8D, 8);
+        tintR = 0;
+        tintG = 0x40;
+        tintB = 0;
+        break;
+    }
+    x = 0xA0;
+    while ((digitX1 = x), digitX1 < ((((newRand() & 0xF) * 6) + 0xB4))) {
+        x += 6;
+        digit1 = newRand();
+        sprintf(numberText, singleDigitFormat, digit1 % 10);
+        Print((u_char *)numberText, digitX1, 0x62, 8);
+    }
+    x = 0xA0;
+    while ((digitX2 = x), digitX2 < ((((newRand() & 0xF) * 6) + 0xB4))) {
+        x += 6;
+        digit2 = newRand();
+        sprintf(numberText, singleDigitFormat, digit2 % 10);
+        Print((u_char *)numberText, digitX2, 0x68, 8);
+    }
+    x = 0xA0;
+    while ((digitX3 = x), digitX3 < ((((newRand() & 0xF) * 6) + 0xB4))) {
+        x += 6;
+        digit3 = newRand();
+        sprintf(numberText, singleDigitFormat, digit3 % 10);
+        Print((u_char *)numberText, digitX3, 0x70, 8);
+    }
+    x = 0xA2;
+    while ((digitX4 = x), digitX4 < ((((newRand() & 0xF) * 6) + 0xB4))) {
+        x += 6;
+        digit4 = newRand();
+        sprintf(numberText, singleDigitFormat, digit4 % 10);
+        Print((u_char *)numberText, digitX4, 0x78, 8);
+    }
+    x = 0x102;
+    while ((digitX5 = x), digitX5 < (((((newRand() & 5) + 5) * 6) + 0xEA))) {
+        x += 6;
+        digit5 = newRand();
+        sprintf(numberText, singleDigitFormat, digit5 % 10);
+        Print((u_char *)numberText, digitX5, 0xA8, 8);
+    }
+    Print(loadScreenFooter, 0xEE, 0x56, 8);
+    DrawBox(0x9E, 0x54, 0x60, 0xB, 0xFF, 0xFF, 0xFF);
+    DrawBox(0xA0, 0x76, 0x80, 0x30, 0xFF, 0xFF, 0xFF);
+    DrawBox(0x100, 0xA6, 0x27, 8, 0xFF, 0xFF, 0xFF);
+    DrawBox(0xA0, 0xA2, 0x87, 4, 0xFF, 0xFF, 0xFF);
+    DrawLine(0xA0, 0x82, 0x120, 0x82, 0xC0, 0xC0, 0xC0);
+    DrawLine(0xA0, 0x7E, 0x120, 0x7E, 0xC0, 0xC0, 0xC0);
+    DrawLine(0xA0, 0x9E, 0x120, 0x9E, 0xC0, 0xC0, 0xC0);
+    x = 0x86;
+    do {
+        DrawLine(0x100, x, 0x120, x, 0xC0, 0xC0, 0xC0);
+        nextY = x + 8;
+        x = nextY;
+    } while (nextY < 0x9E);
+    for (x = 0xB0; x < 0x120; x += 0x10) {
+        DrawLine(x, 0xA6, x, 0x7E, 0xC0, 0xC0, 0xC0);
+    }
+    for (x = 0xA8; x < 0x120; x += 0x10) {
+        DrawLine(x, 0xA2, x, 0xA6, 0xC0, 0xC0, 0xC0);
+    }
+    DrawLine(0x20, 0x6E, 0x110, 0x6E, 0xFF, 0xFF, 0xFF);
+    DrawLine(0x110, 0x76, 0x110, 0x7E, 0xFF, 0xFF, 0xFF);
+    DrawLine(0x20, 0x76, 0xA0, 0x76, 0xFF, 0xFF, 0xFF);
+    DrawLine(0x20, 0x70, 0x20, 0x70, 0xFF, 0xFF, 0xFF);
+    DrawLine(0x24, 0x70, 0x20, 0x74, 0xFF, 0xFF, 0xFF);
+    DrawLine(0x24, 0x74, 0x24, 0x74, 0xFF, 0xFF, 0xFF);
+    DrawLine(0xE0, 0x86, 0x100, 0x86, 0xC0, 0xC0, 0xC0);
+    for (x = 0xE8; x < 0x120; x += 0x10) {
+        DrawLine(x, 0x86, x, 0x82, 0xC0, 0xC0, 0xC0);
+    }
+    x = 0xA2;
+    waveIndex = 0;
+    phase = scanPhase;
+    scanPhase = (scanPhase - 0xA) & 0xFF;
+    do {
+        phase = (phase + 5) & 0xFF;
+        DrawLine((int)x, 0xA1, (int)x, barHeight[waveIndex] + 0x78, ((int)(phase * tintR) >> 8) & 0xFF, ((int)(phase * tintG) >> 8) & 0xFF, ((int)(phase * tintB) >> 8) & 0xFF);
+        action = newRand() & 3;
+        switch (action) {
+        case 1:
+            heightPtrUp = &barHeight[waveIndex];
+            heightUp = *heightPtrUp;
+            if (heightUp >= 9U) {
+                *heightPtrUp = heightUp - 2;
+            }
+            break;
+        case 2:
+            heightPtrDown = &barHeight[waveIndex];
+            heightDown = *heightPtrDown;
+            if (heightDown < 0x28U) {
+                *heightPtrDown = heightDown + 2;
+            }
+            break;
+        }
+        nextX = x + 2;
+        x = nextX;
+        waveIndex += 1;
+    } while (nextX < 0x100);
+}
+
+
+void VsyncFunc(void)
+{
+    short        startCount;
+    int          bufferIndex;
+    u_long      *orderTable;
     WADFILE     *wad;
 
     if (vsyncBusy == 0) {
@@ -323,237 +557,16 @@ void VsyncFunc(void)
         DrawSync(0);
         SfxDoSfx();
         quadIndex = CurrentScreen * 0x12C;
-        AddText(loadScreenTitle, 0xA0, 0x56, 8, 1);
         if (lastWadCurrent != wad->current) {
             loadTicks = 0;
             lastWadCurrent = wad->current;
         }
-        AddJustifyNumber((loadPercent / 100) % 10, 0x30, 0x61, 0xC, 1);
-        AddJustifyNumber((loadPercent / 10) % 10, 0x42, 0x61, 0xC, 1);
-        AddJustifyNumber(loadPercent % 10, 0x54, 0x61, 0xC, 1);
         shownPercent = loadPercent; /* Port: for LoadScreenFinish */
-        Print(loadInstructionLine0, 0x20, 0x70, 8);
-        if ((short)loadFrame >= 0x47) {
-            Print(loadInstructionLine2, 0x20, 0x78, 8);
+        if (PortPcData()) {
+            PcLoadScreen(loadFrame, loadPercent); /* Port: the PC version's loading screen (pc/pcload.c) */
+        } else {
+            DrawLoadScreen();
         }
-        if ((short)loadFrame >= 0x1F) {
-            Print(loadInstructionLine1, 0x20, 0x7F, 8);
-        }
-        if ((short)loadFrame >= 0x33) {
-            Print(loadInstructionLine3, 0x20, 0x86, 8);
-        }
-        if ((short)loadFrame >= 0x15) {
-            Print(loadInstructionLine4, 0x20, 0x8D, 8);
-        }
-        if ((short)loadFrame >= 0x29) {
-            Print(loadInstructionLine5, 0x20, 0x94, 8);
-        }
-        if ((short)loadFrame >= 0x3D) {
-            Print(loadInstructionLine6, 0x20, 0x9B, 8);
-        }
-        if (tempGameData->shipClass == 0) {
-            Print(classVectorLabel, 0x50, 0x94, 8);
-        }
-        if (tempGameData->shipClass == 1) {
-            Print(classVenomLabel, 0x50, 0x94, 8);
-        }
-        if (tempGameData->shipClass == 2) {
-            Print(classRapierLabel, 0x50, 0x94, 8);
-        }
-        if (tempGameData->shipClass == 3) {
-            Print(classPhantomLabel, 0x50, 0x94, 8);
-        }
-        if ((u_int)ownShip < 3U) {
-            shipName = shipTeamNames0;
-            goto printShipName;
-        }
-        if ((u_int)(ownShip - 3) < 3U) {
-            shipName = shipTeamNames1;
-            goto printShipName;
-        }
-        if ((u_int)(ownShip - 6) < 3U) {
-            shipName = shipTeamNames2;
-            goto printShipName;
-        }
-        if ((u_int)(ownShip - 9) < 3U) {
-            shipName = shipTeamNames3;
-            goto printShipName;
-        }
-        if ((u_int)(ownShip - 0xC) < 3U) {
-            shipName = shipTeamNames4;
-printShipName:
-            Print(shipName, 0x50, 0x9B, 8);
-        }
-        Print((u_char *)PortRaceTrackName(tempGameData->actTrackNum), 0x50, 0x78, 8); /* Port: an original track's name */
-        trackType = tempGameData->actTrackNum;
-        if (trackType == 1 && PortOriginalTrack() >= 0) {
-            trackType = 0; /* Port: an original track: its own lines, in Talon's Reach's colour */
-            Print((u_char *)"A CIRCUIT OF THE", 0x50, 0x7F, 8);
-            Print((u_char *)"ORIGINAL WIPEOUT", 0x50, 0x86, 8);
-            Print((u_char *)(tempGameData->shipClass == 2 ? "RAPIER CLASS" : "VENOM CLASS"), 0x50, 0x8D, 8);
-            tintR = 0xFF;
-            tintG = 0;
-            tintB = 0;
-        }
-        switch (trackType) {
-        case 1:
-            Print(track1DescriptionLine0, 0x50, 0x7F, 8);
-            Print(track1DescriptionLine1, 0x50, 0x86, 8);
-            Print(track1DescriptionLine2, 0x50, 0x8D, 8);
-            tintR = 0xFF;
-            tintG = 0;
-            tintB = 0;
-            break;
-        case 2:
-            Print(track2DescriptionLine0, 0x50, 0x7F, 8);
-            Print(track2DescriptionLine1, 0x50, 0x86, 8);
-            Print(track2DescriptionLine2, 0x50, 0x8D, 8);
-            tintR = 0;
-            tintG = 0xFF;
-            tintB = 0;
-            break;
-        case 6:
-            Print(track6DescriptionLine0, 0x50, 0x7F, 8);
-            Print(track6DescriptionLine1, 0x50, 0x86, 8);
-            Print(track6DescriptionLine2, 0x50, 0x8D, 8);
-            tintR = 0;
-            tintG = 0;
-            tintB = 0xFF;
-            break;
-        case 7:
-            Print(track7DescriptionLine0, 0x50, 0x7F, 8);
-            Print(track7DescriptionLine1, 0x50, 0x86, 8);
-            Print(track7DescriptionLine2, 0x50, 0x8D, 8);
-            tintR = 0xFF;
-            tintG = 0xFF;
-            tintB = 0;
-            break;
-        case 8:
-            Print(track8DescriptionLine0, 0x50, 0x7F, 8);
-            Print(track8DescriptionLine1, 0x50, 0x86, 8);
-            Print(track8DescriptionLine2, 0x50, 0x8D, 8);
-            tintR = 0xFF;
-            tintG = 0;
-            tintB = 0xFF;
-            break;
-        case 13:
-            Print(track13DescriptionLine0, 0x50, 0x7F, 8);
-            Print(track13DescriptionLine1, 0x50, 0x86, 8);
-            Print(track13DescriptionLine2, 0x50, 0x8D, 8);
-            tintR = 0;
-            tintG = 0xFF;
-            tintB = 0xFF;
-            break;
-        case 17:
-            Print(track17DescriptionLine0, 0x50, 0x7F, 8);
-            Print(track17DescriptionLine1, 0x50, 0x86, 8);
-            Print(track17DescriptionLine2, 0x50, 0x8D, 8);
-            tintR = 0x80;
-            tintG = 0x20;
-            tintB = 0xFF;
-            break;
-        case 20:
-            Print(track20DescriptionLine0, 0x50, 0x7F, 8);
-            Print(track20DescriptionLine1, 0x50, 0x86, 8);
-            Print(track20DescriptionLine2, 0x50, 0x8D, 8);
-            tintR = 0;
-            tintG = 0x40;
-            tintB = 0;
-            break;
-        }
-        x = 0xA0;
-        while ((digitX1 = x), digitX1 < ((((newRand() & 0xF) * 6) + 0xB4))) {
-            x += 6;
-            digit1 = newRand();
-            sprintf(numberText, singleDigitFormat, digit1 % 10);
-            Print((u_char *)numberText, digitX1, 0x62, 8);
-        }
-        x = 0xA0;
-        while ((digitX2 = x), digitX2 < ((((newRand() & 0xF) * 6) + 0xB4))) {
-            x += 6;
-            digit2 = newRand();
-            sprintf(numberText, singleDigitFormat, digit2 % 10);
-            Print((u_char *)numberText, digitX2, 0x68, 8);
-        }
-        x = 0xA0;
-        while ((digitX3 = x), digitX3 < ((((newRand() & 0xF) * 6) + 0xB4))) {
-            x += 6;
-            digit3 = newRand();
-            sprintf(numberText, singleDigitFormat, digit3 % 10);
-            Print((u_char *)numberText, digitX3, 0x70, 8);
-        }
-        x = 0xA2;
-        while ((digitX4 = x), digitX4 < ((((newRand() & 0xF) * 6) + 0xB4))) {
-            x += 6;
-            digit4 = newRand();
-            sprintf(numberText, singleDigitFormat, digit4 % 10);
-            Print((u_char *)numberText, digitX4, 0x78, 8);
-        }
-        x = 0x102;
-        while ((digitX5 = x), digitX5 < (((((newRand() & 5) + 5) * 6) + 0xEA))) {
-            x += 6;
-            digit5 = newRand();
-            sprintf(numberText, singleDigitFormat, digit5 % 10);
-            Print((u_char *)numberText, digitX5, 0xA8, 8);
-        }
-        Print(loadScreenFooter, 0xEE, 0x56, 8);
-        DrawBox(0x9E, 0x54, 0x60, 0xB, 0xFF, 0xFF, 0xFF);
-        DrawBox(0xA0, 0x76, 0x80, 0x30, 0xFF, 0xFF, 0xFF);
-        DrawBox(0x100, 0xA6, 0x27, 8, 0xFF, 0xFF, 0xFF);
-        DrawBox(0xA0, 0xA2, 0x87, 4, 0xFF, 0xFF, 0xFF);
-        DrawLine(0xA0, 0x82, 0x120, 0x82, 0xC0, 0xC0, 0xC0);
-        DrawLine(0xA0, 0x7E, 0x120, 0x7E, 0xC0, 0xC0, 0xC0);
-        DrawLine(0xA0, 0x9E, 0x120, 0x9E, 0xC0, 0xC0, 0xC0);
-        x = 0x86;
-        do {
-            DrawLine(0x100, x, 0x120, x, 0xC0, 0xC0, 0xC0);
-            nextY = x + 8;
-            x = nextY;
-        } while (nextY < 0x9E);
-        for (x = 0xB0; x < 0x120; x += 0x10) {
-            DrawLine(x, 0xA6, x, 0x7E, 0xC0, 0xC0, 0xC0);
-        }
-        for (x = 0xA8; x < 0x120; x += 0x10) {
-            DrawLine(x, 0xA2, x, 0xA6, 0xC0, 0xC0, 0xC0);
-        }
-        DrawLine(0x20, 0x6E, 0x110, 0x6E, 0xFF, 0xFF, 0xFF);
-        DrawLine(0x110, 0x76, 0x110, 0x7E, 0xFF, 0xFF, 0xFF);
-        DrawLine(0x20, 0x76, 0xA0, 0x76, 0xFF, 0xFF, 0xFF);
-        DrawLine(0x20, 0x70, 0x20, 0x70, 0xFF, 0xFF, 0xFF);
-        DrawLine(0x24, 0x70, 0x20, 0x74, 0xFF, 0xFF, 0xFF);
-        DrawLine(0x24, 0x74, 0x24, 0x74, 0xFF, 0xFF, 0xFF);
-        DrawLine(0xE0, 0x86, 0x100, 0x86, 0xC0, 0xC0, 0xC0);
-        for (x = 0xE8; x < 0x120; x += 0x10) {
-            DrawLine(x, 0x86, x, 0x82, 0xC0, 0xC0, 0xC0);
-        }
-        x = 0xA2;
-        waveIndex = 0;
-        phase = scanPhase;
-        scanPhase = (scanPhase - 0xA) & 0xFF;
-        do {
-            phase = (phase + 5) & 0xFF;
-            DrawLine((int)x, 0xA1, (int)x, barHeight[waveIndex] + 0x78, ((int)(phase * tintR) >> 8) & 0xFF, ((int)(phase * tintG) >> 8) & 0xFF, ((int)(phase * tintB) >> 8) & 0xFF);
-            action = newRand() & 3;
-            switch (action) {
-            case 1:
-                heightPtrUp = &barHeight[waveIndex];
-                heightUp = *heightPtrUp;
-                if (heightUp >= 9U) {
-                    *heightPtrUp = heightUp - 2;
-                }
-                break;
-            case 2:
-                heightPtrDown = &barHeight[waveIndex];
-                heightDown = *heightPtrDown;
-                if (heightDown < 0x28U) {
-                    *heightPtrDown = heightDown + 2;
-                }
-                break;
-            }
-            nextX = x + 2;
-            x = nextX;
-            waveIndex += 1;
-        } while (nextX < 0x100);
         AddPrim(OT[CurrentScreen] + 0x1FFF, screenFills[CurrentScreen]);
         PortWideLoadScreen(); /* Port: widescreen shows the loading screen wide */
         CallbackSwap();

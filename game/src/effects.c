@@ -1,4 +1,5 @@
 #include "effects.h"
+#include "pc/pc.h"
 #include "weapon.h"
 
 /* Globals shared with other modules. */
@@ -53,6 +54,9 @@ extern int droidBlinkTick;
 extern TrackSection *startDroidSection;
 #include "functions.h"
 #include "include_asm_g8.h"
+#include "portfar.h" /* Port: the far view's shadows */
+#include "portinterp.h" /* Port: frame interpolation of the missiles' and rockets' flares */
+#include "../../platform/trace.h" /* Port: lockstep test hooks */
 #include "../../platform/psx/gte.h" /* Port: precise positions for the shadow's grid */
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
@@ -92,9 +96,11 @@ weapon_loop:
         } while (i < 3);
     }
     if (weapon->type == 2 && weapon->update == UpdateMissile && weapon->count > 0) {
+        PortFlareOwner(weapon); /* Port: frame interpolation */
         DrawMissileFlare(weapon->pos.vx, weapon->pos.vy, weapon->pos.vz);
     }
     if (weapon->type == 1 && weapon->update == UpdateRocket && weapon->count > 0) {
+        PortFlareOwner(weapon); /* Port: frame interpolation */
         DrawRocketFlare(weapon->pos.vx, weapon->pos.vy, weapon->pos.vz);
     }
     if (weapon->count == -1 || weapon->count == -2) {
@@ -1623,6 +1629,7 @@ void DrawShadow(void *shapes, ShipData *ships, Shadow *shadow)
     ShipData *ship;
     Shadow *shadowEntry;
     uint32_t gridHandles[25]; /* Port: the precise positions of the grid points (gte.h) */
+    PortShadowRange(shadow, 15 * sizeof(Shadow)); /* Port: drawn over the track cells around them (libgpu.c) */
     cameraPtr->camPos->super->update=1;
     SetSkeletonTransform(cameraPtr->camPos->super);
     for(i=0;i<15;i++) {
@@ -1739,7 +1746,15 @@ void DrawShadow(void *shapes, ShipData *ships, Shadow *shadow)
                 corners[2]=(u_short)screen[2].vx|(uint32_t)(u_short)screen[2].vy<<16;
                 corners[3]=(u_short)screen[3].vx|(uint32_t)(u_short)screen[3].vy<<16;
                 cornerAddress[0]=&screen[0];cornerAddress[1]=&screen[1];cornerAddress[2]=&screen[2];cornerAddress[3]=&screen[3];
-                GteRecordGrid(corners,cornerAddress,x,y,5,gridHandles);
+                if (!PortTracing()) {
+                    /* ... or rather where each point lies in the world, with its depth: without one the shadow was
+                       drawn over the ship (the depth buffer leaves out what has none) */
+                    VECTOR worldCorners[4];
+                    worldCorners[0]=a;worldCorners[1]=b;worldCorners[2]=c;worldCorners[3]=d;
+                    PortShadowGrid(cameraPtr,ship,worldCorners,x,y,gridHandles);
+                } else {
+                    GteRecordGrid(corners,cornerAddress,x,y,5,gridHandles);
+                }
             }
             depth[0]-=175;
             if(depth[0]<0) depth[0]=0;
@@ -1768,11 +1783,20 @@ void DrawShadow(void *shapes, ShipData *ships, Shadow *shadow)
                     poly->x3=x[grid+6];poly->y3=y[grid+6];
                     GteBindPrecise(&poly->x0,gridHandles[grid]);GteBindPrecise(&poly->x1,gridHandles[grid+1]); /* Port: precise positions */
                     GteBindPrecise(&poly->x2,gridHandles[grid+5]);GteBindPrecise(&poly->x3,gridHandles[grid+6]);
+                    if (!PortTracing()) {
+                        /* Port: a quad not over the road is left out (past the end of a ramp the face's plane goes on,
+                           and the shadow hung in the air under a ship leaving it) */
+                        double s=(col+0.5)/4.0, t=(row+0.5)/4.0;
+                        if (!PortShadowOnRoad(ship, (1-t)*((1-s)*a.vx+s*b.vx)+t*((1-s)*c.vx+s*d.vx),
+                                              (1-t)*((1-s)*a.vy+s*b.vy)+t*((1-s)*c.vy+s*d.vy),
+                                              (1-t)*((1-s)*a.vz+s*b.vz)+t*((1-s)*c.vz+s*d.vz))) continue;
+                    }
                     if(row==0) AddPrim(OT[CurrentScreen]+depth[0],&shadowQuads->quad[col][CurrentScreen]);
                     else if(row==1) AddPrim(OT[CurrentScreen]+depth[1],&shadowQuads->quad[4+col][CurrentScreen]);
                     else AddPrim(OT[CurrentScreen]+depth[2],poly);
                 }
             }
+            PortShadowDrawn(i); /* Port: the far view gives the ships without one theirs (portfar.h) */
         }
     }
 }
@@ -1853,6 +1877,10 @@ void DrawWeaponIcons(POLY_FT4 *icons, Texture **textures, ShipData *ship)
     u_short   tpage;
     POLY_FT4 *poly;
 
+    if (PortPcData()) {
+        PcDrawWeaponIcons(ship); /* Port: the PC version's weapon panel (pc/pchud.c) */
+        return;
+    }
     if (ship->weapon != 0) {
         textureIndex = ship->weapon - 1;
         icons[CurrentScreen].u0 = textures[textureIndex]->u0;

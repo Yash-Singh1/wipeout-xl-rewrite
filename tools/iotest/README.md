@@ -11,6 +11,7 @@ They run headless and muted (no audio device, no window). Tests that need the PS
 holding a console emulator's recording of the retail game, see test_spu_oracle.c) enables the
 two comparisons against the real console.
 
+- `test_discfmt`: a small ISO 9660 volume with the PC game's marker files kept as an `.iso`, a `.cue` with 2048- and 2352-byte data tracks and audio tracks, a CloneCD `.ccd`/`.img` and an Alcohol `.mds`/`.mdf` (2352 and 2048-byte data): the same tracks, file and raw sectors from each (the 2048-byte one given its sync and header), `DiscIsPcGame`, damaged descriptors.
 - `test_adpcm`: decodes every block of every sample in the disc's `SAMPLES.WAD` and compares with an independent floating-point decoder, plus a hand-computed block.
 - `test_adsr`: envelope curves for linear and exponential increase and decrease at 25 rates against the psx-spx formulas, the rate that never ticks, and the attack/decay/sustain/release phases of a voice.
 - `test_voice`: through the libspu calls: pitch moves the sample position by pitch/4096 a sample, loops follow the ADPCM flags and set ENDX, one-shots stop and report key status 3, release, 24 simultaneous voices, one-at-a-time key commands (SfxKillAllVoices), 300 reuses of a voice, and the exact output level of a constant sample.

@@ -187,6 +187,19 @@ typedef struct RaceLocals {
     u_char     firstTime;
 } RaceLocals;
 
+/* Port: the PC version's race loads the Red Bull boards of track 1 only, as one picture (platform/pc.c makes
+   alphared.cmp of it) where the PlayStation's sequence for each track holds two frames to alternate; the other
+   tracks' boards, the video screens and the torches stay as the track's wad draws them (the PC never animates them). */
+static void InitRedBull(char *textureSequence)
+{
+    if (PortPcData() && gameData->actTrackNum != 1) {
+        return;
+    }
+    InitObject(prmObjects, prmCount, redBull, redBullNames, 4, &redBullCount);
+    redBullNumber = TextureTableCount;
+    LoadCmpFiles(LoadCompressedTextureSequence(textureSequence));
+}
+
 #define CHECKPOINTS (checkCells[gameData->trackNum][gameData->shipClass])
 void race(ConfigData *gameData, int context, int scene)
 {
@@ -242,48 +255,43 @@ void race(ConfigData *gameData, int context, int scene)
         InitObject(prmObjects,prmCount,smokeSlowObjects,smokeSlowNames,6,&smokeSlowCount);
         InitObject(prmObjects,prmCount,smokeFastObjects,smokeFastNames,6,&smokeFastCount);
         smokeNumber=TextureTableCount;LoadCmpFiles(LoadCompressedTextureSequence(track1SmokeTextureSequence));
-        InitObject(prmObjects,prmCount,redBull,redBullNames,4,&redBullCount);
-        redBullNumber=TextureTableCount;LoadCmpFiles(LoadCompressedTextureSequence(sharedTrackTextureSequence));
+        InitRedBull(sharedTrackTextureSequence);
         smokeColour.r=64;smokeColour.g=64;smokeColour.b=64;
     }
     }
     if(gameData->actTrackNum==6) {
         InitObject(prmObjects,prmCount,advert,advertNames,6,&advertCount);
         InitObject(prmObjects,prmCount,cameraDroids,cameraDroidNames,6,&cameraCount);
-        InitObject(prmObjects,prmCount,redBull,redBullNames,4,&redBullCount);
-        InitObject(prmObjects,prmCount,videoObjects,videoNames,6,&videoCount);
-        redBullNumber=TextureTableCount;LoadCmpFiles(LoadCompressedTextureSequence(track6TextureSequence));
+        if(!PortPcData()) InitObject(prmObjects,prmCount,videoObjects,videoNames,6,&videoCount); /* Port: (see InitRedBull) */
+        InitRedBull(track6TextureSequence);
     }
     if(gameData->actTrackNum==8) {
         InitObject(prmObjects,prmCount,advert,advertNames,6,&advertCount);
         InitObject(prmObjects,prmCount,cameraDroids,cameraDroidNames,6,&cameraCount);
-        InitObject(prmObjects,prmCount,redBull,redBullNames,4,&redBullCount);
-        redBullNumber=TextureTableCount;LoadCmpFiles(LoadCompressedTextureSequence(sharedTrackTextureSequence));
+        InitRedBull(sharedTrackTextureSequence);
     }
     if(gameData->actTrackNum==20) {
         InitObject(prmObjects,prmCount,radar,radarNames,4,&dishCount);
         InitObject(prmObjects,prmCount,cameraDroids,cameraDroidNames,6,&cameraCount);
         InitObject(prmObjects,prmCount,neonObject,neonNames,5,&neonCount);
-        InitObject(prmObjects,prmCount,redBull,redBullNames,4,&redBullCount);
-        redBullNumber=TextureTableCount;LoadCmpFiles(LoadCompressedTextureSequence(track20TextureSequence));
+        InitRedBull(track20TextureSequence);
     }
     if(gameData->actTrackNum==17) {
         InitObject(prmObjects,prmCount,cameraDroids,cameraDroidNames,6,&cameraCount);
-        InitObject(prmObjects,prmCount,redBull,redBullNames,4,&redBullCount);
-        redBullNumber=TextureTableCount;LoadCmpFiles(LoadCompressedTextureSequence(track17TextureSequence));
+        InitRedBull(track17TextureSequence);
     }
     if(gameData->actTrackNum==7) {
-        InitObject(prmObjects,prmCount,videoObjects,videoNames,6,&videoCount);
-        InitObject(prmObjects,prmCount,redBull,redBullNames,4,&redBullCount);
+        if(!PortPcData()) InitObject(prmObjects,prmCount,videoObjects,videoNames,6,&videoCount); /* Port: (see InitRedBull) */
         InitObject(prmObjects,prmCount,advert,advertNames,6,&advertCount);
-        redBullNumber=TextureTableCount;LoadCmpFiles(LoadCompressedTextureSequence(track7TextureSequence));
+        InitRedBull(track7TextureSequence);
     }
     if(gameData->actTrackNum==13) {
         InitWaterFall();
-        InitObject(prmObjects,prmCount,torchLight,torchNames,5,&torchCount);
-        torchNumber=TextureTableCount;LoadCmpFiles(LoadCompressedTextureSequence(track13TorchTextureSequence));
-        InitObject(prmObjects,prmCount,redBull,redBullNames,4,&redBullCount);
-        redBullNumber=TextureTableCount;LoadCmpFiles(LoadCompressedTextureSequence(track13TextureSequence));
+        if(!PortPcData()) { /* Port: (see InitRedBull) */
+            InitObject(prmObjects,prmCount,torchLight,torchNames,5,&torchCount);
+            torchNumber=TextureTableCount;LoadCmpFiles(LoadCompressedTextureSequence(track13TorchTextureSequence));
+        }
+        InitRedBull(track13TextureSequence);
     }
     if(gameData->actTrackNum==2) {
         LoadTrain(monoRailObjs,monoRailNames,raceCamera.camPos,posMonoRail);
@@ -291,8 +299,7 @@ void race(ConfigData *gameData, int context, int scene)
         InitObject(prmObjects,prmCount,&zeppelinObj,track2ZeppelinNames,8,&zepCount);
         InitObject(prmObjects,prmCount,girderObjects,girderNames,5,&girderCount);
         InitTrainLights(prmObjects,prmCount,monoRailObjs,pauseState.selection);
-        InitObject(prmObjects,prmCount,redBull,redBullNames,4,&redBullCount);
-        redBullNumber=TextureTableCount;LoadCmpFiles(LoadCompressedTextureSequence(track2TextureSequence));
+        InitRedBull(track2TextureSequence);
         { Object *trainObject=zeppelinObj;
         monoRail.index=0;monoRail.pad10[1]=0;monoRail.pad10[2]=0;monoRail.pad10[3]=0;
         { Skeleton *trainSkeleton=trainObject->skeleton; trainSkeleton->relative.t[2]-=8000; } }
@@ -405,8 +412,13 @@ frame:
         MoveMonoRail(monoRailObjs,6,&monoRail,shipIndex,pauseState.selection);InitTrainLights(prmObjects,prmCount,monoRailObjs,pauseState.selection);
     }
     if((unsigned int)(gameData->actTrackNum-6)<2) Video(videoObjects,videoCount);
-    if(!(shipIndex[ownShip].attr&64) || shipTargetIndex[ownShip]>=0) DrawAllTrack(&raceCamera,trackCache);
-    else DrawNewTrack(&raceCamera,trackCache);
+    {
+        char *trackPackets = nextPrim.ptr; /* Port: the track's packets, for the shadows (libgpu.c) */
+        if(!(shipIndex[ownShip].attr&64) || shipTargetIndex[ownShip]>=0) DrawAllTrack(&raceCamera,trackCache);
+        else DrawNewTrack(&raceCamera,trackCache);
+        PortTrackPackets(trackPackets, nextPrim.ptr);
+        PortTrackPools();
+    }
     DrawShadow(shipShapeTable,shipIndex,shadowData);
     DrawShips(shipIndex,shipShapeTable,ownShip,raceCamera,pauseState.selection);
     if(!medalDisplay) DrawLandscape(&shipIndex[ownShip],&raceCamera);
@@ -594,7 +606,7 @@ void TrackSpecificFunctions(void)
 {
     u_char trackNumber;
 
-    RedBullAnimate(redBull, redBullCount, 0x14, redBullNumber, 2);
+    RedBullAnimate(redBull, redBullCount, 0x14, redBullNumber, PortPcData() ? 1 : 2); /* Port: (see InitRedBull) */
     trackNumber = gameData->actTrackNum;
     if (trackNumber == 1) {
         MoveCameraDroid(cameraDroids, cameraCount, shipIndex, &bobCount);

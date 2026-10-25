@@ -40,6 +40,8 @@ typedef struct GtePrecise {
     int background; /* projected while GteSetBackground was on: behind everything (the depth buffer leaves it out) */
     uint64_t key;   /* frame interpolation: what was projected (0: not known), see GteKeyNext */
     float view[3];  /* ... and where it was in view space */
+    uint64_t anchor;       /* what moves with something: the key it goes with (GteRecordAnchor), or 0 */
+    float anchorOffset[3]; /* ... and how far from that it is in view space */
 } GtePrecise;
 
 #define GTE_RESOLVE_MAX 4
@@ -96,6 +98,13 @@ uint64_t GteKeyMix(uint64_t a, uint64_t b);
 /* Set in the keys of what stands still in the world (the track): the view's motion between two frames, which moves
    what one frame projects and the other did not, is fitted to these. */
 #define GTE_KEY_WORLD 0x8000000000000000ull
+/* Set in the keys of what moves with a ship (its trail, its engine flare). Not projected under its key in the frame
+   before (new, or jumped), such a vertex is not moved by the view's motion as if it stood still in the world: it goes
+   as its anchor (GteRecordAnchor) went, or without one stays where the frame has it. */
+#define GTE_KEY_MOVING 0x4000000000000000ull
+/* The anchor of a projection made with a GTE_KEY_MOVING key: the projection under key `anchor`, which it is
+   (dx, dy, dz) from in view space. */
+void GteRecordAnchor(uint32_t handle, uint64_t anchor, double dx, double dy, double dz);
 void GteRecordView(uint32_t handle, double x, double y, double z);
 /* On while the display interpolates: the projections of the frame before are kept. */
 void GteKeepPast(int on);

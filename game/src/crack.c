@@ -1,6 +1,7 @@
 #include "functions.h"
 #include "trackasm.h"
 #include "crack.h"
+#include "../../platform/psx/gte.h" /* Port: frame interpolation */
 
 extern TrackData   *track;
 extern short        CurrentScreen;
@@ -48,8 +49,13 @@ void FillMedLoCrack(TrackSection *section, Skeleton *view)
             locals.sv[2].vx = locals.v[2].vx + camera->vx;
             locals.sv[2].vy = locals.v[2].vy + camera->vy;
             locals.sv[2].vz = locals.v[2].vz + camera->vz;
+            /* Port: frame interpolation: the points as the track's faces know them (PortTrackKey), so the pictures
+               between two frames move the seam's triangle with the faces about it */
+            GteKeyNext(0, PortTrackKey(locals.v[0].vx, locals.v[0].vy, locals.v[0].vz));
             RotTransPers(&locals.sv[0], (int *)&locals.screen[0][0], &locals.p, &locals.flags[0]);
+            GteKeyNext(0, PortTrackKey(locals.v[1].vx, locals.v[1].vy, locals.v[1].vz));
             depth = RotTransPers(&locals.sv[1], (int *)&locals.screen[1][0], &locals.p, &locals.flags[1]);
+            GteKeyNext(0, PortTrackKey(locals.v[2].vx, locals.v[2].vy, locals.v[2].vz));
             RotTransPers(&locals.sv[2], (int *)&locals.screen[2][0], &locals.p, &locals.flags[2]);
             if (!((locals.flags[0] | locals.flags[1] | locals.flags[2]) & 0x80460000)) {
                 poly = &medLoCrackPolys[i][CurrentScreen];
@@ -143,10 +149,16 @@ void FillHiMedCrack(TrackSection *hiSection, Skeleton *camera)
         svector[4].vy = vector[4].vy + campos->vy;
         svector[4].vz = vector[4].vz + campos->vz;
 
+        /* Port: frame interpolation (as FillMedLoCrack's) */
+        GteKeyNext(0, PortTrackKey(vector[0].vx, vector[0].vy, vector[0].vz));
         depthA = RotTransPers(&svector[0], (int *)&sxyA, &p, &flagA);
+        GteKeyNext(0, PortTrackKey(vector[1].vx, vector[1].vy, vector[1].vz));
         depthB = RotTransPers(&svector[1], (int *)&sxyB, &p, &flagB);
+        GteKeyNext(0, PortTrackKey(vector[2].vx, vector[2].vy, vector[2].vz));
         depthC = RotTransPers(&svector[2], (int *)&sxyC, &p, &flagC);
+        GteKeyNext(0, PortTrackKey(vector[3].vx, vector[3].vy, vector[3].vz));
         depthD = RotTransPers(&svector[3], (int *)&sxyD, &p, &flagD);
+        GteKeyNext(0, PortTrackKey(vector[4].vx, vector[4].vy, vector[4].vz));
         depthE = RotTransPers(&svector[4], (int *)&sxyE, &p, &flagE);
 
         if (!((flagA | flagB | flagC) & 0x80460000)) {

@@ -35,6 +35,13 @@ void GpuVramHighChanged(void);
 #define GLYPH_ATLAS_SCALE 4   /* ... and its texels per coordinate */
 #define GLYPH_ATLAS_SIZE (GLYPH_PAGE_SIZE * GLYPH_ATLAS_SCALE)
 void GpuSetGlyphMemory(const uint32_t *rgba); /* RGBA8, premultiplied by the coverage */
+/* ... and its other pages of depth 3, at the other page positions (1-63 by the texture page's number: x / 64, + 16
+   for the second row, + 32 for the second half), as many as 63: the PC version's
+   texture pages (pc.c), each 256x256 RGBA8 premultiplied, its colours as Direct3D's (modulated by the vertex colour,
+   255 white), sampled filtered, a semi-transparent primitive blending all of it. */
+#define PORT_PAGES_ACROSS 8
+#define PORT_PAGES_DOWN 8
+void GpuSetPortPage(int page, const uint32_t *rgba);
 
 /* A vertex: position in the drawing area's pixels (fractional when the GTE
    supplied a precise one), w for perspective-correct texturing (1 when not

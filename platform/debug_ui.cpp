@@ -19,6 +19,7 @@ extern "C" {
 #include "touch.h"
 #include "hdtex.h"
 #include "region.h"
+#include "pc.h"
 #include "saturn.h"
 #include "music.h"
 #include "saves.h"
@@ -34,7 +35,7 @@ extern "C" {
 
 static SDL_Window *window;
 static ImGuiStyle baseStyle; /* the style at a scale of 1 (FitToWindow) */
-static bool ready, open;
+static bool ready, consoleOpen;
 static char saveDirEdit[1024];
 static char originalEdit[1024];     // the original Wipeout's disc image or folder, as typed or chosen
 static char originalMessage[300];   // what opening it found
@@ -99,7 +100,7 @@ extern "C" void DebugUiShutdown(void)
 
 extern "C" void DebugUiShowRecorder(void)
 {
-    open = true;
+    consoleOpen = true;
     showRecorder = true;
     // tests: WIPEOUT_FRAMECAP_PICK=x,y picks a pixel of the newest shown frame
     const char *pick = SDL_getenv("WIPEOUT_FRAMECAP_PICK");
@@ -130,12 +131,12 @@ extern "C" void DebugUiTab(void)
 
 extern "C" int DebugUiOpen(void)
 {
-    return ready && open;
+    return ready && consoleOpen;
 }
 
 extern "C" void DebugUiSetOpen(int on)
 {
-    open = ready && on;
+    consoleOpen = ready && on;
 }
 
 extern "C" int DebugUiEvent(const SDL_Event *event)
@@ -144,14 +145,14 @@ extern "C" int DebugUiEvent(const SDL_Event *event)
         return 0;
     }
     if (event->type == SDL_EVENT_KEY_DOWN && event->key.scancode == SDL_SCANCODE_GRAVE && !event->key.repeat) {
-        open = !open;
+        consoleOpen = !consoleOpen;
         return 1;
     }
     if (event->type == SDL_EVENT_KEY_DOWN && event->key.scancode == SDL_SCANCODE_TAB && !event->key.repeat) {
         DebugUiTab();
         return 1;
     }
-    if (!open) {
+    if (!consoleOpen) {
         return 0;
     }
     ImGui_ImplSDL3_ProcessEvent(event);
@@ -244,7 +245,7 @@ static float RecordedSeconds(void)
 // While a RECORD_WITH_TAB recording is made (and a while after it stops), with the console closed: in the corner.
 static bool RecorderNoteWanted(void)
 {
-    return !open && (FrameCapTaking() || (recordingStopped && SDL_GetTicks() - recordingStopped < 4000));
+    return !consoleOpen && (FrameCapTaking() || (recordingStopped && SDL_GetTicks() - recordingStopped < 4000));
 }
 
 static void RecorderNote(void)
@@ -374,6 +375,46 @@ static void Pick(int frame)
     if (f && picked) {
         hitCount = FrameCapHits(frame, f->areaX + pickX, f->areaY + pickY, hits, IM_ARRAYSIZE(hits));
         pickHit = hitCount - 1; // the topmost
+    }
+}
+
+/* The polygon's corners moved out from its edges by `away` (the outline drawn there, `away` thick, lies outside it):
+   each along the two edges' outward normals, a sharp corner no further than three times `away`. One without area (a
+   line seen edge on) grows about its middle. */
+static void OutsideOutline(ImVec2 *points, int count, float away)
+{
+    ImVec2 out[4], middle(0, 0);
+    float area = 0;
+    int i;
+
+    for (i = 0; i < count; i++) {
+        const ImVec2 &p = points[i], &q = points[(i + 1) % count];
+        area += p.x * q.y - q.x * p.y;
+        middle.x += p.x / count;
+        middle.y += p.y / count;
+    }
+    for (i = 0; i < count; i++) {
+        const ImVec2 &before = points[(i + count - 1) % count], &p = points[i], &after = points[(i + 1) % count];
+        float ex = p.x - before.x, ey = p.y - before.y, fx = after.x - p.x, fy = after.y - p.y;
+        float el = SDL_sqrtf(ex * ex + ey * ey), fl = SDL_sqrtf(fx * fx + fy * fy);
+
+        if (SDL_fabsf(area) < 1.0f || el < 0.01f || fl < 0.01f) {
+            float dx = p.x - middle.x, dy = p.y - middle.y, l = SDL_sqrtf(dx * dx + dy * dy);
+
+            out[i] = l > 0.01f ? ImVec2(p.x + dx / l * away * 1.5f, p.y + dy / l * away * 1.5f)
+                               : ImVec2(p.x - away, p.y - away);
+            continue;
+        }
+        // outward: to the right of the edges' direction when the corners go clockwise on the screen (area > 0)
+        float side = area > 0 ? 1.0f : -1.0f;
+        float nx = (-ey / el + -fy / fl) * -side, ny = (ex / el + fx / fl) * -side;
+        float nl = SDL_sqrtf(nx * nx + ny * ny);
+        float along = nl > 0.01f ? SDL_min(away * 2.0f / nl, away * 3.0f) : away;
+
+        out[i] = nl > 0.01f ? ImVec2(p.x + nx / nl * along, p.y + ny / nl * along) : p;
+    }
+    for (i = 0; i < count; i++) {
+        points[i] = out[i];
     }
 }
 
@@ -571,6 +612,12 @@ static void RecorderTab(void)
         uploadedHad = hasPicture;
         Pick(frameShown);
     }
+    // a middle click anywhere in the console lets go of the picked pixel
+    if (picked && ImGui::IsMouseClicked(ImGuiMouseButton_Middle) &&
+        ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows)) {
+        picked = false;
+        Pick(frameShown);
+    }
     // the picture as large as fits or as zoomed (in a pane of its own that scrolls when it is larger), the picked
     // pixel's primitives beside it (in a narrow window below it)
     float zoom = pictureZoom > 0 ? pictureZoom : fit;
@@ -595,6 +642,16 @@ static void RecorderTab(void)
         py = SDL_clamp(py, 0, pictureH - 1);
         int x = px + pictureX, y = py;
 
+        {
+            // the pointer is the pixel it is over: outlined, light inside dark (seen on any colour), and no arrow
+            ImDrawList *over = ImGui::GetWindowDrawList();
+            ImVec2 a(origin.x + px * zoom, origin.y + py * zoom), b(a.x + zoom, a.y + zoom);
+            over->AddRect(ImVec2(a.x - 2, a.y - 2), ImVec2(b.x + 2, b.y + 2), IM_COL32(0, 0, 0, 255), 0.0f, 0, 2.0f);
+            over->AddRect(ImVec2(a.x - 1, a.y - 1), ImVec2(b.x + 1, b.y + 1), IM_COL32(255, 255, 255, 255), 0.0f, 0, 1.0f);
+            if (hovered) {
+                ImGui::SetMouseCursor(ImGuiMouseCursor_None);
+            }
+        }
         if (ImGui::IsItemClicked()) {
             picked = true;
             pickX = x;
@@ -638,13 +695,20 @@ static void RecorderTab(void)
             const GpuVertex *v = &p->v[corners == 4 ? quadOrder[i] : i];
             points[i] = ImVec2(origin.x + (v->x - f->areaX - pictureX) * zoom, origin.y + (v->y - f->areaY) * zoom);
         }
-        if (corners >= 2) {
+        if (corners >= 3) {
+            // just outside its edges (a primitive of a few pixels is not covered in green)
+            OutsideOutline(points, corners, 2.0f);
+            draw->AddPolyline(points, corners, IM_COL32(0, 0, 0, 255), ImDrawFlags_Closed, 4.0f);
+            draw->AddPolyline(points, corners, IM_COL32(0, 255, 0, 255), ImDrawFlags_Closed, 2.0f);
+        } else if (corners == 2) {
             draw->AddPolyline(points, corners, IM_COL32(0, 255, 0, 255), ImDrawFlags_Closed, 2.0f);
         }
     }
     if (picked) {
-        ImVec2 c(origin.x + (pickX - pictureX + 0.5f) * zoom, origin.y + (pickY + 0.5f) * zoom);
-        draw->AddCircle(c, 6.0f * ui, IM_COL32(255, 0, 255, 255), 0, 2.0f);
+        // the picked pixel, outlined as the pointer is (a circle about it hid a primitive of a few pixels)
+        ImVec2 a(origin.x + (pickX - pictureX) * zoom, origin.y + pickY * zoom), b(a.x + zoom, a.y + zoom);
+        draw->AddRect(ImVec2(a.x - 2, a.y - 2), ImVec2(b.x + 2, b.y + 2), IM_COL32(0, 0, 0, 255), 0.0f, 0, 2.0f);
+        draw->AddRect(ImVec2(a.x - 1, a.y - 1), ImVec2(b.x + 1, b.y + 1), IM_COL32(255, 0, 255, 255), 0.0f, 0, 1.0f);
     }
     draw->PopClipRect();
     ImGui::EndChild();
@@ -1100,11 +1164,12 @@ static bool CheckDisc(const char *path, char *message, size_t size)
     }
     bool ok = ((DiscFindFile(disc, "\\SCUS_943.51", &lba, &length) || DiscFindFile(disc, "\\SLES_003.27", &lba, &length)) &&
                DiscFindFile(disc, "\\WIPEOUT2\\TEXTURES\\MENUTIMS.CMP", &lba, &length)) ||
-              PortSaturnDiscIs(disc); // (the Sega Saturn's: saturn.c)
+              PortSaturnDiscIs(disc) || // (the Sega Saturn's: saturn.c)
+              PortPcDiscIs(disc);       // (the PC CD-ROM version's: pc.c)
     DiscClose(disc);
     if (!ok) {
         SDL_snprintf(message, size, "That is not Wipeout XL (USA) or WipEout 2097 (Europe) for the PlayStation (its program, "
-                                    "SCUS_943.51 or SLES_003.27, and WIPEOUT2 folder), nor the Sega Saturn's.");
+                                    "SCUS_943.51 or SLES_003.27, and WIPEOUT2 folder), nor the Sega Saturn's or the PC CD-ROM version's.");
     }
     return ok;
 }
@@ -1153,6 +1218,13 @@ static void UseDisc(const char *path)
     char cue[1200];
 
     SDL_strlcpy(discEdit, path, sizeof(discEdit));
+    if (PortPcFolderIs(path)) {
+        // the PC CD-ROM version's files in a folder (pc.c): used as they are
+        SDL_strlcpy(portSettings.discPath, path, sizeof(portSettings.discPath));
+        Changed();
+        discMessage[0] = 0;
+        return;
+    }
     if (StartUnpack(path, UNPACK_XL, discMessage)) {
         return;
     }
@@ -1231,13 +1303,19 @@ static void XlDisc(void)
     }
     ImGui::TextUnformatted("Wipeout XL disc image");
     ImGui::TextWrapped("Wipeout XL (USA) or WipEout 2097 (Europe) for the PlayStation, or Wipeout XL (Japan) or WipEout "
-                       "2097 (Europe) for the Sega Saturn: a .cue, a .bin, or an archive of them.");
+                       "2097 (Europe) for the Sega Saturn or the PC CD-ROM: a .cue, a .bin, an .iso, or an archive of "
+                       "them; the PC CD-ROM's files may be a folder too.");
     ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "In use: %s",
                        PortSaturnDisc() ? PortSaturnTitle()
+                       : PortPcData()   ? PortPcTitle()
                        : PortRegionEurope() ? "WipEout 2097 (Europe)" : "Wipeout XL (USA)");
     UnpackProgress(UNPACK_XL);
     if (ImGui::Button("Browse...##disc")) {
         PickerOpen(&discPicker, false, discEdit);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("... or a folder##disc")) {
+        PickerOpen(&discPicker, true, discEdit); // (the PC CD-ROM's files copied)
     }
     ImGui::SameLine();
     ImGui::SetNextItemWidth(-ImGui::CalcTextSize("Use this").x - ImGui::GetStyle().ItemSpacing.x -
@@ -1730,7 +1808,7 @@ static void Console(void)
     // see-through: the game goes on behind it
     ImGui::SetNextWindowBgAlpha(0.8f);
     float width = 720 * ImGui::GetIO().FontGlobalScale;
-    if (!ImGui::Begin("Wipeout XL debug console   (~ closes it)", &open,
+    if (!ImGui::Begin("Wipeout XL debug console   (~ closes it)", &consoleOpen,
                       ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
                           ImGuiWindowFlags_NoSavedSettings)) {
         ImGui::End();
@@ -1773,6 +1851,12 @@ static void Console(void)
                 portSettings.fade = fade;
                 Changed();
             }
+            bool farFlares = portSettings.farFlares != 0;
+            if (ImGui::Checkbox("Engine flares on distant ships", &farFlares)) {
+                portSettings.farFlares = farFlares;
+                Changed();
+            }
+            ImGui::TextDisabled("The ships beyond the console's draw distance (it drew no flares there).");
             ImGui::EndDisabled();
             bool depthBuffer = !portSettings.consoleDepth;
             if (ImGui::Checkbox("Depth buffer", &depthBuffer)) {
@@ -1914,6 +1998,15 @@ static void Console(void)
         ImGui::EndTabBar();
     }
     ImGui::PopItemWidth();
+    if (PORT_VERSION[0]) {
+        // the build's version (CMakeLists.txt), dim in the bottom right corner, over whatever is there
+        char version[96];
+        SDL_snprintf(version, sizeof(version), "Version %s", PORT_VERSION);
+        ImVec2 size = ImGui::CalcTextSize(version), pos = ImGui::GetWindowPos(), extent = ImGui::GetWindowSize();
+        ImVec2 padding = ImGui::GetStyle().WindowPadding;
+        ImGui::GetWindowDrawList()->AddText(ImVec2(pos.x + extent.x - padding.x - size.x, pos.y + extent.y - padding.y - size.y),
+                                            ImGui::GetColorU32(ImGuiCol_TextDisabled), version);
+    }
     ImGui::End();
 }
 
@@ -1951,7 +2044,7 @@ extern "C" void DebugUiRender(void)
         return;
     }
     Rates();
-    if (!open && !portSettings.showFps && !RecorderNoteWanted() && !TouchShown()) {
+    if (!consoleOpen && !portSettings.showFps && !RecorderNoteWanted() && !TouchShown()) {
         return;
     }
     int width, height;
@@ -1966,7 +2059,7 @@ extern "C" void DebugUiRender(void)
     if (RecorderNoteWanted()) {
         RecorderNote();
     }
-    if (open) {
+    if (consoleOpen) {
         Console();
     }
     TouchDraw();

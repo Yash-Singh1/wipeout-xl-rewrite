@@ -7,6 +7,8 @@
        Enter accept (Cross, and Start for the title)   Escape back (Triangle)
        arrow keys the directional pad                   Space Circle      Left Alt Square
        Q / E L1 / R1 and Backspace Select (the cheat chords)            P Start
+     a name being entered (the Hall of Fame's, the preferences')
+       the letters (and on the PC front end digits, space, hyphen) type it   Backspace deletes   Enter ends it
      a race that is being steered
        S thrust   Space fire   Left Alt drop weapon   F1 or V view   A / D left / right air brake
        arrow keys steer and pitch   Escape, Enter or P Start (pause)   Q / E L1 / R1   F9 Select
@@ -90,6 +92,17 @@ static int firstDevice = DEVICE_NONE, secondDevice = DEVICE_NONE;
 static PadState keyboardState, gamepadState[GAMEPADS];
 static uint16_t (*touchSource)(PadContext context); /* the touch controls (PsxPadSetTouchSource) */
 
+/* The name being typed (PsxPadNameEntry): its keys (PORT_NAME_*, controls.h), as of the field the game last said so,
+   and those typed, waiting for the game. */
+#define NAME_LETTERS 1
+#define NAME_MORE 2
+#define NAME_ENTER 4
+#define NAME_KEYS 32
+static int nameKeys, nameKeysBefore;
+static uint64_t nameField;
+static char typed[NAME_KEYS];
+static int typedFirst, typedCount;
+
 static void Route(void);
 static PadDevice gamepad_device(SDL_Gamepad *g);
 static void SendSecondPlayer(void);
@@ -106,6 +119,57 @@ static uint16_t key_buttons(size_t i, PadContext context)
     return k->action == NO_ACTION ? k->race : PsxPadActionButton(k->action);
 }
 
+/* The keys of the name being typed, while the game says it is (it says so each frame). */
+static int NameKeys(void)
+{
+    return PsxFieldCount() - nameField <= 4 ? nameKeys : 0;
+}
+
+void PsxPadNameEntry(int keys)
+{
+    if (!NameKeys()) {
+        typedCount = 0; /* (what was typed before the entry is not its) */
+    }
+    nameKeys = keys;
+    nameField = PsxFieldCount();
+}
+
+int PsxPadNameKey(void)
+{
+    char key;
+
+    if (!NameKeys() || !typedCount) {
+        return 0;
+    }
+    key = typed[typedFirst];
+    typedFirst = (typedFirst + 1) % NAME_KEYS;
+    typedCount--;
+    return (unsigned char)key;
+}
+
+/* What a key is in the name being typed (0: not the name's), by the character it makes in the player's layout. */
+static char NameKey(SDL_Scancode scancode, int keys)
+{
+    SDL_Keycode code = SDL_GetKeyFromScancode(scancode, SDL_KMOD_NONE, false);
+
+    if (!keys) {
+        return 0;
+    }
+    if (scancode == SDL_SCANCODE_BACKSPACE) {
+        return '\b';
+    }
+    if (scancode == SDL_SCANCODE_RETURN || scancode == SDL_SCANCODE_KP_ENTER) {
+        return (keys & NAME_ENTER) ? '\n' : 0;
+    }
+    if (code >= 'a' && code <= 'z') {
+        return (keys & NAME_LETTERS) ? (char)(code - 'a' + 'A') : 0;
+    }
+    if ((code >= '0' && code <= '9') || code == ' ' || code == '-') {
+        return (keys & NAME_MORE) ? (char)code : 0;
+    }
+    return 0;
+}
+
 static void update_keyboard(void)
 {
     PadState st;
@@ -114,7 +178,7 @@ static void update_keyboard(void)
     memset(&st, 0, sizeof(st));
     st.twist = 0x80;
     for (i = 0; i < KEY_COUNT; i++) {
-        if (keyDown[i] && !keyHeldOver[i]) {
+        if (keyDown[i] && !keyHeldOver[i] && !NameKey(keyBindings[i].key, NameKeys())) {
             st.buttons |= key_buttons(i, keyContext);
         }
     }
@@ -156,6 +220,18 @@ void PsxPadSdlField(void)
         keyContext = context;
         PortLog("pad: keyboard in %s (thrust is button %04X)\n", context == PAD_CONTEXT_RACE ? "the race" : "the menus",
                 PsxPadActionButton(PAD_ACTION_THRUST));
+    }
+    if (NameKeys() != nameKeysBefore) {
+        size_t i;
+
+        /* a key held as the name's entry begins or ends (the Enter that ended it) presses nothing until it is
+           released */
+        for (i = 0; i < KEY_COUNT; i++) {
+            if (keyDown[i] && !NameKey(keyBindings[i].key, nameKeysBefore) != !NameKey(keyBindings[i].key, NameKeys())) {
+                keyHeldOver[i] = true;
+            }
+        }
+        nameKeysBefore = NameKeys();
     }
     if (PortLinkRole() == LINK_SLAVE) {
         ReceiveSecondPlayer();
@@ -549,6 +625,14 @@ void PsxInputEvent(const SDL_Event *event)
     switch (event->type) {
     case SDL_EVENT_KEY_DOWN:
     case SDL_EVENT_KEY_UP:
+        if (event->key.down && typedCount < NAME_KEYS) {
+            char key = NameKey(event->key.scancode, NameKeys());
+
+            if (key && (!event->key.repeat || key == '\b')) {
+                typed[(typedFirst + typedCount++) % NAME_KEYS] = key;
+                PsxPadNoteDevice(PAD_DEVICE_KEYBOARD);
+            }
+        }
         for (i = 0; i < KEY_COUNT; i++) {
             if (keyBindings[i].key == event->key.scancode) {
                 keyDown[i] = event->key.down;

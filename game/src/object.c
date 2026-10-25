@@ -363,7 +363,11 @@ typedef struct EnvMapWork {
 } EnvMapWork;
 
 /* Port: a packet vertex the game scaled about the screen from a projected one (DrawEnvMap): bound to the
-   projection's precise position scaled the same way, so the scaled model does not snap to whole pixels. */
+   projection's precise position scaled the same way, so the scaled model does not snap to whole pixels. Known by the
+   projection's key, at a view-space position that projects to the scaled one, so that the pictures between two frames
+   turn the model smoothly (a menu's spinning ship stepped at the game's rate); as what moves (GTE_KEY_MOVING): a
+   vertex of a face just turned into view, not drawn in the frame before, stays where the frame has it (moved as if it
+   stood still in the world, it came from far off the model). */
 static void BindScaled(short *x, const DVECTOR *source, int scale, int xOffset, int yOffset)
 {
     GtePrecise precise;
@@ -371,9 +375,18 @@ static void BindScaled(short *x, const DVECTOR *source, int scale, int xOffset, 
 
     if (handle && GtePreciseOf(handle, &precise)) {
         uint32_t key = (u_short)x[0] | (uint32_t)(u_short)x[1] << 16;
+        float sx = precise.x * scale / 256.0f + xOffset, sy = precise.y * scale / 256.0f + yOffset;
+        double depth = precise.view[2], h = (double)(u_short)GteReadControl(26);
 
-        GteBindPrecise(x, GteRecordProjection(key, precise.x * scale / 256.0f + xOffset,
-                                              precise.y * scale / 256.0f + yOffset, precise.z, precise.fade));
+        if (precise.key && depth > 0.0) {
+            GteKeyNext(0, GteKeyMix(precise.key, 0x5343414C4544ull) | GTE_KEY_MOVING);
+        }
+        handle = GteRecordProjection(key, sx, sy, precise.z, precise.fade);
+        if (precise.key && depth > 0.0) {
+            GteRecordView(handle, (sx - GteReadControl(24) / 65536.0) * depth / h,
+                          (sy - GteReadControl(25) / 65536.0) * depth / h, depth);
+        }
+        GteBindPrecise(x, handle);
     }
 }
 

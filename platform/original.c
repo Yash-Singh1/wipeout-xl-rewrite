@@ -1525,13 +1525,16 @@ static int MakeLibrary(const uint8_t *cmp, size_t length, Layout *l, uint8_t **l
         for (k = 0; k < 21; k++) {
             int across = k < 16 ? 4 : k < 20 ? 2 : 1, n = k < 16 ? k : k < 20 ? k - 16 : 0;
             int pw = w / across, ph = h / across, px = (n % across) * pw, py = (n / across) * ph;
+            uint8_t *piece;
 
             if (w % 4 || h % 4) {
                 pw = w;
                 ph = h;
                 px = py = 0;
             }
-            TimAdd(&pieces, Window(clut, image, px, py, pw, ph, x + px, y + py, tiles.tims[t][4], &size), size);
+            piece = Window(clut, image, px, py, pw, ph, x + px, y + py, tiles.tims[t][4], &size);
+            TimAdd(&pieces, piece, size); /* (size only once Window has set it: the order a call's arguments
+                                             are worked out in is the compiler's, and GCC's is the other way) */
             PutBe16(*templates + ((size_t)t * 21 + k) * 2, t * 21 + k);
         }
     }

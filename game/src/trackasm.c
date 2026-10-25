@@ -179,3 +179,10 @@ void AsmNextFrame(void)
         frameValues = &particleX;
     }
 }
+
+void PortTrackPools(void)
+{
+    PortTrackPackets(TrackLoPolys[CurrentScreen], TrackLoPolys[CurrentScreen] + 0x230);
+    PortTrackPackets(TrackMedPolys[CurrentScreen], TrackMedPolys[CurrentScreen] + 0x1180 / 40);
+    PortTrackPackets(TrackHiPolys[CurrentScreen], TrackHiPolys[CurrentScreen] + 0x4600 / 40);
+}

@@ -1,8 +1,10 @@
 #include "options.h"
+#include "pc/pc.h"
 #include "functions.h"
 #include "ayrace.h"
 #include "hud.h"
 #include "include_asm_g8.h"
+#include "pc/pc.h" /* Port: the PC version's songs */
 
 
 extern short CurrentScreen;
@@ -20,12 +22,18 @@ extern char *cdTrackArtists[];
 
 char *GetCdTrackName(int track)
 {
+    if (PortPcData()) {
+        return (char *)PcCdTrackName(track);
+    }
     return cdTrackNames[track];
 }
 
 
 char *GetCdTrackArtist(int track)
 {
+    if (PortPcData()) {
+        return (char *)PcCdTrackArtist(track);
+    }
     return cdTrackArtists[track];
 }
 
@@ -69,6 +77,10 @@ void InGameReset(struct PauseMenu *pause, ConfigData *game, struct InGameMenu *p
     int      i;
     short    y = 95;
 
+    if (PortPcData()) {
+        PcInGameReset(pause, game); /* Port: the PC version's pause menu (pc/pchud.c) */
+        return;
+    }
     SfxSetReverbDepth(0);
     MuteControlledSound();
     if (padType == 0) {
@@ -432,6 +444,10 @@ void InGameConfirm(u_char *confirmed, int mode, int unused, u_char *selection, i
     int highlight;
     POLY_FT4 *choices; /* Port */
 
+    if (PortPcData()) {
+        PcInGameConfirm(confirmed, mode, selection, frameCount); /* Port: the PC version's (pc/pchud.c) */
+        return;
+    }
     highlight = 1;
     if (mode == 1) {
         CentreText(msgAreYouSure, 0x4D, 0x5F, 8, highlight);
@@ -478,6 +494,9 @@ void InGameConfirm(u_char *confirmed, int mode, int unused, u_char *selection, i
 
 void DeSelectScreen(struct SelectBox *sel)
 {
+    if (PortPcData()) {
+        return; /* Port: the PC version leaves the race undimmed under its menus (hud.c's DeSelectScreen) */
+    }
     SetPolyF4(&sel->box[CurrentScreen]);
     sel->box[CurrentScreen].r0 = 6;
     sel->box[CurrentScreen].g0 = 6;

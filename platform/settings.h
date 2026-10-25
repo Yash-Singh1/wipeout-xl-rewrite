@@ -1,6 +1,6 @@
 /* The player's settings (settings.c): a small INI file in the user's data folder, changed from the
    debug console (debug_ui.cpp, the ~ key). Environment variables still override them for a
-   run (WIPEOUT_FAR_VIEW, WIPEOUT_FADE, WIPEOUT_WIDESCREEN, WIPEOUT_FRAME_RATE, WIPEOUT_SAVE_DIR, WIPEOUT_RENDER_SCALE,
+   run (WIPEOUT_FAR_VIEW, WIPEOUT_FAR_FLARES, WIPEOUT_FADE, WIPEOUT_WIDESCREEN, WIPEOUT_FRAME_RATE, WIPEOUT_SAVE_DIR, WIPEOUT_RENDER_SCALE,
    WIPEOUT_HD_PACK, WIPEOUT_MUSIC, WIPEOUT_TOUCH); the tests' hidden runs ignore the file. */
 #ifndef PORT_SETTINGS_H
 #define PORT_SETTINGS_H
@@ -42,6 +42,8 @@ typedef struct PortSettings {
     int recordRate;       /* the frame recorder's pictures a second, up to: 30 the game's frames, more the ones between
                              (psx/framecap.h; 0: 60) */
     int videoStandard;    /* VIDEO_BY_DISC, VIDEO_NTSC or VIDEO_PAL (region.c); takes effect at the next start */
+    int farFlares;        /* the engine flares of the ships the whole track's view draws beyond the console's distance
+                             (portfar.c; the console drew none there) */
 } PortSettings;
 
 /* PortSettings.videoStandard: the disc's (Wipeout XL NTSC, WipEout 2097 PAL), or either for both */

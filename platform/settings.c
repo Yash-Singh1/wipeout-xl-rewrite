@@ -30,6 +30,8 @@ static void Set(const char *key, const char *value)
         portSettings.showFps = number != 0;
     } else if (!strcmp(key, "far_view")) {
         portSettings.farView = number != 0;
+    } else if (!strcmp(key, "far_flares")) {
+        portSettings.farFlares = number != 0;
     } else if (!strcmp(key, "fade")) {
         portSettings.fade = number != 0;
     } else if (!strcmp(key, "fade_near") && number > 0) {
@@ -156,6 +158,9 @@ void PortSettingsLoad(void)
     if ((value = SDL_getenv("WIPEOUT_FRAMECAP_RATE"))) {
         portSettings.recordRate = SDL_clamp(SDL_atoi(value), 30, 240);
     }
+    if ((value = SDL_getenv("WIPEOUT_FAR_FLARES"))) {
+        portSettings.farFlares = SDL_atoi(value) != 0;
+    }
     if ((value = SDL_getenv("WIPEOUT_SKIP_LOGOS"))) {
         portSettings.skipLogos = SDL_atoi(value) != 0;
     }
@@ -216,7 +221,7 @@ int PortSettingsSave(void)
             "render_scale = %d\nhd_textures = %d\nhd_pack = %s\nwipeout64 = %s\n"
             "custom_music = %d\nmusic_shuffle = %d\nmusic_folder = %s\nsave_slot = %s\nautosave = %d\n"
             "touch_controls = %d\ntouch_size = %d\ntouch_opacity = %d\ndepth_buffer = %d\nskip_logos = %d\nrecord_rate = %d\n"
-            "video_standard = %d\nvibration = %d\nvibration_strength = %d\n",
+            "video_standard = %d\nvibration = %d\nvibration_strength = %d\nfar_flares = %d\n",
             portSettings.showFps, portSettings.farView, portSettings.fade, portSettings.fadeNear, portSettings.fadeFar,
             portSettings.widescreen, portSettings.frameRate,
             portSettings.frameCap, portSettings.skipIntro,
@@ -228,7 +233,7 @@ int PortSettingsSave(void)
             portSettings.touchControls, portSettings.touchSize ? portSettings.touchSize : 100,
             portSettings.touchOpacity ? portSettings.touchOpacity : 60, !portSettings.consoleDepth, portSettings.skipLogos,
             portSettings.recordRate ? portSettings.recordRate : 60, portSettings.videoStandard, !portSettings.noRumble,
-            portSettings.rumbleStrength ? portSettings.rumbleStrength : 100);
+            portSettings.rumbleStrength ? portSettings.rumbleStrength : 100, portSettings.farFlares);
     fclose(file);
     return 1;
 }

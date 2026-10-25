@@ -187,9 +187,10 @@ static GLuint framebuffer, colour;   /* all of video memory, scaled */
 static GLuint depthBuffer;           /* ... its depth (the depth buffer: Flush) */
 static GLuint vramTexture;           /* the CPU copy, R16UI */
 static GLuint glyphTexture;          /* the glyph page (GpuSetGlyphMemory): RGBA, premultiplied, filtered */
+static GLuint portPagesTexture;      /* the port's other pages (GpuSetPortPage), side by side: RGBA, filtered */
 static GLuint hdAtlas;               /* HD textures: the images in use (HdPlaced) */
 static GLuint program, vertexArray, vertexBuffer;
-static GLint uniformVram, uniformGlyphs, uniformHdAtlas, uniformPass, uniformTarget;
+static GLint uniformVram, uniformGlyphs, uniformPortPages, uniformHdAtlas, uniformPass, uniformTarget;
 static GLint uniformDepthPull, uniformDepthPass;
 static int vramDirty = 1;
 static GLuint windowFramebuffer;     /* the window's own: 0, but on iOS SDL's view has one of its own */
@@ -293,6 +294,7 @@ static const char *fragmentSource =
     "flat in int semiMode;\n"
     "uniform usampler2D vram;\n"
     "uniform sampler2D glyphs;\n"
+    "uniform sampler2D portPages;\n"
     "uniform sampler2D hdAtlas;\n"
     "flat in uvec4 hd;\n"
     "flat in ivec4 hdTexels;\n"
@@ -329,6 +331,19 @@ static const char *fragmentSource =
     "        return;\n"
     "    }\n"
     "    vec2 t = vTexel.xy;\n"
+    "    int portPage = texturePage.x / 64 + 16 * ((texturePage.y / 256) & 1) + (texturePage.y >= 512 ? 32 : 0);\n"
+    "    if (mode.w == 3 && portPage > 0) {\n"  /* the port's other pages (the PC version's): its colour key, the
+                                                 vertex colour as Direct3D's (255 white), blended whole */
+    "        int k = portPage - 1;\n"
+    /* (hdTexels: the texels the primitive covers, its samples kept to them; PORT_PAGES_...) */
+    "        vec2 low = clamp(vec2(hdTexels.xy) + 0.5, 0.5, 255.5);\n"
+    "        vec2 high = clamp(max(low, vec2(hdTexels.zw) - 0.5), 0.5, 255.5);\n"
+    "        vec2 at = vec2(float(k % 8), float(k / 8)) * 256.0 + clamp(t, low, high);\n"
+    "        vec4 g = texture(portPages, at / vec2(2048.0, 2048.0));\n"
+    "        if (g.a < 0.004) discard;\n"
+    "        Out(mode.y == 0 ? g.rgb * c : g.rgb, g.a, semiMode >= 0);\n"
+    "        return;\n"
+    "    }\n"
     "    if (mode.w == 3) {\n"                 /* the platform's glyphs: smooth, with coverage */
     "        vec4 g = texture(glyphs, t / 256.0);\n"
     "        if (g.a < 0.004) discard;\n"
@@ -498,6 +513,7 @@ int GpuInit(void)
     }
     uniformVram = glGetUniformLocation(program, "vram");
     uniformGlyphs = glGetUniformLocation(program, "glyphs");
+    uniformPortPages = glGetUniformLocation(program, "portPages");
     uniformHdAtlas = glGetUniformLocation(program, "hdAtlas");
     uniformPass = glGetUniformLocation(program, "pass");
     uniformDepthPull = glGetUniformLocation(program, "depthPull");
@@ -509,6 +525,7 @@ int GpuInit(void)
     glUniform1i(uniformVram, 0);
     glUniform1i(uniformGlyphs, 1);
     glUniform1i(uniformHdAtlas, 2);
+    glUniform1i(uniformPortPages, 3);
 
     glGenVertexArrays(1, &vertexArray);
     glBindVertexArray(vertexArray);
@@ -551,6 +568,15 @@ int GpuInit(void)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glGenerateMipmap(GL_TEXTURE_2D); /* (complete before the glyphs come: a texture without its mipmaps is not) */
+    /* the port's other pages: see-through until set */
+    glGenTextures(1, &portPagesTexture);
+    glBindTexture(GL_TEXTURE_2D, portPagesTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, PORT_PAGES_ACROSS * 256, PORT_PAGES_DOWN * 256, 0, GL_RGBA,
+                 GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     /* the HD textures' atlas: one texel until there are images (a texture the shader can sample, as drivers want) */
     glGenTextures(1, &hdAtlas);
     glBindTexture(GL_TEXTURE_2D, hdAtlas);
@@ -596,6 +622,23 @@ void GpuVramChanged(int x, int y, int w, int h)
         dirtyRight = SDL_max(dirtyRight, right);
         dirtyBottom = SDL_max(dirtyBottom, bottom);
     }
+}
+
+static void Flush(void);
+
+void GpuSetPortPage(int page, const uint32_t *rgba)
+{
+    if (page < 1 || page > 63 || !initialised) {
+        return;
+    }
+    Flush(); /* (what is drawn so far, from the page as it was) */
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, portPagesTexture);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, (page - 1) % PORT_PAGES_ACROSS * 256, (page - 1) / PORT_PAGES_ACROSS * 256, 256,
+                    256, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
+    glActiveTexture(GL_TEXTURE0);
 }
 
 void GpuSetGlyphMemory(const uint32_t *rgba)
@@ -892,6 +935,9 @@ static void Flush(void)
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, hdAtlas);
     glUniform1i(uniformHdAtlas, 2);
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, portPagesTexture);
+    glUniform1i(uniformPortPages, 3);
     glActiveTexture(GL_TEXTURE0);
     /* The depth buffer: what has a depth is drawn where nothing nearer is, give or take DEPTH_SLACK (the game's own
        order decides among things at about the same depth: a shadow or a pad on the track). The depth of the batch's
@@ -1047,7 +1093,7 @@ static void FindHd(const GpuDrawState *state, const GpuVertex *vertices, int cou
     int at[4], i;
 
     memset(primitiveHd, 0, sizeof(primitiveHd));
-    if (!state->textured || state->depth > 2 || !HdTexActive()) {
+    if (!state->textured || (state->depth > 2 && state->depth != 3)) {
         return;
     }
     for (i = 1; i < count; i++) {
@@ -1055,6 +1101,18 @@ static void FindHd(const GpuDrawState *state, const GpuVertex *vertices, int cou
         v0 = SDL_min(v0, vertices[i].v);
         u1 = SDL_max(u1, vertices[i].u);
         v1 = SDL_max(v1, vertices[i].v);
+    }
+    if (state->depth == 3) {
+        /* a port page (the PC version's) has no HD texture: the texels the primitive covers instead, which its
+           filtered samples stay within (an image's edge does not take in the one beside it on the page) */
+        primitiveHdTexels[0] = (int16_t)u0;
+        primitiveHdTexels[1] = (int16_t)v0;
+        primitiveHdTexels[2] = (int16_t)u1;
+        primitiveHdTexels[3] = (int16_t)v1;
+        return;
+    }
+    if (!HdTexActive()) {
+        return;
     }
     if (!HdTexFind(state->pageX, state->pageY, state->depth, state->clutX, state->clutY, u0, v0, u1, v1, &hit) ||
         !HdPlaced(hit.image, at)) {
@@ -1807,16 +1865,17 @@ void GpuShowImage(const uint8_t *rgb, int width, int height)
     }
     glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
     PortDrawableSize(&windowWidth, &windowHeight);
-    outH = windowHeight;
-    outW = windowHeight * 4 / 3;
-    if (outW > windowWidth) {
+    {
+        /* as large as the window takes it: a picture wider than 4:3 in square pixels, as the console's 320x240 (the
+           PC's 320x192 movies), in its own shape; a narrower one as the console showed it, over the 4:3 screen */
+        double aspect = (double)width / height < 4.0 / 3.0 ? 4.0 / 3.0 : (double)width / height;
+
         outW = windowWidth;
-        outH = windowWidth * 3 / 4;
-    }
-    /* square pixels, as the console's 320x240 picture: a wider image is
-       letterboxed */
-    if (outW * height / width < outH) {
-        outH = outW * height / width;
+        outH = (int)(windowWidth / aspect + 0.5);
+        if (outH > windowHeight) {
+            outH = windowHeight;
+            outW = (int)(windowHeight * aspect + 0.5);
+        }
     }
     outX = (windowWidth - outW) / 2;
     outY = (windowHeight - outH) / 2;

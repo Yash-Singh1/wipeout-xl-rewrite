@@ -26,10 +26,11 @@ def sign(path):
 
 def libraries(binary):
     """The libraries `binary` loads (its own name left out for a library), as written in it."""
-    lines = subprocess.run(["otool", "-L", binary], check=True, capture_output=True, text=True).stdout.splitlines()[1:]
-    names = [line.strip().split(" (")[0] for line in lines]
-    own = subprocess.run(["otool", "-D", binary], check=True, capture_output=True, text=True).stdout.splitlines()[1:]
-    return [name for name in names if name not in own]
+    # (a universal binary's are listed once for each architecture, under a "binary (architecture ...):" line)
+    lines = subprocess.run(["otool", "-L", binary], check=True, capture_output=True, text=True).stdout.splitlines()
+    names = [line.strip().split(" (")[0] for line in lines if line[:1].isspace()]
+    own = subprocess.run(["otool", "-D", binary], check=True, capture_output=True, text=True).stdout.splitlines()
+    return list(dict.fromkeys(name for name in names if name not in own and not name.endswith(":")))
 
 
 def rpaths(binary):

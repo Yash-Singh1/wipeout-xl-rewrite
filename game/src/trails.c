@@ -3,6 +3,8 @@
 #include "portfar.h"
 #include "include_asm_g8.h"
 #include "../../platform/psx/gte.h" /* Port: the flare is placed in 2D */
+#include "portinterp.h"
+#include "../../platform/trace.h" /* Port: lockstep test hooks */
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
 extern int    plasmaPhaseA;
@@ -28,6 +30,54 @@ extern POLY_G3    muzzleright[2][2];
 extern POLY_G3    muzzlebot[2][2];
 extern DR_MODE    muzzletrans[2];
 extern POLY_G4    flare[19][12][2];
+
+static uint32_t flareCentre; /* Port: PortFlareCentre's */
+
+void PortFlareCentre(unsigned int handle)
+{
+    flareCentre = handle;
+}
+
+/* Port: a flare's corner, placed in 2D about its centre's projection, recorded where it stands in view space at
+   the centre's depth (the ship's tail: the hull nearer than that hides it, as when the ship is seen from the side;
+   seen from behind, the depth buffer's slack keeps it over the tail), so that the depth buffer hides it behind
+   what is nearer, and the pictures between two frames move it with the ship. */
+static void BindFlareCorner(short *corner, const GtePrecise *centre, int x, int y, int k)
+{
+    double depth = centre->view[2];
+    double scale = depth / (double)(u_short)GteReadControl(26);
+    int    dx = corner[0] - x, dy = corner[1] - y;
+    uint32_t handle;
+
+    GteKeyNext(0, GteKeyMix(centre->key, 0x464C4152000ull + (uint64_t)k) | GTE_KEY_MOVING);
+    handle = GteRecordProjection(*(u_int *)corner, centre->x + (float)dx, centre->y + (float)dy, (float)depth,
+                                 centre->fade);
+    GteRecordView(handle, centre->view[0] + dx * scale, centre->view[1] + dy * scale, depth);
+    GteRecordAnchor(handle, centre->key, dx * scale, dy * scale, 0.0); /* (a corner the flare had not before) */
+    GteBindPrecise(corner, handle);
+}
+
+/* Port: frame interpolation (gte.h): segment `i`'s left edge, middle or right edge (side 0, 1, 2), known by the
+   trail and the segment's age (0: the newest, at the ship's tail). From one frame to the next each age moves up to
+   where the next younger segment was, so the pictures between two frames slide the trail along with the ship
+   instead of leaving it where the frame has it. */
+static uint64_t TrailKey(Trail *trail, int i, int side)
+{
+    uint64_t segment = GteKeyMix(GteKeyMix((uint64_t)(uintptr_t)trail, 0x545241494Cull),
+                                 (uint64_t)((i - trail->current + TRAIL_SEGMENTS) % TRAIL_SEGMENTS));
+
+    return GteKeyMix(segment, (uint64_t)side) | GTE_KEY_MOVING;
+}
+
+/* Port: the keys of the next projection's three vertices, segment `i`'s left edge, middle and right edge. */
+static void KeyTrailSegment(Trail *trail, int i)
+{
+    int side;
+
+    for (side = 0; side < 3; side++) {
+        GteKeyNext(side, TrailKey(trail, i, side));
+    }
+}
 
 void DrawFlare(int x, int y, int distance, int ship) {
     int speed, value, half, quarter, size;
@@ -166,14 +216,31 @@ void DrawFlare(int x, int y, int distance, int ship) {
         AddPrim(slot, &flare[0][2][0] + ship * 24 + CurrentScreen);
         AddPrim(slot, &flare[0][3][0] + ship * 24 + CurrentScreen);
     }
-    for (k = 0; k < 12; k++) {
-        /* Port: the flare's corners are placed in 2D about one projected point: drawn as given, not matched to
-           the projections (of the ship's own model, say) that land on the same pixels */
-        p = (POLY_G4 *)((char *)&flare[0][k][0] + offset);
-        GteBindFlat(&p->x0);
-        GteBindFlat(&p->x1);
-        GteBindFlat(&p->x2);
-        GteBindFlat(&p->x3);
+    {
+        /* Port: the flare's corners are placed in 2D about one projected point: drawn about that point's precise
+           projection, at its depth (BindFlareCorner), or as given when there is none, not matched to the
+           projections (of the ship's own model, say) that land on the same pixels. Only the quads drawn: the
+           four nearest the middle (from 1000 on) keep where they were last placed, or 0, 0, and recorded there they
+           pulled the flare to it in the pictures between this frame and the next that draws them. */
+        GtePrecise centre;
+        int        known = flareCentre && GtePreciseOf(flareCentre, &centre) && centre.view[2] > 0 &&
+                    !centre.background;
+
+        for (k = distance < 1000 ? 0 : 4; k < 12; k++) {
+            p = (POLY_G4 *)((char *)&flare[0][k][0] + offset);
+            if (known) {
+                BindFlareCorner(&p->x0, &centre, x, y, k * 4);
+                BindFlareCorner(&p->x1, &centre, x, y, k * 4 + 1);
+                BindFlareCorner(&p->x2, &centre, x, y, k * 4 + 2);
+                BindFlareCorner(&p->x3, &centre, x, y, k * 4 + 3);
+            } else {
+                GteBindFlat(&p->x0);
+                GteBindFlat(&p->x1);
+                GteBindFlat(&p->x2);
+                GteBindFlat(&p->x3);
+            }
+        }
+        flareCentre = 0;
     }
     AddPrim(slot, &flare[0][4][0] + ship * 24 + CurrentScreen);
     AddPrim(slot, &flare[0][5][0] + ship * 24 + CurrentScreen);
@@ -183,6 +250,43 @@ void DrawFlare(int x, int y, int distance, int ship) {
     AddPrim(slot, &flare[0][9][0] + ship * 24 + CurrentScreen);
     AddPrim(slot, &flare[0][10][0] + ship * 24 + CurrentScreen);
     AddPrim(slot, &flare[0][11][0] + ship * 24 + CurrentScreen);
+}
+
+
+/* Port: frame interpolation (gte.h) of the lock-on boxes. A box is drawn in 2D about the target ship, turned a
+   little further and drawn a little nearer it each frame (targetSpin, missileLockTimer); a bank keeps its box for eight
+   frames (the fading copies while the missile locks on). Each corner is recorded as a projection known by its box's
+   age and corner, so the pictures between two frames turn and close the boxes, each from where the box one frame
+   younger had that corner, instead of stepping at the game's rate. Placed at the projection distance (a depth where
+   view space is the screen's, so they move in straight lines on it) and drawn in 2D as the game draws them (depth 0:
+   over everything). */
+static uint32_t targetPlaced[8]; /* targetFrame when the bank was given its box (0: never) */
+static uint32_t targetFrame;     /* DrawShipTrails's frames */
+
+static void PortBindTargets(void)
+{
+    double h = (double)(u_short)GteReadControl(26);
+    double ofx = GteReadControl(24) / 65536.0, ofy = GteReadControl(25) / 65536.0;
+    int bank, k;
+
+    for (bank = 0; bank < 8; bank++) {
+        uint64_t age = targetFrame - targetPlaced[bank];
+
+        if (!targetPlaced[bank]) {
+            continue;
+        }
+        for (k = 0; k < 4; k++) {
+            /* corner k: where box line k starts and line k - 1 ends */
+            LINE_F2 *line = &targetPrims[bank][k][CurrentScreen], *before = &targetPrims[bank][(k + 3) & 3][CurrentScreen];
+            uint32_t handle;
+
+            GteKeyNext(0, GteKeyMix(0x544152474554ull, age * 4 + (uint64_t)k) | GTE_KEY_MOVING);
+            handle = GteRecordProjection(*(u_int *)&line->x0, line->x0, line->y0, 0.0f, 1.0f);
+            GteRecordView(handle, line->x0 - ofx, line->y0 - ofy, h);
+            GteBindPrecise(&line->x0, handle);
+            GteBindPrecise(&before->x1, handle);
+        }
+    }
 }
 
 
@@ -226,6 +330,7 @@ void UpdateTarget(int x, int y, int distance, int target) {
             targetPrims[targetBank][2][i].g0 = 128;
             targetPrims[targetBank][3][i].g0 = 128;
         }
+        targetPlaced[targetBank] = targetFrame; /* Port: PortBindTargets */
         targetvalid = 1;
     }
 }
@@ -509,6 +614,9 @@ void DrawTrailLoRes(TrackCamera *camera, Trail *trail, int ship) {
                     vertex[3].vy = trail->segment[n].left.vy + cam[1];
                     vertex[3].vz = trail->segment[n].left.vz + cam[2];
                     poly = &trail->segment[i].leftHalf[CurrentScreen];
+                    GteKeyNext(0, TrailKey(trail, i, 0)); /* Port: frame interpolation */
+                    GteKeyNext(1, TrailKey(trail, i, 1));
+                    GteKeyNext(2, TrailKey(trail, n, 0));
                     depth = RotTransPers3(&vertex[0], &vertex[1], &vertex[3], (int *)&screen[0], (int *)&screen[1], (int *)&screen[3], &segmentP, &flag);
                     if (!(flag & 0x80460000)) {
                         depth -= 160;
@@ -520,6 +628,16 @@ void DrawTrailLoRes(TrackCamera *camera, Trail *trail, int ship) {
                         poly->y1 = screen[0].vy;
                         poly->y2 = screen[3].vy;
                         poly->y3 = screen[3].vy;
+                        {
+                            /* Port: frame interpolation: the strip's corners 2 pixels to the side go with the
+                               projected ones (the strip was stretched between them and where the frame put them) */
+                            uint32_t near = PortProjection(&screen[0]), far = PortProjection(&screen[3]);
+
+                            if (near) GteBindPrecise(&poly->x0, near);
+                            if (far) GteBindPrecise(&poly->x2, far);
+                            PortBindAbout(&poly->x1, near, screen[0].vx, screen[0].vy, 0);
+                            PortBindAbout(&poly->x3, far, screen[3].vx, screen[3].vy, 0);
+                        }
                         poly->r0 = trail->segment[i].r;
                         poly->g0 = trail->segment[i].g;
                         poly->b0 = trail->segment[i].b;
@@ -539,6 +657,7 @@ void DrawTrailLoRes(TrackCamera *camera, Trail *trail, int ship) {
                         }
                         if (i == trail->current) {
                             if (sillyShips == 0 || ship >= 16) {
+                                PortFlareCentre(GteBoundHandle(&screen[1], (u_short)screen[1].vx | (uint32_t)(u_short)screen[1].vy << 16));
                                 DrawFlare(screen[1].vx, screen[1].vy, depth, ship);
                             }
                             UpdateTarget(screen[1].vx, screen[1].vy, depth, ship);
@@ -624,7 +743,9 @@ void DrawTrail(TrackCamera *camera, Trail *trail, int ship) {
                     ws.vertex[4].vx = ((lx + rx) >> 1) + cam[0];
                     ws.vertex[4].vy = ((ly + ry) >> 1) + cam[1];
                     ws.vertex[4].vz = ((lz + rz) >> 1) + cam[2];
+                    KeyTrailSegment(trail, n); /* Port: frame interpolation */
                     RotTransPers3(&ws.vertex[3], &ws.vertex[4], &ws.vertex[5], (int *)&ws.screen[3], (int *)&ws.screen[4], (int *)&ws.screen[5], &ws.p, &ws.flag);
+                    KeyTrailSegment(trail, i); /* Port */
                     depth = RotTransPers3(&ws.vertex[0], &ws.vertex[1], &ws.vertex[2], (int *)&ws.screen[0], (int *)&ws.screen[1], (int *)&ws.screen[2], &ws.p, &ws.flag);
                     if (!(ws.flag & 0x80460000)) {
                         depth -= 160;
@@ -676,6 +797,7 @@ void DrawTrail(TrackCamera *camera, Trail *trail, int ship) {
                         }
                         if (i == trail->current) {
                             if (sillyShips == 0 || ship >= 16) {
+                                PortFlareCentre(GteBoundHandle(&ws.screen[1], (u_short)ws.screen[1].vx | (uint32_t)(u_short)ws.screen[1].vy << 16));
                                 DrawFlare(ws.screen[1].vx, ws.screen[1].vy, depth, ship);
                             }
                             UpdateTarget(ws.screen[1].vx, ws.screen[1].vy, depth, ship);
@@ -704,6 +826,7 @@ void DrawShipTrails(TrackCamera *camera) {
     int i;
     u_char *flag;
 
+    targetFrame++; /* Port: PortBindTargets */
     if (shipIndex[ownShip].weapon != 0) {
         if (shipIndex[ownShip].targetShip != lastTargetShip) {
             lastTargetShip = shipIndex[ownShip].targetShip;
@@ -767,6 +890,9 @@ void DrawShipTrails(TrackCamera *camera) {
         }
         i++;
     } while (i < 15);
+    if (shipIndex[ownShip].weapon != 0) {
+        PortBindTargets(); /* Port: the lock-on boxes between frames */
+    }
     if (plasmaShotBusy != 0) {
         DrawTrail(camera, &Plasma[0], 0xF);
         DrawTrail(camera, &Plasma[1], 0x10);
@@ -808,7 +934,9 @@ void UpdateShipTrails(ShipData *ships, int allShips)
             } else if (!(ships[i].attr & 4)) {
                 BuildOwnShipTrail(i, &left, &right);
             }
-        } else if (shipTrails[i].segment[0].active) {
+        } else if (shipTrails[i].segment[0].active || (!PortTracing() && shipTrails[i].segment[shipTrails[i].current].active)) {
+            /* Port: also when the newest segment is (the console's test, the first, missed a ship that left view
+               within 11 frames of coming into it: when it came back, its trail ran from where it had been) */
             for (j = 0; j < TRAIL_SEGMENTS; j++) {
                 shipTrails[i].segment[j].active = 0;
             }
