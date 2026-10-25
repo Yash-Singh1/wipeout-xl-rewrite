@@ -140,12 +140,25 @@ if(NOT EMSCRIPTEN)
     find_package(ZLIB QUIET)
 endif()   # optional: compressed lockstep traces (platform/trace.c)
 
+# The version the debug console shows: the release's (tools/release.py sets WIPEOUT_VERSION), else what git describe
+# says when CMake configures (the last tag, and the commit when it is not that tag's); none without git.
+set(WIPEOUT_VERSION "" CACHE STRING "The release's version, shown in the debug console (default: git describe)")
+if(WIPEOUT_VERSION)
+    set(PORT_VERSION "${WIPEOUT_VERSION}")
+else()
+    execute_process(COMMAND git describe --tags --always --dirty WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                    OUTPUT_VARIABLE PORT_VERSION OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+endif()
+string(REGEX REPLACE "^v" "" PORT_VERSION "${PORT_VERSION}")
+string(REGEX REPLACE "-[0-9]+-g([0-9a-f]+)" "-\\1" PORT_VERSION "${PORT_VERSION}") # (the tag and the commit, not the count)
+
 function(port_platform_target name)
     target_include_directories(${name} PRIVATE ${CMAKE_SOURCE_DIR}/platform ${CMAKE_SOURCE_DIR}/platform/psx
         ${IMGUI_DIR})
     target_compile_options(${name} PRIVATE "SHELL:-iquote ${CMAKE_SOURCE_DIR}/game/include")
     set_source_files_properties(${DEBUG_UI_SOURCES} PROPERTIES COMPILE_OPTIONS "-std=c++17")
     target_compile_options(${name} PRIVATE -fsigned-char -fno-strict-aliasing)
+    target_compile_definitions(${name} PRIVATE "PORT_VERSION=\"${PORT_VERSION}\"")
     target_link_libraries(${name} PRIVATE game psxio lzma7z m)
     if(GAME_DATA_SOURCES)
         target_link_libraries(${name} PRIVATE gamedata)

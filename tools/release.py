@@ -112,7 +112,7 @@ def build_libraries(target, options, jobs):
     return prefix
 
 
-def build_game(target, options, prefix, jobs):
+def build_game(target, options, prefix, jobs, version):
     build = os.path.join(WORK, target, "game")
     zlib = [path for path in glob.glob(os.path.join(prefix, "lib", "libz*.a"))
             if re.fullmatch(r"libzs?\.a", os.path.basename(path))]  # (libzs.a on Windows)
@@ -126,6 +126,7 @@ def build_game(target, options, prefix, jobs):
             "-DWIPEOUT_BUILD_SDL=ON", "-DWIPEOUT_BUILD_LIBARCHIVE=ON",
             "-DZLIB_LIBRARY=" + zlib[0], "-DZLIB_INCLUDE_DIR=" + os.path.join(prefix, "include"),
             *found, *options, env=env)
+    run("cmake", "-B", build, "-DWIPEOUT_VERSION=" + version, env=env)  # (the debug console shows it)
     run("cmake", "--build", build, "-j", str(jobs), env=env)
     return build
 
@@ -193,7 +194,7 @@ def main():
     for target in chosen:
         print(f"\n==== {target} ====", flush=True)
         prefix = build_libraries(target, every[target], args.jobs)
-        build = build_game(target, every[target], prefix, args.jobs)
+        build = build_game(target, every[target], prefix, args.jobs, version)
         if target == "mac":
             app = os.path.join(build, "Wipeout XL.app")
             check_mac(app)

@@ -1980,6 +1980,15 @@ static void Console(void)
         ImGui::EndTabBar();
     }
     ImGui::PopItemWidth();
+    if (PORT_VERSION[0]) {
+        // the build's version (CMakeLists.txt), dim in the bottom right corner, over whatever is there
+        char version[96];
+        SDL_snprintf(version, sizeof(version), "Version %s", PORT_VERSION);
+        ImVec2 size = ImGui::CalcTextSize(version), pos = ImGui::GetWindowPos(), extent = ImGui::GetWindowSize();
+        ImVec2 padding = ImGui::GetStyle().WindowPadding;
+        ImGui::GetWindowDrawList()->AddText(ImVec2(pos.x + extent.x - padding.x - size.x, pos.y + extent.y - padding.y - size.y),
+                                            ImGui::GetColorU32(ImGuiCol_TextDisabled), version);
+    }
     ImGui::End();
 }
 
