@@ -79,9 +79,12 @@ int PcLoadTitlePicture(void)
 
 void PcTitleFrame(int prompt, const char *pressStart)
 {
-    /* the picture, but for where the prompt goes (main.c's TitleScreen) */
+    /* the picture, but for where the prompt goes (main.c's TitleScreen); Port: widescreen enlarges it to fill the
+       sides, as the PlayStation's title (its black bands above and below go, and the prompt is over it) */
+    PcWideBackdrop(1);
     PcBlit(0, 0, 160, 239, 0.5f);
     PcBlit(160, 0, 319, 219, 0.5f);
+    PcWideBackdrop(0);
     if (prompt) {
         PcAddText(pressStart, 160, 220, 8, 0);
     }

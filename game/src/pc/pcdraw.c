@@ -30,10 +30,12 @@ static struct {
     void *prim;
     int entry;
     int backdrop; /* (linked into OT[], entry counted from its far end) */
+    int wide;     /* (PcWideBackdrop) */
 } made[MAX_PRIMS];
 static int madeCount;
 static int centredFrom = -1; /* PcCentred: where in the pool the packets to stay in place begin */
 static int blinkFrame;       /* the PC's blinkFrame (display.c): sixtieths of a second */
+static int wideBackdrop;     /* PcWideBackdrop: what is made is a picture filling widescreen's sides */
 float pcBackdropDepth = 2.0f;
 
 u_short PcTPage(int page, int abr)
@@ -64,6 +66,7 @@ static void *Make(int bytes, float depth)
     p = pool[CurrentScreen] + poolUsed[CurrentScreen];
     poolUsed[CurrentScreen] += (bytes + 7) & ~7;
     made[madeCount].prim = p;
+    made[madeCount].wide = wideBackdrop;
     made[madeCount].backdrop = depth >= pcBackdropDepth;
     if (made[madeCount].backdrop) {
         entry = (int)((1.0f - depth) * (BACKDROP_ENTRIES - 1));
@@ -145,6 +148,11 @@ void PcDrawPacket(float depth, const void *packet, int bytes)
     }
 }
 
+void PcWideBackdrop(int on)
+{
+    wideBackdrop = on;
+}
+
 void PcCentred(int on)
 {
     if (on) {
@@ -166,6 +174,9 @@ void PcDrawEndFrame(void)
 
     /* each added at the front of its entry, the last made first: the first made ends up drawn first */
     for (i = madeCount - 1; i >= 0; i--) {
+        if (made[i].wide) {
+            PortWideBackdrop(made[i].prim);
+        }
         if (made[i].backdrop) {
             AddPrim(OT[CurrentScreen] + OT_ENTRIES - 1 - made[i].entry, made[i].prim);
         } else {

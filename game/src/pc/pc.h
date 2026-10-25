@@ -65,6 +65,7 @@ int PcBlink(void);
 /* The primitives made from PcCentred(1) to PcCentred(0) stay where they are put with widescreen (PortHudCentred): a
    menu over the race, not an element of the HUD at a side of the screen. */
 void PcCentred(int on);
+void PcWideBackdrop(int on); /* what is made from now on: a picture widescreen enlarges to fill its sides */
 /* From this depth on, primitives are a backdrop behind the 3D (at the far end of OT[]); 2 (none) but in the menus. */
 extern float pcBackdropDepth;
 

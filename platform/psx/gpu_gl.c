@@ -1850,16 +1850,17 @@ void GpuShowImage(const uint8_t *rgb, int width, int height)
     }
     glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
     PortDrawableSize(&windowWidth, &windowHeight);
-    outH = windowHeight;
-    outW = windowHeight * 4 / 3;
-    if (outW > windowWidth) {
+    {
+        /* as large as the window takes it: a picture wider than 4:3 in square pixels, as the console's 320x240 (the
+           PC's 320x192 movies), in its own shape; a narrower one as the console showed it, over the 4:3 screen */
+        double aspect = (double)width / height < 4.0 / 3.0 ? 4.0 / 3.0 : (double)width / height;
+
         outW = windowWidth;
-        outH = windowWidth * 3 / 4;
-    }
-    /* square pixels, as the console's 320x240 picture: a wider image is
-       letterboxed */
-    if (outW * height / width < outH) {
-        outH = outW * height / width;
+        outH = (int)(windowWidth / aspect + 0.5);
+        if (outH > windowHeight) {
+            outH = windowHeight;
+            outW = (int)(windowHeight * aspect + 0.5);
+        }
     }
     outX = (windowWidth - outW) / 2;
     outY = (windowHeight - outH) / 2;

@@ -351,7 +351,7 @@ static float interpolationAlong;
 
 /* Widescreen: the packets of the menus' backdrops (PortWideBackdrop), which fill the picture's sides. They are
    the same few packets every frame. */
-#define BACKDROPS 8
+#define BACKDROPS 16
 static const void *backdrops[BACKDROPS];
 static int backdropCount, backdropNext;
 
