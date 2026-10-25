@@ -3,6 +3,7 @@
 #include "portfar.h"
 #include "include_asm_g8.h"
 #include "../../platform/psx/gte.h" /* Port: the flare is placed in 2D */
+#include "portinterp.h"
 #include "../../platform/trace.h" /* Port: lockstep test hooks */
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
@@ -627,6 +628,16 @@ void DrawTrailLoRes(TrackCamera *camera, Trail *trail, int ship) {
                         poly->y1 = screen[0].vy;
                         poly->y2 = screen[3].vy;
                         poly->y3 = screen[3].vy;
+                        {
+                            /* Port: frame interpolation: the strip's corners 2 pixels to the side go with the
+                               projected ones (the strip was stretched between them and where the frame put them) */
+                            uint32_t near = PortProjection(&screen[0]), far = PortProjection(&screen[3]);
+
+                            if (near) GteBindPrecise(&poly->x0, near);
+                            if (far) GteBindPrecise(&poly->x2, far);
+                            PortBindAbout(&poly->x1, near, screen[0].vx, screen[0].vy, 0);
+                            PortBindAbout(&poly->x3, far, screen[3].vx, screen[3].vy, 0);
+                        }
                         poly->r0 = trail->segment[i].r;
                         poly->g0 = trail->segment[i].g;
                         poly->b0 = trail->segment[i].b;

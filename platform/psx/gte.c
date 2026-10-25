@@ -688,14 +688,16 @@ static void FitMotion(void)
    without the pictures between moving.) The view's motion is fitted at the same time. */
 static int CameraCut(void)
 {
-    int i, matched = 0, far = 0;
+    /* (every seventh, or every one when that would not make 8: a menu's model alone, which was taken for a cut in
+       every frame and so not turned between frames) */
+    int i, matched = 0, far = 0, step = recordCount < 8 * 7 ? 1 : 7;
 
     if (cutCheckedFrame == preciseFrame) {
         return cut;
     }
     cutCheckedFrame = preciseFrame;
     ChooseFitKeys();
-    for (i = 0; i < recordCount; i += 7) {
+    for (i = 0; i < recordCount; i += step) {
         PastEntry *entry = FitPast(i);
 
         if (entry) {

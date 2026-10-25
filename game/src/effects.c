@@ -55,6 +55,7 @@ extern TrackSection *startDroidSection;
 #include "functions.h"
 #include "include_asm_g8.h"
 #include "portfar.h" /* Port: the far view's shadows */
+#include "portinterp.h" /* Port: frame interpolation of the missiles' and rockets' flares */
 #include "../../platform/trace.h" /* Port: lockstep test hooks */
 #include "../../platform/psx/gte.h" /* Port: precise positions for the shadow's grid */
 
@@ -95,9 +96,11 @@ weapon_loop:
         } while (i < 3);
     }
     if (weapon->type == 2 && weapon->update == UpdateMissile && weapon->count > 0) {
+        PortFlareOwner(weapon); /* Port: frame interpolation */
         DrawMissileFlare(weapon->pos.vx, weapon->pos.vy, weapon->pos.vz);
     }
     if (weapon->type == 1 && weapon->update == UpdateRocket && weapon->count > 0) {
+        PortFlareOwner(weapon); /* Port: frame interpolation */
         DrawRocketFlare(weapon->pos.vx, weapon->pos.vy, weapon->pos.vz);
     }
     if (weapon->count == -1 || weapon->count == -2) {
