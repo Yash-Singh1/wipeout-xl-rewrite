@@ -9,6 +9,7 @@
 #include "platform.h"
 #include "psx/disc.h"
 #include "psx/gte.h"
+#include "psx/pad.h"
 #include "psx/psx_io.h"
 #include "region.h"
 #include "pc.h"
@@ -39,6 +40,7 @@ static void Usage(void)
             "  WIPEOUT_TRACE (trace file), WIPEOUT_PADS (pad script), WIPEOUT_VCOUNTS (counter reads),\n"
             "  WIPEOUT_CD_SPEED (drive speed-up; 1 = the console's, default 1000), WIPEOUT_SAVE_DIR (memory cards; default: the user's data folder),\n"
             "  WIPEOUT_KEYS (scripted keys and gamepad), WIPEOUT_VRAM_DUMP (video memory picture at the end of a run),\n"
+            "  WIPEOUT_RUMBLE_LOG (what the pads' motors are asked, one line a request),\n"
             "  WIPEOUT_FAR_VIEW (0: the console's draw distance; 2: the whole track even while tracing), WIPEOUT_FAR_FLARES,\n"
             "  WIPEOUT_MOVIES (play the movies in fixed-step runs too), WIPEOUT_WAV (the mixed audio, fixed-step),\n"
             "  WIPEOUT_MUSIC (a music folder in place of the disc's music)\n");
@@ -256,7 +258,7 @@ int main(int argc, char **argv)
             static const char *const testSettings[] = {
                 "WIPEOUT_KEYS", "WIPEOUT_CAPTURE_DIR", "WIPEOUT_FRAMES", "WIPEOUT_TRACE", "WIPEOUT_PADS",
                 "WIPEOUT_VCOUNTS", "WIPEOUT_WRITES", "WIPEOUT_LOADS", "WIPEOUT_VRAM_DUMP",
-                "WIPEOUT_SAVE_DIR", "WIPEOUT_FIXED_STEP", "WIPEOUT_HIDDEN"};
+                "WIPEOUT_SAVE_DIR", "WIPEOUT_FIXED_STEP", "WIPEOUT_HIDDEN", "WIPEOUT_RUMBLE_LOG"};
             size_t k;
 
             for (k = 0; k < SDL_arraysize(testSettings); k++) {
@@ -541,3 +543,45 @@ int PortFadeRange(int *nearDistance, int *farDistance)
     return portSettings.fade;
 }
 
+/* The level at the strength the player asked for (0: the scale's own), in the game's units. */
+static int RumbleLevel(int level)
+{
+    int strength = portSettings.rumbleStrength > 0 ? portSettings.rumbleStrength : 100;
+
+    return level * strength / 100;
+}
+
+/* What the game asks of the pads' motors (WIPEOUT_RUMBLE_LOG), one line a request. A hidden run has no
+   pad to feel and a trace records nothing of them, so this is how the jolts and the launch thrust's
+   buzz are checked. */
+static void RumbleLog(const char *kind, int level)
+{
+    static int enabled = -1;
+
+    if (enabled < 0) {
+        enabled = SDL_getenv("WIPEOUT_RUMBLE_LOG") != NULL;
+    }
+    if (enabled) {
+        fprintf(stderr, "rumble: %s %d\n", kind, level);
+    }
+}
+
+void PortPadRumble(int amount)
+{
+    RumbleLog("jolt", amount);
+    /* the player's setting, and never in the tests' hidden runs (which is also what stops a jolt or a held
+       level that was running when either of them changed) */
+    PsxPadRumble(portSettings.noRumble || portConfig.hidden ? 0 : RumbleLevel(amount));
+}
+
+void PortPadRumbleLevel(int level)
+{
+    RumbleLog("level", level);
+    PsxPadRumbleLevel(portSettings.noRumble || portConfig.hidden ? 0 : RumbleLevel(level));
+}
+
+void PortPadRumbleScrape(int level)
+{
+    RumbleLog("scrape", level);
+    PsxPadRumbleScrape(portSettings.noRumble || portConfig.hidden ? 0 : RumbleLevel(level));
+}

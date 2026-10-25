@@ -12,6 +12,31 @@ extern short  scrapeVol;
 extern int collideMinAlpha;
 
 #include "dynam.h"
+#include "hud.h"
+
+extern ConfigData *gameData;
+
+/* Port: the ship's speed as a share of `most`, the speedometer's full scale (its bar full) at `most`. */
+static int WallSpeed(ShipData *playerShip, int most)
+{
+    int fullSpeed = speedDividerTable.value[gameData->shipClass] * 96;
+    int speed = playerShip->speed < fullSpeed ? playerShip->speed : fullSpeed;
+
+    return most * speed / fullSpeed;
+}
+
+/* Port: the pads' motors at a wall, as hard as the ship was going. The nose meeting it is a hit, a tap
+   (4, the knock of the shake's units) when slow to a rocket's 20 at full speed; a wing running along it
+   is a rattle on the small motor (PortPadRumbleScrape), 2 to 8, for as long as it scrapes. */
+static void WallHitRumble(ShipData *playerShip)
+{
+    PortPadRumble(4 + WallSpeed(playerShip, 16));
+}
+
+static void WallScrapeRumble(ShipData *playerShip)
+{
+    PortPadRumbleScrape(2 + WallSpeed(playerShip, 6));
+}
 
 
 void doShipShipCollision(int shipNo, ShipData *shipIndex, Object **shipShapes)
@@ -617,6 +642,7 @@ void NewWingCollision(ShipData *playerShip, Face *facePtr, int direction, int al
     if (!(playerShip->combatAttr & 2)) {
         if (scrapeVol < 200) scrapeVol += 100;
         if (scrapeVol > 200) scrapeVol = 200;
+        WallScrapeRumble(playerShip); /* Port: the scrape is felt as it is heard */
     }
     reaction.vx = playerShip->vpivot.vx >> 6;
     reaction.vy = playerShip->vpivot.vy >> 6;
@@ -677,7 +703,7 @@ void WingCollision(ShipData *playerShip, Face *facePtr, int direction, int alpha
   else
     if (portPal || !(playerShip->combatAttr & 1)) /* the European program has no combatAttr bit 1 test here */
   {
-    DamageCollide(129, ownShip);
+    DamageCollide(129, ownShip);  WallScrapeRumble(playerShip);
   }
   reaction.vx = playerShip->vpivot.vx >> 6;
   reaction.vy = playerShip->vpivot.vy >> 6;
@@ -730,6 +756,7 @@ void NoseCollision(ShipData *playerShip, Face *facePtr, int direction, int alpha
   {
     DamageCollide(129, ownShip);
     DamageCollide(129, ownShip);
+    WallHitRumble(playerShip);
   }
   reaction.vx = playerShip->vpivot.vx >> 6;
   reaction.vy = playerShip->vpivot.vy >> 6;

@@ -1904,6 +1904,7 @@ void DrawWeaponIcons(POLY_FT4 *icons, Texture **textures, ShipData *ship)
 void SetShake(int amount)
 {
     shakeAmount = amount;
+    PortPadRumble(amount); /* Port: the pads' motors shake as hard as the picture does (the console's pads had none) */
 }
 
 

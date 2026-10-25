@@ -40,4 +40,10 @@ typedef struct InGameMenu {
 /* Ship records are ShipData; the HUD and the race-start code use the same layout under this name. */
 typedef ShipData RaceShip;
 
+/* The speedometer's scale, one per ship class: speed / value is how far its bar reaches, full at 96
+   (game/data/weapon_data.c). */
+typedef struct SpeedDividers { int value[4]; } SpeedDividers;
+extern SpeedDividers speedDividerTable;
+extern SpeedDividers speedDividerTableAlt;
+
 #endif

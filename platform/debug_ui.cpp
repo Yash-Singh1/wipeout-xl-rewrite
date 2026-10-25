@@ -1898,6 +1898,24 @@ static void Console(void)
         if (ImGui::BeginTabItem("Game", nullptr, FirstTab("game"))) {
             TouchControls();
             ImGui::Separator();
+            bool vibration = !portSettings.noRumble;
+            if (ImGui::Checkbox("Controller vibration", &vibration)) {
+                portSettings.noRumble = !vibration;
+                Changed();
+            }
+            DisabledWrapped("The pads shake at a hit, and growl with the launch thrust: the throttle's amount, which "
+                            "the digital face buttons cannot show and the original's analogue throttle could.");
+            ImGui::BeginDisabled(!vibration);
+            int strength = portSettings.rumbleStrength > 0 ? portSettings.rumbleStrength : 100;
+            ImGui::SetNextItemWidth(ImGui::GetFontSize() * 14);
+            if (ImGui::SliderInt("Strength##rumble", &strength, 50, 300, "%d%%")) {
+                portSettings.rumbleStrength = strength;
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                Changed();
+            }
+            ImGui::EndDisabled();
+            ImGui::Separator();
             bool skip = portSettings.skipIntro != 0;
             if (ImGui::Checkbox("Skip the intro movie at start-up", &skip)) {
                 portSettings.skipIntro = skip;
