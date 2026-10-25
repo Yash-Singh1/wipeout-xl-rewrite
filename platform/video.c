@@ -3,6 +3,7 @@
 #include "port_gl.h"
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "debug_ui.h"
@@ -11,6 +12,9 @@
 #include "psx/gpu.h"
 #include "psx/psx_io.h"
 #include "touch.h"
+#ifdef PORT_SECOND_GAME
+#include "second/second.h"
+#endif
 
 static SDL_Window *window;
 static SDL_GLContext context;
@@ -56,6 +60,20 @@ int PortVideoInit(void)
 {
     SDL_WindowFlags flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
 
+#ifdef PORT_SECOND_GAME
+    if (portConfig.secondPlayer) {
+        /* the second player's game: it draws with the hidden window the first game made for it (windows are the
+           main thread's), on its own thread */
+        window = PortSecondGameWindow();
+        context = PortSecondGameContext();
+        if (!window || !context || !SDL_GL_MakeCurrent(window, context)) {
+            SDL_Log("second player: %s", SDL_GetError());
+            return 0;
+        }
+        PortSwapInterval(0);
+        return GpuInit();
+    }
+#endif
     if (portConfig.hidden) {
         flags |= SDL_WINDOW_HIDDEN;
     } else if (portConfig.fullscreen) {
@@ -130,6 +148,11 @@ void PortSwapInterval(int vsync)
 void PortVideoShutdown(void)
 {
     DebugUiShutdown();
+#ifdef PORT_SECOND_GAME
+    if (portConfig.secondPlayer) {
+        return; /* (its window and drawing context are the first game's to close: host.c) */
+    }
+#endif
     if (context) {
         SDL_GL_DestroyContext(context);
     }
@@ -273,6 +296,9 @@ void PortQuit(void)
 {
     SDL_Event event;
 
+    if (portConfig.secondPlayer) {
+        exit(0); /* the second player's game ends alone (its thread: platform/second/) */
+    }
     SDL_zero(event);
     event.type = SDL_EVENT_QUIT;
     SDL_PushEvent(&event); /* (the next PortPumpEvents closes the game) */
@@ -283,8 +309,9 @@ int PortPumpEvents(void)
     SDL_Event event;
 
     PortInputScript(PsxFieldCount());
-    if (PortLinkRole() == LINK_SLAVE && PortLinkQuitRequested()) {
-        return 0; /* the first player's game closed the second's */
+    if (PortLinkRole() == LINK_SLAVE) {
+        /* the second player's game: the window and its events are the first's */
+        return !PortLinkQuitRequested();
     }
     while (SDL_PollEvent(&event)) {
         if (event.type == SDL_EVENT_QUIT) {

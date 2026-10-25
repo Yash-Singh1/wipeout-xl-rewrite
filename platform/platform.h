@@ -5,7 +5,7 @@
 #include <SDL3/SDL_platform_defines.h>
 #include <stdint.h>
 
-/* Phones and tablets (iOS, Android): one window filling the screen, touch controls, no second program. */
+/* Phones and tablets (iOS, Android): one window filling the screen, touch controls, no second player's game (platform/second/). */
 #if defined(SDL_PLATFORM_IOS) || defined(SDL_PLATFORM_ANDROID)
 #define PORT_MOBILE 1
 #endif
@@ -23,8 +23,8 @@ typedef struct PortConfig {
     int captureEvery;
     int captureFrom;         /* the first shown frame saved */
     int captureTo;           /* ... and the last (0: no end) */
-    const char *executable;  /* argv[0]: the second player's game is started from it */
-    const char *linkName;    /* the second player's game: the shared memory of the link (link.c) */
+    const char *executable;  /* argv[0]: the game restarts with another disc from it (PortRestart) */
+    int secondPlayer;        /* the second player's game (link.c, platform/second/) */
 } PortConfig;
 extern PortConfig portConfig;
 

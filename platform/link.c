@@ -2,37 +2,22 @@
 
    On the console the two-player modes link two PlayStations with a cable; each runs the race for its
    own ship and the two exchange a packet every frame (doSerialTransfer). Here the game in the window
-   (the master) starts a second copy of itself for the second player (the slave, no window of its
-   own) and the two exchange their packets through shared memory, in step as over the cable. The
-   shared memory also carries what the slave cannot have by itself: the second player's controller
-   (read by the master, which has the window and the input focus), the second player's choices made
-   on the master's lobby screen, and the slave's picture, which the master shows in the lower half of
-   the window during a race. */
+   (the master) starts the second copy of the game this program holds (the slave, platform/second/: on a
+   thread of its own, with no window of its own) and the two exchange their packets through memory they
+   share, in step as over the cable. The shared memory also carries what the slave cannot have by itself:
+   the second player's controller (read by the master, which has the window and the input focus), the
+   second player's choices made on the master's lobby screen, and the slave's picture, which the master
+   shows in the lower half of the window during a race. */
 #include <SDL3/SDL.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef _WIN32
-#include <windows.h>
-#else
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <unistd.h>
-#endif
-
 #include "link.h"
 #include "platform.h"
-
-#if defined(__EMSCRIPTEN__) || defined(PORT_MOBILE)
-/* The web, a phone or a tablet: a page or an app runs one copy of the game and starts no other program, so the
-   second player's game never starts (PortLinkStartSlave fails as when the program cannot be run) and the
-   two-player modes find no partner. */
-#define SDL_CreateProcess(args, pipeStdio) (SDL_SetError("no second program here"), (SDL_Process *)NULL)
-#define SDL_WaitProcess(process, block, exitCode) true
-#define SDL_KillProcess(process, force) true
-#define SDL_DestroyProcess(process) ((void)(process))
+#ifdef PORT_HAVE_SECOND_GAME
+#include "second/second.h"
 #endif
 
 #define LINK_MAGIC 0x574C4B32u /* WLK2 */
@@ -45,7 +30,6 @@
 
 typedef struct LinkShared {
     uint32_t magic;
-    int64_t build[2];               /* the master's program file: its time and size (the slave must be the same) */
     atomic_uint heartbeat[2];       /* bumped by each side every field, and while it waits for the other */
     atomic_uint sequence[2];        /* transfers each side has made */
     uint8_t packet[2][2][PACKET_BYTES];
@@ -68,74 +52,34 @@ typedef struct LinkShared {
 
 static LinkShared *shared;
 static int role = LINK_NONE;
-static char name[64];
-static SDL_Process *slave;
-static int64_t build[2]; /* this program's file as it was when it started (PortLinkNoteProgram) */
-#ifdef _WIN32
-static HANDLE mapping;
-#endif
+static int slave; /* the master: the slave was started (and has not been waited for since) */
 
 /* ---- shared memory ---- */
 
+/* The master's (made when it first starts the slave), handed to the slave when it starts. */
 static LinkShared *MapShared(int create)
 {
-    size_t size = sizeof(LinkShared);
-    void *memory;
+    LinkShared *memory;
 
-#ifdef _WIN32
-    mapping = create ? CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, (DWORD)((uint64_t)size >> 32),
-                                          (DWORD)size, name)
-                     : OpenFileMappingA(FILE_MAP_ALL_ACCESS, FALSE, name);
-    if (!mapping) {
-        return NULL;
-    }
-    memory = MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, size);
-#elif defined(SDL_PLATFORM_ANDROID)
-    /* (no named shared memory, and no other program to share it with: the game's own) */
-    memory = create ? mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0) : MAP_FAILED;
-    if (memory == MAP_FAILED) {
-        memory = NULL;
-    }
+    if (!create) {
+#ifdef PORT_HAVE_SECOND_GAME
+        return PortSecondGameShared();
 #else
-    int fd = shm_open(name, create ? (O_CREAT | O_EXCL | O_RDWR) : O_RDWR, 0600);
-
-    if (fd < 0) {
         return NULL;
-    }
-    if (create && ftruncate(fd, (off_t)size) != 0) {
-        close(fd);
-        shm_unlink(name);
-        return NULL;
-    }
-    memory = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    close(fd);
-    if (memory == MAP_FAILED) {
-        memory = NULL;
-    }
 #endif
-    if (memory && create) {
-        memset(memory, 0, size);
-        ((LinkShared *)memory)->magic = LINK_MAGIC;
+    }
+    memory = SDL_calloc(1, sizeof(LinkShared));
+    if (memory) {
+        memory->magic = LINK_MAGIC;
     }
     return memory;
 }
 
 static void UnmapShared(void)
 {
-    if (!shared) {
-        return;
+    if (shared && role == LINK_MASTER && !slave) {
+        SDL_free(shared);
     }
-#ifdef _WIN32
-    UnmapViewOfFile(shared);
-    CloseHandle(mapping);
-#else
-    munmap(shared, sizeof(LinkShared));
-#ifndef SDL_PLATFORM_ANDROID
-    if (role == LINK_MASTER) {
-        shm_unlink(name);
-    }
-#endif
-#endif
     shared = NULL;
 }
 
@@ -146,24 +90,11 @@ int PortLinkRole(void)
     return role;
 }
 
-/* At start-up: the program's file as it is now. The second player's game is started from the same file,
-   which may have been replaced (rebuilt) since; a different game on the other end could not keep in
-   step, so it refuses to link (LINK_SLAVE_OTHER_BUILD). */
-void PortLinkNoteProgram(const char *path)
-{
-    SDL_PathInfo info;
-
-    if (path && SDL_GetPathInfo(path, &info)) {
-        build[0] = info.modify_time;
-        build[1] = (int64_t)info.size;
-    }
-}
-
 #ifdef __APPLE__
 #include <objc/message.h>
 #include <objc/runtime.h>
-/* macOS slows down programs it considers in the background (App Nap: their timers late by up to seconds),
-   as the second player's game, which has no window, always is; the link must keep both games in step. */
+/* macOS slows down programs it considers in the background (App Nap: their timers late by up to seconds); the
+   link must keep both games in step. */
 static void KeepAwake(void)
 {
     static void *activity;
@@ -185,54 +116,41 @@ static void KeepAwake(void)
 static void KeepAwake(void) {}
 #endif
 
-int PortLinkSlaveInit(const char *sharedName)
+int PortLinkSlaveInit(void)
 {
-    SDL_strlcpy(name, sharedName, sizeof(name));
     shared = MapShared(0);
     if (!shared || shared->magic != LINK_MAGIC) {
-        fprintf(stderr, "link: cannot open %s\n", name);
+        fprintf(stderr, "link: the first player's game shares nothing with this one\n");
         return 0;
     }
     role = LINK_SLAVE;
-    if (shared->build[0] != build[0] || shared->build[1] != build[1]) {
-        /* not the program the first player's game runs: it was rebuilt or replaced since that started */
-        fprintf(stderr, "link: this is not the program the first player's game runs (it was replaced since)\n");
-        atomic_store(&shared->slaveState, LINK_SLAVE_OTHER_BUILD);
-        return 0;
-    }
     atomic_store(&shared->slaveState, LINK_SLAVE_BOOTING);
-    KeepAwake();
     return 1;
 }
 
 int PortLinkStartSlave(int windowWidth, int windowHeight)
 {
+#ifdef PORT_HAVE_SECOND_GAME
     const char *args[16];
     char window[32], saves[1024];
     int n = 0;
 
-    if (slave) {
+    if (slave && PortSecondGameRunning()) {
         return 1;
     }
+    if (slave && !PortSecondGameStop(0)) {
+        return 0; /* (not yet ended) */
+    }
+    slave = 0;
     if (!shared) {
-#ifdef _WIN32
-        SDL_snprintf(name, sizeof(name), "wipeoutxl-%lu", (unsigned long)GetCurrentProcessId());
-#else
-        SDL_snprintf(name, sizeof(name), "/wipeoutxl-%ld", (long)getpid());
-#endif
         role = LINK_MASTER;
         shared = MapShared(1);
         if (!shared) {
             role = LINK_NONE;
-            fprintf(stderr, "link: no shared memory for the second player\n");
+            fprintf(stderr, "link: no memory to share with the second player's game\n");
             return 0;
         }
-        shared->build[0] = build[0];
-        shared->build[1] = build[1];
         KeepAwake();
-    }
-    if (atomic_load(&shared->slaveState) == LINK_SLAVE_OTHER_BUILD) {
-        return 0; /* the program was replaced: no use starting it again until this one restarts */
     }
     atomic_store(&shared->quit, 0);
     atomic_store(&shared->go, 0);
@@ -244,22 +162,28 @@ int PortLinkStartSlave(int windowWidth, int windowHeight)
     /* the second player's memory card is a scratch one: the first player's card is the player's */
     SDL_snprintf(saves, sizeof(saves), "%slink-player2/", portConfig.savePath ? portConfig.savePath : "./");
     SDL_CreateDirectory(saves);
-    args[n++] = portConfig.executable;
+    args[n++] = "wipeoutxl";
     args[n++] = "--disc";
     args[n++] = portConfig.discPath;
     args[n++] = "--window";
     args[n++] = window;
     args[n++] = "--link-slave";
-    args[n++] = name;
     args[n++] = "--save-dir";
     args[n++] = saves;
     args[n] = NULL;
-    slave = SDL_CreateProcess(args, false);
-    if (!slave) {
+    if (!PortSecondGameStart(shared, n, args)) {
         fprintf(stderr, "link: cannot start the second player's game: %s\n", SDL_GetError());
+        atomic_store(&shared->slaveState, LINK_SLAVE_NONE);
         return 0;
     }
+    slave = 1;
+    PortLog("link: the second player's game started\n");
     return 1;
+#else
+    (void)windowWidth;
+    (void)windowHeight;
+    return 0; /* (no second game here) */
+#endif
 }
 
 void PortLinkStopSlave(void)
@@ -268,23 +192,16 @@ void PortLinkStopSlave(void)
         return;
     }
     atomic_store(&shared->quit, 1);
-    {
-        int waited = 0;
-        while (waited < 3000 && !SDL_WaitProcess(slave, false, NULL)) {
-            SDL_Delay(10);
-            waited += 10;
-        }
-        if (waited >= 3000) {
-            SDL_KillProcess(slave, true);
-            SDL_WaitProcess(slave, true, NULL);
-        }
+#ifdef PORT_HAVE_SECOND_GAME
+    if (!PortSecondGameStop(3000)) {
+        fprintf(stderr, "link: the second player's game has not ended\n");
+        return; /* (it still has the shared memory) */
     }
-    SDL_DestroyProcess(slave);
-    slave = NULL;
-    if (atomic_load(&shared->slaveState) != LINK_SLAVE_OTHER_BUILD) {
-        atomic_store(&shared->slaveState, LINK_SLAVE_NONE);
-    }
+#endif
+    slave = 0;
+    atomic_store(&shared->slaveState, LINK_SLAVE_NONE);
     atomic_store(&shared->split, 0);
+    PortLog("link: the second player's game ended\n");
 }
 
 void PortLinkShutdown(void)
@@ -297,21 +214,20 @@ void PortLinkShutdown(void)
 
 int PortLinkSlaveState(void)
 {
-#if defined(__EMSCRIPTEN__) || defined(PORT_MOBILE)
+#ifndef PORT_HAVE_SECOND_GAME
     return LINK_SLAVE_HERE_NONE;
-#endif
+#else
     if (!shared) {
         return LINK_SLAVE_NONE;
     }
-    if (role == LINK_MASTER && slave && SDL_WaitProcess(slave, false, NULL)) {
-        /* it has exited (having said why, when it was another build) */
-        SDL_DestroyProcess(slave);
-        slave = NULL;
-        if (atomic_load(&shared->slaveState) != LINK_SLAVE_OTHER_BUILD) {
-            atomic_store(&shared->slaveState, LINK_SLAVE_NONE);
-        }
+    if (role == LINK_MASTER && slave && !PortSecondGameRunning()) {
+        /* it has ended */
+        PortSecondGameStop(0);
+        slave = 0;
+        atomic_store(&shared->slaveState, LINK_SLAVE_NONE);
     }
     return atomic_load(&shared->slaveState);
+#endif
 }
 
 void PortLinkSetSlaveState(int state)
@@ -349,11 +265,6 @@ void PortLinkClearGo(void)
 
 int PortLinkQuitRequested(void)
 {
-#ifndef _WIN32
-    if (role == LINK_SLAVE && getppid() == 1) {
-        return 1; /* the first player's game is gone */
-    }
-#endif
     return shared && role == LINK_SLAVE && atomic_load(&shared->quit);
 }
 

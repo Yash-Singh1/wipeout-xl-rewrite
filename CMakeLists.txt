@@ -89,9 +89,13 @@ set(PLATFORM_PSX_SOURCES
 list(TRANSFORM PLATFORM_PSX_SOURCES PREPEND ${CMAKE_SOURCE_DIR}/)
 # The debug console: Dear ImGui (platform/third_party/imgui, MIT) over SDL3 and OpenGL 3.
 set(IMGUI_DIR ${CMAKE_SOURCE_DIR}/platform/third_party/imgui)
-set(DEBUG_UI_SOURCES ${CMAKE_SOURCE_DIR}/platform/debug_ui.cpp ${CMAKE_SOURCE_DIR}/platform/touch.cpp
-    ${IMGUI_DIR}/imgui.cpp ${IMGUI_DIR}/imgui_draw.cpp ${IMGUI_DIR}/imgui_tables.cpp ${IMGUI_DIR}/imgui_widgets.cpp
-    ${IMGUI_DIR}/backends/imgui_impl_sdl3.cpp ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp)
+set(IMGUI_SOURCES ${IMGUI_DIR}/imgui.cpp ${IMGUI_DIR}/imgui_draw.cpp ${IMGUI_DIR}/imgui_tables.cpp
+    ${IMGUI_DIR}/imgui_widgets.cpp ${IMGUI_DIR}/backends/imgui_impl_sdl3.cpp ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp)
+set(DEBUG_UI_SOURCES ${CMAKE_SOURCE_DIR}/platform/debug_ui.cpp ${CMAKE_SOURCE_DIR}/platform/touch.cpp ${IMGUI_SOURCES})
+# (the port's own: what the second player's game has a copy of, platform/second/)
+set(PLATFORM_OWN_SOURCES ${PLATFORM_TOP_SOURCES} ${PLATFORM_PSX_SOURCES} ${CMAKE_SOURCE_DIR}/platform/debug_ui.cpp
+    ${CMAKE_SOURCE_DIR}/platform/touch.cpp)
+list(SORT PLATFORM_OWN_SOURCES)
 set(PLATFORM_SOURCES ${PLATFORM_TOP_SOURCES} ${PLATFORM_PSX_SOURCES} ${DEBUG_UI_SOURCES})
 # Disc images in .7z archives (platform/archive.c): the LZMA SDK's 7z decoder (platform/third_party/lzma, public
 # domain).
@@ -199,18 +203,40 @@ function(port_platform_target name)
     endif()
 endfunction()
 
+# Two players in one program (platform/second/): on the desktop the program holds a second copy of the game for
+# the second player. The web and phones have none.
+if(NOT EMSCRIPTEN AND NOT IOS AND NOT ANDROID)
+    set(PORT_SECOND_GAME ON)
+    # the first game's platform layer, as objects: the second game's copy is compiled under their names' own
+    add_library(platform OBJECT ${PLATFORM_OWN_SOURCES})
+    port_platform_target(platform)
+    target_compile_definitions(platform PRIVATE PORT_HAVE_SECOND_GAME)
+    add_library(imgui STATIC ${IMGUI_SOURCES})
+    target_include_directories(imgui PRIVATE ${IMGUI_DIR})
+    target_compile_options(imgui PRIVATE -std=c++17)
+    target_link_libraries(imgui PRIVATE SDL3::SDL3)
+    set(PROGRAM_SOURCES $<TARGET_OBJECTS:platform> ${CMAKE_SOURCE_DIR}/platform/second/host.c
+        ${CMAKE_SOURCE_DIR}/platform/second/entry.c)
+else()
+    set(PORT_SECOND_GAME OFF)
+    set(PROGRAM_SOURCES ${PLATFORM_SOURCES})
+endif()
 if(ANDROID)
     # Android: the library SDL's activity loads (platform/android: the app around it, built with Gradle)
-    add_library(wipeoutxl SHARED ${PLATFORM_SOURCES})
+    add_library(wipeoutxl SHARED ${PROGRAM_SOURCES})
     set_target_properties(wipeoutxl PROPERTIES OUTPUT_NAME main)
 elseif(WIN32)
     # the PC version's icon (platform/windows)
     enable_language(RC)
-    add_executable(wipeoutxl ${PLATFORM_SOURCES} ${CMAKE_SOURCE_DIR}/platform/windows/wipeoutxl.rc)
+    add_executable(wipeoutxl ${PROGRAM_SOURCES} ${CMAKE_SOURCE_DIR}/platform/windows/wipeoutxl.rc)
 else()
-    add_executable(wipeoutxl ${PLATFORM_SOURCES})
+    add_executable(wipeoutxl ${PROGRAM_SOURCES})
 endif()
 port_platform_target(wipeoutxl)
+if(PORT_SECOND_GAME)
+    target_link_libraries(wipeoutxl PRIVATE imgui)
+    include(cmake/second_game.cmake)
+endif()
 
 # ---- macOS: Wipeout XL.app beside the program, after each build ----
 # The program with the Mac version's icon, and the libraries it uses from Homebrew inside (it runs on a Mac

@@ -76,9 +76,18 @@ The game calls the PsyQ libraries:
 
 The link-cable modes (ARCADE LINK, ONE ON ONE) ran on two consoles, each racing
 its own ship and exchanging a packet every frame (`doSerialTransfer`). The port
-keeps that design: the game in the window starts a second copy of itself for the
-second player (`platform/link.c`, `--link-slave`), and the two exchange their
-packets through shared memory in step, as over the cable. The game's own link
+keeps that design inside one program: the program holds a second copy of the
+whole game (the game, the console's libraries, the platform layer) for the
+second player, compiled again with every global renamed (`platform/second/`,
+`tools/second_game.py`, `cmake/second_game.cmake`). The game in the window starts
+it on a thread of its own with a hidden window to draw with (`platform/link.c`),
+and the two exchange their packets through memory they share, in step, as over
+the cable. The second copy's variables are in sections of their own, put back as
+they were when the program started before each new start, as a fresh console's;
+where the game would end the program (`exit`) or read the first game's test
+settings, the second copy ends its thread or reads nothing, and what it
+allocated and left is freed when it ends. The build checks that the second copy
+uses none of the first's globals. The game's own link
 code runs as it did. In place of the link screen (menu 19) the first player's
 game shows the lobby (`game/src/portlobby.c`); `game/src/portlink.c` drives the
 second player's game through its menus (it starts on the link screen and presses
@@ -94,15 +103,14 @@ over through the shared memory at the size of the window's lower half, and the
 first shows it there. The second game plays no CD music and keeps a scratch
 memory card; it hurries through its start-up (legal screens, loading) unseen, so
 it is waiting at the link screen by the time both players are ready, and macOS's
-App Nap is kept off for it.
+App Nap is kept off while they are linked.
 
 A transfer waits for the other game as long as that game is alive (a heartbeat
 each field): one game may finish loading a track well before the other, and the
 waiting first player's window keeps answering. The link breaks only when the
 other game has exited, has stopped for 8 seconds, or has not answered for 30.
-The second game is started from the program's file; if that file was replaced
-since the first game started (a rebuild), the two would not be the same game,
-so the second refuses to link and the lobby asks for a restart.
+The web and phones hold no second copy: there the lobby says two players need
+the game on a computer.
 
 ## Verification
 

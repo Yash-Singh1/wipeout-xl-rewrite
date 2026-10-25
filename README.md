@@ -160,8 +160,8 @@ At the first start the game looks for the disc image in its folder on the device
 (`Android/data/com.example.wipeoutxl/files`, reached from a computer over USB, or `adb push`); without one
 it asks, and "Choose files..." picks the `.cue` with its `.bin` files (or a `.zip`/`.7z`) with the system's
 picker and copies them in. On both, the debug console (the button at the top left) changes the disc later; the
-new one is used from the next start. The two-player link modes need a second program, which a phone cannot
-start: they find no partner, as on the web.
+new one is used from the next start. The two-player link modes need the second player's copy of the game,
+which only the desktop programs hold: on a phone they find no partner, as on the web.
 
 ## Debug console
 

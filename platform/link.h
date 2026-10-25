@@ -1,5 +1,5 @@
-/* Two players on one machine (link.c): the link cable between the game in the window and a second
-   copy of it for the second player. */
+/* Two players on one machine (link.c): the link cable between the game in the window and the second
+   copy of it this program holds for the second player (platform/second/). */
 #ifndef PORT_LINK_H
 #define PORT_LINK_H
 
@@ -15,8 +15,7 @@ enum {
     LINK_SLAVE_BOOTING,  /* started, not yet at the link screen */
     LINK_SLAVE_WAITING,  /* at the link screen, waiting for the master's go */
     LINK_SLAVE_LINKED,   /* linked: in the menus or racing */
-    LINK_SLAVE_OTHER_BUILD, /* refused: not the program the master runs (it was replaced since the master started) */
-    LINK_SLAVE_HERE_NONE   /* none can run here: a web page or a phone's app starts no second program */
+    LINK_SLAVE_HERE_NONE /* none can run here: a web page or a phone's app holds no second game */
 };
 
 /* The largest picture the slave hands over: the lower half of a window up to 3840 pixels across. */
@@ -44,7 +43,6 @@ int PortInputLastDevice(void);
 void PortInputAssign(int first, int second);
 
 int PortLinkRole(void);
-void PortLinkNoteProgram(const char *path); /* at start-up, before the program's file can change */
 int PortLinkField(void);                    /* each field: alive; 1 while the second player's game starts up */
 
 /* Master */
@@ -66,7 +64,7 @@ void PortLinkSetPresentPeriod(unsigned microseconds);
 int PortLinkTakeRumble(int kind, int *level);
 
 /* Slave */
-int PortLinkSlaveInit(const char *sharedName);
+int PortLinkSlaveInit(void);
 void PortLinkSetSlaveState(int state);
 int PortLinkGoSignal(int *secondShip);
 void PortLinkClearGo(void);

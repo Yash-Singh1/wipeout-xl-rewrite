@@ -425,7 +425,7 @@ void PsxPlayMovie(const char *program)
     uint32_t size;
     int movie = -1, frameCount, soundStart, shown = 0, i;
 
-    if (portConfig.linkName) {
+    if (portConfig.secondPlayer) {
         return; /* the second player's game shows no movies */
     }
     if (portConfig.fixedStep && !SDL_getenv("WIPEOUT_MOVIES")) {

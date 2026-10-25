@@ -35,7 +35,7 @@ static char importName[9];
    are its own, and whose settings are not kept). */
 static int SavesOn(void)
 {
-    return !portConfig.linkName && (!portConfig.hidden || SDL_getenv("WIPEOUT_AUTOSAVE"));
+    return !portConfig.secondPlayer && (!portConfig.hidden || SDL_getenv("WIPEOUT_AUTOSAVE"));
 }
 
 int PortSaveSlot(char name[9])
