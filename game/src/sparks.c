@@ -36,6 +36,9 @@ SParticle *InitParticle(void)
     SParticle *particles;
 
     particles = DAlloc(heap, PARTICLE_COUNT * sizeof(SParticle));
+    /* Port: the sparks' and the rain's streaks are the scene's, also when near enough to be put in the HUD's entry of
+       the table (widescreen took a raindrop touching the speedometer for part of it and left both in the middle) */
+    PortSceneRange(particles, PARTICLE_COUNT * sizeof(SParticle));
     ClearParticleTable(particles);
     return particles;
 }
