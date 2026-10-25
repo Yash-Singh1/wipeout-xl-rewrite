@@ -547,6 +547,48 @@ int PortShadowOnRoad(const ShipData *ship, double x, double y, double z)
     return 0;
 }
 
+/* The key of point k of a ship's shadow grid (frame interpolation: the near and the far view's alike). */
+static uint64_t ShadowKey(const ShipData *ship, int k)
+{
+    return GteKeyMix(GteKeyMix((uint64_t)(uintptr_t)ship, 0x534841444FFull), (uint64_t)k) | GTE_KEY_MOVING;
+}
+
+/* Point k of the 5 x 5 grid between a shadow's corners. */
+static void ShadowPoint(const VECTOR corner[4], int k, double p[3])
+{
+    double s = (k % 5) / 4.0, t = (k / 5) / 4.0;
+
+    p[0] = (1 - t) * ((1 - s) * corner[0].vx + s * corner[1].vx) + t * ((1 - s) * corner[2].vx + s * corner[3].vx);
+    p[1] = (1 - t) * ((1 - s) * corner[0].vy + s * corner[1].vy) + t * ((1 - s) * corner[2].vy + s * corner[3].vy);
+    p[2] = (1 - t) * ((1 - s) * corner[0].vz + s * corner[1].vz) + t * ((1 - s) * corner[2].vz + s * corner[3].vz);
+}
+
+void PortShadowGrid(TrackCamera *camera, const ShipData *ship, const VECTOR corner[4], const int *x, const int *y,
+                    uint32_t handles[25])
+{
+    PortView view;
+    double   h = (double)(u_short)GteReadControl(26);
+    int      k, r;
+
+    CameraView(camera, &view);
+    for (k = 0; k < 25; k++) {
+        double p[3], c[3], nearZ;
+
+        ShadowPoint(corner, k, p);
+        for (r = 0; r < 3; r++) {
+            c[r] = view.m[r][0] * p[0] + view.m[r][1] * p[1] + view.m[r][2] * p[2] + view.t[r];
+        }
+        /* (in front of the camera or not: libgpu cuts a polygon at the near plane from the view-space positions) */
+        nearZ = c[2] > PORT_FAR_NEAR ? c[2] : PORT_FAR_NEAR;
+        GteKeyNext(0, ShadowKey(ship, k));
+        handles[k] = GteRecordProjection((u_short)x[k] | (uint32_t)(u_short)y[k] << 16,
+                                         (float)(GteReadControl(24) / 65536.0 + c[0] * h / nearZ),
+                                         (float)(GteReadControl(25) / 65536.0 + c[1] * h / nearZ), (float)c[2],
+                                         GteFade(sqrt(c[0] * c[0] + c[1] * c[1] + c[2] * c[2])));
+        GteRecordView(handles[k], c[0], c[1], c[2]);
+    }
+}
+
 void PortShadowDrawn(int ship)
 {
     if (shadowFrame != frame) {
@@ -610,13 +652,11 @@ static void DrawFarShadows(TrackCamera *camera, ShipData *ships)
             corner[k].vz -= (alpha * face->normal.vz) >> 12;
         }
         for (k = 0; k < 25; k++) {
-            double s = (k % 5) / 4.0, t = (k / 5) / 4.0;
-            double x = (1 - t) * ((1 - s) * corner[0].vx + s * corner[1].vx) + t * ((1 - s) * corner[2].vx + s * corner[3].vx);
-            double y = (1 - t) * ((1 - s) * corner[0].vy + s * corner[1].vy) + t * ((1 - s) * corner[2].vy + s * corner[3].vy);
-            double z = (1 - t) * ((1 - s) * corner[0].vz + s * corner[1].vz) + t * ((1 - s) * corner[2].vz + s * corner[3].vz);
+            double p[3];
 
-            GteKeyNext(0, GteKeyMix(GteKeyMix((uint64_t)(uintptr_t)ship, 0x534841444FFull), (uint64_t)k) | GTE_KEY_MOVING);
-            PortFarProject(&view, x, y, z, &grid[k]);
+            ShadowPoint(corner, k, p);
+            GteKeyNext(0, ShadowKey(ship, k));
+            PortFarProject(&view, p[0], p[1], p[2], &grid[k]);
             if (grid[k].rejected) {
                 break;
             }

@@ -1743,7 +1743,15 @@ void DrawShadow(void *shapes, ShipData *ships, Shadow *shadow)
                 corners[2]=(u_short)screen[2].vx|(uint32_t)(u_short)screen[2].vy<<16;
                 corners[3]=(u_short)screen[3].vx|(uint32_t)(u_short)screen[3].vy<<16;
                 cornerAddress[0]=&screen[0];cornerAddress[1]=&screen[1];cornerAddress[2]=&screen[2];cornerAddress[3]=&screen[3];
-                GteRecordGrid(corners,cornerAddress,x,y,5,gridHandles);
+                if (!PortTracing()) {
+                    /* ... or rather where each point lies in the world, with its depth: without one the shadow was
+                       drawn over the ship (the depth buffer leaves out what has none) */
+                    VECTOR worldCorners[4];
+                    worldCorners[0]=a;worldCorners[1]=b;worldCorners[2]=c;worldCorners[3]=d;
+                    PortShadowGrid(cameraPtr,ship,worldCorners,x,y,gridHandles);
+                } else {
+                    GteRecordGrid(corners,cornerAddress,x,y,5,gridHandles);
+                }
             }
             depth[0]-=175;
             if(depth[0]<0) depth[0]=0;
