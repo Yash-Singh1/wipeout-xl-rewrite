@@ -496,6 +496,11 @@ int PortOriginalTrack(void)
     return chosen;
 }
 
+int PortOriginalTrackIs64(void)
+{
+    return chosen >= 0 && guests[chosen].from == FROM_64;
+}
+
 int PortOriginalStartLine(void)
 {
     return chosen < 0 ? 0 : guests[chosen].startLine;

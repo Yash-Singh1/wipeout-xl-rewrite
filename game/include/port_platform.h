@@ -106,6 +106,7 @@ int PortOriginalFoundCount(void);
 int PortOriginalTrackClass(int index);
 void PortOriginalTrackSelect(int index);
 int PortOriginalTrack(void);
+int PortOriginalTrackIs64(void); /* the chosen track is Wipeout 64's */
 int PortOriginalStartLine(void);
 int PortOriginalSkyY(void);
 /* The textures of the chosen track's surface (its library.cmp), once the race has opened its files; 0 for none. */
