@@ -125,12 +125,16 @@ void AsmDrawParticles(SParticle *particles, Skeleton *camera, int mode)
         /* Port: frame interpolation: the head bound to its projection (found by its pixel, it could take another
            point's, and stayed put between frames), and the tail, where the head was in the frame before, going there
            smoothly too (it stood still between frames, then jumped). Not in the particle's first frame (not drawn: its
-           tail is the entry's last particle's), nor with a head too near the camera to have a precise projection. */
+           tail is the entry's last particle's), nor with a head too near the camera to have a precise projection. The
+           tail moves as what moves does (GTE_KEY_MOVING): in the first frame drawn it has no place in the frame
+           before, and the view's motion would bring it from far off as a point at the projection distance (the
+           sparks, most drawn in one frame only, streaked to the middle of the screen between frames). */
         if (GtePreciseHandle(15)) {
             GteBindPrecise(&line->x0, GtePreciseHandle(15));
             if (particle->flags) {
                 PortBindScreen(&line->x1, GteKeyMix(GteKeyMix((uint64_t)(uintptr_t)particle,
-                                                              particleSerial[particle - particles]), 0x5441494Cull));
+                                                              particleSerial[particle - particles]), 0x5441494Cull) |
+                                              GTE_KEY_MOVING);
             }
         }
         particle->pos.pad = GteReadData(14);
