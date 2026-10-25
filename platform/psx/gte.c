@@ -1220,12 +1220,15 @@ static void Rtp(int v, int last, int sf)
     sy = (int32_t)(SetMac0((int64_t)n * gte.data[IR2] + c[OFY]) >> 16);
     PushSxy(sx, sy);
     if (gtePrecision) {
-        /* The same projection without the integer steps. */
+        /* The same projection without the integer steps, nor IR1 and IR2's saturation: a vertex more than 32767 to
+           the side came out pressed towards the middle of the screen, unflagged (the game's tests leave those bits
+           out), where widescreen shows it, and was left without a precise position (the far view then took the
+           game's culling of its polygons, judged on the pressed positions, as certain: they were missing). */
         double x = (double)Check44(0, mac1) / 4096.0;
         double y = (double)Check44(1, mac2) / 4096.0;
         double z = (double)Check44(2, mac3) / 4096.0;
         double h = (double)(uint16_t)c[H];
-        if (z > 0.0 && h < z * 2.0 && x > -32768.0 && x < 32767.0 && y > -32768.0 && y < 32767.0) {
+        if (z > 0.0 && h < z * 2.0) {
             float px = (float)(c[OFX] / 65536.0 + x * h / z);
             float py = (float)(c[OFY] / 65536.0 + y * h / z);
             if (px > -1024.0f && px < 1024.0f && py > -1024.0f && py < 1024.0f) {
