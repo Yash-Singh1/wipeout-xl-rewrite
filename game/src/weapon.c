@@ -2631,10 +2631,10 @@ void DamageCollide(int damageType, int shipNo)
     ShipData *playerShip;
 
     if ((linkSendFlag == 0) && (attractDelayFrames <= 0)) {
-        if (shipNo == ownShip && damageType != 0x80 && damageType != 0x81) {
-            PortPadRumble(4); /* Port: a hit the picture does not shake by (another ship) taps the pad; 0x80 is
-                                the pit lane's repair, which is no hit at all, and a wall's (0x81) shakes the pad
-                                by the ship's speed (collide.c's WallRumble) */
+        if (shipNo == ownShip && damageType != 0x80 && damageType != 0x81 && damageType != 0x82) {
+            PortPadRumble(4); /* Port: a hit the picture does not shake by taps the pad; 0x80 is the pit lane's
+                                repair, which is no hit at all, and a wall's (0x81) and another ship's (0x82)
+                                shake it by speed (collide.c's WallHitRumble and ShipHitRumble) */
         }
         switch (damageType) {
         case 0xC:

@@ -51,6 +51,20 @@ int PortLinkGetInput(LinkInput *input)
     return 0;
 }
 
+int PortLinkTakeRumble(int kind, int *level)
+{
+    (void)kind;
+    (void)level;
+    return 0;
+}
+
+/* (platform/main.c) the second player's motors: none without the link */
+void PortPadSecondRumble(int kind, int level)
+{
+    (void)kind;
+    (void)level;
+}
+
 int PortWindowFocused(void)
 {
     return 1;

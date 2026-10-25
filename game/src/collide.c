@@ -15,14 +15,20 @@ extern int collideMinAlpha;
 #include "hud.h"
 
 extern ConfigData *gameData;
+extern int attractDelayFrames;
 
-/* Port: the ship's speed as a share of `most`, the speedometer's full scale (its bar full) at `most`. */
-static int WallSpeed(ShipData *playerShip, int most)
+/* Port: a speed (ShipData.speed's units) as a share of `most`, the speedometer's full scale (its bar full)
+   at `most`. */
+static int SpeedShare(int speed, int most)
 {
     int fullSpeed = speedDividerTable.value[gameData->shipClass] * 96;
-    int speed = playerShip->speed < fullSpeed ? playerShip->speed : fullSpeed;
 
-    return most * speed / fullSpeed;
+    return most * (speed < fullSpeed ? speed : fullSpeed) / fullSpeed;
+}
+
+static int WallSpeed(ShipData *playerShip, int most)
+{
+    return SpeedShare(playerShip->speed, most);
 }
 
 /* Port: the pads' motors at a wall, as hard as the ship was going. The nose meeting it is a hit, a tap
@@ -36,6 +42,17 @@ static void WallHitRumble(ShipData *playerShip)
 static void WallScrapeRumble(ShipData *playerShip)
 {
     PortPadRumbleScrape(2 + WallSpeed(playerShip, 6));
+}
+
+/* Port: the pads' motors at a bump with another ship, as hard as the two met: their speed toward each other
+   (`closing`, the difference of their velocities, halved as dynam.c measures ShipData.speed), a tap (4)
+   when they brush to 16 when one meets the other at the speedometer's full scale. */
+static void ShipHitRumble(VECTOR closing)
+{
+    closing.vx >>= 1;
+    closing.vy >>= 1;
+    closing.vz >>= 1;
+    PortPadRumble(4 + SpeedShare(GetMagnitude(closing), 12));
 }
 
 
@@ -63,6 +80,7 @@ void Ship2ShipCollision(ShipData *shipIndex, Object **shipShapes, int i, int j) 
   VECTOR ship2React;
   VECTOR soundPos;
   VECTOR sparkPos;
+  VECTOR closing; /* Port: how fast the two met, for the pads' motors */
   distance.vx = (shipIndex[i].ppivot.vx - shipIndex[j].ppivot.vx) >> 3;
   distance.vy = (shipIndex[i].ppivot.vy - shipIndex[j].ppivot.vy) >> 3;
   distance.vz = (shipIndex[i].ppivot.vz - shipIndex[j].ppivot.vz) >> 3;
@@ -80,6 +98,9 @@ void Ship2ShipCollision(ShipData *shipIndex, Object **shipShapes, int i, int j) 
         remMass = shipIndex[i].mass;
       else
         remMass = shipIndex[i].mass * 2;
+      closing.vx = shipIndex[i].vpivot.vx - shipIndex[j].vpivot.vx;
+      closing.vy = shipIndex[i].vpivot.vy - shipIndex[j].vpivot.vy;
+      closing.vz = shipIndex[i].vpivot.vz - shipIndex[j].vpivot.vz;
       vc.vx = ((shipIndex[j].vpivot.vx * ownMass) + (shipIndex[i].vpivot.vx * remMass)) / (ownMass + remMass);
       vc.vy = ((shipIndex[j].vpivot.vy * ownMass) + (shipIndex[i].vpivot.vy * remMass)) / (ownMass + remMass);
       vc.vz = ((shipIndex[j].vpivot.vz * ownMass) + (shipIndex[i].vpivot.vz * remMass)) / (ownMass + remMass);
@@ -125,6 +146,9 @@ void Ship2ShipCollision(ShipData *shipIndex, Object **shipShapes, int i, int j) 
           soundPos.vz = (shipIndex[i].ppivot.vz + shipIndex[j].ppivot.vz) >> 1;
           DamageCollide(130, i);
           DamageCollide(130, j);
+          if ((i == ownShip || j == ownShip) && linkSendFlag == 0 && attractDelayFrames <= 0) {
+              ShipHitRumble(closing);
+          }
           PlayDirectionalNote(0, 0, 30, soundPos);
           sparkPos.vx = shipIndex[i].vpivot.vx >> 6;
           sparkPos.vy = shipIndex[i].vpivot.vy >> 6;

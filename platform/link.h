@@ -61,6 +61,9 @@ void PortLinkSetBand(int margin, int width, int height);
    often as this game shows the window (microseconds). */
 void PortLinkSetInterpolate(int on);
 void PortLinkSetPresentPeriod(unsigned microseconds);
+/* What the slave's game asked of the second player's motors since the last call (pad.h's PAD_RUMBLE_*
+   kinds, the game's units): 0 when it asked nothing of that kind. */
+int PortLinkTakeRumble(int kind, int *level);
 
 /* Slave */
 int PortLinkSlaveInit(const char *sharedName);
@@ -73,6 +76,9 @@ void PortLinkPutFrame(const uint8_t *pixels, int width, int height);
 int PortLinkBand(int *margin, int *width, int *height); /* 0 before the master has said */
 int PortLinkInterpolate(void);  /* the master draws pictures between the game's frames */
 unsigned PortLinkPresentPeriod(void); /* how often the master shows the window (microseconds; 0: not known) */
+/* The second player's motors: what this game asks of them, for the master, whose window holds their
+   controller, to run at its own setting. */
+void PortLinkPutRumble(int kind, int level);
 
 /* Both */
 int PortLinkSplit(void);

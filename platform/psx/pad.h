@@ -80,17 +80,20 @@ bool PsxPadLoadScript(const char *text, char *error, int errorSize);
 /* Writes a port's BIOS buffer as the pad driver would (exposed for tests). */
 void PsxPadFillBuffer(int port, uint8_t *buffer, int length);
 
-/* The pads' motors (pad_sdl.c; nothing without SDL). Two kinds of jolt, both in the game's units,
-   2 a knock to 20 a rocket:
-   - `PsxPadRumble(amount)`: a hit. It runs at its strength for its time, and a weaker one that comes
-     while it runs does not end it.
-   - `PsxPadRumbleLevel(level)`: a level held. The game says it again every frame it wants the motors at
-     it (0 stops them), and they stop by themselves a few fields after it stops saying.
-   - `PsxPadRumbleScrape(level)`: a wall's scrape, held as a level is, on the small motor alone.
-   The game's own calls are PortPadRumble, PortPadRumbleLevel and PortPadRumbleScrape (platform/main.c), which keep the
-   setting and the tests' hidden runs out of this library. */
-void PsxPadRumble(int amount);
-void PsxPadRumbleLevel(int level);
-void PsxPadRumbleScrape(int level);
+/* The pads' motors (pad_sdl.c; nothing without SDL), each player's own: player 0 this game's, 1 the second
+   player's in a two-player link (the master's window holds their controller). In the game's units, 2 a knock
+   to 20 a rocket, and three kinds:
+   - PAD_RUMBLE_JOLT: a hit. It runs at its strength for its time, and a weaker one that comes while it runs
+     does not end it.
+   - PAD_RUMBLE_LEVEL: a level held. The game says it again every frame it wants the motors at it (0 stops
+     them), and they stop by themselves a few fields after it stops saying.
+   - PAD_RUMBLE_SCRAPE: a wall's scrape, held as a level is, on the small motor alone.
+   For one player only the gamepad used last shakes, and none while the keyboard is. The game's own calls are
+   PortPadRumble, PortPadRumbleLevel and PortPadRumbleScrape (platform/main.c), which keep the setting and the
+   tests' hidden runs out of this library. */
+enum { PAD_RUMBLE_JOLT, PAD_RUMBLE_LEVEL, PAD_RUMBLE_SCRAPE, PAD_RUMBLE_KINDS };
+void PsxPadRumble(int player, int kind, int level);
+/* (platform/main.c) the second player's request, which their game sent over the link: at this game's setting */
+void PortPadSecondRumble(int kind, int level);
 
 #endif

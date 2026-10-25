@@ -692,16 +692,19 @@ void PsxInputEvent(const SDL_Event *event)
 }
 
 /* The pads' motors. The pads that plugged into the console had none; the port's gamepads shake as the
-   picture does, and growl with the launch thrust. Two things can want them at once and the stronger wins:
-   a jolt (PsxPadRumble), a hit of `amount` that runs for its time and is not ended by a weaker one, and a
-   level (PsxPadRumbleLevel), held while the game keeps saying it and stopped a few fields after it stops.
-   Both are in the game's units: 2 a knock, 20 the full strength. */
-static int joltAmount;    /* the jolt that is running, and when it ends */
-static uint64_t joltUntil;
-static int holdLevel;     /* the level held, and how long it lives without the game saying it again */
-static uint64_t holdUntil;
-static int scrapeLevel;   /* a wall's scrape, held as a level is but on the small motor alone */
-static uint64_t scrapeUntil;
+   picture does, and growl with the launch thrust. Each player's motors are their own (player 0 this game's,
+   1 the second player's, whose game asks over the link), and three things can want them at once:
+   - a jolt, a hit of `level` that runs for its time and is not ended by a weaker one;
+   - a level held while the game keeps saying it and stopped a few fields after it stops;
+   - a scrape, held as a level is, on the small motor alone.
+   All are in the game's units: 2 a knock, 20 the full strength. */
+typedef struct Rumble {
+    int level[PAD_RUMBLE_KINDS];      /* what runs of each kind ... */
+    uint64_t until[PAD_RUMBLE_KINDS]; /* ... and when it ends */
+    int port;                         /* the gamepad that shakes (-1: none), to stop it when the player moves on */
+} Rumble;
+
+static Rumble rumbles[2] = {{{0}, {0}, -1}, {{0}, {0}, -1}};
 
 #define HOLD_MS 100 /* a held level's life without a call: a few fields */
 
@@ -712,42 +715,50 @@ static uint16_t rumble_strength(int level)
     return (uint16_t)(SDL_sqrtf((float)level / 20.0f) * 32767.0f);
 }
 
-static void rumble_apply(void)
+/* The gamepad a player holds: with the devices assigned (the two players' link), each player's own; for one
+   player, the gamepad used last, and none while it is the keyboard - a gamepad lying by is not theirs. */
+static int rumble_port(int player)
 {
+    if (routed) {
+        return GamepadPort(player ? secondDevice : firstDevice);
+    }
+    if (player || lastDevice == DEVICE_KEYBOARD || lastSlot < 0 || lastSlot >= GAMEPADS || !gamepads[lastSlot]) {
+        return -1;
+    }
+    return lastSlot;
+}
+
+static void rumble_apply(int player)
+{
+    Rumble *r = &rumbles[player];
     uint64_t now = SDL_GetTicks();
     uint16_t low = 0, high = 0;
     uint32_t duration = 0;
-    int level = 0, mine, port;
+    int kind, level = 0, port;
 
-    if (now >= joltUntil) {
-        joltAmount = 0;
-        joltUntil = 0;
+    for (kind = 0; kind < PAD_RUMBLE_KINDS; kind++) {
+        if (now >= r->until[kind]) {
+            r->level[kind] = 0;
+            r->until[kind] = 0;
+        }
     }
-    if (now >= holdUntil) {
-        holdLevel = 0;
-        holdUntil = 0;
+    if (r->level[PAD_RUMBLE_JOLT] > level) {
+        level = r->level[PAD_RUMBLE_JOLT];
+        duration = (uint32_t)(r->until[PAD_RUMBLE_JOLT] - now);
     }
-    if (now >= scrapeUntil) {
-        scrapeLevel = 0;
-        scrapeUntil = 0;
-    }
-    if (joltAmount > level) {
-        level = joltAmount;
-        duration = (uint32_t)(joltUntil - now);
-    }
-    if (holdLevel > level) {
-        level = holdLevel;
+    if (r->level[PAD_RUMBLE_LEVEL] > level) {
+        level = r->level[PAD_RUMBLE_LEVEL];
         duration = HOLD_MS;
-    }
-    if (!PortWindowFocused()) {
-        level = 0; /* nothing runs while the game is in the background */
     }
     if (level > 0) {
         low = rumble_strength(level);
         high = low; /* both motors: the small one is the buzz a growl is felt through */
     }
-    if (scrapeLevel > 0 && PortWindowFocused() && rumble_strength(scrapeLevel) > high) {
-        high = rumble_strength(scrapeLevel); /* a scrape is a rattle, not a thud: the small motor's alone */
+    if (rumble_strength(r->level[PAD_RUMBLE_SCRAPE]) > high) {
+        high = rumble_strength(r->level[PAD_RUMBLE_SCRAPE]); /* a scrape is a rattle, not a thud: the small motor's alone */
+    }
+    if (!PortWindowFocused()) {
+        low = high = 0; /* nothing runs while the game is in the background */
     }
     if (low || high) {
         if (duration < HOLD_MS) {
@@ -756,76 +767,62 @@ static void rumble_apply(void)
     } else {
         duration = 0;
     }
-    /* one player: every gamepad is theirs; with the devices assigned (the two players' link), this
-       game's player's controller alone */
-    mine = routed ? GamepadPort(firstDevice) : -1;
-    for (port = 0; port < GAMEPADS; port++) {
-        if (gamepads[port] && (!routed || mine == port)) {
-            SDL_RumbleGamepad(gamepads[port], low, high, duration);
-        }
+    port = rumble_port(player);
+    if (r->port != port && r->port >= 0 && gamepads[r->port]) {
+        SDL_RumbleGamepad(gamepads[r->port], 0, 0, 0); /* the player has put that one down */
+    }
+    r->port = port;
+    if (port >= 0) {
+        SDL_RumbleGamepad(gamepads[port], low, high, duration);
     }
 }
 
-/* Once a field: a held level stops by itself when the game stops holding it. */
+/* Once a field: a held level stops by itself when the game stops holding it, and the second player's game
+   says over the link what it asks of their motors. */
 static void rumble_tick(void)
 {
-    if (joltUntil || holdUntil || scrapeUntil) {
-        rumble_apply();
+    int player, kind, level;
+
+    if (routed && secondDevice != DEVICE_NONE && PortLinkRole() == LINK_MASTER) {
+        for (kind = 0; kind < PAD_RUMBLE_KINDS; kind++) {
+            if (PortLinkTakeRumble(kind, &level)) {
+                PortPadSecondRumble(kind, level);
+            }
+        }
+    }
+    for (player = 0; player < 2; player++) {
+        for (kind = 0; kind < PAD_RUMBLE_KINDS; kind++) {
+            if (rumbles[player].until[kind]) {
+                rumble_apply(player);
+                break;
+            }
+        }
     }
 }
 
-/* A jolt: a hit of `amount` (the game's screen-shake units, SetShake's: 2 a knock to 20 a rocket), or 0 to
-   stop. The pads shake as the picture does. */
-void PsxPadRumble(int amount)
+void PsxPadRumble(int player, int kind, int level)
 {
+    Rumble *r = &rumbles[player ? 1 : 0];
     uint64_t now = SDL_GetTicks();
 
-    if (amount > 20) {
-        amount = 20;
+    if (kind < 0 || kind >= PAD_RUMBLE_KINDS) {
+        return;
     }
-    if (amount > 0) {
-        if (amount < joltAmount && now < joltUntil) {
+    if (level > 20) {
+        level = 20;
+    }
+    if (level <= 0) {
+        r->level[kind] = 0;
+        r->until[kind] = 0;
+    } else if (kind == PAD_RUMBLE_JOLT) {
+        if (level < r->level[kind] && now < r->until[kind]) {
             return; /* the jolt that is running is the stronger of the two */
         }
-        joltAmount = amount;
-        joltUntil = now + (uint64_t)(100 + amount * 20);
+        r->level[kind] = level;
+        r->until[kind] = now + (uint64_t)(100 + level * 20);
     } else {
-        joltAmount = 0;
-        joltUntil = 0;
+        r->level[kind] = level;
+        r->until[kind] = now + HOLD_MS;
     }
-    rumble_apply();
-}
-
-/* A level held: the game says it again every frame it wants the motors at it (0 stops them), and they stop
-   by themselves a few fields after it stops saying. */
-void PsxPadRumbleLevel(int level)
-{
-    if (level > 20) {
-        level = 20;
-    }
-    if (level > 0) {
-        holdLevel = level;
-        holdUntil = SDL_GetTicks() + HOLD_MS;
-    } else {
-        holdLevel = 0;
-        holdUntil = 0;
-    }
-    rumble_apply();
-}
-
-/* A wall's scrape held: said again every frame the wing touches the wall, on the small motor alone, and
-   stopped a few fields after the wing leaves it. */
-void PsxPadRumbleScrape(int level)
-{
-    if (level > 20) {
-        level = 20;
-    }
-    if (level > 0) {
-        scrapeLevel = level;
-        scrapeUntil = SDL_GetTicks() + HOLD_MS;
-    } else {
-        scrapeLevel = 0;
-        scrapeUntil = 0;
-    }
-    rumble_apply();
+    rumble_apply(player ? 1 : 0);
 }

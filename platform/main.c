@@ -566,22 +566,36 @@ static void RumbleLog(const char *kind, int level)
     }
 }
 
+/* A request of the game's: the second player's game sends it over the link to the master, whose window has
+   their controller; this game's runs the player's own motors at the player's setting, and never in the
+   tests' hidden runs (which is also what stops a jolt or a held level that was running when either of them
+   changed). */
+static void Rumble(int kind, const char *name, int level)
+{
+    RumbleLog(name, level);
+    if (PortLinkRole() == LINK_SLAVE) {
+        PortLinkPutRumble(kind, level);
+        return;
+    }
+    PsxPadRumble(0, kind, portSettings.noRumble || portConfig.hidden ? 0 : RumbleLevel(level));
+}
+
 void PortPadRumble(int amount)
 {
-    RumbleLog("jolt", amount);
-    /* the player's setting, and never in the tests' hidden runs (which is also what stops a jolt or a held
-       level that was running when either of them changed) */
-    PsxPadRumble(portSettings.noRumble || portConfig.hidden ? 0 : RumbleLevel(amount));
+    Rumble(PAD_RUMBLE_JOLT, "jolt", amount);
 }
 
 void PortPadRumbleLevel(int level)
 {
-    RumbleLog("level", level);
-    PsxPadRumbleLevel(portSettings.noRumble || portConfig.hidden ? 0 : RumbleLevel(level));
+    Rumble(PAD_RUMBLE_LEVEL, "level", level);
 }
 
 void PortPadRumbleScrape(int level)
 {
-    RumbleLog("scrape", level);
-    PsxPadRumbleScrape(portSettings.noRumble || portConfig.hidden ? 0 : RumbleLevel(level));
+    Rumble(PAD_RUMBLE_SCRAPE, "scrape", level);
+}
+
+void PortPadSecondRumble(int kind, int level)
+{
+    PsxPadRumble(1, kind, portSettings.noRumble || portConfig.hidden ? 0 : RumbleLevel(level));
 }

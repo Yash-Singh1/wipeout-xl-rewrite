@@ -58,6 +58,8 @@ typedef struct LinkShared {
     atomic_int interpolate;         /* master: pictures between the game's frames (the slave draws its own too) */
     LinkInput input;                /* the second player's controller, written by the master */
     atomic_uint inputSequence;
+    atomic_int rumble[PAD_RUMBLE_KINDS]; /* slave: what its game asks of the second player's motors, level + 1
+                                            (0: nothing since the master took it; a jolt keeps the strongest) */
     atomic_uint frameSequence;      /* the slave's pictures (three buffers) */
     atomic_uint presentPeriod;      /* master: how often it shows the window, in microseconds */
     int frameWidth[3], frameHeight[3];
@@ -445,6 +447,37 @@ int PortLinkGetInput(LinkInput *input)
     }
     *input = shared->input;
     return 1;
+}
+
+/* ---- the second player's motors ---- */
+
+void PortLinkPutRumble(int kind, int level)
+{
+    int before;
+
+    if (!shared || kind < 0 || kind >= PAD_RUMBLE_KINDS) {
+        return;
+    }
+    if (kind != PAD_RUMBLE_JOLT) {
+        atomic_store(&shared->rumble[kind], level + 1);
+        return;
+    }
+    /* two hits in one field (a nose on the wall says two): the master sees the stronger */
+    before = atomic_load(&shared->rumble[kind]);
+    while (before < level + 1 && !atomic_compare_exchange_weak(&shared->rumble[kind], &before, level + 1)) {
+    }
+}
+
+int PortLinkTakeRumble(int kind, int *level)
+{
+    int value;
+
+    if (!shared || kind < 0 || kind >= PAD_RUMBLE_KINDS) {
+        return 0;
+    }
+    value = atomic_exchange(&shared->rumble[kind], 0);
+    *level = value - 1;
+    return value > 0;
 }
 
 /* ---- the split window ---- */
