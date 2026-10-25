@@ -55,6 +55,7 @@ extern TrackSection *startDroidSection;
 #include "functions.h"
 #include "include_asm_g8.h"
 #include "portfar.h" /* Port: the far view's shadows */
+#include "../../platform/trace.h" /* Port: lockstep test hooks */
 #include "../../platform/psx/gte.h" /* Port: precise positions for the shadow's grid */
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
@@ -1771,6 +1772,14 @@ void DrawShadow(void *shapes, ShipData *ships, Shadow *shadow)
                     poly->x3=x[grid+6];poly->y3=y[grid+6];
                     GteBindPrecise(&poly->x0,gridHandles[grid]);GteBindPrecise(&poly->x1,gridHandles[grid+1]); /* Port: precise positions */
                     GteBindPrecise(&poly->x2,gridHandles[grid+5]);GteBindPrecise(&poly->x3,gridHandles[grid+6]);
+                    if (!PortTracing()) {
+                        /* Port: a quad not over the road is left out (past the end of a ramp the face's plane goes on,
+                           and the shadow hung in the air under a ship leaving it) */
+                        double s=(col+0.5)/4.0, t=(row+0.5)/4.0;
+                        if (!PortShadowOnRoad(ship, (1-t)*((1-s)*a.vx+s*b.vx)+t*((1-s)*c.vx+s*d.vx),
+                                              (1-t)*((1-s)*a.vy+s*b.vy)+t*((1-s)*c.vy+s*d.vy),
+                                              (1-t)*((1-s)*a.vz+s*b.vz)+t*((1-s)*c.vz+s*d.vz))) continue;
+                    }
                     if(row==0) AddPrim(OT[CurrentScreen]+depth[0],&shadowQuads->quad[col][CurrentScreen]);
                     else if(row==1) AddPrim(OT[CurrentScreen]+depth[1],&shadowQuads->quad[4+col][CurrentScreen]);
                     else AddPrim(OT[CurrentScreen]+depth[2],poly);

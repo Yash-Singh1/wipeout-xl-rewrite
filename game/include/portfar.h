@@ -42,6 +42,9 @@ const unsigned char *PortFarObjectDrawn(Object *object, int *complete);
 void PortFarMarkShip(int ship);
 /* DrawShadow gave the ship a shadow this frame (the far view gives the other ships drawn theirs). */
 void PortShadowDrawn(int ship);
+/* Whether a point of a ship's shadow (world space, on the plane of the road face under the ship) lies over the road of
+   the sections about the ship: the plane goes on past the end of a ramp, where the shadow hung in the air. */
+int PortShadowOnRoad(const ShipData *ship, double x, double y, double z);
 
 /* The pass, after the game's scenery (racectrl.c). */
 void PortFarDraw(TrackCamera *camera, ShipData *ships, Object **shipShapes);

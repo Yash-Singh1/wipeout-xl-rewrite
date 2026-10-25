@@ -475,6 +475,78 @@ static void DrawFarShips(ShipData *ships, Object **shipShapes)
     }
 }
 
+/* Whether (u, v) is inside the triangle a, b, c (either winding). */
+static int InTriangle(const double a[2], const double b[2], const double c[2], double u, double v)
+{
+    double d1 = (b[0] - a[0]) * (v - a[1]) - (b[1] - a[1]) * (u - a[0]);
+    double d2 = (c[0] - b[0]) * (v - b[1]) - (c[1] - b[1]) * (u - b[0]);
+    double d3 = (a[0] - c[0]) * (v - c[1]) - (a[1] - c[1]) * (u - c[0]);
+
+    return (d1 >= 0 && d2 >= 0 && d3 >= 0) || (d1 <= 0 && d2 <= 0 && d3 <= 0);
+}
+
+/* Whether the point is over a road face (flags & 1) of the section: within its corners seen along the face's normal,
+   and near its plane (not a road crossing far above or below). */
+static int OverRoad(const TrackSection *section, double x, double y, double z)
+{
+    int i, k;
+
+    for (i = 0; i < section->faceCount; i++) {
+        const Face *face = track->faces + section->faceStart + i;
+        double corner[4][2], n[3] = {face->normal.vx, face->normal.vy, face->normal.vz}, u, v, height;
+        int axis = fabs(n[0]) > fabs(n[1]) ? (fabs(n[0]) > fabs(n[2]) ? 0 : 2) : (fabs(n[1]) > fabs(n[2]) ? 1 : 2);
+        const VECTOR *first = &track->vertices[face->vertex[0]];
+
+        if (!(face->flags & 1)) {
+            continue;
+        }
+        height = ((x - first->vx) * n[0] + (y - first->vy) * n[1] + (z - first->vz) * n[2]) / 4096.0;
+        if (fabs(height) > 1000.0) {
+            continue;
+        }
+        for (k = 0; k < 4; k++) {
+            const VECTOR *p = &track->vertices[face->vertex[k]];
+            double w[3] = {p->vx, p->vy, p->vz};
+
+            corner[k][0] = w[axis == 0 ? 1 : 0];
+            corner[k][1] = w[axis == 2 ? 1 : 2];
+        }
+        u = axis == 0 ? y : x;
+        v = axis == 2 ? y : z;
+        /* (the quad's corners in either order: its four triangles cover it) */
+        if (InTriangle(corner[0], corner[1], corner[2], u, v) || InTriangle(corner[0], corner[2], corner[3], u, v) ||
+            InTriangle(corner[0], corner[1], corner[3], u, v) || InTriangle(corner[1], corner[2], corner[3], u, v)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int PortShadowOnRoad(const ShipData *ship, double x, double y, double z)
+{
+    const TrackSection *section = ship->nearTrkSect;
+    int i;
+
+    if (!track || !section) {
+        return 1;
+    }
+    if (OverRoad(section, x, y, z) || OverRoad(section->prevSection.ptr, x, y, z) ||
+        OverRoad(section->nextSection.ptr, x, y, z)) {
+        return 1;
+    }
+    if (section->junction.index != -1 && OverRoad(section->junction.ptr, x, y, z)) {
+        return 1;
+    }
+    /* two sections on: a ship at the end of one, its shadow reaching into the next but one */
+    for (i = 0; i < 2; i++) {
+        section = i ? ship->nearTrkSect->prevSection.ptr->prevSection.ptr : ship->nearTrkSect->nextSection.ptr->nextSection.ptr;
+        if (OverRoad(section, x, y, z)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 void PortShadowDrawn(int ship)
 {
     if (shadowFrame != frame) {
@@ -563,6 +635,14 @@ static void DrawFarShadows(TrackCamera *camera, ShipData *ships)
             for (col = 0; col < 4; col++) {
                 POLY_FT4 *poly = &shadow->quad[row * 4 + col][CurrentScreen];
                 int       g = row * 5 + col, e = entry[row < 2 ? row : 2];
+                double    s = (col + 0.5) / 4.0, t = (row + 0.5) / 4.0;
+
+                if (!PortShadowOnRoad(ship,
+                                      (1 - t) * ((1 - s) * corner[0].vx + s * corner[1].vx) + t * ((1 - s) * corner[2].vx + s * corner[3].vx),
+                                      (1 - t) * ((1 - s) * corner[0].vy + s * corner[1].vy) + t * ((1 - s) * corner[2].vy + s * corner[3].vy),
+                                      (1 - t) * ((1 - s) * corner[0].vz + s * corner[1].vz) + t * ((1 - s) * corner[2].vz + s * corner[3].vz))) {
+                    continue; /* (as DrawShadow: off the road) */
+                }
 
                 *(int *)&poly->x0 = grid[g].screen;
                 *(int *)&poly->x1 = grid[g + 1].screen;
