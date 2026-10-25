@@ -249,13 +249,21 @@ int PortNameTyped(int letters, int picked, int current)
     return -1;
 }
 
+extern POLY_FT4 quadPool[];
+extern int quadIndex;
+
 void EnterHighScore(ConfigData *gameData, HiScoreData *hiScoreData)
 {
     short charY = 185;
     short select;
     int scoreTrack;
     int charX = hiScoreData->charX;
+    POLY_FT4 *inPlace = &quadPool[quadIndex]; /* Port: the name being entered stays under the heading in widescreen,
+                                                 not at the screen's left edge (PortHudCentred) */
 
+    if (PortPcData()) {
+        PcCentred(1);
+    }
     if (PortPcData()) {
         /* Port: the letter being chosen after the name as the PC's font spaces it */
         charX = 40 + PcTextWidth((const char *)hiScoreData->nameEntered, 8);
@@ -360,6 +368,10 @@ void EnterHighScore(ConfigData *gameData, HiScoreData *hiScoreData)
     if (hiScoreData->userEntry) {
         AddText(hiScoreData->nameEntered, 40, charY, 16, 1);
         AddTime(hiScoreData->totalTime, 165, charY, 16, 0, 1);
+    }
+    PortHudCentred(inPlace, &quadPool[quadIndex]);
+    if (PortPcData()) {
+        PcCentred(0);
     }
     hiScoreData->toggleDisplay++;
     if (!hiScoreData->userEntry) {
