@@ -54,6 +54,7 @@ extern int droidBlinkTick;
 extern TrackSection *startDroidSection;
 #include "functions.h"
 #include "include_asm_g8.h"
+#include "portfar.h" /* Port: the far view's shadows */
 #include "../../platform/psx/gte.h" /* Port: precise positions for the shadow's grid */
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
@@ -1775,6 +1776,7 @@ void DrawShadow(void *shapes, ShipData *ships, Shadow *shadow)
                     else AddPrim(OT[CurrentScreen]+depth[2],poly);
                 }
             }
+            PortShadowDrawn(i); /* Port: the far view gives the ships without one theirs (portfar.h) */
         }
     }
 }

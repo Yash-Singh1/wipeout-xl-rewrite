@@ -48,10 +48,11 @@ static void BindFlareCorner(short *corner, const GtePrecise *centre, int x, int 
     int    dx = corner[0] - x, dy = corner[1] - y;
     uint32_t handle;
 
-    GteKeyNext(0, GteKeyMix(centre->key, 0x464C4152000ull + (uint64_t)k));
+    GteKeyNext(0, GteKeyMix(centre->key, 0x464C4152000ull + (uint64_t)k) | GTE_KEY_MOVING);
     handle = GteRecordProjection(*(u_int *)corner, centre->x + (float)dx, centre->y + (float)dy, (float)depth,
                                  centre->fade);
     GteRecordView(handle, centre->view[0] + dx * scale, centre->view[1] + dy * scale, depth);
+    GteRecordAnchor(handle, centre->key, dx * scale, dy * scale, 0.0); /* (a corner the flare had not before) */
     GteBindPrecise(corner, handle);
 }
 
@@ -64,7 +65,7 @@ static uint64_t TrailKey(Trail *trail, int i, int side)
     uint64_t segment = GteKeyMix(GteKeyMix((uint64_t)(uintptr_t)trail, 0x545241494Cull),
                                  (uint64_t)((i - trail->current + TRAIL_SEGMENTS) % TRAIL_SEGMENTS));
 
-    return GteKeyMix(segment, (uint64_t)side);
+    return GteKeyMix(segment, (uint64_t)side) | GTE_KEY_MOVING;
 }
 
 /* Port: the keys of the next projection's three vertices, segment `i`'s left edge, middle and right edge. */

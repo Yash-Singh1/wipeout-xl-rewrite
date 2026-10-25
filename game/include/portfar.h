@@ -40,6 +40,8 @@ int PortFarFaceDrawn(Face *face);
 unsigned char *PortFarObjectPrimitives(Object *object);
 const unsigned char *PortFarObjectDrawn(Object *object, int *complete);
 void PortFarMarkShip(int ship);
+/* DrawShadow gave the ship a shadow this frame (the far view gives the other ships drawn theirs). */
+void PortShadowDrawn(int ship);
 
 /* The pass, after the game's scenery (racectrl.c). */
 void PortFarDraw(TrackCamera *camera, ShipData *ships, Object **shipShapes);

@@ -5,6 +5,7 @@
 #include "functions.h"
 #include "portfar.h"
 #include "trails.h"
+#include "effects.h"
 #include "port_platform.h"
 #include "../../platform/psx/gte.h"
 
@@ -16,6 +17,7 @@ extern int        remoteShip;
 extern int        ghostShip;
 extern int        raceType;
 extern ShipData  *shipIndex;
+extern Shadow    *shadowData;
 
 /* The game's ordering table has 0x2000 entries; the sky is linked into the last. Primitives the game
    would put at or beyond FAR_ENTRY go into the far table, linked in at FAR_ENTRY: drawn after the sky,
@@ -40,6 +42,8 @@ static uint32_t *faceMarks;      /* the frame each track face was last drawn by 
 static int      faceMarkCount;
 static uint32_t shipMarks[15];
 static int      farShips;        /* the ships the far view drew this frame, until their engine flares are drawn */
+static int      shadowShips;     /* the ships DrawShadow gave a shadow this frame */
+static uint32_t shadowFrame;     /* ... the frame that was */
 static u_long  *flareSlot;       /* where DrawFlare links the flare it draws for the far view (PortFlareSlot) */
 /* The objects the game drew this frame, and which of their primitives it handled (drew, or culled as
    facing away): the GTE rejects every polygon with a vertex deeper than 32767 (IR3 saturates) while the
@@ -471,6 +475,109 @@ static void DrawFarShips(ShipData *ships, Object **shipShapes)
     }
 }
 
+void PortShadowDrawn(int ship)
+{
+    if (shadowFrame != frame) {
+        shadowFrame = frame;
+        shadowShips = 0;
+    }
+    shadowShips |= 1 << ship;
+}
+
+/* The shadows of the ships drawn this frame that DrawShadow gave none: it gives one only to a ship DrawShips drew
+   itself the frame before (within 9600 of the camera and ahead of it), and the far view draws the rest. Laid as
+   DrawShadow lays them, on the track face under the ship, in its quads (unused this frame), the grid placed in the
+   world rather than halved on the screen. */
+static void DrawFarShadows(TrackCamera *camera, ShipData *ships)
+{
+    PortView view;
+    int      i;
+
+    if (!shadowData) {
+        return;
+    }
+    CameraView(camera, &view);
+    for (i = 0; i < 15; i++) {
+        ShipData      *ship = &ships[i];
+        Shadow        *shadow = &shadowData[i];
+        VECTOR         corner[4], facePoint;
+        PortFarVertex  grid[25];
+        Face          *face;
+        u_char         flags;
+        int            k, row, col, entry[3];
+
+        if (!(farShips & (1 << i)) && shipMarks[i] != frame) {
+            continue; /* not drawn */
+        }
+        if ((shadowFrame == frame && (shadowShips & (1 << i))) || (ship->attr & FLYING) ||
+            (ship->combatAttr & DESTROYED) || !ship->nearTrkSect || (raceType == 1 && i != ownShip) ||
+            (raceType == 3 && i != ownShip && i != remoteShip)) {
+            continue; /* (as the game's: none for a ship in the air, nor for a time trial's ghost) */
+        }
+        face = track->faces + ship->nearTrkSect->faceStart;
+        do {
+            flags = face->flags;
+            face++;
+        } while (!(flags & 1));
+        face--;
+        for (k = 0; k < 4; k++) {
+            int nose = k < 2 ? 1 : -1, wing = k & 1 ? 1 : -1;
+
+            corner[k].vx = ship->ppivot.vx + nose * ((ship->unitVecNose.vx * 3) >> 5) + wing * (ship->unitVecWing.vx >> 4);
+            corner[k].vy = ship->ppivot.vy + nose * ((ship->unitVecNose.vy * 3) >> 5) + wing * (ship->unitVecWing.vy >> 4);
+            corner[k].vz = ship->ppivot.vz + nose * ((ship->unitVecNose.vz * 3) >> 5) + wing * (ship->unitVecWing.vz >> 4);
+        }
+        facePoint.vx = track->vertices[face->vertex[0]].vx;
+        facePoint.vy = track->vertices[face->vertex[0]].vy;
+        facePoint.vz = track->vertices[face->vertex[0]].vz;
+        for (k = 0; k < 4; k++) {
+            int alpha = PlaneLineCollision(facePoint, corner[k], face->normal);
+
+            corner[k].vx -= (alpha * face->normal.vx) >> 12;
+            corner[k].vy -= (alpha * face->normal.vy) >> 12;
+            corner[k].vz -= (alpha * face->normal.vz) >> 12;
+        }
+        for (k = 0; k < 25; k++) {
+            double s = (k % 5) / 4.0, t = (k / 5) / 4.0;
+            double x = (1 - t) * ((1 - s) * corner[0].vx + s * corner[1].vx) + t * ((1 - s) * corner[2].vx + s * corner[3].vx);
+            double y = (1 - t) * ((1 - s) * corner[0].vy + s * corner[1].vy) + t * ((1 - s) * corner[2].vy + s * corner[3].vy);
+            double z = (1 - t) * ((1 - s) * corner[0].vz + s * corner[1].vz) + t * ((1 - s) * corner[2].vz + s * corner[3].vz);
+
+            GteKeyNext(0, GteKeyMix(GteKeyMix((uint64_t)(uintptr_t)ship, 0x534841444FFull), (uint64_t)k) | GTE_KEY_MOVING);
+            PortFarProject(&view, x, y, z, &grid[k]);
+            if (grid[k].rejected) {
+                break;
+            }
+        }
+        if (k < 25) {
+            continue;
+        }
+        /* sorted as DrawShadow sorts them: its two rows nearest the nose by the nose's left corner, the rest by the
+           tail's (RotTransPers's depth: a quarter of the view depth) */
+        entry[0] = (int)(grid[0].z / 4.0) - 175;
+        entry[0] = entry[0] < 0 ? 0 : entry[0];
+        entry[1] = entry[0] - 20 < 0 ? 0 : entry[0] - 20;
+        entry[2] = (int)(grid[20].z / 4.0) - 100;
+        entry[2] = entry[2] < 0 ? 0 : entry[2];
+        for (row = 0; row < 4; row++) {
+            for (col = 0; col < 4; col++) {
+                POLY_FT4 *poly = &shadow->quad[row * 4 + col][CurrentScreen];
+                int       g = row * 5 + col, e = entry[row < 2 ? row : 2];
+
+                *(int *)&poly->x0 = grid[g].screen;
+                *(int *)&poly->x1 = grid[g + 1].screen;
+                *(int *)&poly->x2 = grid[g + 5].screen;
+                *(int *)&poly->x3 = grid[g + 6].screen;
+                GteBindPrecise(&poly->x0, grid[g].handle);
+                GteBindPrecise(&poly->x1, grid[g + 1].handle);
+                GteBindPrecise(&poly->x2, grid[g + 5].handle);
+                GteBindPrecise(&poly->x3, grid[g + 6].handle);
+                AddPrim(PortFarSlot(e, e * 4.0), poly);
+            }
+        }
+    }
+}
+
 void PortFarDraw(TrackCamera *camera, ShipData *ships, Object **shipShapes)
 {
     if (!Enabled() || !track) {
@@ -483,6 +590,7 @@ void PortFarDraw(TrackCamera *camera, ShipData *ships, Object **shipShapes)
     DrawFarTrack(camera);
     DrawFarScenery();
     DrawFarShips(ships, shipShapes);
+    DrawFarShadows(camera, ships);
     AddPrims(OT[CurrentScreen] + FAR_ENTRY, farTable[CurrentScreen] + FAR_BUCKETS - 1, farTable[CurrentScreen]);
     frame++;
 }
@@ -521,7 +629,7 @@ void PortFarFlares(TrackCamera *camera)
         }
         /* where its trail's newest segment would be (UpdateShipTrails): the game keeps no trail for a ship out of
            its view, and the trail's last segment was left where the ship went out of it (a flare stood there) */
-        GteKeyNext(0, GteKeyMix((uint64_t)(uintptr_t)at, 0x464152464Cull)); /* frame interpolation: the ship's */
+        GteKeyNext(0, GteKeyMix((uint64_t)(uintptr_t)at, 0x464152464Cull) | GTE_KEY_MOVING); /* frame interpolation */
         PortFarProject(&view, at->ppivot.vx - ((at->unitVecNose.vx * 420) >> 12),
                        at->ppivot.vy - ((at->unitVecNose.vy * 420) >> 12) - 15,
                        at->ppivot.vz - ((at->unitVecNose.vz * 420) >> 12), &centre);
