@@ -1990,6 +1990,21 @@ static uint64_t frameDrawnTicks;
 static uint64_t frameTicks = 33366667; /* between the game's frames: two fields */
 static uint64_t frameDrawnField;       /* tests: the field the last frame was drawn in */
 
+/* Whether a table draws anything: fills or primitives. */
+static int TableDraws(u_long *table)
+{
+    u_long *node;
+
+    for (node = table ? PacketFrom(table) : NULL; node; node = PacketFrom(NodeAfter(node))) {
+        uint32_t code = (uint32_t)node[1] >> 24;
+
+        if (code == 0x02 || (code >= 0x20 && code < 0x80)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 void PsxUpcomingTables(u_long *table, u_long *second, u_long *hudFirst, DRAWENV *env)
 {
     memcpy(centred[1], centred[0], sizeof(centred[0])); /* (PortHudCentred: the frame's, for its tables) */
@@ -2010,6 +2025,11 @@ void PsxUpcomingTables(u_long *table, u_long *second, u_long *hudFirst, DRAWENV 
     upcoming.r = env->r0;
     upcoming.g = env->g0;
     upcoming.b = env->b0;
+    if (!TableDraws(table) && !TableDraws(second)) {
+        /* a frame that draws nothing (the menus' first, after the loading message) leaves the picture as it
+           was, which pictures drawn from its tables afresh would clear */
+        upcoming.table = NULL;
+    }
 }
 
 /* Tests: WIPEOUT_INTERPOLATE=n draws n pictures between the game's frames in each field of a fixed-step run
