@@ -92,6 +92,11 @@ static size_t fileSizes[FILES];
 #define MODELS_NAME "\\origtrk.prm"
 static uint8_t *modelsFile;
 static size_t modelsSize;
+/* ... and its track menu's pictures of its circuits (its textures/track.cmp), asked for as PICTURES_NAME: read at
+   the virtual sector after the models */
+#define PICTURES_NAME "\\origpics.cmp"
+static uint8_t *picturesFile;
+static size_t picturesSize;
 static int builtFor = -1;
 static int libraryTextures;     /* the TIMs of the built track's library.cmp (its surface's textures) */
 static void ListGuests(void);
@@ -100,7 +105,7 @@ static void ListGuests(void);
 
 /* ---- reading the original's files ---- */
 
-static uint8_t *ReadOriginal(int folderNumber, const char *name, size_t *size);
+static uint8_t *ReadOriginal(int folderNumber, const char *name, size_t *size); /* (folder 0 common, -1 textures) */
 
 /* The original's track menu models (common/track.prm) in XL's model format. That file has flat and gouraud quads
    only (F4, G4), in a record of their own: the type, the four corners, two bytes left over from the tool that
@@ -257,10 +262,11 @@ static uint8_t *ReadOriginal(int folderNumber, const char *name, size_t *size)
         int32_t lba;
         uint32_t length;
 
-        if (folderNumber) {
+        if (folderNumber > 0) {
             SDL_snprintf(path, sizeof(path), "\\WIPEOUT\\TRACK%02d\\%s", folderNumber, name);
         } else {
-            SDL_snprintf(path, sizeof(path), "\\WIPEOUT\\COMMON\\%s", name); /* (folder 0: the common files) */
+            /* (folder 0: the common files; -1: the textures) */
+            SDL_snprintf(path, sizeof(path), "\\WIPEOUT\\%s\\%s", folderNumber ? "TEXTURES" : "COMMON", name);
         }
         for (char *c = path; *c; c++) {
             *c = (char)SDL_toupper((unsigned char)*c);
@@ -277,18 +283,18 @@ static uint8_t *ReadOriginal(int folderNumber, const char *name, size_t *size)
         return data;
     }
     /* a folder: the names as the disc has them or in lower case */
-    if (folderNumber) {
+    if (folderNumber > 0) {
         SDL_snprintf(path, sizeof(path), "%s/track%02d/%s", folder, folderNumber, name);
     } else {
-        SDL_snprintf(path, sizeof(path), "%s/common/%s", folder, name);
+        SDL_snprintf(path, sizeof(path), "%s/%s/%s", folder, folderNumber ? "textures" : "common", name);
     }
     if ((data = SDL_LoadFile(path, size))) {
         return data;
     }
-    if (folderNumber) {
+    if (folderNumber > 0) {
         SDL_snprintf(path, sizeof(path), "%s/TRACK%02d/%s", folder, folderNumber, name);
     } else {
-        SDL_snprintf(path, sizeof(path), "%s/COMMON/%s", folder, name);
+        SDL_snprintf(path, sizeof(path), "%s/%s/%s", folder, folderNumber ? "TEXTURES" : "COMMON", name);
     }
     for (char *c = path + strlen(folder); *c; c++) {
         *c = (char)SDL_toupper((unsigned char)*c);
@@ -317,6 +323,9 @@ void PortOriginalClose(void)
     SDL_free(modelsFile);
     modelsFile = NULL;
     modelsSize = 0;
+    SDL_free(picturesFile);
+    picturesFile = NULL;
+    picturesSize = 0;
     ListGuests();
 }
 
@@ -396,6 +405,8 @@ static void ListGuests(void)
     builtFor = -1;
     SDL_free(modelsFile); /* (made again from the sources now in use, at the next ask) */
     modelsFile = NULL;
+    SDL_free(picturesFile);
+    picturesFile = NULL;
     for (i = 0; i < ORIGINALS; i++) {
         if (present[i]) {
             Guest *g = &guests[guestCount++];
@@ -463,6 +474,23 @@ int PortOriginalHasModels(void)
         modelsFile = MenuModels(&modelsSize);
     }
     return modelsFile != NULL;
+}
+
+static uint8_t *MakePictures(size_t *size);
+
+int PortOriginalHasPictures(void)
+{
+    OpenSettings();
+    if (!picturesFile && presentCount) {
+        picturesFile = MakePictures(&picturesSize);
+    }
+    return picturesFile != NULL;
+}
+
+int PortOriginalTrackPicture(int index)
+{
+    /* (originals[] is in its circuits' order, each a Venom and a Rapier track, as the pictures are) */
+    return index >= 0 && index < guestCount && guests[index].from == FROM_ORIGINAL ? guests[index].track / 2 : -1;
 }
 
 const char *PortOriginalTrackModel(int index)
@@ -1008,6 +1036,64 @@ static uint8_t *Relocate(const uint8_t *cmp, size_t length, int *paletteSlot, si
     return out;
 }
 
+/* The original's pictures of its circuits (textures/track.cmp: seven 128x74 TIMs of 256 colours, in its circuits'
+   order) for the class menu, in the second half of video memory where nothing else is during the menus: the
+   images three to a texture page from x 640, the palettes below the last. */
+static uint32_t Le32(const uint8_t *p);
+
+static uint8_t *MakePictures(size_t *size)
+{
+    size_t length, header, total = 0, at, packedSize;
+    uint8_t *cmp = ReadOriginal(-1, "track.cmp", &length), *tims, *packed, *out;
+    int count, i;
+
+    if (!cmp || length < 4) {
+        SDL_free(cmp);
+        return NULL;
+    }
+    count = (int)(cmp[0] | cmp[1] << 8 | cmp[2] << 16 | (uint32_t)cmp[3] << 24);
+    header = 4 + (size_t)count * 4;
+    if (count <= 0 || count > 16 || header > length) {
+        SDL_free(cmp);
+        return NULL;
+    }
+    for (i = 0; i < count; i++) {
+        total += Le32(cmp + 4 + i * 4);
+    }
+    tims = SDL_malloc(total + 1);
+    if (!tims || LzssDecompress(cmp + header, length - header, tims, total) != total) {
+        SDL_free(tims);
+        SDL_free(cmp);
+        return NULL;
+    }
+    for (i = 0, at = 0; i < count; i++) {
+        size_t timSize = Le32(cmp + 4 + i * 4);
+        uint8_t *tim = tims + at, *image;
+
+        /* (an 8-bit TIM: its palette block, then its image block, 64 of video memory's pixels across) */
+        if (timSize < 20 || (tim[4] & 0xF) != 9 || 8 + (size_t)Le32(tim + 8) + 12 > timSize) {
+            SDL_free(tims);
+            SDL_free(cmp);
+            return NULL;
+        }
+        image = tim + 8 + Le32(tim + 8);
+        PutLe16(tim + 8 + 4, 768);
+        PutLe16(tim + 8 + 6, 600 + i);
+        PutLe16(image + 4, 640 + (i / 3) * 64);
+        PutLe16(image + 6, 512 + (i % 3) * 74);
+        at += timSize;
+    }
+    packed = LzssStore(tims, total, &packedSize);
+    out = SDL_malloc(header + packedSize);
+    memcpy(out, cmp, header);
+    memcpy(out + header, packed, packedSize);
+    SDL_free(packed);
+    SDL_free(tims);
+    SDL_free(cmp);
+    *size = header + packedSize;
+    return out;
+}
+
 /* ---- the game's file layer ---- */
 
 int PortOriginalFileInfo(const char *pathname, int *loc, int *size)
@@ -1021,6 +1107,14 @@ int PortOriginalFileInfo(const char *pathname, int *loc, int *size)
         }
         *loc = VIRTUAL_LOC + FILES * VIRTUAL_SPAN;
         *size = (int)modelsSize;
+        return 1;
+    }
+    if (SDL_strcasestr(pathname, PICTURES_NAME)) {
+        if (!PortOriginalHasPictures()) {
+            return 0;
+        }
+        *loc = VIRTUAL_LOC + (FILES + 1) * VIRTUAL_SPAN;
+        *size = (int)picturesSize;
         return 1;
     }
     if (chosen < 0 || !guestCount) {
@@ -1053,11 +1147,12 @@ int PortOriginalRead(int loc, int sectors, void *buffer)
     const uint8_t *data;
     size_t size;
 
-    if (loc < VIRTUAL_LOC || file > FILES || (file < FILES && !files[file]) || (file == FILES && !modelsFile)) {
+    if (loc < VIRTUAL_LOC || file > FILES + 1 || (file < FILES && !files[file]) || (file == FILES && !modelsFile) ||
+        (file == FILES + 1 && !picturesFile)) {
         return 0;
     }
-    data = file == FILES ? modelsFile : files[file];
-    size = file == FILES ? modelsSize : fileSizes[file];
+    data = file == FILES + 1 ? picturesFile : file == FILES ? modelsFile : files[file];
+    size = file == FILES + 1 ? picturesSize : file == FILES ? modelsSize : fileSizes[file];
     from = (size_t)sector * 2048;
     length = (size_t)sectors * 2048;
     memset(buffer, 0, length);

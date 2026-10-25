@@ -102,6 +102,10 @@ const char *PortOriginalTrackGame(int index); /* "THE ORIGINAL WIPEOUT" or "WIPE
    and Wipeout 64's, while the player's copies are in use), or NULL. */
 const char *PortOriginalTrackModel(int index);
 int PortOriginalHasModels(void); /* the guests' track models can be loaded (origtrk.prm) */
+/* The original's pictures of its circuits for the class menu (origpics.cmp in the common folder, a texture
+   sequence): whether they can be loaded, and the one of a track (an index of the sequence), or -1 (Wipeout 64's). */
+int PortOriginalHasPictures(void);
+int PortOriginalTrackPicture(int index);
 int PortOriginalFoundCount(void);
 int PortOriginalTrackClass(int index);
 void PortOriginalTrackSelect(int index);

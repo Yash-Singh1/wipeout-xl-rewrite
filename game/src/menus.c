@@ -4672,11 +4672,12 @@ afterTrackDescription:
         DoButton(125, 165, 4, numTex);
     }
     if (original) {
-        /* Port: a guest's track: its model from its own game's track menu, its name; no medals (its races keep no
-           records) */
+        /* Port: a guest's track: its picture or its model from its own game's track menu, its name; no medals (its
+           races keep no records) */
         Object *model = PortOriginalModel(selection->trackSelection);
 
-        if (model) {
+        if (PortOriginalDrawPicture(selection->trackSelection, 146, 99)) {
+        } else if (model) {
             PortTwoSided(1);
             DrawTeamShips(330, -170, 1350, heading, 220, model); /* (smaller than XL's models: nearer) */
             PortTwoSided(0);

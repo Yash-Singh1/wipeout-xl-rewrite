@@ -19,6 +19,8 @@ extern short     startLinePos[];
 extern int       skyPos[];
 extern SideTable droidPickTable;
 extern MenuEntry *menu;
+extern short     CurrentScreen;
+extern Texture  *textureTable[];
 
 #define HOST_TRACK  0 /* trackNum: Talon's Reach */
 #define HOST_FOLDER 1 /* actTrackNum: its folder, track01 */
@@ -137,12 +139,19 @@ static Object *originalModels[GUEST_MODELS];
 static int originalModelCount;
 void LoadModel(Object **modelShapes, char *fileName);
 
+static short pictureBase = -1; /* the original's pictures of its circuits: the first's texture, or -1 */
+
 void PortOriginalModelsLoad(void)
 {
     int i;
 
     originalModelCount = 0;
     memset(originalModels, 0, sizeof(originalModels));
+    pictureBase = -1;
+    if (PortOriginalHasPictures()) {
+        pictureBase = (short)TextureTableCount;
+        LoadCmpFiles(LoadCompressedTextureSequence("c:\\wipeout2\\common\\origpics.cmp"));
+    }
     if (!PortOriginalHasModels()) {
         return;
     }
@@ -150,6 +159,35 @@ void PortOriginalModelsLoad(void)
     for (i = 0; i < GUEST_MODELS && originalModels[i]; i++) {
         originalModelCount++;
     }
+}
+
+/* The picture of the WIPEOUT line's track in the class menu, as its own game's track menu showed it (the original
+   Wipeout's; Wipeout 64's have their models): 1 when it was drawn. */
+int PortOriginalDrawPicture(int index, int x, int y)
+{
+    static POLY_FT4 picture[2];
+    POLY_FT4 *p = &picture[CurrentScreen];
+    int number = PortOriginalTrackPicture(index);
+    Texture *texture;
+
+    if (pictureBase < 0 || number < 0) {
+        return 0;
+    }
+    texture = textureTable[pictureBase + number];
+    SetPolyFT4(p);
+    p->r0 = p->g0 = p->b0 = 128;
+    p->x0 = p->x2 = (short)x;
+    p->x1 = p->x3 = (short)(x + texture->textureW * 2);
+    p->y0 = p->y1 = (short)y;
+    p->y2 = p->y3 = (short)(y + texture->textureH);
+    p->u0 = p->u2 = (u_char)texture->u0;
+    p->u1 = p->u3 = (u_char)(texture->u1 + 1);
+    p->v0 = p->v1 = (u_char)texture->v0;
+    p->v2 = p->v3 = (u_char)(texture->v2 + 1);
+    p->tpage = texture->tsb;
+    p->clut = texture->cba;
+    AddPrim(OT[CurrentScreen], p);
+    return 1;
 }
 
 /* The model of the WIPEOUT line's track, or NULL. */
