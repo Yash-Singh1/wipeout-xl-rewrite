@@ -579,3 +579,9 @@ void PortPadRumbleLevel(int level)
     RumbleLog("level", level);
     PsxPadRumbleLevel(portSettings.noRumble || portConfig.hidden ? 0 : RumbleLevel(level));
 }
+
+void PortPadRumbleScrape(int level)
+{
+    RumbleLog("scrape", level);
+    PsxPadRumbleScrape(portSettings.noRumble || portConfig.hidden ? 0 : RumbleLevel(level));
+}

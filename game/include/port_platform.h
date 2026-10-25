@@ -88,6 +88,9 @@ void PortPadRumble(int amount);
    (0 stops them), and they stop by themselves a few fields after it stops saying. The launch thrust's
    growl is this: it rises and falls with the throttle. */
 void PortPadRumbleLevel(int level);
+/* A wall's scrape, held as PortPadRumbleLevel's level is (said every frame the wing touches the wall), on
+   the pads' small motor alone: a rattle under the hits, which keep the big one. */
+void PortPadRumbleScrape(int level);
 
 /* The original Wipeout's tracks (platform/original.c), raced as guests in Talon's Reach's slot (trackNum 0,
    folder 1): the ones the player's copy of the original has, their names and classes (XL's: 1 Venom,

@@ -230,9 +230,6 @@ void InitSpeedo(Speedo *speedo)
 }
 
 
-typedef struct SpeedDividers { int value[4]; } SpeedDividers;
-extern SpeedDividers speedDividerTable;
-extern SpeedDividers speedDividerTableAlt;
 extern int energyBlinkFrame;
 
 /* Port: was ((Speedo *)(CurrentScreen * sizeof(POLY_FT4) + (int)speedo)); the same quad of the current screen. */

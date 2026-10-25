@@ -700,6 +700,8 @@ static int joltAmount;    /* the jolt that is running, and when it ends */
 static uint64_t joltUntil;
 static int holdLevel;     /* the level held, and how long it lives without the game saying it again */
 static uint64_t holdUntil;
+static int scrapeLevel;   /* a wall's scrape, held as a level is but on the small motor alone */
+static uint64_t scrapeUntil;
 
 #define HOLD_MS 100 /* a held level's life without a call: a few fields */
 
@@ -725,6 +727,10 @@ static void rumble_apply(void)
         holdLevel = 0;
         holdUntil = 0;
     }
+    if (now >= scrapeUntil) {
+        scrapeLevel = 0;
+        scrapeUntil = 0;
+    }
     if (joltAmount > level) {
         level = joltAmount;
         duration = (uint32_t)(joltUntil - now);
@@ -739,6 +745,11 @@ static void rumble_apply(void)
     if (level > 0) {
         low = rumble_strength(level);
         high = low; /* both motors: the small one is the buzz a growl is felt through */
+    }
+    if (scrapeLevel > 0 && PortWindowFocused() && rumble_strength(scrapeLevel) > high) {
+        high = rumble_strength(scrapeLevel); /* a scrape is a rattle, not a thud: the small motor's alone */
+    }
+    if (low || high) {
         if (duration < HOLD_MS) {
             duration = HOLD_MS;
         }
@@ -758,7 +769,7 @@ static void rumble_apply(void)
 /* Once a field: a held level stops by itself when the game stops holding it. */
 static void rumble_tick(void)
 {
-    if (joltUntil || holdUntil) {
+    if (joltUntil || holdUntil || scrapeUntil) {
         rumble_apply();
     }
 }
@@ -798,6 +809,23 @@ void PsxPadRumbleLevel(int level)
     } else {
         holdLevel = 0;
         holdUntil = 0;
+    }
+    rumble_apply();
+}
+
+/* A wall's scrape held: said again every frame the wing touches the wall, on the small motor alone, and
+   stopped a few fields after the wing leaves it. */
+void PsxPadRumbleScrape(int level)
+{
+    if (level > 20) {
+        level = 20;
+    }
+    if (level > 0) {
+        scrapeLevel = level;
+        scrapeUntil = SDL_GetTicks() + HOLD_MS;
+    } else {
+        scrapeLevel = 0;
+        scrapeUntil = 0;
     }
     rumble_apply();
 }
