@@ -148,7 +148,18 @@ void AsmDrawParticles(SParticle *particles, Skeleton *camera, int mode)
 
             particle->flags = 1;
             if (seen) {
-                AddPrim(ordering + ((u_int)GteReadData(8) >> 1), line);
+                u_int depth = (u_int)GteReadData(8) >> 1;
+
+                if (!PortTracing()) {
+                    /* Port: sorted by distance (the screen Z over 4, as the track and the objects are), not by the
+                       fog's level: everything nearer than the fog's start had level 0 and was drawn over the whole
+                       scene (the pits' sparks through the rock beside them, the rain with the HUD) */
+                    depth = (u_int)GteReadData(19) >> 2;
+                    if (depth > 0x1FFF) {
+                        depth = 0x1FFF;
+                    }
+                }
+                AddPrim(ordering + depth, line);
             }
         }
     }
