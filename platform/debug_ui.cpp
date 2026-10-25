@@ -378,6 +378,46 @@ static void Pick(int frame)
     }
 }
 
+/* The polygon's corners moved out from its edges by `away` (the outline drawn there, `away` thick, lies outside it):
+   each along the two edges' outward normals, a sharp corner no further than three times `away`. One without area (a
+   line seen edge on) grows about its middle. */
+static void OutsideOutline(ImVec2 *points, int count, float away)
+{
+    ImVec2 out[4], middle(0, 0);
+    float area = 0;
+    int i;
+
+    for (i = 0; i < count; i++) {
+        const ImVec2 &p = points[i], &q = points[(i + 1) % count];
+        area += p.x * q.y - q.x * p.y;
+        middle.x += p.x / count;
+        middle.y += p.y / count;
+    }
+    for (i = 0; i < count; i++) {
+        const ImVec2 &before = points[(i + count - 1) % count], &p = points[i], &after = points[(i + 1) % count];
+        float ex = p.x - before.x, ey = p.y - before.y, fx = after.x - p.x, fy = after.y - p.y;
+        float el = SDL_sqrtf(ex * ex + ey * ey), fl = SDL_sqrtf(fx * fx + fy * fy);
+
+        if (SDL_fabsf(area) < 1.0f || el < 0.01f || fl < 0.01f) {
+            float dx = p.x - middle.x, dy = p.y - middle.y, l = SDL_sqrtf(dx * dx + dy * dy);
+
+            out[i] = l > 0.01f ? ImVec2(p.x + dx / l * away * 1.5f, p.y + dy / l * away * 1.5f)
+                               : ImVec2(p.x - away, p.y - away);
+            continue;
+        }
+        // outward: to the right of the edges' direction when the corners go clockwise on the screen (area > 0)
+        float side = area > 0 ? 1.0f : -1.0f;
+        float nx = (-ey / el + -fy / fl) * -side, ny = (ex / el + fx / fl) * -side;
+        float nl = SDL_sqrtf(nx * nx + ny * ny);
+        float along = nl > 0.01f ? SDL_min(away * 2.0f / nl, away * 3.0f) : away;
+
+        out[i] = nl > 0.01f ? ImVec2(p.x + nx / nl * along, p.y + ny / nl * along) : p;
+    }
+    for (i = 0; i < count; i++) {
+        points[i] = out[i];
+    }
+}
+
 static void RecorderTab(void)
 {
     static const char *const modes[] = {"Off", "Keep the last 3 seconds (Tab freezes the game)",
@@ -572,6 +612,12 @@ static void RecorderTab(void)
         uploadedHad = hasPicture;
         Pick(frameShown);
     }
+    // a middle click anywhere in the console lets go of the picked pixel
+    if (picked && ImGui::IsMouseClicked(ImGuiMouseButton_Middle) &&
+        ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows)) {
+        picked = false;
+        Pick(frameShown);
+    }
     // the picture as large as fits or as zoomed (in a pane of its own that scrolls when it is larger), the picked
     // pixel's primitives beside it (in a narrow window below it)
     float zoom = pictureZoom > 0 ? pictureZoom : fit;
@@ -596,6 +642,16 @@ static void RecorderTab(void)
         py = SDL_clamp(py, 0, pictureH - 1);
         int x = px + pictureX, y = py;
 
+        {
+            // the pointer is the pixel it is over: outlined, light inside dark (seen on any colour), and no arrow
+            ImDrawList *over = ImGui::GetWindowDrawList();
+            ImVec2 a(origin.x + px * zoom, origin.y + py * zoom), b(a.x + zoom, a.y + zoom);
+            over->AddRect(ImVec2(a.x - 2, a.y - 2), ImVec2(b.x + 2, b.y + 2), IM_COL32(0, 0, 0, 255), 0.0f, 0, 2.0f);
+            over->AddRect(ImVec2(a.x - 1, a.y - 1), ImVec2(b.x + 1, b.y + 1), IM_COL32(255, 255, 255, 255), 0.0f, 0, 1.0f);
+            if (hovered) {
+                ImGui::SetMouseCursor(ImGuiMouseCursor_None);
+            }
+        }
         if (ImGui::IsItemClicked()) {
             picked = true;
             pickX = x;
@@ -639,13 +695,20 @@ static void RecorderTab(void)
             const GpuVertex *v = &p->v[corners == 4 ? quadOrder[i] : i];
             points[i] = ImVec2(origin.x + (v->x - f->areaX - pictureX) * zoom, origin.y + (v->y - f->areaY) * zoom);
         }
-        if (corners >= 2) {
+        if (corners >= 3) {
+            // just outside its edges (a primitive of a few pixels is not covered in green)
+            OutsideOutline(points, corners, 2.0f);
+            draw->AddPolyline(points, corners, IM_COL32(0, 0, 0, 255), ImDrawFlags_Closed, 4.0f);
+            draw->AddPolyline(points, corners, IM_COL32(0, 255, 0, 255), ImDrawFlags_Closed, 2.0f);
+        } else if (corners == 2) {
             draw->AddPolyline(points, corners, IM_COL32(0, 255, 0, 255), ImDrawFlags_Closed, 2.0f);
         }
     }
     if (picked) {
-        ImVec2 c(origin.x + (pickX - pictureX + 0.5f) * zoom, origin.y + (pickY + 0.5f) * zoom);
-        draw->AddCircle(c, 6.0f * ui, IM_COL32(255, 0, 255, 255), 0, 2.0f);
+        // the picked pixel, outlined as the pointer is (a circle about it hid a primitive of a few pixels)
+        ImVec2 a(origin.x + (pickX - pictureX) * zoom, origin.y + pickY * zoom), b(a.x + zoom, a.y + zoom);
+        draw->AddRect(ImVec2(a.x - 2, a.y - 2), ImVec2(b.x + 2, b.y + 2), IM_COL32(0, 0, 0, 255), 0.0f, 0, 2.0f);
+        draw->AddRect(ImVec2(a.x - 1, a.y - 1), ImVec2(b.x + 1, b.y + 1), IM_COL32(255, 0, 255, 255), 0.0f, 0, 1.0f);
     }
     draw->PopClipRect();
     ImGui::EndChild();
