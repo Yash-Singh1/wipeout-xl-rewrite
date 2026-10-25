@@ -218,12 +218,14 @@ void DrawFlare(int x, int y, int distance, int ship) {
     {
         /* Port: the flare's corners are placed in 2D about one projected point: drawn about that point's precise
            projection, at its depth (BindFlareCorner), or as given when there is none, not matched to the
-           projections (of the ship's own model, say) that land on the same pixels */
+           projections (of the ship's own model, say) that land on the same pixels. Only the quads drawn: the
+           four nearest the middle (from 1000 on) keep where they were last placed, or 0, 0, and recorded there they
+           pulled the flare to it in the pictures between this frame and the next that draws them. */
         GtePrecise centre;
         int        known = flareCentre && GtePreciseOf(flareCentre, &centre) && centre.view[2] > 0 &&
                     !centre.background;
 
-        for (k = 0; k < 12; k++) {
+        for (k = distance < 1000 ? 0 : 4; k < 12; k++) {
             p = (POLY_G4 *)((char *)&flare[0][k][0] + offset);
             if (known) {
                 BindFlareCorner(&p->x0, &centre, x, y, k * 4);
