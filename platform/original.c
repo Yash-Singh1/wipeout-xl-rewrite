@@ -834,7 +834,7 @@ static int Build(void)
                     uint8_t flags = parts[1][(size_t)face * FACE_BYTES + 15];
 
                     if (from64) {
-                        flags &= 0x3F; /* (its own start grid and gates, which XL does not know) */
+                        flags &= 0x7F; /* (its own gates, which XL's are made in place of; its pits, 0x40, are XL's) */
                     }
 
                     if (gate && (flags & 1)) {
