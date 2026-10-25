@@ -43,6 +43,10 @@ int PortTracing(void);
    model, a surface of which is otherwise gone while its back is to the camera (a climb, seen from behind). Not in
    the lockstep tests. */
 void PortTwoSided(int on);
+/* While on, models are depth tested exactly: a guest's track model, made for a depth buffer (Wipeout 64's), whose
+   track lies just over its landscape. With the slack the game's own models have, the one of the two drawn later
+   was on top, and the order (by depth, each frame) changed as the model turned: the track flickered. */
+void PortExactDepth(int on);
 int PortLogoFields(int fields); /* how long a start-up logo is shown: the console's, or none (platform/main.c) */
 /* Widescreen (the settings): how far the picture reaches beyond each side of the console's 320 columns, in
    console pixels; 0 for the console's 4:3. A race's scene is shown wide (the game says so every frame it

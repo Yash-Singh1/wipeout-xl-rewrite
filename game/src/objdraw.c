@@ -245,6 +245,14 @@ void PortTwoSided(int on)
     twoSided = on;
 }
 
+/* Port: ... and the guests' (port_platform.h). */
+static int exactDepth;
+
+void PortExactDepth(int on)
+{
+    exactDepth = on;
+}
+
 static int Culled(DrawKind kind, short primFlag, const ProjectedVertex *a, const ProjectedVertex *b, const ProjectedVertex *c)
 {
     int facing;
@@ -811,8 +819,10 @@ static void DrawObject(Object *object, DrawKind kind, int roll, const CVECTOR *c
     count = (u_short)object->primitiveCount;
     ordering = OT[CurrentScreen];
     GteSetBackground(kind == DRAW_FIXED); /* Port: the sky is behind everything (the depth buffer leaves it out) */
+    GteSetExactDepth(exactDepth);
     ProjectVertices(object);
     GteSetBackground(0);
+    GteSetExactDepth(0);
 
     do {
         Poly  prim;

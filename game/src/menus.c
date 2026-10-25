@@ -4679,7 +4679,9 @@ afterTrackDescription:
         if (PortOriginalDrawPicture(selection->trackSelection, 146, 99)) {
         } else if (model) {
             PortTwoSided(1);
+            PortExactDepth(1);
             DrawTeamShips(330, -170, 1350, heading, 220, model); /* (smaller than XL's models: nearer) */
+            PortExactDepth(0);
             PortTwoSided(0);
         }
         PrintCX((u_char *)PortRaceTrackName(selection->actTrackNum), 160, 90);

@@ -38,6 +38,7 @@ typedef struct GtePrecise {
     float z;     /* view-space depth (for perspective-correct texturing) */
     float fade;  /* the port's distance fade: 1 opaque .. 0 gone */
     int background; /* projected while GteSetBackground was on: behind everything (the depth buffer leaves it out) */
+    int exact;      /* ... while GteSetExactDepth was on: depth tested without the slack */
     uint64_t key;   /* frame interpolation: what was projected (0: not known), see GteKeyNext */
     float view[3];  /* ... and where it was in view space */
     uint64_t anchor;       /* what moves with something: the key it goes with (GteRecordAnchor), or 0 */
@@ -81,6 +82,9 @@ void GteRecordGrid(const uint32_t corner[4], const void *const cornerAddress[4],
 void GteClearPrecise(void);
 /* While on, what is projected is the background (the sky), drawn behind everything else whatever its depth. */
 void GteSetBackground(int on);
+/* While on, what is projected is depth tested exactly, without the slack the game's own models have (a decal on
+   what is under it is drawn over it in the game's order): a model made for a depth buffer, as Wipeout 64's. */
+void GteSetExactDepth(int on);
 
 /* Frame interpolation (the display drawn more often than the game's 30 frames a second): a projection made
    with a key is found again in the next frame by that key, and a vertex drawn between the two frames is placed

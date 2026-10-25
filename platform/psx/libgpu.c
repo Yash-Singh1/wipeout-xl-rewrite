@@ -912,11 +912,13 @@ static void Vertex(GpuVertex *v, uint32_t xy, const GtePrecise *precise)
         v->w = precise->z;
         v->a = (uint8_t)(precise->fade * 255.0f + 0.5f);
         v->noDepth = precise->background;
+        v->exactDepth = precise->exact;
     } else {
         v->x = (float)(x + state.offsetX) + hudShift;
         v->y = (float)(y + state.offsetY);
         v->w = 0.0f; /* no depth: affine */
         v->noDepth = 0;
+        v->exactDepth = 0;
     }
 }
 

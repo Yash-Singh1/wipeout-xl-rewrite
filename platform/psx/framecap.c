@@ -822,8 +822,9 @@ static void Save(void)
                 Put(file, &v->u, 4);
                 Put(file, &v->v, 4);
                 {
-                    /* left out of the depth buffer (1: the sky, corners found by their pixels; 2: seen from behind) */
-                    uint8_t mark = (uint8_t)(v->noDepth ? 1 : v->backFacing ? 2 : 0);
+                    /* left out of the depth buffer (1: the sky, corners found by their pixels); 2: without the
+                       slack (seen from behind, or GteSetExactDepth) */
+                    uint8_t mark = (uint8_t)(v->noDepth ? 1 : v->backFacing || v->exactDepth ? 2 : 0);
                     Put(file, &mark, 1);
                 }
             }

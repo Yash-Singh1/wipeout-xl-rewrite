@@ -262,7 +262,8 @@ static const char *vertexSource =
        holds 1 - 1/depth; what is left out and 2D are in front of it (always drawn) and never written. */
     "    float w = position.z != 0.0 ? abs(position.z) : 1.0;\n"
     "    vec2 ndc = (position.xy - origin) / target * 2.0 - 1.0;\n"
-    /* modeIn.w: bit 0 a polygon seen from behind, tested without the slack (hidden by anything nearer); from bit 4
+    /* modeIn.w: bit 0 a polygon seen from behind or exactly placed, tested without the slack (hidden by anything
+       nearer); from bit 4
        the blending mode + 1 */
     "    float pull = depthPass == 1 || (modeIn.w & 1u) == 1u ? 1.0 : depthPull;\n"
     "    semiMode = int(modeIn.w >> 4u) - 1;\n"
@@ -1169,7 +1170,7 @@ static void Add(const GpuVertex *v)
     out->mode[1] = (uint8_t)primitiveState.raw;
     out->mode[2] = (uint8_t)primitiveState.depth;
     /* (the vertex shader's: a polygon seen from behind; the blending) */
-    out->mode[3] = (uint8_t)((v->backFacing != 0) | (primitiveState.semi + 1) << 4);
+    out->mode[3] = (uint8_t)((v->backFacing || v->exactDepth) | (primitiveState.semi + 1) << 4);
     memcpy(out->hd, primitiveHd, sizeof(out->hd));
     memcpy(out->hdTexels, primitiveHdTexels, sizeof(out->hdTexels));
 }

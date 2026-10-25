@@ -843,10 +843,16 @@ void GteRecordAnchor(uint32_t handle, uint64_t anchor, double dx, double dy, dou
 }
 
 static int backgroundOn; /* (GteSetBackground) */
+static int exactOn;      /* (GteSetExactDepth) */
 
 void GteSetBackground(int on)
 {
     backgroundOn = on;
+}
+
+void GteSetExactDepth(int on)
+{
+    exactOn = on;
 }
 
 static uint32_t RecordPrecise(uint32_t sxy, float x, float y, float z)
@@ -867,6 +873,7 @@ static uint32_t RecordPrecise(uint32_t sxy, float x, float y, float z)
     record->value.z = z;
     record->value.fade = 1.0f;
     record->value.background = backgroundOn;
+    record->value.exact = exactOn;
     record->value.key = 0;
     record->value.view[0] = record->value.view[1] = record->value.view[2] = 0.0f;
     record->value.anchor = 0;
