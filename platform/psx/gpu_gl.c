@@ -335,7 +335,10 @@ static const char *fragmentSource =
     "    if (mode.w == 3 && portPage > 0) {\n"  /* the port's other pages (the PC version's): its colour key, the
                                                  vertex colour as Direct3D's (255 white), blended whole */
     "        int k = portPage - 1;\n"
-    "        vec2 at = vec2(float(k % 8), float(k / 8)) * 256.0 + clamp(t, 0.5, 255.5);\n" /* (PORT_PAGES_...) */
+    /* (hdTexels: the texels the primitive covers, its samples kept to them; PORT_PAGES_...) */
+    "        vec2 low = clamp(vec2(hdTexels.xy) + 0.5, 0.5, 255.5);\n"
+    "        vec2 high = clamp(max(low, vec2(hdTexels.zw) - 0.5), 0.5, 255.5);\n"
+    "        vec2 at = vec2(float(k % 8), float(k / 8)) * 256.0 + clamp(t, low, high);\n"
     "        vec4 g = texture(portPages, at / vec2(2048.0, 2048.0));\n"
     "        if (g.a < 0.004) discard;\n"
     "        Out(mode.y == 0 ? g.rgb * c : g.rgb, g.a, semiMode >= 0);\n"
@@ -1090,7 +1093,7 @@ static void FindHd(const GpuDrawState *state, const GpuVertex *vertices, int cou
     int at[4], i;
 
     memset(primitiveHd, 0, sizeof(primitiveHd));
-    if (!state->textured || state->depth > 2 || !HdTexActive()) {
+    if (!state->textured || (state->depth > 2 && state->depth != 3)) {
         return;
     }
     for (i = 1; i < count; i++) {
@@ -1098,6 +1101,18 @@ static void FindHd(const GpuDrawState *state, const GpuVertex *vertices, int cou
         v0 = SDL_min(v0, vertices[i].v);
         u1 = SDL_max(u1, vertices[i].u);
         v1 = SDL_max(v1, vertices[i].v);
+    }
+    if (state->depth == 3) {
+        /* a port page (the PC version's) has no HD texture: the texels the primitive covers instead, which its
+           filtered samples stay within (an image's edge does not take in the one beside it on the page) */
+        primitiveHdTexels[0] = (int16_t)u0;
+        primitiveHdTexels[1] = (int16_t)v0;
+        primitiveHdTexels[2] = (int16_t)u1;
+        primitiveHdTexels[3] = (int16_t)v1;
+        return;
+    }
+    if (!HdTexActive()) {
+        return;
     }
     if (!HdTexFind(state->pageX, state->pageY, state->depth, state->clutX, state->clutY, u0, v0, u1, v1, &hit) ||
         !HdPlaced(hit.image, at)) {
