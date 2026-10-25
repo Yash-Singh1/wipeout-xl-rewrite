@@ -190,7 +190,9 @@ static void DrawMenuModel(int x, int y, int z, short dir, short scale, Object *o
             PreCalcNormals(obj, VertexNormal);
             preCalcObject = obj;
         }
-        DrawEnvMap(obj, 0, VertexNormal, -0x6D, -0xF, 0x120);
+        /* (the PC's DrawEnvMap gives Direct3D the model's own points: the offsets and scale it is passed, the
+           PlayStation's for moving its projected points, go unused. Here they leave the points where they are.) */
+        DrawEnvMap(obj, 0, VertexNormal, 0, 0, 0x100);
         return;
     }
     AsmDrawObject(obj, 0, 0);

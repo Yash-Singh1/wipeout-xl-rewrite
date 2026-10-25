@@ -350,10 +350,14 @@ static int recordingBetween; /* ... which the frame recorder keeps (FrameCapBetw
 static float interpolationAlong;
 
 /* Widescreen: the packets of the menus' backdrops (PortWideBackdrop), which fill the picture's sides. They are
-   the same few packets every frame. */
+   the same few packets every frame, named again each frame: one not named while the last few tables were drawn is
+   no longer one (the PC title's picture is made in memory its menus use for other packets after it). */
 #define BACKDROPS 16
+#define BACKDROP_TABLES 8
 static const void *backdrops[BACKDROPS];
+static unsigned backdropNamed[BACKDROPS]; /* (tablesDrawn when it was named) */
 static int backdropCount, backdropNext;
+static unsigned tablesDrawn;
 
 void PortWideBackdrop(const void *packet)
 {
@@ -362,10 +366,12 @@ void PortWideBackdrop(const void *packet)
     for (i = 0; i < backdropCount && backdrops[i] != packet; i++) {
     }
     if (i == backdropCount) {
-        backdrops[backdropNext] = packet;
+        i = backdropNext;
+        backdrops[i] = packet;
         backdropNext = (backdropNext + 1) % BACKDROPS;
         backdropCount = backdropCount < BACKDROPS ? backdropCount + 1 : BACKDROPS;
     }
+    backdropNamed[i] = tablesDrawn;
     GpuWideMenu();
 }
 
@@ -384,7 +390,7 @@ static int Backdrop(const uint32_t *w)
     int i;
 
     for (i = 0; i < backdropCount; i++) {
-        if ((const uint32_t *)backdrops[i] + 1 == w) {
+        if ((const uint32_t *)backdrops[i] + 1 == w && tablesDrawn - backdropNamed[i] <= BACKDROP_TABLES) {
             return 1;
         }
     }
@@ -2170,6 +2176,7 @@ void DrawOTag(u_long *p)
     int tracing = PortTracing() && pendingCount < PENDING_TABLES, inHud = p == hudTable;
 
     WalkTable(p, 1);
+    tablesDrawn++;
     if (p == upcoming.table) {
         /* the frame interpolated towards is drawn: the next starts from here */
         uint64_t now = SDL_GetTicksNS();
