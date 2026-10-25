@@ -13,5 +13,7 @@ void  PortOriginalMenuRestore(MenuSelection *selection);
 char *PortRaceTrackName(short actTrackNum);
 void  PortOriginalModelsLoad(void);      /* the original's track models, with the menus' (in its reserve heap) */
 Object *PortOriginalModel(int index);    /* ... the model of a WIPEOUT line's track, or NULL */
+short PortOriginalLibraryBase(short loaded);
+short PortOriginalLibraryPlaced(TexTemplate *tiles, short tileCount, short loaded);
 
 #endif

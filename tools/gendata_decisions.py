@@ -219,7 +219,7 @@ SIZES = {
     'TrackMedPolys': (2, 'one polygon pool per screen (see TrackHiPolys)'),
     'TrackLoPolys': (2, 'one polygon pool per screen (see TrackHiPolys)'),
     'tileSurfaces': (24, 'indexed by the face texture number (crack.c, trackasm.c, AsmLowResTile...): 24 textures of 2 surfaces, 252 bytes each; the object renderers keep their projected vertices in the 3584 bytes that follow, up to muzzleright (no face of any track uses a texture above 14)'),
-    'textureTable': (800, 'the slots run up to the end of menuTexturePtrsB (3172 bytes at slot 7): 800 pointers'),
+    'textureTable': (1024, 'the slots run up to the end of menuTexturePtrsB (3172 bytes at slot 7): 800 pointers; 1024 here, for a guest track\'s surface textures beyond its first slots (portorig.c: Sokana\'s race uses 877)'),
     'shipShapeTable': (31, '30 ship shapes and the rescue droid model at [30] (RescueDroidModel); menuModels follows'),
     'menuModels': (11, 'LoadModel stores every object of harry.prm, which has 11, and raceOrderTable draws model 10'),
 }

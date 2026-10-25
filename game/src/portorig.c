@@ -12,6 +12,7 @@
 #include "functions.h"
 #include "menus.h"
 #include "effects.h"
+#include "ttf.h"
 
 extern s32       raceType;
 extern short     startLinePos[];
@@ -181,4 +182,40 @@ char *PortRaceTrackName(short actTrackNum)
         return (char *)PortOriginalTrackName(PortOriginalTrack());
     }
     return GetTrackName(actTrackNum, 0, 0, 0);
+}
+
+/* The track's surface textures go to the first slots of the texture table, below the ones the game loaded at its
+   start and keeps (the HUD's and the menus' fonts first, at slot 0x113, main.c): as many slots as XL's own
+   libraries need. A guest's with more (Wipeout 64's Sokana, Dyroness and Machaon II: 15 tiles of 21 pieces each)
+   would overwrite those, and the race's own textures would then overwrite its last tiles: it goes after the
+   textures loaded so far instead (the table has room for it, game/data), and its tiles name their pieces there. */
+#define LIBRARY_SLOTS 0x113
+static short libraryBase;
+
+/* Where the track's library is loaded (into the texture table): its first slot. */
+short PortOriginalLibraryBase(short loaded)
+{
+    libraryBase = PortOriginalTrack() >= 0 && PortOriginalLibraryTextures() > LIBRARY_SLOTS ? loaded : 0;
+    return libraryBase;
+}
+
+/* The library and its tiles loaded: the tiles' pieces where it went, and the slot the race's other textures follow
+   from (as the game's own, the slot they followed from before). */
+short PortOriginalLibraryPlaced(TexTemplate *tiles, short tileCount, short loaded)
+{
+    int i, k;
+
+    if (!libraryBase) {
+        return loaded;
+    }
+    for (i = 0; i < tileCount; i++) {
+        for (k = 0; k < 16; k++) {
+            tiles[i].tex16[k] += libraryBase;
+        }
+        for (k = 0; k < 4; k++) {
+            tiles[i].tex4[k] += libraryBase;
+        }
+        tiles[i].tex1[0] += libraryBase;
+    }
+    return (short)TextureTableCount;
 }

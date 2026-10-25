@@ -407,8 +407,9 @@ DB doubleBuffer[2];
 TrackCamera raceCamera;
 Object *shipModels[8];
 POLY_FT4 menuButtons[30][2];
-/* Port: the slots run up to the end of menuTexturePtrsB (3172 bytes at slot 7): 800 pointers */
-Texture *textureTable[800];
+/* Port: the slots run up to the end of menuTexturePtrsB (3172 bytes at slot 7): 800 pointers; 1024 here, for a
+   guest track's surface textures beyond its first slots (portorig.c: Sokana's race uses 877) */
+Texture *textureTable[1024];
 FontGlyph fontGlyphs8[40];
 SVECTOR VertexNormal[140];
 GhostReplay replayBuffer[1];

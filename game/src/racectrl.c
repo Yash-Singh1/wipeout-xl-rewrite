@@ -228,10 +228,10 @@ void race(ConfigData *gameData, int context, int scene)
     getPath(scenePath,gameData->actTrackNum,trackPathTable);
     wad=openwadfile(scenePath);
     WADInitVertices(wad);WADInitFaces(wad);WADInitSections(wad);WADInitViewList(wad);
-    tempTextureCount=TextureTableCount;TextureTableCount=0;
+    tempTextureCount=TextureTableCount;TextureTableCount=PortOriginalLibraryBase(tempTextureCount); /* Port: 0 but for a guest's large library (portorig.c) */
     LoadCmpFiles(WADLoadCompressedTextureSequence(wad));
     tiles=WADLoadTtfFile(wad,&locals.tileCount);
-    TextureTableCount=tempTextureCount;
+    TextureTableCount=PortOriginalLibraryPlaced(tiles,locals.tileCount,tempTextureCount); /* Port: tempTextureCount but ... (portorig.c) */
     locals.skyIndex=WADInitScene(prmObjects,&prmCount,raceCamera.camPos,gameData,wad);
     sceneTextureCount=TextureTableCount;closewadfile(wad);
     for(j=0;j<6;j++) {

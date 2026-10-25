@@ -108,6 +108,8 @@ void PortOriginalTrackSelect(int index);
 int PortOriginalTrack(void);
 int PortOriginalStartLine(void);
 int PortOriginalSkyY(void);
+/* The textures of the chosen track's surface (its library.cmp), once the race has opened its files; 0 for none. */
+int PortOriginalLibraryTextures(void);
 /* The game's file layer (iso9660.c): a file of the chosen track's (where, and how long), and its sectors. */
 int PortOriginalFileInfo(const char *pathname, int *loc, int *size);
 int PortOriginalRead(int loc, int sectors, void *buffer);

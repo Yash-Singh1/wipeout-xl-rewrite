@@ -93,6 +93,7 @@ static size_t fileSizes[FILES];
 static uint8_t *modelsFile;
 static size_t modelsSize;
 static int builtFor = -1;
+static int libraryTextures;     /* the TIMs of the built track's library.cmp (its surface's textures) */
 static void ListGuests(void);
 #define VIRTUAL_LOC 0x40000000  /* the sectors the files are read at: beyond any disc */
 #define VIRTUAL_SPAN 0x10000    /* ... 128 MB apart */
@@ -500,6 +501,11 @@ int PortOriginalStartLine(void)
     return chosen < 0 ? 0 : guests[chosen].startLine;
 }
 
+int PortOriginalLibraryTextures(void)
+{
+    return chosen >= 0 && builtFor == chosen ? libraryTextures : 0;
+}
+
 int PortOriginalSkyY(void)
 {
     return chosen < 0 ? 0 : guests[chosen].skyY;
@@ -606,6 +612,7 @@ static void FreeFiles(void)
         fileSizes[i] = 0;
     }
     builtFor = -1;
+    libraryTextures = 0;
 }
 
 static int32_t Be32(const uint8_t *p)
@@ -810,6 +817,10 @@ static int Build(void)
         for (i = 0; i < 4; i++) {
             files[FILE_CHK0 + i] = MakeCheckpoints(i, &fileSizes[FILE_CHK0 + i]);
         }
+        /* (a .cmp's count of TIMs: its first four bytes, little-endian) */
+        libraryTextures = sizes[4] >= 4 ? (int)(parts[4][0] | parts[4][1] << 8 | parts[4][2] << 16 |
+                                                (uint32_t)parts[4][3] << 24)
+                                        : 0;
         builtFor = chosen;
     }
     for (i = 0; i < PARTS; i++) {
