@@ -59,6 +59,11 @@ static uint64_t WorldKey(int x, int y, int z)
            GTE_KEY_WORLD;
 }
 
+uint64_t PortTrackKey(int x, int y, int z)
+{
+    return WorldKey(x, y, z);
+}
+
 /* Loads corner `vertex` of the track, relative to the camera, into the GTE vertex register pair that starts at
    `reg` (xy in `reg`, z in `reg + 1`).  Returns 0, loading nothing, when a coordinate does not fit in 16 bits. */
 static int LoadCorner(VECTOR *vertex, int reg, int cameraX, int cameraY, int cameraZ)

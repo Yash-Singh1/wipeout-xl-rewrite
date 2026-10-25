@@ -252,6 +252,43 @@ void DrawFlare(int x, int y, int distance, int ship) {
 }
 
 
+/* Port: frame interpolation (gte.h) of the lock-on boxes. A box is drawn in 2D about the target ship, turned a
+   little further and drawn a little nearer it each frame (targetSpin, missileLockTimer); a bank keeps its box for eight
+   frames (the fading copies while the missile locks on). Each corner is recorded as a projection known by its box's
+   age and corner, so the pictures between two frames turn and close the boxes, each from where the box one frame
+   younger had that corner, instead of stepping at the game's rate. Placed at the projection distance (a depth where
+   view space is the screen's, so they move in straight lines on it) and drawn in 2D as the game draws them (depth 0:
+   over everything). */
+static uint32_t targetPlaced[8]; /* targetFrame when the bank was given its box (0: never) */
+static uint32_t targetFrame;     /* DrawShipTrails's frames */
+
+static void PortBindTargets(void)
+{
+    double h = (double)(u_short)GteReadControl(26);
+    double ofx = GteReadControl(24) / 65536.0, ofy = GteReadControl(25) / 65536.0;
+    int bank, k;
+
+    for (bank = 0; bank < 8; bank++) {
+        uint64_t age = targetFrame - targetPlaced[bank];
+
+        if (!targetPlaced[bank]) {
+            continue;
+        }
+        for (k = 0; k < 4; k++) {
+            /* corner k: where box line k starts and line k - 1 ends */
+            LINE_F2 *line = &targetPrims[bank][k][CurrentScreen], *before = &targetPrims[bank][(k + 3) & 3][CurrentScreen];
+            uint32_t handle;
+
+            GteKeyNext(0, GteKeyMix(0x544152474554ull, age * 4 + (uint64_t)k) | GTE_KEY_MOVING);
+            handle = GteRecordProjection(*(u_int *)&line->x0, line->x0, line->y0, 0.0f, 1.0f);
+            GteRecordView(handle, line->x0 - ofx, line->y0 - ofy, h);
+            GteBindPrecise(&line->x0, handle);
+            GteBindPrecise(&before->x1, handle);
+        }
+    }
+}
+
+
 void UpdateTarget(int x, int y, int distance, int target) {
     int copy, value, radius, i;
     if (target < 15) {
@@ -292,6 +329,7 @@ void UpdateTarget(int x, int y, int distance, int target) {
             targetPrims[targetBank][2][i].g0 = 128;
             targetPrims[targetBank][3][i].g0 = 128;
         }
+        targetPlaced[targetBank] = targetFrame; /* Port: PortBindTargets */
         targetvalid = 1;
     }
 }
@@ -777,6 +815,7 @@ void DrawShipTrails(TrackCamera *camera) {
     int i;
     u_char *flag;
 
+    targetFrame++; /* Port: PortBindTargets */
     if (shipIndex[ownShip].weapon != 0) {
         if (shipIndex[ownShip].targetShip != lastTargetShip) {
             lastTargetShip = shipIndex[ownShip].targetShip;
@@ -840,6 +879,9 @@ void DrawShipTrails(TrackCamera *camera) {
         }
         i++;
     } while (i < 15);
+    if (shipIndex[ownShip].weapon != 0) {
+        PortBindTargets(); /* Port: the lock-on boxes between frames */
+    }
     if (plasmaShotBusy != 0) {
         DrawTrail(camera, &Plasma[0], 0xF);
         DrawTrail(camera, &Plasma[1], 0x10);

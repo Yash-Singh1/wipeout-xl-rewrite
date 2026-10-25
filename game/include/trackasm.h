@@ -26,5 +26,8 @@ extern POLY_FT4 *TrackMedPolys[2];
 extern POLY_FT4 *TrackHiPolys[2];
 /* Port: the pools of this screen buffer named as the track's packets (PortTrackPackets). */
 void PortTrackPools(void);
+/* Port: frame interpolation (gte.h): the key of the track's point at world position x, y, z (a corner, or a point
+   halfway along an edge), the same whichever face and detail projects it (trackdraw.c). */
+uint64_t PortTrackKey(int x, int y, int z);
 
 #endif
