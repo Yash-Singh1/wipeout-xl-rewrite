@@ -35,8 +35,9 @@ typedef struct ProjectedVertex {
 } ProjectedVertex;
 
 /* Room for the vertices of the biggest object: the console kept them in the scratchpad up to 128 vertices
-   and in a 3584-byte area of RAM (448 vertices) beyond. */
-#define MAX_OBJECT_VERTICES 448
+   and in a 3584-byte area of RAM (448 vertices) beyond. Port: room for more, as the guests' track models in the
+   class menu have (the original Wipeout's Silverstream 476: they wrote over what followed). */
+#define MAX_OBJECT_VERTICES 1024
 static ProjectedVertex projected[MAX_OBJECT_VERTICES];
 
 /* Port: the far view (portfar.h) draws objects through these routines with its own projection: the view,
