@@ -34,6 +34,9 @@ void PsxLinkRegion(void *start, size_t bytes);
 /* Whether the port draws the whole track in view (portfar.h): not in the lockstep tests (WIPEOUT_TRACE)
    or with WIPEOUT_FAR_VIEW=0. */
 int PortFarViewEnabled(void);
+/* ... and whether the ships it draws beyond the console's distance have their engine flares (off: as the console,
+   which drew none there). */
+int PortFarFlaresEnabled(void);
 /* Whether this run is recorded for the lockstep tests (platform/trace.h): the game decides as the console did. */
 int PortTracing(void);
 /* While on, models are drawn with both sides of their single-sided polygons (objdraw.c): a menu's turning track

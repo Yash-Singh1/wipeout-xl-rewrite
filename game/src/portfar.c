@@ -614,7 +614,7 @@ void PortFarFlares(TrackCamera *camera)
     PortView view;
     int      i;
 
-    if (!farShips || sillyShips) {
+    if (!farShips || sillyShips || !PortFarFlaresEnabled()) {
         farShips = 0;
         return;
     }

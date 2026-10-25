@@ -1851,6 +1851,12 @@ static void Console(void)
                 portSettings.fade = fade;
                 Changed();
             }
+            bool farFlares = portSettings.farFlares != 0;
+            if (ImGui::Checkbox("Engine flares on distant ships", &farFlares)) {
+                portSettings.farFlares = farFlares;
+                Changed();
+            }
+            ImGui::TextDisabled("The ships beyond the console's draw distance (it drew no flares there).");
             ImGui::EndDisabled();
             bool depthBuffer = !portSettings.consoleDepth;
             if (ImGui::Checkbox("Depth buffer", &depthBuffer)) {
