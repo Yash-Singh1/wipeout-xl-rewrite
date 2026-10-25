@@ -61,6 +61,12 @@ void PortSceneSprite(const void *packet);
 /* ... the same for every packet in that memory (the trails, the engine flares: near the camera they go in at depth
    0, the HUD's entry). */
 void PortSceneRange(const void *start, size_t bytes);
+/* The ships' shadows' packets (DrawShadow's quads, in that memory): drawn after the rest of the scene, where nothing
+   nearer is (the depth buffer), as the game's order put a track cell near the camera over part of a shadow. */
+void PortShadowRange(const void *start, size_t bytes);
+/* ... and the track's packets of the frame being built (each part of memory they are in, from start to end), which
+   are drawn before a shadow when they reach as deep as it. */
+void PortTrackPackets(const void *start, const void *end);
 /* The HUD packets from start to end, of the frame being built, stay where the game puts them: a menu over the race
    whose items stand apart in the middle of the screen (the pause's YES and NO), not an element of a side. */
 void PortHudCentred(const void *start, const void *end);

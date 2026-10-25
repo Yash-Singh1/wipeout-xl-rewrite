@@ -391,12 +391,25 @@ static int Backdrop(const uint32_t *w)
     return 0;
 }
 
+static int heldCount; /* (the ships' shadows held: PortShadowRange) */
+static int hudPackets; /* (below) */
+static int HoldShadow(const uint32_t *w, int words);
+static void ReleaseShadows(void);
+static int AheadOfShadows(const uint32_t *w, int words);
+
 static void Submit(const uint32_t *w, int words)
 {
     int backdrop = PortScreenMargin() && Backdrop(w);
+    uint32_t code = words > 0 ? w[0] >> 24 : 0;
 
     if (!interpolating) {
         PortTraceGp0(w, words);
+    }
+    if (HoldShadow(w, words)) {
+        return;
+    }
+    if (heldCount && (hudPackets || (code >= 0xE3 && code <= 0xE5) || !AheadOfShadows(w, words))) {
+        ReleaseShadows();
     }
     if (backdrop) {
         GpuBackdrop(1);
@@ -915,6 +928,195 @@ static float hudMoveX, hudMoveY; /* ... a scaled one goes this far from the band
    not moved to those projections (a letter would be stretched over the texels beside it). The 3D renderers' own
    packets there (bound to their projections: a menu's model) keep theirs. */
 static int hudPackets;
+
+/* The ships' shadows (PortShadowRange). The game puts each of a shadow's quads a little in front of where it lies
+   on the track, which is not always enough: a track cell near the camera, sorted by the middle of its corners, can
+   come after it in the table and cover part of it, a gap in the shadow. So a shadow is held when it comes: the
+   track's packets after it (PortTrackPackets) that reach as deep as it are drawn first, under it; it is drawn
+   before anything else over it (what overlaps it on the screen, a track cell wholly nearer, the HUD, another draw
+   area) or at the table's end, in the drawing state it came in. The order of everything else stays the game's. */
+#define HELD_SHADOWS 256
+#define TRACK_RANGES 24
+typedef struct PacketRange {
+    const char *start, *end;
+} PacketRange;
+static const uint32_t *heldShadows[HELD_SHADOWS];
+static int heldWords[HELD_SHADOWS];
+static uint32_t heldTexpage;
+static int heldBox[4];     /* where on the screen the held shadows are */
+static float heldNearest;  /* ... and the depth of their nearest corner (0: not known) */
+typedef struct TrackPackets {
+    u_long *table;
+    PacketRange shadows;              /* the shadows' packets */
+    PacketRange ranges[TRACK_RANGES]; /* the track's */
+    int count;
+} TrackPackets;
+static TrackPackets building;      /* the frame being built's */
+static TrackPackets tableTrack[4]; /* ... the tables drawn's (a table is drawn again between frames) */
+static int tableTrackNext, walkTrack = -1;
+
+static int PacketBounds(const uint32_t *w, int words, int box[4]);
+
+void PortShadowRange(const void *start, size_t bytes)
+{
+    building.shadows.start = (const char *)start;
+    building.shadows.end = (const char *)start + bytes;
+}
+
+void PortTrackPackets(const void *start, const void *end)
+{
+    if (building.count < TRACK_RANGES && (const char *)end > (const char *)start) {
+        building.ranges[building.count].start = (const char *)start;
+        building.ranges[building.count++].end = (const char *)end;
+    }
+}
+
+/* A table is drawn: the shadows and the track's packets named since the last table drawn are its (none: a menu's);
+   a table drawn again between frames keeps its own. */
+static void WalkTable(u_long *table, int newFrame)
+{
+    int i;
+
+    walkTrack = -1;
+    for (i = 0; i < 4; i++) {
+        if (tableTrack[i].table == table) {
+            walkTrack = i;
+        }
+    }
+    if (newFrame) {
+        if (walkTrack < 0) {
+            walkTrack = tableTrackNext;
+            tableTrackNext = (tableTrackNext + 1) % 4;
+        }
+        tableTrack[walkTrack] = building;
+        tableTrack[walkTrack].table = table;
+        memset(&building, 0, sizeof(building));
+    }
+}
+
+static int TrackPacket(const uint32_t *w)
+{
+    int i;
+
+    if (walkTrack < 0) {
+        return 0;
+    }
+    for (i = 0; i < tableTrack[walkTrack].count; i++) {
+        if ((const char *)w >= tableTrack[walkTrack].ranges[i].start && (const char *)w < tableTrack[walkTrack].ranges[i].end) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* The depths of a polygon's corners (their projections'): the nearest and the deepest; 0 when one is not known (or,
+   `any`, when none is). */
+static int PolygonDepths(const uint32_t *w, int words, int any, float *nearest, float *deepest)
+{
+    uint32_t code = w[0] >> 24, xy[GTE_RESOLVE_MAX];
+    const void *at[GTE_RESOLVE_MAX];
+    GtePrecise corner[GTE_RESOLVE_MAX];
+    unsigned mask;
+    int gouraud = (code & 0x10) != 0, textured = (code & 0x04) != 0, count = (code & 0x08) ? 4 : 3, k = 1, i;
+
+    if (code < 0x20 || code >= 0x40) {
+        return 0;
+    }
+    for (i = 0; i < count; i++) {
+        if (i > 0 && gouraud) {
+            k++;
+        }
+        if (k >= words) {
+            return 0;
+        }
+        xy[i] = w[k];
+        at[i] = &w[k];
+        k += textured ? 2 : 1;
+    }
+    mask = GteResolvePrecise(xy, at, count, corner);
+    *nearest = *deepest = 0.0f;
+    for (i = 0; i < count; i++) {
+        if (!((mask >> i) & 1) || corner[i].z <= 0.0f) {
+            if (!any) {
+                return 0;
+            }
+            continue;
+        }
+        *nearest = *nearest == 0.0f || corner[i].z < *nearest ? corner[i].z : *nearest;
+        *deepest = corner[i].z > *deepest ? corner[i].z : *deepest;
+    }
+    return *nearest > 0.0f;
+}
+
+static int HoldShadow(const uint32_t *w, int words)
+{
+    float nearest, deepest;
+    int box[4];
+
+    if (walkTrack < 0 || (const char *)w < tableTrack[walkTrack].shadows.start ||
+        (const char *)w >= tableTrack[walkTrack].shadows.end || heldCount == HELD_SHADOWS || !PacketBounds(w, words, box)) {
+        return 0;
+    }
+    if (!heldCount) {
+        heldTexpage = state.texpage;
+        memcpy(heldBox, box, sizeof(box));
+        heldNearest = 0.0f;
+    } else {
+        heldBox[0] = box[0] < heldBox[0] ? box[0] : heldBox[0];
+        heldBox[1] = box[1] < heldBox[1] ? box[1] : heldBox[1];
+        heldBox[2] = box[2] > heldBox[2] ? box[2] : heldBox[2];
+        heldBox[3] = box[3] > heldBox[3] ? box[3] : heldBox[3];
+    }
+    /* (only the shadow's corners were projected: a quad with one of them gives its depth) */
+    if (PolygonDepths(w, words, 1, &nearest, &deepest) && (heldNearest == 0.0f || nearest < heldNearest)) {
+        heldNearest = nearest;
+    }
+    heldShadows[heldCount] = w;
+    heldWords[heldCount++] = words;
+    if ((w[0] >> 24) & 0x04) {
+        SetTexpage(w[((w[0] >> 24) & 0x10) ? 5 : 4] >> 16); /* (as if drawn: a sprite after it takes its page) */
+    }
+    return 1;
+}
+
+/* Whether a packet that comes while shadows are held is drawn before them: a track cell reaching as deep as them,
+   or a packet away from them on the screen. */
+static int AheadOfShadows(const uint32_t *w, int words)
+{
+    float nearest, deepest;
+    int box[4];
+
+    if (!PacketBounds(w, words, box)) {
+        return 0;
+    }
+    if (box[2] < heldBox[0] || box[0] > heldBox[2] || box[3] < heldBox[1] || box[1] > heldBox[3]) {
+        return 1;
+    }
+    return TrackPacket(w) && heldNearest > 0.0f && PolygonDepths(w, words, 0, &nearest, &deepest) &&
+           deepest >= heldNearest;
+}
+
+static void ReleaseShadows(void)
+{
+    uint32_t texpage = state.texpage;
+    int wasHud = hudPackets, wasActive = hudActive, i;
+    float wasShift = hudShift;
+
+    if (!heldCount) {
+        return;
+    }
+    hudPackets = hudActive = 0;
+    hudShift = 0.0f;
+    state.texpage = heldTexpage;
+    for (i = 0; i < heldCount; i++) {
+        Packet(heldShadows[i], heldWords[i]);
+    }
+    heldCount = 0;
+    state.texpage = texpage; /* (the packets after them as the game left the state) */
+    hudPackets = wasHud;
+    hudActive = wasActive;
+    hudShift = wasShift;
+}
 
 static GtePrecise resolved[GTE_RESOLVE_MAX]; /* the last primitive's projections (Vertices), for NearCut */
 static unsigned resolvedMask;
@@ -1697,6 +1899,7 @@ static void DrawAnchored(u_long *p, int margin, int half)
         }
         Submit((const uint32_t *)(node + 1), (int)(*node >> 24));
     }
+    ReleaseShadows();
     for (first = 0; first < count;) {
         int box[4], group[4], have = 0, last, side, whole;
 
@@ -1845,6 +2048,7 @@ static void DrawTableAgain(u_long *p)
     u_long *node;
     int inHud = p == hudTable;
 
+    WalkTable(p, 0);
     if (PortLinkSplit()) {
         DrawAnchored(p, PortScreenMargin(), 1);
         return;
@@ -1856,6 +2060,7 @@ static void DrawTableAgain(u_long *p)
     for (node = PacketFromNoting(p, &inHud); node; node = PacketFromNoting(NodeAfter(node), &inHud)) {
         SubmitNode(node, inHud);
     }
+    ReleaseShadows();
 }
 
 void PsxDrawInterpolated(void)
@@ -1964,6 +2169,7 @@ void DrawOTag(u_long *p)
     u_long *node;
     int tracing = PortTracing() && pendingCount < PENDING_TABLES, inHud = p == hudTable;
 
+    WalkTable(p, 1);
     if (p == upcoming.table) {
         /* the frame interpolated towards is drawn: the next starts from here */
         uint64_t now = SDL_GetTicksNS();
@@ -2027,6 +2233,7 @@ void DrawOTag(u_long *p)
             pending[pendingCount].nodes[pending[pendingCount].count++] = *node >> 24;
         }
     }
+    ReleaseShadows();
     if (tracing) {
         PortTraceEvent(TRACE_TABLE, pending[pendingCount].nodes, pending[pendingCount].count);
         pendingCount++;

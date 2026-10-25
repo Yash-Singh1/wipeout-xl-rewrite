@@ -24,5 +24,7 @@ typedef struct Surface {
 extern POLY_FT4 *TrackLoPolys[2];
 extern POLY_FT4 *TrackMedPolys[2];
 extern POLY_FT4 *TrackHiPolys[2];
+/* Port: the pools of this screen buffer named as the track's packets (PortTrackPackets). */
+void PortTrackPools(void);
 
 #endif

@@ -412,8 +412,13 @@ frame:
         MoveMonoRail(monoRailObjs,6,&monoRail,shipIndex,pauseState.selection);InitTrainLights(prmObjects,prmCount,monoRailObjs,pauseState.selection);
     }
     if((unsigned int)(gameData->actTrackNum-6)<2) Video(videoObjects,videoCount);
-    if(!(shipIndex[ownShip].attr&64) || shipTargetIndex[ownShip]>=0) DrawAllTrack(&raceCamera,trackCache);
-    else DrawNewTrack(&raceCamera,trackCache);
+    {
+        char *trackPackets = nextPrim.ptr; /* Port: the track's packets, for the shadows (libgpu.c) */
+        if(!(shipIndex[ownShip].attr&64) || shipTargetIndex[ownShip]>=0) DrawAllTrack(&raceCamera,trackCache);
+        else DrawNewTrack(&raceCamera,trackCache);
+        PortTrackPackets(trackPackets, nextPrim.ptr);
+        PortTrackPools();
+    }
     DrawShadow(shipShapeTable,shipIndex,shadowData);
     DrawShips(shipIndex,shipShapeTable,ownShip,raceCamera,pauseState.selection);
     if(!medalDisplay) DrawLandscape(&shipIndex[ownShip],&raceCamera);

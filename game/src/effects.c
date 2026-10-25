@@ -1624,6 +1624,7 @@ void DrawShadow(void *shapes, ShipData *ships, Shadow *shadow)
     ShipData *ship;
     Shadow *shadowEntry;
     uint32_t gridHandles[25]; /* Port: the precise positions of the grid points (gte.h) */
+    PortShadowRange(shadow, 15 * sizeof(Shadow)); /* Port: drawn over the track cells around them (libgpu.c) */
     cameraPtr->camPos->super->update=1;
     SetSkeletonTransform(cameraPtr->camPos->super);
     for(i=0;i<15;i++) {

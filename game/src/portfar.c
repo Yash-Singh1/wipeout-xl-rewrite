@@ -373,9 +373,11 @@ static void CameraView(TrackCamera *camera, PortView *view)
 static void DrawFarTrack(TrackCamera *camera)
 {
     PortView view;
+    char *start;
     int i, k;
 
     CameraView(camera, &view);
+    start = arena[CurrentScreen] + arenaUsed; /* (the track's packets, for the shadows: libgpu.c) */
     for (i = 0; i < track->sectionCount; i++) {
         TrackSection *section = track->sections + i;
         double c[3];
@@ -388,6 +390,7 @@ static void DrawFarTrack(TrackCamera *camera)
             PortTrackFar(section, &view);
         }
     }
+    PortTrackPackets(start, arena[CurrentScreen] + arenaUsed);
 }
 
 static void DrawFarScenery(void)
