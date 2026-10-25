@@ -158,7 +158,14 @@ function urlTrack(url) {
              track.cached = !!response;
              if (!response) response = await fetch(url);
              if (!response.ok) throw new Error(url + ': ' + response.status);
-             return Number(response.headers.get('Content-Length'));
+             var length = Number(response.headers.get('Content-Length'));
+             if (length && !response.headers.get('Content-Encoding')) return length;
+             // a host that compresses the track (Vercel) sends no length, or the compressed one: the track
+             // read whole first, its own length counted
+             say((track.cached ? 'Reading' : 'Downloading') + ' the disc: ' + track.name);
+             var whole = await response.blob();
+             response = new Response(whole);
+             return whole.size;
            },
            pieces: async function* () {
              var reader = response.body.getReader();
