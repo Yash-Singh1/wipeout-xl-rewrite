@@ -882,6 +882,14 @@ void DrawShipTrails(TrackCamera *camera) {
         targetBank = (targetBank + 1) & 7;
         targetSpin += 0x80;
         if (missileLockTimer > 0) missileLockTimer--;
+    } else if (!PortTracing()) {
+        /* Port: the boxes are forgotten with the weapon. The console kept the last one valid, and the first frame
+           of the next missile drew it where the old target had been when that missile was fired (with no target
+           ahead, a box in empty space); a new lock on the same ship drew the old lock's boxes again. */
+        targetvalid = 0;
+        for (i = 0; i < 8; i++) {
+            targetFlags[i] = 0;
+        }
     }
     i = 0;
     do {
