@@ -1,5 +1,6 @@
 #include "functions.h"
 #include "ships.h"
+#include "track.h"
 #include "include_asm_g8.h"
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
@@ -180,31 +181,31 @@ void Ship2ShipCollision(ShipData *shipIndex, Object **shipShapes, int i, int j) 
 int collideLineToPlane(int shipNo1, int shipNo2, Object **shipShapes, ShipData *shipIndex)
 {
     int i;
-    int count;
+    int edge;
     Poly poly;
     short *coords;
     short primitiveCount;
     VECTOR p1, p2, p3;
     VECTOR a, b, c, d;
     VECTOR shifted;
-    int factor2;
-    VECTOR factor1;
-    VECTOR term1;
-    VECTOR res_vec;
+    int normalDotEdge;
+    VECTOR planeOffset;
+    VECTOR intersectionOffset;
+    VECTOR intersection;
     int alpha;
     VECTOR DC, BC, AC;
     VECTOR BD, AB;
     VECTOR AD;
-    VECTOR start_vec;
-    VECTOR pos_vec;
-    VECTOR plane1;
-    VECTOR P1P2, P1P3;
-    VECTOR vec0, vec1, vec2;
+    VECTOR edgeStart;
+    VECTOR edgeVector;
+    VECTOR normal;
+    VECTOR triangleEdge12, triangleEdge13;
+    VECTOR toVertex1, toVertex2, toVertex3;
     int angle;
-    short high1;
-    short low1;
-    short low2;
-    short high2;
+    short highRes1;
+    short lowRes1;
+    short lowRes2;
+    short highRes2;
     Object *shipShape;
     ShipData *playerShip;
     char skeletonWorkspace[40];
@@ -218,15 +219,15 @@ int collideLineToPlane(int shipNo1, int shipNo2, Object **shipShapes, ShipData *
     shipShape = shipShapes[playerShip->highResTableIndex];
     SetSkeletonPosition(shipShape->skeleton, playerShip->ppivot.vx, playerShip->ppivot.vy, playerShip->ppivot.vz);
     SetSkeletonDirectionHPR(shipShape->skeleton, playerShip->hdg, playerShip->pitch, playerShip->roll);
-    high2 = playerShip->highResTableIndex;
-    low2 = playerShip->lowResTableIndex;
-    high1 = shipIndex[shipNo1].highResTableIndex;
-    low1 = shipIndex[shipNo1].lowResTableIndex;
+    highRes2 = playerShip->highResTableIndex;
+    lowRes2 = playerShip->lowResTableIndex;
+    highRes1 = shipIndex[shipNo1].highResTableIndex;
+    lowRes1 = shipIndex[shipNo1].lowResTableIndex;
 
-    getWorldPoint(&a, shipShapes[high2], shipShapes[low2], 0);
-    getWorldPoint(&b, shipShapes[high2], shipShapes[low2], 1);
-    getWorldPoint(&c, shipShapes[high2], shipShapes[low2], 2);
-    getWorldPoint(&d, shipShapes[high2], shipShapes[low2], 3);
+    getWorldPoint(&a, shipShapes[highRes2], shipShapes[lowRes2], 0);
+    getWorldPoint(&b, shipShapes[highRes2], shipShapes[lowRes2], 1);
+    getWorldPoint(&c, shipShapes[highRes2], shipShapes[lowRes2], 2);
+    getWorldPoint(&d, shipShapes[highRes2], shipShapes[lowRes2], 3);
 
     MinusVector(a, c, &AC);
     MinusVector(b, c, &BC);
@@ -235,40 +236,40 @@ int collideLineToPlane(int shipNo1, int shipNo2, Object **shipShapes, ShipData *
     MinusVector(b, d, &BD);
     MinusVector(a, d, &AD);
 
-    poly.prim = (Primitive *)shipShapes[low2]->primitives;
-    primitiveCount = shipShapes[low2]->primitiveCount;
+    poly.prim = (Primitive *)shipShapes[lowRes2]->primitives;
+    primitiveCount = shipShapes[lowRes2]->primitiveCount;
 
     for (i = 0; i < primitiveCount; i++) {
         switch (poly.prim->type) {
         case TypeF3:
             coords = poly.f3->coords;
-            getWorldPoint(&p1, shipShapes[high1], shipShapes[low1], coords[0]);
-            getWorldPoint(&p2, shipShapes[high1], shipShapes[low1], coords[1]);
-            getWorldPoint(&p3, shipShapes[high1], shipShapes[low1], coords[2]);
+            getWorldPoint(&p1, shipShapes[highRes1], shipShapes[lowRes1], coords[0]);
+            getWorldPoint(&p2, shipShapes[highRes1], shipShapes[lowRes1], coords[1]);
+            getWorldPoint(&p3, shipShapes[highRes1], shipShapes[lowRes1], coords[2]);
             poly.f3++;
             break;
 
         case TypeG3:
             coords = poly.g3->coords;
-            getWorldPoint(&p1, shipShapes[high1], shipShapes[low1], coords[0]);
-            getWorldPoint(&p2, shipShapes[high1], shipShapes[low1], coords[1]);
-            getWorldPoint(&p3, shipShapes[high1], shipShapes[low1], coords[2]);
+            getWorldPoint(&p1, shipShapes[highRes1], shipShapes[lowRes1], coords[0]);
+            getWorldPoint(&p2, shipShapes[highRes1], shipShapes[lowRes1], coords[1]);
+            getWorldPoint(&p3, shipShapes[highRes1], shipShapes[lowRes1], coords[2]);
             poly.g3++;
             break;
 
         case TypeFT3:
             coords = poly.ft3->coords;
-            getWorldPoint(&p1, shipShapes[high1], shipShapes[low1], coords[0]);
-            getWorldPoint(&p2, shipShapes[high1], shipShapes[low1], coords[1]);
-            getWorldPoint(&p3, shipShapes[high1], shipShapes[low1], coords[2]);
+            getWorldPoint(&p1, shipShapes[highRes1], shipShapes[lowRes1], coords[0]);
+            getWorldPoint(&p2, shipShapes[highRes1], shipShapes[lowRes1], coords[1]);
+            getWorldPoint(&p3, shipShapes[highRes1], shipShapes[lowRes1], coords[2]);
             poly.ft3++;
             break;
 
         case TypeGT3:
             coords = poly.gt3->coords;
-            getWorldPoint(&p1, shipShapes[high1], shipShapes[low1], coords[0]);
-            getWorldPoint(&p2, shipShapes[high1], shipShapes[low1], coords[1]);
-            getWorldPoint(&p3, shipShapes[high1], shipShapes[low1], coords[2]);
+            getWorldPoint(&p1, shipShapes[highRes1], shipShapes[lowRes1], coords[0]);
+            getWorldPoint(&p2, shipShapes[highRes1], shipShapes[lowRes1], coords[1]);
+            getWorldPoint(&p3, shipShapes[highRes1], shipShapes[lowRes1], coords[2]);
             poly.gt3++;
             break;
 
@@ -276,68 +277,68 @@ int collideLineToPlane(int shipNo1, int shipNo2, Object **shipShapes, ShipData *
             break;
         }
 
-        MinusVector(p1, p2, &P1P2);
-        MinusVector(p1, p3, &P1P3);
-        CrossProduct(&plane1, P1P2, P1P3);
+        MinusVector(p1, p2, &triangleEdge12);
+        MinusVector(p1, p3, &triangleEdge13);
+        CrossProduct(&normal, triangleEdge12, triangleEdge13);
 
-        for (count = 0; count < 6; count++) {
-            switch (count) {
+        for (edge = 0; edge < 6; edge++) {
+            switch (edge) {
             case 0:
-                assign(&start_vec, b);
-                assign(&pos_vec, BC);
+                assign(&edgeStart, b);
+                assign(&edgeVector, BC);
                 break;
             case 1:
-                assign(&start_vec, a);
-                assign(&pos_vec, AC);
+                assign(&edgeStart, a);
+                assign(&edgeVector, AC);
                 break;
             case 2:
-                assign(&start_vec, d);
-                assign(&pos_vec, DC);
+                assign(&edgeStart, d);
+                assign(&edgeVector, DC);
                 break;
             case 3:
-                assign(&start_vec, a);
-                assign(&pos_vec, AB);
+                assign(&edgeStart, a);
+                assign(&edgeVector, AB);
                 break;
             case 4:
-                assign(&start_vec, a);
-                assign(&pos_vec, AD);
+                assign(&edgeStart, a);
+                assign(&edgeVector, AD);
                 break;
             case 5:
-                assign(&start_vec, b);
-                assign(&pos_vec, BD);
+                assign(&edgeStart, b);
+                assign(&edgeVector, BD);
                 break;
             }
 
-            MinusVector(start_vec, p1, &factor1);
-            alpha = ScalarProduct(factor1, plane1) << 12;
-            factor2 = ScalarProduct(pos_vec, plane1);
-            if (factor2 != 0) {
-                alpha = alpha / factor2;
+            MinusVector(edgeStart, p1, &planeOffset);
+            alpha = ScalarProduct(planeOffset, normal) << 12;
+            normalDotEdge = ScalarProduct(edgeVector, normal);
+            if (normalDotEdge != 0) {
+                alpha = alpha / normalDotEdge;
 
-                term1.vx = (alpha * pos_vec.vx) >> 12;
-                term1.vy = (alpha * pos_vec.vy) >> 12;
-                term1.vz = (alpha * pos_vec.vz) >> 12;
+                intersectionOffset.vx = (alpha * edgeVector.vx) >> 12;
+                intersectionOffset.vy = (alpha * edgeVector.vy) >> 12;
+                intersectionOffset.vz = (alpha * edgeVector.vz) >> 12;
 
-                res_vec.vx = start_vec.vx + term1.vx;
-                res_vec.vy = start_vec.vy + term1.vy;
-                res_vec.vz = start_vec.vz + term1.vz;
+                intersection.vx = edgeStart.vx + intersectionOffset.vx;
+                intersection.vy = edgeStart.vy + intersectionOffset.vy;
+                intersection.vz = edgeStart.vz + intersectionOffset.vz;
 
                 if (alpha >= 0 && alpha <= 4096) {
-                    vec0.vx = res_vec.vx - p1.vx;
-                    vec0.vy = res_vec.vy - p1.vy;
-                    vec0.vz = res_vec.vz - p1.vz;
+                    toVertex1.vx = intersection.vx - p1.vx;
+                    toVertex1.vy = intersection.vy - p1.vy;
+                    toVertex1.vz = intersection.vz - p1.vz;
 
-                    vec1.vx = res_vec.vx - p2.vx;
-                    vec1.vy = res_vec.vy - p2.vy;
-                    vec1.vz = res_vec.vz - p2.vz;
+                    toVertex2.vx = intersection.vx - p2.vx;
+                    toVertex2.vy = intersection.vy - p2.vy;
+                    toVertex2.vz = intersection.vz - p2.vz;
 
-                    vec2.vx = res_vec.vx - p3.vx;
-                    vec2.vy = res_vec.vy - p3.vy;
-                    vec2.vz = res_vec.vz - p3.vz;
+                    toVertex3.vx = intersection.vx - p3.vx;
+                    toVertex3.vy = intersection.vy - p3.vy;
+                    toVertex3.vz = intersection.vz - p3.vz;
 
-                    angle = GetAng(vec0, vec1);
-                    angle += GetAng(vec1, vec2);
-                    angle += GetAng(vec2, vec0);
+                    angle = GetAng(toVertex1, toVertex2);
+                    angle += GetAng(toVertex2, toVertex3);
+                    angle += GetAng(toVertex3, toVertex1);
 
                     if (angle >= 30000) {
                         return 1;
@@ -377,9 +378,6 @@ void Ship2TrackBase(ShipData *playerShip, Face *facePtr, int alpha) {
 
 void DroneShip2TrackBase(ShipData *playerShip, Face *facePtr, int alpha)
 {
-    volatile u_char dummy[56];
-
-    (void)dummy;
     if (alpha < collideMinAlpha) {
         collideMinAlpha = alpha;
     }
@@ -498,7 +496,7 @@ void Ship2Track(ShipData *playerShip, Face *facePtr, Object **shipShapes) {
             wingPos.vz=playerShip->ppivot.vz-(playerShip->unitVecWing.vz>>shift)-(playerShip->unitVecNose.vz>>shift);
             alpha=PlaneLineCollision(facePoint,wingPos,facePtr->normal);
             if(alpha<=0) {
-                if(playerShip->nearTrkSect->flags&0x18) {
+                if(playerShip->nearTrkSect->flags&(TRACK_JUNCTION_END|TRACK_JUNCTION_START)) {
                     if(CheckPolygonCollision(facePtr,wingPos,alpha,1)==1) {NewWingCollision(playerShip,facePtr,-downTrack,alpha);collided=1;}
                 } else if(collided) WingCollision(playerShip,facePtr,-downTrack,alpha);
                 else NewWingCollision(playerShip,facePtr,-downTrack,alpha);
@@ -508,7 +506,7 @@ void Ship2Track(ShipData *playerShip, Face *facePtr, Object **shipShapes) {
             wingPos.vz=playerShip->ppivot.vz+(playerShip->unitVecWing.vz>>shift)-(playerShip->unitVecNose.vz>>shift);
             alpha=PlaneLineCollision(facePoint,wingPos,facePtr->normal);
             if(alpha<=0) {
-                if(playerShip->nearTrkSect->flags&0x18) {
+                if(playerShip->nearTrkSect->flags&(TRACK_JUNCTION_END|TRACK_JUNCTION_START)) {
                     if(CheckPolygonCollision(facePtr,wingPos,alpha,1)==1) {NewWingCollision(playerShip,facePtr,-downTrack,alpha);collided=1;}
                 } else if(collided) WingCollision(playerShip,facePtr,-downTrack,alpha);
                 else NewWingCollision(playerShip,facePtr,-downTrack,alpha);
@@ -598,7 +596,7 @@ void Ship2Track(ShipData *playerShip, Face *facePtr, Object **shipShapes) {
             wingPos.vz=playerShip->ppivot.vz-(playerShip->unitVecWing.vz>>shift)-(playerShip->unitVecNose.vz>>shift);
             alpha=PlaneLineCollision(facePoint,wingPos,facePtr->normal);
             if(alpha<=0) {
-                if(playerShip->nearTrkSect->flags&0x18) {
+                if(playerShip->nearTrkSect->flags&(TRACK_JUNCTION_END|TRACK_JUNCTION_START)) {
                     if(CheckPolygonCollision(facePtr,wingPos,alpha,1)==1) {NewWingCollision(playerShip,facePtr,downTrack,alpha);collided=1;}
                 } else if(collided) WingCollision(playerShip,facePtr,downTrack,alpha);
                 else NewWingCollision(playerShip,facePtr,downTrack,alpha);
@@ -608,7 +606,7 @@ void Ship2Track(ShipData *playerShip, Face *facePtr, Object **shipShapes) {
             wingPos.vz=playerShip->ppivot.vz+(playerShip->unitVecWing.vz>>shift)-(playerShip->unitVecNose.vz>>shift);
             alpha=PlaneLineCollision(facePoint,wingPos,facePtr->normal);
             if(alpha<=0) {
-                if(playerShip->nearTrkSect->flags&0x18) {
+                if(playerShip->nearTrkSect->flags&(TRACK_JUNCTION_END|TRACK_JUNCTION_START)) {
                     if(CheckPolygonCollision(facePtr,wingPos,alpha,1)==1) {NewWingCollision(playerShip,facePtr,downTrack,alpha);collided=1;}
                 } else if(collided) WingCollision(playerShip,facePtr,downTrack,alpha);
                 else NewWingCollision(playerShip,facePtr,downTrack,alpha);
@@ -815,11 +813,11 @@ int PlaneLineCollision(VECTOR plane_point, VECTOR ship_pos, SVector normal) {
 
 
 void Reflection(VECTOR *incidence, SVector normal) {
-  int temp;
-  temp = (((((int) normal.vx) * (-incidence->vx)) >> 12) + (((int) (normal.vy * (-incidence->vy))) >> 12)) + (((int) (normal.vz * (-incidence->vz))) >> 12);
-  incidence->vx = (((2 * ((int) normal.vx)) * temp) >> 12) + incidence->vx;
-  incidence->vy = (((2 * ((int) normal.vy)) * temp) >> 12) + incidence->vy;
-  incidence->vz = (((2 * ((int) normal.vz)) * temp) >> 12) + incidence->vz;
+  int normalProjection;
+  normalProjection = (((((int) normal.vx) * (-incidence->vx)) >> 12) + (((int) (normal.vy * (-incidence->vy))) >> 12)) + (((int) (normal.vz * (-incidence->vz))) >> 12);
+  incidence->vx = (((2 * ((int) normal.vx)) * normalProjection) >> 12) + incidence->vx;
+  incidence->vy = (((2 * ((int) normal.vy)) * normalProjection) >> 12) + incidence->vy;
+  incidence->vz = (((2 * ((int) normal.vz)) * normalProjection) >> 12) + incidence->vz;
 }
 
 
