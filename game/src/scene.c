@@ -10,75 +10,75 @@ short IntelPrim(Prm prm)
     IntelShort(&prm.f3->type);
     IntelShort(&prm.f3->flag);
     switch (prm.f3->type) {
-    case 1:
+    case TypeF3:
         IntelShort(&prm.f3->coords[0]);
         IntelShort(&prm.f3->coords[1]);
         IntelShort(&prm.f3->coords[2]);
         break;
-    case 2:
+    case TypeFT3:
         IntelShort(&prm.ft3->coords[0]);
         IntelShort(&prm.ft3->coords[1]);
         IntelShort(&prm.ft3->coords[2]);
         IntelShort(&prm.ft3->texture);
         break;
-    case 3:
+    case TypeF4:
         IntelShort(&prm.f4->coords[0]);
         IntelShort(&prm.f4->coords[1]);
         IntelShort(&prm.f4->coords[2]);
         IntelShort(&prm.f4->coords[3]);
         break;
-    case 4:
+    case TypeFT4:
         IntelShort(&prm.ft4->coords[0]);
         IntelShort(&prm.ft4->coords[1]);
         IntelShort(&prm.ft4->coords[2]);
         IntelShort(&prm.ft4->coords[3]);
         IntelShort(&prm.ft4->texture);
         break;
-    case 5:
+    case TypeG3:
         IntelShort(&prm.g3->coords[0]);
         IntelShort(&prm.g3->coords[1]);
         IntelShort(&prm.g3->coords[2]);
         break;
-    case 6:
+    case TypeGT3:
         IntelShort(&prm.gt3->coords[0]);
         IntelShort(&prm.gt3->coords[1]);
         IntelShort(&prm.gt3->coords[2]);
         IntelShort(&prm.gt3->texture);
         break;
-    case 7:
+    case TypeG4:
         IntelShort(&prm.g4->coords[0]);
         IntelShort(&prm.g4->coords[1]);
         IntelShort(&prm.g4->coords[2]);
         IntelShort(&prm.g4->coords[3]);
         break;
-    case 8:
+    case TypeGT4:
         IntelShort(&prm.gt4->coords[0]);
         IntelShort(&prm.gt4->coords[1]);
         IntelShort(&prm.gt4->coords[2]);
         IntelShort(&prm.gt4->coords[3]);
         IntelShort(&prm.gt4->texture);
         break;
-    case 12:
+    case TypeLSF3:
         IntelShort(&prm.lsf3->coords[0]);
         IntelShort(&prm.lsf3->coords[1]);
         IntelShort(&prm.lsf3->coords[2]);
         IntelShort(&prm.lsf3->normal);
         break;
-    case 13:
+    case TypeLSFT3:
         IntelShort(&prm.lsft3->coords[0]);
         IntelShort(&prm.lsft3->coords[1]);
         IntelShort(&prm.lsft3->coords[2]);
         IntelShort(&prm.lsft3->normal);
         IntelShort(&prm.lsft3->texture);
         break;
-    case 14:
+    case TypeLSF4:
         IntelShort(&prm.lsf4->coords[0]);
         IntelShort(&prm.lsf4->coords[1]);
         IntelShort(&prm.lsf4->coords[2]);
         IntelShort(&prm.lsf4->coords[3]);
         IntelShort(&prm.lsf4->normal);
         break;
-    case 15:
+    case TypeLSFT4:
         IntelShort(&prm.lsft4->coords[0]);
         IntelShort(&prm.lsft4->coords[1]);
         IntelShort(&prm.lsft4->coords[2]);
@@ -86,7 +86,7 @@ short IntelPrim(Prm prm)
         IntelShort(&prm.lsft4->normal);
         IntelShort(&prm.lsft4->texture);
         break;
-    case 16:
+    case TypeLSG3:
         IntelShort(&prm.lsg3->coords[0]);
         IntelShort(&prm.lsg3->coords[1]);
         IntelShort(&prm.lsg3->coords[2]);
@@ -94,7 +94,7 @@ short IntelPrim(Prm prm)
         IntelShort(&prm.lsg3->normals[1]);
         IntelShort(&prm.lsg3->normals[2]);
         break;
-    case 18:
+    case TypeLSG4:
         IntelShort(&prm.lsg4->coords[0]);
         IntelShort(&prm.lsg4->coords[1]);
         IntelShort(&prm.lsg4->coords[2]);
@@ -104,7 +104,7 @@ short IntelPrim(Prm prm)
         IntelShort(&prm.lsg4->normals[2]);
         IntelShort(&prm.lsg4->normals[3]);
         break;
-    case 17:
+    case TypeLSGT3:
         IntelShort(&prm.lsgt3->coords[0]);
         IntelShort(&prm.lsgt3->coords[1]);
         IntelShort(&prm.lsgt3->coords[2]);
@@ -113,7 +113,7 @@ short IntelPrim(Prm prm)
         IntelShort(&prm.lsgt3->normals[2]);
         IntelShort(&prm.lsgt3->texture);
         break;
-    case 19:
+    case TypeLSGT4:
         IntelShort(&prm.lsgt4->coords[0]);
         IntelShort(&prm.lsgt4->coords[1]);
         IntelShort(&prm.lsgt4->coords[2]);
@@ -124,14 +124,14 @@ short IntelPrim(Prm prm)
         IntelShort(&prm.lsgt4->normals[3]);
         IntelShort(&prm.lsgt4->texture);
         break;
-    case 10:
-    case 11:
+    case TypeTSPR:
+    case TypeBSPR:
         IntelShort(&prm.spr->coord);
         IntelShort(&prm.spr->width);
         IntelShort(&prm.spr->height);
         IntelShort(&prm.spr->texture);
         break;
-    case 20:
+    case TypeSpline:
         IntelLong(&prm.spline->control1.vx);
         IntelLong(&prm.spline->control1.vy);
         IntelLong(&prm.spline->control1.vz);
@@ -142,14 +142,14 @@ short IntelPrim(Prm prm)
         IntelLong(&prm.spline->control2.vy);
         IntelLong(&prm.spline->control2.vz);
         break;
-    case 22:
+    case TypePointLight:
         IntelLong(&prm.pointLight->position.vx);
         IntelLong(&prm.pointLight->position.vy);
         IntelLong(&prm.pointLight->position.vz);
         IntelShort(&prm.pointLight->startFalloff);
         IntelShort(&prm.pointLight->endFalloff);
         break;
-    case 23:
+    case TypeSpotLight:
         IntelLong(&prm.spotLight->position.vx);
         IntelLong(&prm.spotLight->position.vy);
         IntelLong(&prm.spotLight->position.vz);
@@ -161,7 +161,7 @@ short IntelPrim(Prm prm)
         IntelShort(&prm.spotLight->coneAngle);
         IntelShort(&prm.spotLight->spreadAngle);
         break;
-    case 21:
+    case TypeInfiniteLight:
         IntelShort(&prm.infiniteLight->direction.vx);
         IntelShort(&prm.infiniteLight->direction.vy);
         IntelShort(&prm.infiniteLight->direction.vz);
@@ -177,27 +177,27 @@ short IntelPrim(Prm prm)
 void IntelLong(int *lvalue)
 {
     char *cvalue;
-    char  temp;
+    char  savedByte;
 
     cvalue = (char *)lvalue;
-    temp = cvalue[0];
+    savedByte = cvalue[0];
     cvalue[0] = cvalue[3];
-    cvalue[3] = temp;
-    temp = cvalue[1];
+    cvalue[3] = savedByte;
+    savedByte = cvalue[1];
     cvalue[1] = cvalue[2];
-    cvalue[2] = temp;
+    cvalue[2] = savedByte;
 }
 
 
 void IntelShort(short *svalue)
 {
     char *cvalue;
-    char  temp;
+    char  savedByte;
 
     cvalue = (char *)svalue;
-    temp = cvalue[0];
+    savedByte = cvalue[0];
     cvalue[0] = cvalue[1];
-    cvalue[1] = temp;
+    cvalue[1] = savedByte;
 }
 
 
@@ -512,9 +512,9 @@ void *WADLoadPrm(WADFILE *wad, short textureStart)
 }
 
 
-Object *LoadPrm(char *arg0, short arg1)
+Object *LoadPrm(char *fileName, short textureStart)
 {
-    return LoadPrmCommon(0, arg0, arg1);
+    return LoadPrmCommon(0, fileName, textureStart);
 }
 
 

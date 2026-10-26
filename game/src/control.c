@@ -1,4 +1,6 @@
 #include "functions.h"
+#include "sfx.h"
+#include "racectrl.h"
 #include "portorig.h" /* Port: the original Wipeout's tracks */
 #include "../../platform/trace.h" /* Port: lockstep test hooks */
 #include "ships.h"
@@ -42,7 +44,7 @@ void UpdateShips(ShipData *shipIndex, WeaponShape *unused, Object **shipShapes, 
     PortScriptWrites(&shipIndex[ownShip], gameData, ownShip); /* Port: scripted writes for the lockstep tests (WIPEOUT_WRITES) */
     activeCount = 0;
     for (i = 0; i < 15; i++) {
-        if (!(shipIndex[i].combatAttr & 0x8000)) {
+        if (!(shipIndex[i].combatAttr & DESTROYED)) {
             activeCount++;
         }
     }
@@ -57,7 +59,7 @@ void UpdateShips(ShipData *shipIndex, WeaponShape *unused, Object **shipShapes, 
             lastPos.vz = playerShip->ppivot.vz;
             shipNum = shipNo;
             switch (raceType) {
-            case 1:
+            case RACE_TIME_TRIAL:
                 if (shipNo == ownShip) {
                     playerShip->update(shipIndex, shipShapes, shipNo, weaponIndex, playerControl);
                 } else if (shipNo == ghostShip) {
@@ -66,7 +68,7 @@ void UpdateShips(ShipData *shipIndex, WeaponShape *unused, Object **shipShapes, 
                 }
                 break;
 
-            case 3:
+            case RACE_ONE_ON_ONE:
                 if (shipNo == ownShip) {
                     playerShip->update(shipIndex, shipShapes, shipNo, weaponIndex, playerControl);
                     doShipShipCollision(shipNo, shipIndex, shipShapes);
@@ -76,7 +78,7 @@ void UpdateShips(ShipData *shipIndex, WeaponShape *unused, Object **shipShapes, 
                 }
                 break;
 
-            case 2:
+            case RACE_ARCADE_LINK:
                 if (shipNo == ownShip) {
                     playerShip->update(shipIndex, shipShapes, shipNo, weaponIndex, playerControl);
                     doShipShipCollision(shipNo, shipIndex, shipShapes);
@@ -125,7 +127,7 @@ void SortAllShips(ShipData *shipIndex)
     for (i = 0; i < activeShipCount; i++) {
         currentShip = shipRank[i].shipNo;
         playerShip = &shipIndex[currentShip];
-        if (!(playerShip->combatAttr & 0x8000)) {
+        if (!(playerShip->combatAttr & DESTROYED)) {
             savedShip = currentShip;
             sectionNumber = raceLines[playerShip->nearSecNo].distance;
             shipRank[count].shipNo = savedShip;
@@ -194,7 +196,7 @@ void UpdatePlayerShipStart(ShipData *shipIndex, Object **shipShapes, int shipNo,
     short thrustVal;
     int boostAt, stallAt, rumbleLevel; /* Port: the pads' motors at the launch (below) */
 
-    if (!(shipIndex[ownShip].combatAttr & 0x8000)) {
+    if (!(shipIndex[ownShip].combatAttr & DESTROYED)) {
         playerShip = &shipIndex[shipNo];
         GeneralStartProcs(playerShip);
         if (playerShip->updateCount == PAL_TIME(199)) {
@@ -202,18 +204,18 @@ void UpdatePlayerShipStart(ShipData *shipIndex, Object **shipShapes, int shipNo,
         }
         playerShip->ppivot.vy = playerShip->startY + (rsin(playerShip->updateCount * 80) >> 7);
         if (playerShip->updateCount == 0) {
-            if (playerShip->attr & 64) {
+            if (playerShip->attr & RACING) {
                 playerShip->updateCount = PAL_TIME(90);
                 playerShip->update = UpdatePlayerShip;
             } else {
                 playerShip->update = UpdateDroneShip;
             }
         }
-        if (playerShip->attr & 64) {
+        if (playerShip->attr & RACING) {
             SetBrake(playerShip, controller);
             SetView(playerShip, controller);
         }
-        if (controller->buttons & 2) {
+        if (controller->buttons & CONTROL_ANALOG_THRUST) {
             thrustVal = (controller->thrust * 5) >> 2;
             if (thrustVal >= 256) {
                 thrustVal = 255;
@@ -238,7 +240,7 @@ void UpdatePlayerShipStart(ShipData *shipIndex, Object **shipShapes, int shipNo,
                 playerShip->thrust -= PAL_SPEED(16);
             }
         } else {
-            if (controller->buttons & 0x4000) {
+            if (controller->buttons & CONTROL_THRUST) {
                 playerShip->thrust += PAL_SPEED(16);
             } else if (playerShip->thrust >= PAL_SPEED(16)) {
                 playerShip->thrust -= PAL_SPEED(16);
@@ -275,10 +277,10 @@ void SetUpFirstCheckPoint(void)
         sect = sect->nextSection.ptr;
     }
     e = track->faces + sect->faceStart;
-    while ((e->flags & 1) == 0) {
+    while ((e->flags & TRACK_BASE) == 0) {
         e++;
     }
-    if (e->flags & 0x80) {
+    if (e->flags & CHECKPOINT) {
         i = 0;
         do {
             if (checkCells[tempGameData->trackNum][tempGameData->shipClass][i].section == sect->secNo) {
@@ -316,15 +318,15 @@ void UpdatePlayerShip(ShipData *ships, Object **shapes, int shipNo, WeaponData *
         ShipTrkReaction(ship, shapes);
         return;
     }
-    if (ship->combatAttr & 0x8000) {
+    if (ship->combatAttr & DESTROYED) {
         return;
     }
     if (ship->electroCount > 0) {
         ship->electroCount--;
     } else if (ship->electroCount == 0) {
-        ship->attr &= ~0x8000;
+        ship->attr &= ~ELECTROED;
     }
-    if (control->buttons & 4) {
+    if (control->buttons & CONTROL_ANALOG_STEERING) {
         if (control->steering - twist + modes.value[currScreen] >= 127) {
             control->steering = 127 - modes.value[currScreen];
         } else if (control->steering - twist - modes.value[currScreen] < -126) {
@@ -362,13 +364,13 @@ void UpdatePlayerShip(ShipData *ships, Object **shapes, int shipNo, WeaponData *
                 ship->vhdg -= ship->headingInc << 1;
             }
         }
-    } else if (control->buttons & 128) {
+    } else if (control->buttons & CONTROL_LEFT) {
         if (ship->vhdg < 0) {
             ship->vhdg += ship->headingInc << 1;
         } else {
             ship->vhdg += ship->headingInc;
         }
-    } else if (control->buttons & 32) {
+    } else if (control->buttons & CONTROL_RIGHT) {
         if (ship->vhdg <= 0) {
             ship->vhdg -= ship->headingInc;
         } else {
@@ -387,15 +389,15 @@ void UpdatePlayerShip(ShipData *ships, Object **shapes, int shipNo, WeaponData *
     if (ship->vhdg > ship->maxHeading) {
         ship->vhdg = ship->maxHeading;
     }
-    if (ship->attr & 0x8000) {
-        if (shipNo == ownShip && (ship->attr & 4)) {
+    if (ship->attr & ELECTROED) {
+        if (shipNo == ownShip && (ship->attr & VIEW_IN)) {
             SetShake(2);
         }
         ship->vhdg += newRand() % 600 - 300;
     }
-    if (control->buttons & 64) {
+    if (control->buttons & CONTROL_DOWN) {
         ship->vpitch += PAL_SPEED(30);
-    } else if (control->buttons & 16) {
+    } else if (control->buttons & CONTROL_UP) {
         ship->vpitch -= PAL_SPEED(30);
     }
     if (ship->updateCount == PAL_TIME(90)) {
@@ -407,12 +409,12 @@ void UpdatePlayerShip(ShipData *ships, Object **shapes, int shipNo, WeaponData *
                 ship->thrustCount = 9;
                 ship->thrust = ship->maxThrust;
                 if (shipNo == ownShip) {
-                    PlayNote(34, 255, 15, 15, 256);
+                    PlayNote(SFX_TURBO, 255, 15, 15, 256);
                 }
             } else {
                 ship->stallCount = 15;
                 if (shipNo == ownShip) {
-                    PlayNote(36, 255, 15, 15, 256);
+                    PlayNote(SFX_START_STALL, 255, 15, 15, 256);
                 }
             }
         }
@@ -424,7 +426,7 @@ void UpdatePlayerShip(ShipData *ships, Object **shapes, int shipNo, WeaponData *
         ship->updateCount--;
     }
     if (!(ship->combatAttr & 8)) {
-        if (raceType == 3) {
+        if (raceType == RACE_ONE_ON_ONE) {
             if (shipNo == ownShip) {
                 if (playerPosition == 1) {
                     maxThrust = (unsigned int)(ship->maxThrust * 13) >> 4;
@@ -441,7 +443,7 @@ void UpdatePlayerShip(ShipData *ships, Object **shapes, int shipNo, WeaponData *
         } else {
             maxThrust = ship->maxThrust;
         }
-        if (control->buttons & 2) {
+        if (control->buttons & CONTROL_ANALOG_THRUST) {
             thrustVal = control->thrust;
             targetThrust = maxThrust * thrustVal / 200;
             if (targetThrust > maxThrust) {
@@ -462,7 +464,7 @@ void UpdatePlayerShip(ShipData *ships, Object **shapes, int shipNo, WeaponData *
                 ship->thrust -= PAL_SPEED(16);
             }
         } else {
-            if (control->buttons & 0x4000) {
+            if (control->buttons & CONTROL_THRUST) {
                 ship->thrust += PAL_SPEED(16);
             } else if (ship->thrust >= PAL_SPEED(8)) {
                 ship->thrust -= PAL_SPEED(8);
@@ -480,7 +482,7 @@ void UpdatePlayerShip(ShipData *ships, Object **shapes, int shipNo, WeaponData *
             }
         }
     }
-    if ((ship->attr & 0x8000) && newRand() % 80 == 0) {
+    if ((ship->attr & ELECTROED) && newRand() % 80 == 0) {
         ship->thrust -= ship->thrust >> 2;
     }
     if (ship->stallCount > 0) {
@@ -495,8 +497,8 @@ void UpdatePlayerShip(ShipData *ships, Object **shapes, int shipNo, WeaponData *
     if (destroyed) {
         shipTargetIndex[shipNo] = 100;
         ship->combatAttr |= 4;
-        if (ship->attr & 4) {
-            ship->attr &= ~4;
+        if (ship->attr & VIEW_IN) {
+            ship->attr &= ~VIEW_IN;
             CameraUpdate = UpdateCameraRaceExternal;
         }
     }
@@ -505,12 +507,12 @@ void UpdatePlayerShip(ShipData *ships, Object **shapes, int shipNo, WeaponData *
 
 void GeneralStartProcs(ShipData *s)
 {
-    if (s->updateCount == START_COUNTDOWN_FRAMES && !(s->combatAttr & 2)) {
+    if (s->updateCount == START_COUNTDOWN_FRAMES && !(s->combatAttr & REMOTE_SHIP)) {
         startCountdown = s->updateCount;
         countdownActive = 1;
     }
     s->updateCount--;
-    if (!(s->combatAttr & 2)) {
+    if (!(s->combatAttr & REMOTE_SHIP)) {
         startCountdown--;
     }
     if (s->updateCount == 0) {
@@ -518,11 +520,11 @@ void GeneralStartProcs(ShipData *s)
         countdownActive = 0;
     }
     PortOriginalCount(s->updateCount); /* Port: an original Wipeout track's start gantries (portorig.c) */
-    if (s->updateCount == REGION(0x21, 41)) {
+    if (s->updateCount == COUNTDOWN_STEP_1) {
         PlayNote(0x1C, 0x1E0, 0xF, 0xF, 220);
-    } else if (s->updateCount == REGION(0x42, 83)) {
+    } else if (s->updateCount == COUNTDOWN_STEP_2) {
         PlayNote(0x1B, 0x1E0, 0xF, 0xF, 220);
-    } else if (s->updateCount == REGION(0x64, 125)) {
+    } else if (s->updateCount == COUNTDOWN_STEP_3) {
         PlayNote(0x1A, 0x1E0, 0xF, 0xF, 220);
     }
 }

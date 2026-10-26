@@ -331,7 +331,7 @@ Texture *NewLoadTexture(struct Tim *tim, int context, int scene)
 TIMlist *LoadCompressedTextureSequence(char *fileName)
 {
     short  i;
-    char  *fileBuffer;
+    int   *fileBuffer;
     int   fileSize;
     int   textureSize;
     int   totalSize;
@@ -346,15 +346,15 @@ TIMlist *LoadCompressedTextureSequence(char *fileName)
     if (!fileBuffer) {
         Error("Decompress Load: Failed to allocate memory for track vertices", Fatal);
     }
-    if (LoadFile(fileName, fileBuffer) != fileSize) {
+    if (LoadFile(fileName, (char *)fileBuffer) != fileSize) {
         sprintf(errorString, "Decompress(): Failed to load file %s\n", fileName);
         Error(errorString, Fatal);
     }
-    seqTextureCount = *(int *)fileBuffer;
+    seqTextureCount = fileBuffer[0];
     totalSize = 0;
     for (i = 0; i < seqTextureCount; i++) {
         timList.memOffset[i] = totalSize;
-        textureSize = *((int *)(fileBuffer + 4 + i * 4));
+        textureSize = fileBuffer[i + 1];
         totalSize += textureSize;
     }
     timList.memBase = DAlloc(reserveHeap, totalSize);
@@ -362,9 +362,9 @@ TIMlist *LoadCompressedTextureSequence(char *fileName)
        offsets stay offsets and LoadCmpFiles/GhostLoadCmpFiles add memBase when they use them. */
     GsGetVcount();
     GsClearVcount();
-    ExpandData((unsigned char *)(fileBuffer + 4 + seqTextureCount * 4), (unsigned char *)timList.memBase);
+    ExpandData((unsigned char *)(fileBuffer + 1 + seqTextureCount), (unsigned char *)timList.memBase);
     GsGetVcount();
-    DFree(reserveHeap, fileBuffer);
+    DFree(reserveHeap, (char *)fileBuffer);
     return &timList;
 }
 

@@ -1,6 +1,7 @@
 #include "raceinit.h"
 #include "ayrace.h"
-#include "include_asm_g8.h"
+#include "track.h"
+#include "racectrl.h"
 extern int     attractStep;
 extern u_int   randSeed;
 extern u_char  cdMusicIndex;
@@ -182,10 +183,7 @@ void InitInGameMenu(struct InGameMenu *menu)
 }
 
 
-/* Port: the parameters were typed int (they hold the weapon grid table, the grid count and the
-   special grid table that SetTrackAttributes takes); the call below no longer goes through a
-   cast function pointer type. */
-void InitWeaponGrids(WeaponGrid *weaponGrids, TrackData *context, int *noWeaponGrids, short *specialCount, SpecialGrid *specialGrid)
+void InitWeaponGrids(WeaponGrid *weaponGrids, TrackData *trackData, int *gridCount, short *specialCount, SpecialGrid *specialGrids)
 {
     TrackSection *section;
     TrackSection *original;
@@ -194,7 +192,7 @@ void InitWeaponGrids(WeaponGrid *weaponGrids, TrackData *context, int *noWeaponG
     short         more;
     short         branch;
 
-    section = context->sections;
+    section = trackData->sections;
     more = 1;
     branch = 1;
     number = 0;
@@ -202,39 +200,39 @@ void InitWeaponGrids(WeaponGrid *weaponGrids, TrackData *context, int *noWeaponG
     do {
         section->secNo = number;
         if (gameData->actTrackNum == 7 && (u_short) (number - 70) < 17) {
-            face = context->faces;
+            face = trackData->faces;
             face += section->faceStart;
             do {
                 u_char flag = face->flags;
                 face++;
-                if (flag & 1) break;
+                if (flag & TRACK_BASE) break;
             } while (1);
             face--;
-            face->flags |= 0x40;
+            face->flags |= PIT_LANE;
             face++;
-            face->flags |= 0x40;
+            face->flags |= PIT_LANE;
         }
-        *noWeaponGrids = SetTrackAttributes(section, number, weaponGrids, *noWeaponGrids, specialCount, specialGrid);
-        if (section->junction.index != -1 && (section->junction.ptr->flags & 16)) {
+        *gridCount = SetTrackAttributes(section, number, weaponGrids, *gridCount, specialCount, specialGrids);
+        if (section->junction.index != -1 && (section->junction.ptr->flags & TRACK_JUNCTION_START)) {
             original = section;
             section = section->junction.ptr;
             while (branch) {
                 number++;
                 section->secNo = number;
                 if (gameData->actTrackNum == 7 && (u_short) (number - 70) < 17) {
-                    face = context->faces;
+                    face = trackData->faces;
                     face += section->faceStart;
                     do {
                         u_char flag = face->flags;
                         face++;
-                        if (flag & 1) break;
+                        if (flag & TRACK_BASE) break;
                     } while (1);
                     face--;
-                    face->flags |= 0x40;
+                    face->flags |= PIT_LANE;
                     face++;
-                    face->flags |= 0x40;
+                    face->flags |= PIT_LANE;
                 }
-                *noWeaponGrids = SetTrackAttributes(section, number, weaponGrids, *noWeaponGrids, specialCount, specialGrid);
+                *gridCount = SetTrackAttributes(section, number, weaponGrids, *gridCount, specialCount, specialGrids);
                 section = section->nextSection.ptr;
                 if (section->junction.index != -1) branch = 0;
             }
@@ -243,26 +241,26 @@ void InitWeaponGrids(WeaponGrid *weaponGrids, TrackData *context, int *noWeaponG
             section->secNo = number;
             branch = 1;
             if (gameData->actTrackNum == 7 && (u_short) (number - 70) < 17) {
-                face = context->faces;
+                face = trackData->faces;
                 face += section->faceStart;
                 do {
                     u_char flag = face->flags;
                     face++;
-                    if (flag & 1) break;
+                    if (flag & TRACK_BASE) break;
                 } while (1);
                 face--;
-                face->flags |= 0x40;
+                face->flags |= PIT_LANE;
                 face++;
-                face->flags |= 0x40;
+                face->flags |= PIT_LANE;
             }
-            *noWeaponGrids = SetTrackAttributes(section, number, weaponGrids, *noWeaponGrids, specialCount, specialGrid);
+            *gridCount = SetTrackAttributes(section, number, weaponGrids, *gridCount, specialCount, specialGrids);
             roadSectionCount++;
-            if (section == context->sections) more = 0;
+            if (section == trackData->sections) more = 0;
         }
         section = section->nextSection.ptr;
         roadSectionCount++;
         number++;
-        if (section == context->sections) more = 0;
+        if (section == trackData->sections) more = 0;
     } while (more);
     weaponGridSections = number;
 }
@@ -283,8 +281,8 @@ void InitAttractMode(int mode, ShipData *ships)
         CameraUpdate = UpdateCameraAttractMode;
         ship->update = UpdateDroneShipStart;
         attractStep = nextAttract;
-        attributes &= ~4;
-        attributes &= ~0x40;
+        attributes &= ~VIEW_IN;
+        attributes &= ~RACING;
         ship->attr = attributes;
         if (nextAttract == (quotient * 3)) {
             attractDelayFrames = CREDITS_FRAMES;
@@ -301,11 +299,11 @@ void InitAttractMode(int mode, ShipData *ships)
 
 int myrand(void)
 {
-    u_int temp;
+    u_int nextSeed;
 
-    temp = (randSeed >> 1) ^ (randSeed * 8);
-    randSeed = temp;
-    return temp & 0xFFFF;
+    nextSeed = (randSeed >> 1) ^ (randSeed * 8);
+    randSeed = nextSeed;
+    return nextSeed & 0xFFFF;
 }
 
 
@@ -372,7 +370,7 @@ void InitCDAudio(ConfigData *menu, unsigned char *unused)
 }
 void GetJoyPadPacketOnVsync(int flags)
 {
-    if (!(flags & 0xFF) && (gameType == 1)) {
+    if (!(flags & 0xFF) && (gameType == GAME_LINK_SLAVE)) {
         VSync(0);
     }
 }
@@ -438,7 +436,7 @@ void InitRaceLine(TrackData *track, ConfigData *game)
         line[section->secNo].y = 0;
         line[section->secNo].z = 0;
         *list++ = section->secNo;
-        if (section->junction.index != -1 && (section->junction.ptr->flags & 16)) {
+        if (section->junction.index != -1 && (section->junction.ptr->flags & TRACK_JUNCTION_START)) {
             saved = section;
             section = saved->junction.ptr;
             branchDistance = 0;
@@ -512,7 +510,7 @@ void InitRaceLine(TrackData *track, ConfigData *game)
             do {
                 flags = face->flags;
                 face++;
-                if (flags & 1) {
+                if (flags & TRACK_BASE) {
                     face--;
                     break;
                 }
