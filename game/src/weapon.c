@@ -1,4 +1,7 @@
 #include "functions.h"
+#include "sfx.h"
+#include "track.h"
+#include "racectrl.h"
 #include "weapon.h"
 #include "scene.h"
 #include "sparks.h"
@@ -16,6 +19,10 @@
 #define ELECBOLT_FRAMES REGION(0x8C, 0x64)
 /* The plasma shot charges while its count is above this; the European charge starts lower. */
 #define PLASMA_CHARGE_FRAMES REGION(200, 140)
+/* Other timers: the shield pickup, a ship's electrocution, a laid mine. */
+#define SHIELD_FRAMES        REGION(200, 150)
+#define ELECTROED_FRAMES     REGION(140, 100)
+#define MINE_FRAMES          REGION(450, 350)
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
 extern short fadeAmount;
@@ -112,119 +119,119 @@ void InsertWeapon(ShipData *ship, WeaponData *weapons, int owner, u_char type)
 again:
     if (weapon->count == 0) {
         switch (type & 255) {
-        case 1:
+        case WEAPON_ROCKET:
             weapon->owner = owner;
             weapon->update = InitRocket;
             weapon->count = lifetime;
-            if (owner == ownShip) PlayNote(12, 160, 15, 15, frequency);
-            weapon->type = 1;
-            ship->weapon = 0;
+            if (owner == ownShip) PlayNote(SFX_WEAPON_LAUNCH, 160, 15, 15, frequency);
+            weapon->type = WEAPON_ROCKET;
+            ship->weapon = WEAPON_NONE;
             return;
-        case 13:
+        case WEAPON_PLASMA:
             if (plasmaShotBusy) return;
             weapon->update = InitPlasma;
             weapon->count = lifetime;
             weapon->owner = owner;
-            PlayNote(39, 255, 15, 15, frequency);
-            weapon->type = 13;
-            ship->weapon = 0;
+            PlayNote(SFX_PLASMA, 255, 15, 15, frequency);
+            weapon->type = WEAPON_PLASMA;
+            ship->weapon = WEAPON_NONE;
             return;
-        case 12:
+        case WEAPON_QUAKE:
             weapon->owner = owner;
             weapon->update = InitQuake;
             weapon->count = lifetime;
-            if (owner == ownShip) PlayNote(38, 255, 15, 15, frequency);
-            weapon->type = 12;
-            ship->weapon = 0;
+            if (owner == ownShip) PlayNote(SFX_QUAKE, 255, 15, 15, frequency);
+            weapon->type = WEAPON_QUAKE;
+            ship->weapon = WEAPON_NONE;
             return;
-        case 10:
+        case WEAPON_ROCKET_LEFT:
             weapon->update = InitRocketLeft;
             weapon->count = lifetime;
             weapon->owner = owner;
-            weapon->type = 1;
-            ship->weapon = 0;
+            weapon->type = WEAPON_ROCKET;
+            ship->weapon = WEAPON_NONE;
             return;
-        case 11:
+        case WEAPON_ROCKET_RIGHT:
             weapon->update = InitRocketRight;
             weapon->count = lifetime;
             weapon->owner = owner;
-            weapon->type = 1;
-            ship->weapon = 0;
+            weapon->type = WEAPON_ROCKET;
+            ship->weapon = WEAPON_NONE;
             return;
-        case 2:
+        case WEAPON_MISSILE:
             weapon->owner = owner;
             weapon->update = InitMissile;
             weapon->count = lifetime;
-            if (owner == ownShip) PlayNote(12, 160, 15, 15, frequency);
-            weapon->type = 2;
-            ship->weapon = 0;
+            if (owner == ownShip) PlayNote(SFX_WEAPON_LAUNCH, 160, 15, 15, frequency);
+            weapon->type = WEAPON_MISSILE;
+            ship->weapon = WEAPON_NONE;
             return;
-        case 15:
+        case WEAPON_MINIGUN:
             weapon->update = InitMinigun;
             weapon->count = lifetime;
             weapon->owner = owner;
-            weapon->type = 15;
+            weapon->type = WEAPON_MINIGUN;
             return;
-        case 3:
+        case WEAPON_MINE:
             weapon->owner = owner;
             delay += 3;
             weapon->update = InitMine;
             if ((owner & 255) != ownShip && (owner & 255) != remoteShip)
                 weapon->count = delay + PAL_TIME(40);
             else weapon->count = delay;
-            weapon->type = 3;
+            weapon->type = WEAPON_MINE;
             weapon++;
             if (delay < 15) goto bound;
-            ship->weapon = 0;
+            ship->weapon = WEAPON_NONE;
             return;
-        case 14:
+        case WEAPON_SMART_BOMB:
             weapon->update = InitSmartBomb;
             weapon->count = PAL_TIME(24);
             weapon->owner = owner;
-            weapon->type = 14;
-            ship->weapon = 0;
+            weapon->type = WEAPON_SMART_BOMB;
+            ship->weapon = WEAPON_NONE;
             return;
-        case 5:
+        case WEAPON_ELECTROBOLT:
             weapon->update = InitElecBolt;
             weapon->count = lifetime;
             weapon->owner = owner;
-            weapon->type = 5;
-            ship->weapon = 0;
+            weapon->type = WEAPON_ELECTROBOLT;
+            ship->weapon = WEAPON_NONE;
             if (owner == ownShip) {
                 PlayNote(1, 255, 15, 15, frequency);
-                PlayNote(12, 255, 15, 15, 192);
+                PlayNote(SFX_WEAPON_LAUNCH, 255, 15, 15, 192);
             }
             return;
-        case 7:
-            ship->weapon = 0;
+        case WEAPON_AUTOPILOT:
+            ship->weapon = WEAPON_NONE;
             ship->autopilotCount = PAL_TIME(120);
             ship->update = UpdateDroneShip;
             humanToDroneSpeed(shipIndex, owner);
             if (owner == ownShip) PlayNote(16, 480, 15, 15, frequency);
             return;
-        case 6:
+        case WEAPON_ENERGY:
             energy = (int *)((u_char *)fracdamage + offset);
             *shield -= 32;
             *energy -= 8192;
             if (*shield < 0) *shield = 0;
-            ship->weapon = 0;
+            ship->weapon = WEAPON_NONE;
             if (owner == ownShip) {
-                PlayNote(47, 255, 30, 15, frequency);
-                PlayNote(47, 255, 0, 15, frequency);
+                PlayNote(SFX_ENERGY_PICKUP, 255, 30, 15, frequency);
+                PlayNote(SFX_ENERGY_PICKUP, 255, 0, 15, frequency);
             }
             return;
-        case 8:
+        case WEAPON_SHIELD:
             weapon->update = InitShield;
-            weapon->count = REGION(200, 150);
+            weapon->count = SHIELD_FRAMES;
             weapon->owner = owner;
-            weapon->type = 8;
-            ship->weapon = 0;
+            weapon->type = WEAPON_SHIELD;
+            ship->weapon = WEAPON_NONE;
             return;
-        case 9:
-            ship->weapon = 0;
+        case WEAPON_TURBO:
+            ship->weapon = WEAPON_NONE;
             ship->thrustCount = 13;
             ship->thrust = ship->maxThrust;
-            if (owner == ownShip) PlayNote(34, 200, 15, 15, frequency);
+            if (owner == ownShip) PlayNote(SFX_TURBO, 200, 15, 15, frequency);
             return;
         }
     }
@@ -238,15 +245,15 @@ bound:
 /* Fires a weapon of the given type; a rocket type also launches its two side rockets. */
 void FireWeapon(ShipData *ship, WeaponData *weapons, int owner, u_char type)
 {
-    if (((owner == ownShip) || (owner == remoteShip)) && (type == 2) && (ship->rearFire != 0)) {
+    if (((owner == ownShip) || (owner == remoteShip)) && (type == WEAPON_MISSILE) && (ship->rearFire != 0)) {
         if (ship->rearTarget != -1) {
             ship->targetShip = ship->rearTarget;
         }
     }
     InsertWeapon(ship, weapons, owner, type);
-    if (type == 1) {
-        InsertWeapon(ship, weapons, owner, 0xA);
-        InsertWeapon(ship, weapons, owner, 0xB);
+    if (type == WEAPON_ROCKET) {
+        InsertWeapon(ship, weapons, owner, WEAPON_ROCKET_LEFT);
+        InsertWeapon(ship, weapons, owner, WEAPON_ROCKET_RIGHT);
     }
 }
 /* Locks the nearest ship in front (within range) as this ship's missile target. */
@@ -284,7 +291,7 @@ void MissileLock(int shipNo, ShipData *ships)
     }
     missileLockTimer = 10;
     if (shipNo == ownShip) {
-        PlayNote(0x25, 0x80, 0xF, 0xF, 0x100);
+        PlayNote(SFX_MISSILE_LOCK, 0x80, 0xF, 0xF, 0x100);
     }
     s->targetShip = nearShip;
 }
@@ -398,7 +405,7 @@ void initWeapons(WeaponShape *shapes, Skeleton *camPos, WeaponData *weapons)
     }
     for (i = 0; i < 30; i++) {
         weapons[i].count = 0;
-        weapons[i].type = 0;
+        weapons[i].type = WEAPON_NONE;
     }
     for (i = 0; i < 192; i++) {
         for (j = 0; j < 2; j++) {
@@ -415,7 +422,7 @@ void BumpUp(TrackSection *bump)
 
     if (bump != 0 && bump->bump < 8) {
         nodes = &track->faces[bump->faceStart];
-        while ((nodes->flags & 1) == 0) {
+        while ((nodes->flags & TRACK_BASE) == 0) {
             nodes++;
         }
         track->vertices[nodes->vertex[0]].vy -= 0xC8;
@@ -433,7 +440,7 @@ void BumpDown(TrackSection *bump)
 
     if (bump != 0 && bump->bump > 0) {
         nodes = &track->faces[bump->faceStart];
-        while ((nodes->flags & 1) == 0) {
+        while ((nodes->flags & TRACK_BASE) == 0) {
             nodes++;
         }
         track->vertices[nodes->vertex[0]].vy += 0xC8;
@@ -563,18 +570,18 @@ void UpdateQuake(ShipData *ships, WeaponShape *unused, WeaponData *weapon, Weapo
     nextSection = nearest->nextSection.ptr;
     facePtr = track->faces + faceNo;
     nextFace = track->faces + nextSection->faceStart;
-    if (facePtr->flags & 1) goto second_scan;
+    if (facePtr->flags & TRACK_BASE) goto second_scan;
     facePtr++;
 first_scan:
     flag = facePtr->flags;
     facePtr++;
-    if (!(flag & 1)) goto first_scan;
+    if (!(flag & TRACK_BASE)) goto first_scan;
     facePtr--;
 second_scan:
     do {
         flag = nextFace->flags;
         nextFace++;
-        if (flag & 1) {
+        if (flag & TRACK_BASE) {
             nextFace--;
             break;
         }
@@ -620,7 +627,7 @@ second_scan:
         /* Port: junction.ptr != (void *)-1 tested the 32-bit slot; compare the slot as the index (-1 = no junction). */
         if (section->junction.index != -1) {
             bumpSection = junction;
-            if (junction->flags & 8) {
+            if (junction->flags & TRACK_JUNCTION_END) {
                 i = 0;
                 do {
                     BumpDown(bumpSection);
@@ -677,7 +684,7 @@ second_scan:
             junction2 = section->junction.ptr;
             if (section->junction.index != -1) {
                 bumpSection2 = junction2;
-                if (junction2->flags & 8) {
+                if (junction2->flags & TRACK_JUNCTION_END) {
                     j = 0;
                     do {
                         BumpFlatten(bumpSection2);
@@ -709,7 +716,7 @@ void UpdateMissile(ShipData *ships, WeaponShape *shapes, WeaponData *weapon, Wea
     ShipData *ship;
     int       i;
     int       mag;
-    int       temp;
+    int       horizontalDistance;
     int       vhdg;
     int       vpitch;
     int       alpha;
@@ -723,9 +730,9 @@ void UpdateMissile(ShipData *ships, WeaponShape *shapes, WeaponData *weapon, Wea
     targetVector.vx = (ships[weapon->target].ppivot.vx - weapon->pos.vx) >> 3;
     targetVector.vy = (ships[weapon->target].ppivot.vy - weapon->pos.vy) >> 3;
     targetVector.vz = (ships[weapon->target].ppivot.vz - weapon->pos.vz) >> 3;
-    temp = SquareRoot0(targetVector.vx * targetVector.vx + targetVector.vz * targetVector.vz);
+    horizontalDistance = SquareRoot0(targetVector.vx * targetVector.vx + targetVector.vz * targetVector.vz);
     vhdg = -ratan2(targetVector.vx, targetVector.vz) - weapon->hdg;
-    vpitch = -ratan2(targetVector.vy, temp) - weapon->pitch;
+    vpitch = -ratan2(targetVector.vy, horizontalDistance) - weapon->pitch;
     weapon->section = FindNearestSection(weapon->section, weapon->pos);
     if (vhdg > 2048) {
         vhdg -= 4096;
@@ -768,7 +775,7 @@ steer:
     do {
         flag = facePtr->flags;
         facePtr++;
-        if (flag & 1) {
+        if (flag & TRACK_BASE) {
             facePtr--;
             break;
         }
@@ -777,7 +784,7 @@ steer:
     do {
         flag = nextFace->flags;
         nextFace++;
-        if (flag & 1) {
+        if (flag & TRACK_BASE) {
             nextFace--;
             break;
         }
@@ -810,7 +817,7 @@ steer:
     AsmDrawObject(shapes[weapon->shapeNo].shapePtr, cameraPtr->camPos, 0); /* Port: roll was never passed; 0 stands for the console's stale a2 */
     for (i = 0; i < 15; i++) {
         ship = ships + i;
-        if (!(ship->combatAttr & DESTROYED) && (((i != weapon->owner) && raceType != 3) || (raceType == 3 && (i == ownShip || i == remoteShip) && i != weapon->owner))) {
+        if (!(ship->combatAttr & DESTROYED) && (((i != weapon->owner) && raceType != RACE_ONE_ON_ONE) || (raceType == RACE_ONE_ON_ONE && (i == ownShip || i == remoteShip) && i != weapon->owner))) {
             distance.vx = (ship->ppivot.vx - weapon->pos.vx) >> 3;
             distance.vy = (ship->ppivot.vy - weapon->pos.vy) >> 3;
             distance.vz = (ship->ppivot.vz - weapon->pos.vz) >> 3;
@@ -846,7 +853,7 @@ steer:
         facePoint.vx = track->vertices[facePtr->vertex[0]].vx;
         facePoint.vy = track->vertices[facePtr->vertex[0]].vy;
         facePoint.vz = track->vertices[facePtr->vertex[0]].vz;
-        if (PlaneLineCollision(facePoint, weapon->pos, facePtr->normal) <= 0 && !(facePtr->flags & 1)) {
+        if (PlaneLineCollision(facePoint, weapon->pos, facePtr->normal) <= 0 && !(facePtr->flags & TRACK_BASE)) {
             goto expired;
         }
         facePtr++;
@@ -881,7 +888,7 @@ void InitMissile(ShipData *shapes, WeaponShape *slots, WeaponData *w, WeaponData
             do {
                 flag = node->flags;
                 node++;
-                if (flag & 1) {
+                if (flag & TRACK_BASE) {
                     node--;
                     break;
                 }
@@ -929,7 +936,7 @@ void UpdateMinigun(ShipData *ships, WeaponShape *mineData, WeaponData *weapon, W
     do {
         u_char flag = face->flags;
         face++;
-        if (flag & 1) {
+        if (flag & TRACK_BASE) {
             break;
         }
     } while (1);
@@ -938,7 +945,7 @@ void UpdateMinigun(ShipData *ships, WeaponShape *mineData, WeaponData *weapon, W
     weapon->count--;
     do {
         ship = &ships[i];
-        if (!(ship->combatAttr & 0x8000)) {
+        if (!(ship->combatAttr & DESTROYED)) {
             if (i == weapon->owner || raceType == special) {
                 if (raceType != special) {
                     goto next;
@@ -955,7 +962,7 @@ void UpdateMinigun(ShipData *ships, WeaponShape *mineData, WeaponData *weapon, W
             distance.vz = (ship->ppivot.vz - weapon->pos.vz) >> 3;
             if (GetMagnitude(distance) < 100) {
                 PlayDirectionalNote(5, 0, 40, weapon->pos);
-                if (!(ship->attr & 0x4000)) {
+                if (!(ship->attr & SHIELDED)) {
                     DamageCollide(15, i);
                 }
                 weapon->count = -1;
@@ -1017,7 +1024,7 @@ void InitMinigun(ShipData *ships, WeaponShape *shapes, WeaponData *weapon, Weapo
         ship->vpivot.vx -= ship->unitVecNose.vx >> 3;
         ship->vpivot.vy -= ship->unitVecNose.vy >> 3;
         ship->vpivot.vz -= ship->unitVecNose.vz >> 3;
-        PlayNote(12, 192, 15, 15, 400);
+        PlayNote(SFX_WEAPON_LAUNCH, 192, 15, 15, 400);
         PlayNote(5, 96, 15, 15, 400);
     }
     flashNozzleShip = weapon->owner;
@@ -1026,7 +1033,7 @@ void InitMinigun(ShipData *ships, WeaponShape *shapes, WeaponData *weapon, Weapo
     do {
         flag = face->flags;
         face++;
-    } while (!(flag & 1));
+    } while (!(flag & TRACK_BASE));
     weapon->accel.vx = ships[weapon->owner].unitVecNose.vx >> 6;
     weapon->accel.vy = ships[weapon->owner].unitVecNose.vy >> 6;
     weapon->accel.vz = ships[weapon->owner].unitVecNose.vz >> 6;
@@ -1061,7 +1068,7 @@ void InitMinigun(ShipData *ships, WeaponShape *shapes, WeaponData *weapon, Weapo
     particleSlots[i].flags = 0;
     minigunAmmo--;
     if ((short)minigunAmmo <= 0) {
-        ships[weapon->owner].weapon = 0;
+        ships[weapon->owner].weapon = WEAPON_NONE;
     }
 }
 
@@ -1099,7 +1106,7 @@ void UpdateMine(ShipData *ships, WeaponShape *shapes, WeaponData *weapon, Weapon
     SetSkeletonPosition(shapes[weapon->shapeNo].shapePtr->skeleton, weapon->pos.vx, weapon->pos.vy, weapon->pos.vz);
     shapes[weapon->shapeNo].shapePtr->skeleton->update = 1;
     i = 0;
-    headToHead = 3;
+    headToHead = RACE_ONE_ON_ONE;
     AsmDrawObject(shapes[weapon->shapeNo].shapePtr, cameraPtr->camPos, 0); /* Port: roll was never passed; 0 stands for the console's stale a2 */
     ship = ships;
 nextShip:
@@ -1162,7 +1169,7 @@ void InitQuake(ShipData *shapes, WeaponShape *unused, WeaponData *w, WeaponData 
     }
     w->section = shapes[w->owner].nearTrkSect;
     node = &track->faces[shapes[w->owner].nearTrkSect->faceStart];
-    while ((node->flags & 1) == 0) {
+    while ((node->flags & TRACK_BASE) == 0) {
         node++;
     }
     GetFireVector(&w->accel, shapes[w->owner].unitVecNose, node, shapes[w->owner].ppivot);
@@ -1201,7 +1208,7 @@ void InitPlasma(ShipData *shapes, WeaponShape *unused, WeaponData *w, WeaponData
     }
     w->section = shapes[w->owner].nearTrkSect;
     node = &track->faces[shapes[w->owner].nearTrkSect->faceStart];
-    while ((node->flags & 1) == 0) {
+    while ((node->flags & TRACK_BASE) == 0) {
         node++;
     }
     GetFireVector(&w->accel, shapes[w->owner].unitVecNose, node, shapes[w->owner].ppivot);
@@ -1246,7 +1253,7 @@ void InitRocket(ShipData *shapes, WeaponShape *slots, WeaponData *w, WeaponData 
             do {
                 flag = node->flags;
                 node++;
-                if (flag & 1) {
+                if (flag & TRACK_BASE) {
                     node--;
                     break;
                 }
@@ -1296,7 +1303,7 @@ void InitRocketLeft(ShipData *shapes, WeaponShape *slots, WeaponData *w, WeaponD
             do {
                 flag = node->flags;
                 node++;
-                if (flag & 1) {
+                if (flag & TRACK_BASE) {
                     node--;
                     break;
                 }
@@ -1354,7 +1361,7 @@ void InitRocketRight(ShipData *shapes, WeaponShape *slots, WeaponData *w, Weapon
             do {
                 flag = node->flags;
                 node++;
-                if (flag & 1) {
+                if (flag & TRACK_BASE) {
                     node--;
                     break;
                 }
@@ -1396,7 +1403,7 @@ void UpdateElecBolt(ShipData *ships, WeaponShape *shapes, WeaponData *weapon, We
     ShipData *ship;
     int       i;
     int       mag;
-    int       temp;
+    int       horizontalDistance;
     int       vhdg;
     int       vpitch;
     int       alpha;
@@ -1406,9 +1413,9 @@ void UpdateElecBolt(ShipData *ships, WeaponShape *shapes, WeaponData *weapon, We
         targetVector.vx = (ships[weapon->target].ppivot.vx - weapon->pos.vx) >> 3;
         targetVector.vy = (ships[weapon->target].ppivot.vy - weapon->pos.vy) >> 3;
         targetVector.vz = (ships[weapon->target].ppivot.vz - weapon->pos.vz) >> 3;
-        temp = SquareRoot0(targetVector.vx * targetVector.vx + targetVector.vz * targetVector.vz);
+        horizontalDistance = SquareRoot0(targetVector.vx * targetVector.vx + targetVector.vz * targetVector.vz);
         vhdg = -ratan2(targetVector.vx, targetVector.vz) - weapon->hdg;
-        vpitch = -ratan2(targetVector.vy, temp) - weapon->pitch;
+        vpitch = -ratan2(targetVector.vy, horizontalDistance) - weapon->pitch;
     } else {
         vhdg = 0;
         vpitch = 0;
@@ -1455,7 +1462,7 @@ steer:
     do {
         flag = facePtr->flags;
         facePtr++;
-        if (flag & 1) {
+        if (flag & TRACK_BASE) {
             facePtr--;
             break;
         }
@@ -1479,14 +1486,14 @@ steer:
     AsmDrawObject(shapes[weapon->shapeNo].shapePtr, cameraPtr->camPos, 0); /* Port: roll was never passed; 0 stands for the console's stale a2 */
     for (i = 0; i < 15; i++) {
         ship = ships + i;
-        if (!(ship->combatAttr & DESTROYED) && (((i != weapon->owner) && raceType != 3) || (raceType == 3 && (i == ownShip || i == remoteShip) && i != weapon->owner))) {
+        if (!(ship->combatAttr & DESTROYED) && (((i != weapon->owner) && raceType != RACE_ONE_ON_ONE) || (raceType == RACE_ONE_ON_ONE && (i == ownShip || i == remoteShip) && i != weapon->owner))) {
             distance.vx = (ship->ppivot.vx - weapon->pos.vx) >> 3;
             distance.vy = (ship->ppivot.vy - weapon->pos.vy) >> 3;
             distance.vz = (ship->ppivot.vz - weapon->pos.vz) >> 3;
             if (GetMagnitude(distance) < 100) {
                 if (!(ship->attr & SHIELDED)) {
                     ship->attr |= ELECTROED;
-                    ship->electroCount = REGION(140, 100);
+                    ship->electroCount = ELECTROED_FRAMES;
                 }
                 DamageCollide(5, i);
                 AddRandomParticles(particleSlots, 64, &weapon->pos, &weapon->velocity);
@@ -1571,7 +1578,7 @@ void InitMine(ShipData *ships, WeaponShape *weaponShapes, WeaponData *weapon, We
                     PlayNote(11, 200, 15, 15, 256);
                 }
                 weapon->update = UpdateMine;
-                weapon->count = REGION(450, 350);
+                weapon->count = MINE_FRAMES;
                 return;
             }
         }
@@ -1617,7 +1624,7 @@ void KillMines(WeaponData *ship, WeaponData *bumps, WeaponShape *bars)
 
     AddExplode(ship->pos.vx, ship->pos.vy, ship->pos.vz, -1);
     for (i = 0; i < 30; i++) {
-        if (bumps[i].type == 3 && bumps[i].count > 0) {
+        if (bumps[i].type == WEAPON_MINE && bumps[i].count > 0) {
             bumps[i].count = 0;
             ship->count = 0;
             AddExplode(bumps[i].pos.vx, bumps[i].pos.vy, bumps[i].pos.vz, -1);
@@ -1631,9 +1638,7 @@ void KillMines(WeaponData *ship, WeaponData *bumps, WeaponShape *bars)
 
 void UpdateSmartBomb(ShipData *ships, WeaponShape *shapes, WeaponData *weapon, WeaponData *weapons)
 {
-    u8 padding[16];
     int mask;
-    TrackCamera *camera;
     int vx;
     int vy;
     int newVy;
@@ -1648,7 +1653,7 @@ void UpdateSmartBomb(ShipData *ships, WeaponShape *shapes, WeaponData *weapon, W
     u16 hdg;
     u16 count;
     int rnd;
-    Skeleton *cameraValue;
+    Skeleton *cameraSkeleton;
     Object *shapeObj;
 
     weapon->count--;
@@ -1715,10 +1720,9 @@ shiploop:
     SetSkeletonDirectionHPR(shapes[weapon->shapeNo].shapePtr->skeleton, (s16)hdg, 0, 0);
     SetSkeletonPosition(shapes[weapon->shapeNo].shapePtr->skeleton, weapon->pos.vx, weapon->pos.vy, weapon->pos.vz);
     shapes[weapon->shapeNo].shapePtr->skeleton->update = 1;
-    camera = cameraPtr;
-    cameraValue = camera->camPos;
+    cameraSkeleton = cameraPtr->camPos;
     shapeObj = shapes[weapon->shapeNo].shapePtr;
-    AsmDrawObject(shapeObj, cameraValue, 0); /* Port: roll was never passed; 0 stands for the console's stale a2 */
+    AsmDrawObject(shapeObj, cameraSkeleton, 0); /* Port: roll was never passed; 0 stands for the console's stale a2 */
 }
 
 
@@ -1910,7 +1914,7 @@ void CycleWeaponGrids(ShipData *ships, struct WeaponGridZone *grids, int noGrids
     SVECTOR colour;
 
     if (cheatMinigun) {
-        ships[ownShip].weapon = 15;
+        ships[ownShip].weapon = WEAPON_MINIGUN;
     }
     if (noGrids > 0) {
         white = 255;
@@ -1921,7 +1925,7 @@ void CycleWeaponGrids(ShipData *ships, struct WeaponGridZone *grids, int noGrids
             do {
                 u8 flag = face->flags;
                 face++;
-                if (flag & 1) {
+                if (flag & TRACK_BASE) {
                     break;
                 }
             } while (1);
@@ -1930,7 +1934,7 @@ void CycleWeaponGrids(ShipData *ships, struct WeaponGridZone *grids, int noGrids
                 current = grids - (-k);
                 ship = ships + i;
                 if (!(ship->combatAttr & DESTROYED)) {
-                    if (((face->flags & 2) && (ship->attr & LSIDE)) && (current->section == ship->nearTrkSect) && (current->count >= 0)) {
+                    if (((face->flags & WEAPON_GRID_LEFT) && (ship->attr & LSIDE)) && (current->section == ship->nearTrkSect) && (current->count >= 0)) {
                         current->count = -10;
                         if ((i == ownShip) || (i == remoteShip)) {
                             if (!ship->weapon) {
@@ -1944,7 +1948,7 @@ void CycleWeaponGrids(ShipData *ships, struct WeaponGridZone *grids, int noGrids
                         }
                     }
                     face++;
-                    if (((face->flags & 8) && (!(ship->attr & LSIDE))) && (current->section == ship->nearTrkSect) && (current->count >= 0)) {
+                    if (((face->flags & WEAPON_GRID_RIGHT) && (!(ship->attr & LSIDE))) && (current->section == ship->nearTrkSect) && (current->count >= 0)) {
                         current->count = -10;
                         if ((i == ownShip) || (i == remoteShip)) {
                             if (!ship->weapon) {
@@ -1986,13 +1990,13 @@ void CycleWeaponGrids(ShipData *ships, struct WeaponGridZone *grids, int noGrids
                 grid->count++;
             }
             grid->angle += 32;
-            if (grid->attr & 2) {
+            if (grid->attr & WEAPON_GRID_LEFT) {
                 face->red = grid->r;
                 face->green = grid->g;
                 face->blue = grid->b;
             }
             face++;
-            if (grid->attr & 8) {
+            if (grid->attr & WEAPON_GRID_RIGHT) {
                 face->red = grid->r;
                 face->green = grid->g;
                 face->blue = grid->b;
@@ -2048,7 +2052,7 @@ void TransformTransparentObject(Object *object, void *camera, int shieldID)
     nextPoly = poly.g4 + 1;
     do {
         switch (poly.prim->type) {
-        case 5:
+        case TypeG3:
             coord0 = ((G3 *) (nextPoly - 1))->coords[0];
             coord1 = ((G3 *) (nextPoly - 1))->coords[1];
             coord2 = ((G3 *) (nextPoly - 1))->coords[2];
@@ -2076,7 +2080,7 @@ void TransformTransparentObject(Object *object, void *camera, int shieldID)
             poly.g3++;
             nextPoly = (G4 *) ((char *) nextPoly + sizeof(G3));
             break;
-        case 7:
+        case TypeG4:
             coord0 = nextPoly[-1].coords[0];
             coord1 = nextPoly[-1].coords[1];
             coord2 = nextPoly[-1].coords[2];
@@ -2147,7 +2151,7 @@ void Weapon2Mine(WeaponData *weapon, WeaponData *weaponIndex, WeaponShape *weapo
     int     mag;
 
     for (i = 0; i < 30; i++) {
-        if ((weaponIndex[i].type == 3) && (weaponIndex[i].count > 0)) {
+        if ((weaponIndex[i].type == WEAPON_MINE) && (weaponIndex[i].count > 0)) {
             distance.vx = (weaponIndex[i].pos.vx - weapon->pos.vx) >> 2;
             distance.vy = (weaponIndex[i].pos.vy - weapon->pos.vy) >> 2;
             distance.vz = (weaponIndex[i].pos.vz - weapon->pos.vz) >> 2;
@@ -2175,19 +2179,19 @@ void GetNewWeapon(ShipData *ships, int shipNo)
     short     chance;
     int       roll;
 
-    ship = ships + shipNo;
+    ship = &ships[shipNo];
     if (shipNo == ownShip) {
         position = playerPosition;
     } else if (shipNo == remoteShip) {
         position = remoteRacePos;
     }
     if (shipNo >= 12) {
-        shipIndex[shipNo].weapon = 0;
+        shipIndex[shipNo].weapon = WEAPON_NONE;
         return;
     }
-    if ((tempGameData->weaponsOn != 0 || raceType == 4) && ship->weapon == 0) {
+    if ((tempGameData->weaponsOn != 0 || raceType == RACE_CHALLENGE) && ship->weapon == WEAPON_NONE) {
         if (shipDamage[shipNo] >= 75 && (roll = randWep(), (roll / 2) * 2 == roll - 1)) {
-            weapon = 6;
+            weapon = WEAPON_ENERGY;
         } else {
             if ((short)position == 1) {
                 group = 0;
@@ -2201,42 +2205,39 @@ void GetNewWeapon(ShipData *ships, int shipNo)
                 group = 4;
             }
             position = (short)group;
-            group = 2;
-        retry:
+            do {
                 chance = randWep() % 100;
                 if (chance < weaponChance[position][0]) {
-                    weapon = 2;
+                    weapon = WEAPON_MISSILE;
                 } else if (chance < weaponChance[position][1]) {
-                    weapon = 1;
+                    weapon = WEAPON_ROCKET;
                 } else if (chance < weaponChance[position][2]) {
-                    weapon = 5;
+                    weapon = WEAPON_ELECTROBOLT;
                 } else if (chance < weaponChance[position][3]) {
-                    weapon = 2;
-                    if (gameType == group) {
-                        weapon = 13;
+                    weapon = WEAPON_MISSILE;
+                    if (gameType == GAME_SINGLE_PLAYER) {
+                        weapon = WEAPON_PLASMA;
                     }
                 } else if (chance < weaponChance[position][4]) {
-                    weapon = 3;
+                    weapon = WEAPON_MINE;
                 } else if (chance < weaponChance[position][5]) {
-                    weapon = 5;
-                    if (gameType == group) {
-                        weapon = 14;
+                    weapon = WEAPON_ELECTROBOLT;
+                    if (gameType == GAME_SINGLE_PLAYER) {
+                        weapon = WEAPON_SMART_BOMB;
                     }
                 } else if (chance < weaponChance[position][6]) {
-                    weapon = 12;
+                    weapon = WEAPON_QUAKE;
                 } else if (chance < weaponChance[position][7]) {
-                    weapon = 7;
+                    weapon = WEAPON_AUTOPILOT;
                 } else if (chance < weaponChance[position][8]) {
-                    weapon = 9;
+                    weapon = WEAPON_TURBO;
                 } else if (chance < weaponChance[position][9]) {
-                    weapon = 2;
+                    weapon = WEAPON_MISSILE;
                     if (gameData->actTrackNum != 1 && gameData->actTrackNum != 7) {
-                        weapon = 8;
+                        weapon = WEAPON_SHIELD;
                     }
                 }
-            if (weapon == ship->lastWeapon) {
-                goto retry;
-            }
+            } while (weapon == ship->lastWeapon);
         }
         ship->weapon = weapon;
         ship->lastWeapon = weapon;
@@ -2256,7 +2257,7 @@ void GetNewDroneWeapon(ShipData *ships, int shipNo)
     ahead = 0;
     ship = ships + shipNo;
     if (tempGameData->weaponsOn != 0) {
-        if (gameType == 2) {
+        if (gameType == GAME_SINGLE_PLAYER) {
             ahead = shipIndex[ownShip].distance >= ship->distance;
         }
         selected = ahead;
@@ -2264,16 +2265,16 @@ void GetNewDroneWeapon(ShipData *ships, int shipNo)
 again:
         chance = randWep() % 100;
         if (chance < weaponDrone[group]) {
-            weapon = 2;
+            weapon = WEAPON_MISSILE;
         } else if (chance < weaponDrone[group + 1]) {
-            weapon = 1;
+            weapon = WEAPON_ROCKET;
         } else if (chance < weaponDrone[group + 2]) {
-            weapon = 5;
+            weapon = WEAPON_ELECTROBOLT;
         } else if (chance < weaponDrone[group + 3]) {
-            weapon = 3;
+            weapon = WEAPON_MINE;
         } else if (chance < weaponDrone[group + 4]) {
             if (gameData->actTrackNum != 1 && gameData->actTrackNum != 7) {
-                weapon = 8;
+                weapon = WEAPON_SHIELD;
             } else if (ship->autopilotCount != 0) {
                 goto haveWeapon;
             } else {
@@ -2305,7 +2306,7 @@ void ClearWeaponTable(void)
 
     for (i = 0; i < 30; i++) {
         weapon = &weaponIndex[i];
-        weapon->type = 0;
+        weapon->type = WEAPON_NONE;
         weapon->count = 0;
         weaponBars[i].used = 0;
     }
@@ -2326,7 +2327,6 @@ void UpdateRocket(ShipData *ships, WeaponShape *weaponShapes, WeaponData *weapon
     VECTOR offset;
     VECTOR wingPoint;
     VECTOR wingNext;
-    char workspace[16];
     Face *facePtr;
     Face *nextFace;
     int i;
@@ -2337,11 +2337,11 @@ void UpdateRocket(ShipData *ships, WeaponShape *weaponShapes, WeaponData *weapon
     weapon->section = FindNearestSection(weapon->section, weapon->pos);
     facePtr = track->faces + weapon->section->faceStart;
     nextFace = track->faces + weapon->section->nextSection.ptr->faceStart;
-    while (!(facePtr->flags & 1)) facePtr++;
+    while (!(facePtr->flags & TRACK_BASE)) facePtr++;
     do {
         flag = nextFace->flags;
         nextFace++;
-        if (flag & 1) {
+        if (flag & TRACK_BASE) {
             nextFace--;
             break;
         }
@@ -2396,7 +2396,7 @@ void UpdateRocket(ShipData *ships, WeaponShape *weaponShapes, WeaponData *weapon
     AsmDrawObject(weaponShapes[weapon->shapeNo].shapePtr, cameraPtr->camPos, 0); /* Port: roll was never passed; 0 stands for the console's stale a2 */
     for (i = 0; i < 15; i++) {
         ship = ships + i;
-        if (!(ship->combatAttr & DESTROYED) && (((i != weapon->owner) && raceType != 3) || (raceType == 3 && (i == ownShip || i == remoteShip) && i != weapon->owner))) {
+        if (!(ship->combatAttr & DESTROYED) && (((i != weapon->owner) && raceType != RACE_ONE_ON_ONE) || (raceType == RACE_ONE_ON_ONE && (i == ownShip || i == remoteShip) && i != weapon->owner))) {
             distance.vx = (ship->ppivot.vx - weapon->pos.vx) >> 2;
             distance.vy = (ship->ppivot.vy - weapon->pos.vy) >> 2;
             distance.vz = (ship->ppivot.vz - weapon->pos.vz) >> 2;
@@ -2427,12 +2427,12 @@ void UpdateRocket(ShipData *ships, WeaponShape *weaponShapes, WeaponData *weapon
         }
     }
     facePtr = track->faces + weapon->section->faceStart;
-    if (!(weapon->section->flags & 1)) {
+    if (!(weapon->section->flags & TRACK_JUMP)) {
         for (i = 0; i < weapon->section->faceCount; i++) {
             facePoint.vx = track->vertices[facePtr->vertex[0]].vx;
             facePoint.vy = track->vertices[facePtr->vertex[0]].vy;
             facePoint.vz = track->vertices[facePtr->vertex[0]].vz;
-            if (PlaneLineCollision(facePoint, weapon->pos, facePtr->normal) <= 0 && !(facePtr->flags & 1)) {
+            if (PlaneLineCollision(facePoint, weapon->pos, facePtr->normal) <= 0 && !(facePtr->flags & TRACK_BASE)) {
                 weapon->count = -2;
                 weaponShapes[weapon->shapeNo].used = 0;
                 PlayDirectionalNote(6, 0, 40, weapon->pos);
@@ -2455,7 +2455,6 @@ void UpdatePlasma(ShipData *shipIndex, WeaponShape *weaponShapes, WeaponData *we
     int mag, alpha, height;
     ShipData *ship;
     unsigned char flag;
-    char workspace[16];
 
     weapon->count--;
     if (weapon->count > PLASMA_CHARGE_FRAMES && weapon->owner == ownShip) {
@@ -2500,7 +2499,7 @@ compute:
         do {
             flag = facePtr->flags;
             facePtr++;
-            if (flag & 1) {
+            if (flag & TRACK_BASE) {
                 facePtr--;
                 break;
             }
@@ -2518,11 +2517,11 @@ compute:
     weapon->section = FindNearestSection(weapon->section, weapon->pos);
     facePtr = track->faces + weapon->section->faceStart;
     nextFace = track->faces + weapon->section->nextSection.ptr->faceStart;
-    while (!(facePtr->flags & 1)) facePtr++;
+    while (!(facePtr->flags & TRACK_BASE)) facePtr++;
     do {
         flag = nextFace->flags;
         nextFace++;
-        if (flag & 1) {
+        if (flag & TRACK_BASE) {
             nextFace--;
             break;
         }
@@ -2574,7 +2573,7 @@ compute:
     if (weapon->count == 0) plasmaShotBusy = 0;
     for (i = 0; i < 15; i++) {
         ship = shipIndex + i;
-        if (!(ship->combatAttr & DESTROYED) && (((i != weapon->owner) && raceType != 3) || (raceType == 3 && (i == ownShip || i == remoteShip) && i != weapon->owner))) {
+        if (!(ship->combatAttr & DESTROYED) && (((i != weapon->owner) && raceType != RACE_ONE_ON_ONE) || (raceType == RACE_ONE_ON_ONE && (i == ownShip || i == remoteShip) && i != weapon->owner))) {
             distance.vx = (ship->ppivot.vx - weapon->pos.vx) >> 2;
             distance.vy = (ship->ppivot.vy - weapon->pos.vy) >> 2;
             distance.vz = (ship->ppivot.vz - weapon->pos.vz) >> 2;
@@ -2605,12 +2604,12 @@ compute:
         }
     }
     facePtr = track->faces + weapon->section->faceStart;
-    if (!(weapon->section->flags & 1)) {
+    if (!(weapon->section->flags & TRACK_JUMP)) {
         for (i = 0; i < weapon->section->faceCount; facePtr++, i++) {
             facePoint.vx = track->vertices[facePtr->vertex[0]].vx;
             facePoint.vy = track->vertices[facePtr->vertex[0]].vy;
             facePoint.vz = track->vertices[facePtr->vertex[0]].vz;
-            if (PlaneLineCollision(facePoint, weapon->pos, facePtr->normal) <= 0 && !(facePtr->flags & 1)) goto wallNote;
+            if (PlaneLineCollision(facePoint, weapon->pos, facePtr->normal) <= 0 && !(facePtr->flags & TRACK_BASE)) goto wallNote;
         }
     }
     goto done;
@@ -2725,7 +2724,7 @@ void DamageCollide(int damageType, int shipNo)
             }
         }
         if (shipNo == ownShip) {
-            if (damageType != 0x80 && (raceType != 1 || shipNo != ghostShip)) {
+            if (damageType != 0x80 && (raceType != RACE_TIME_TRIAL || shipNo != ghostShip)) {
                 perfectLap = 0;
             }
         }
@@ -2764,7 +2763,7 @@ void DamageCollide(int damageType, int shipNo)
         }
         if (damageType == 129) shieldRed[shipNo] = 255;
         if (olddam < 60 && shipDamage[ownShip] >= 60 && shipNo == ownShip) {
-            PlayNote(54, 510, 15, 15, 256);
+            PlayNote(SFX_LOW_ENERGY, 510, 15, 15, 256);
         }
         olddam = shipDamage[ownShip];
     }
@@ -2780,26 +2779,26 @@ void CheckPitShips(void)
     for (i = 0; i < 15; i++) {
         if (!(shipIndex[i].combatAttr & DESTROYED)) {
             facePtr = track->faces + shipIndex[i].nearTrkSect->faceStart;
-            if (facePtr->flags & 0x40) {
+            if (facePtr->flags & PIT_LANE) {
                 DamageCollide(128, i);
                 if (i == ownShip) {
-                    SetVolume(ambientVoice2, 192);
+                    SetVolume((short)ambientVoice2, 192);
                 }
                 AddPitParticles(particleSlots, 10, &shipIndex[i].ppivot, 8);
-            } else if ((facePtr + 1)->flags & 0x40) {
+            } else if ((facePtr + 1)->flags & PIT_LANE) {
                 DamageCollide(128, i);
                 for (j = 0; j < 8; j++) {
                     AddElectric(&shipIndex[i].ppivot, 2);
                 }
                 if (i == ownShip) {
-                    SetVolume(ambientVoice2, 192);
+                    SetVolume((short)ambientVoice2, 192);
                 }
                 AddPitParticles(particleSlots, 10, &shipIndex[i].ppivot, 3);
             } else if (i == ownShip) {
-                SetVolume(ambientVoice2, 0);
+                SetVolume((short)ambientVoice2, 0);
             }
         } else if (i == ownShip) {
-            SetVolume(ambientVoice2, 0);
+            SetVolume((short)ambientVoice2, 0);
         }
     }
 }
@@ -2862,9 +2861,9 @@ void FlipShip(ShipData *playerShip)
     Face   *facePtr;
 
     facePtr = track->faces + playerShip->nearTrkSect->faceStart;
-    if (!(facePtr->flags & 1)) {
+    if (!(facePtr->flags & TRACK_BASE)) {
         facePtr++;
-        while (!(facePtr->flags & 1)) {
+        while (!(facePtr->flags & TRACK_BASE)) {
             facePtr++;
         }
     }
@@ -2887,21 +2886,21 @@ void GetCheatWeapon(ShipData *ships, int i)
     short     w;
 
     if (i >= 12) {
-        shipIndex[i].weapon = 0;
+        shipIndex[i].weapon = WEAPON_NONE;
         return;
     }
     if (tempGameData->weaponsOn == 0) return;
-    if (s->weapon != 0) return;
+    if (s->weapon != WEAPON_NONE) return;
     do {
         switch (newRand() & 7) {
-        case 2: w = 5; break;
-        case 3: w = 13; break;
-        case 4: w = 14; break;
-        case 1: case 5: w = 1; break;
-        case 6: w = 12; break;
-        case 0: default: w = 2; break;
+        case 2: w = WEAPON_ELECTROBOLT; break;
+        case 3: w = WEAPON_PLASMA; break;
+        case 4: w = WEAPON_SMART_BOMB; break;
+        case 1: case 5: w = WEAPON_ROCKET; break;
+        case 6: w = WEAPON_QUAKE; break;
+        case 0: default: w = WEAPON_MISSILE; break;
         }
-        if (w == 13 && plasmaShotBusy) w = s->lastWeapon;
+        if (w == WEAPON_PLASMA && plasmaShotBusy) w = s->lastWeapon;
     } while (w == s->lastWeapon);
     s->weapon = w;
     s->lastWeapon = w;

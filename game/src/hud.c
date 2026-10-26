@@ -114,7 +114,7 @@ void InitText(void)
     for (i = 0; i < 600; i++) {
         SetPolyFT4(&quadPool[i]);
         (&quadPool[i])->tpage = GetTPage(0, 0, 576, 256);
-        quadPool[i].code = 0x2D;
+        quadPool[i].code = GPU_FT4_RAW_TEXTURE;
         quadPool[i].r0 = 255;
         quadPool[i].g0 = 255;
         quadPool[i].b0 = 255;
