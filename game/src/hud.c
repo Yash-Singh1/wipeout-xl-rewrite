@@ -2,6 +2,7 @@
 #include "pc/pc.h"
 #include "hiscores.h"
 #include "ayrace.h"
+#include "portorig.h" /* Port: the original Wipeout's tracks */
 #include "include_asm_g8.h"
 #include "../../platform/trace.h" /* Port: test hooks */
 
@@ -1317,6 +1318,7 @@ void DisplayRaceInfo(ConfigData *state, HiScoreData *context, ShipData *scene)
     if (state->shipClass == 3) maxShips = 15;
     i = 0;
     if (ownShip >= 12) maxShips = 15;
+    if (PortOriginalEightShips()) maxShips = 8; /* Port: an original Wipeout track's race */
     do {
         if (!(scene[i].combatAttr & DESTROYED)) racing += 1;
         i++;

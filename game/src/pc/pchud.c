@@ -9,6 +9,7 @@
 #include "pc.h"
 #include "../../include/ayrace.h"
 #include "../../include/hiscores.h"
+#include "../../include/portorig.h"
 #include "../../../platform/controls.h"
 
 /* combatAttr: the ship has begun a lap (UpdateRaceHud) */
@@ -238,7 +239,7 @@ void PcDisplayRaceInfo(ConfigData *config, HiScoreData *score, ShipData *ships)
 {
     static const char *const classNames[4] = {"VECTOR", "VENOM", "RAPIER", "PHANTOM"};
     static const char *const medalNames[3] = {" GOLD", " SILVER", " BRONZE"};
-    int eliminated = config->shipClass == 3 || ownShip >= 12 ? 15 : 12, total = 0, laps, i;
+    int eliminated = PortOriginalEightShips() ? 8 : config->shipClass == 3 || ownShip >= 12 ? 15 : 12, total = 0, laps, i;
     char text[40];
 
     for (i = 0; i < 15; i++) {

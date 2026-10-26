@@ -533,11 +533,22 @@ void initShipData(TrackSection *section, ShipData *shipIndex, ConfigData *option
             gridPosition[12 + 2] = next + 2;
         }
     }
-    if (PortOriginalLooks() && gameType == 2 && gridPosition[ownShip] > 7) {
-        /* Port: the player starts in the grid's last box, as in the original (whose player started last of
-           eight); the ships XL has more start behind */
+    if (PortOriginalEightShips()) {
+        /* Port: on a track of the original Wipeout eight ships race, as in the original: two of each team (the
+           player and one other in the player's), in XL's grid order on the grid's eight boxes, and the player
+           in the last, as the original's player started last. The other ships sit the race out. */
+        short teamShips[4] = {0, 0, 0, 0}, racing = 0, out = 8;
+
+        if (ownShip < 12) teamShips[ownShip / 3] = 1;
         for (i = 0; i < 15; i++) {
-            if (gridPosition[i] == 7) gridPosition[i] = gridPosition[ownShip];
+            index = 3 * (i % 5) + 2 - i / 5; /* each team's third ship, then its second, then its first */
+            if (index == ownShip) continue;
+            if (index < 12 && teamShips[index / 3] < 2 && racing < 7) {
+                teamShips[index / 3]++;
+                gridPosition[index] = racing++;
+            } else {
+                gridPosition[index] = out++;
+            }
         }
         gridPosition[ownShip] = 7;
     }
@@ -586,6 +597,7 @@ void initShipData(TrackSection *section, ShipData *shipIndex, ConfigData *option
         } else {
             shipIndex[i].combatAttr = locals.states.state[i];
             if (!bigGrid && i >= 12) shipIndex[i].combatAttr |= 0x8000;
+            if (PortOriginalEightShips() && position >= 8) shipIndex[i].combatAttr |= 0x8000; /* Port */
         }
         switch (options->shipClass) {
         case 0: shipIndex[i].mass = shipMassClass0[i]; shipIndex[i].maxThrust = shipMaxThrustClass0[i]; shipIndex[i].skid = shipSkidClass0[i]; shipIndex[i].resistance = shipResistanceClass0[i]; break;

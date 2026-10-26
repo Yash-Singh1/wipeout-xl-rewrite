@@ -277,6 +277,11 @@ int PortOriginalLooks(void)
     return PortOriginalTrack() >= 0 && !PortOriginalTrackIs64();
 }
 
+int PortOriginalEightShips(void)
+{
+    return PortOriginalLooks() && gameType == 2 && raceType != 1;
+}
+
 static void Collect(Object **prm, short prmCount, const char *name, Object **found, int *count, int max)
 {
     Object *obj;
