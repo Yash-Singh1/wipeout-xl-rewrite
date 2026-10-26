@@ -961,18 +961,77 @@ void LoadTrain(Object **objects, char *trackDir, Skeleton *parent, VECTOR *posit
 
 
 
-void UpdateStartDroid(Object **shapes, ShipData *ships, DroidData *droids, short textureBase, ConfigData *game, int player)
+/* One droid (the board of a checkpoint, or the pick droid) over section, showing texture. */
+static void DrawDroid(Object *shape, TrackSection *section, int texture, int mirrored, short textureBase)
 {
     VECTOR direction;
-    SideTable side;
-    short i,selected,distance;
     int angle;
-    u_short ownSection;
-    int texture;
-    TrackSection *section,*previous;
-    Object *shape;
+    TrackSection *previous;
     GT4 *poly;
     Texture *tex;
+    previous=section->prevSection.ptr;
+    direction.vx=section->centre.vx-previous->centre.vx;
+    direction.vy=section->centre.vy-previous->centre.vy;
+    direction.vz=section->centre.vz-previous->centre.vz;
+    angle=ratan2(direction.vx,direction.vz);
+    angle=4096-angle;
+    SetSkeletonDirectionHPR(shape->skeleton,(short)angle,0,0);
+    SetSkeletonPosition(shape->skeleton,section->centre.vx,section->centre.vy-3000,section->centre.vz);
+    poly=(GT4 *)shape->primitives;
+    tex=textureTable[texture+textureBase];
+    switch(poly->type) {
+    case 8:
+        if (droidBlinkTick%20>=10) {
+        poly->colour[0].r=128;poly->colour[0].g=128;poly->colour[0].b=128;
+        poly->colour[1].r=128;poly->colour[1].g=128;poly->colour[1].b=128;
+        poly->colour[2].r=128;poly->colour[2].g=128;poly->colour[2].b=128;
+        poly->colour[3].r=128;poly->colour[3].g=128;poly->colour[3].b=128;
+        } else {
+        poly->colour[0].r=255;poly->colour[0].g=255;poly->colour[0].b=255;
+        poly->colour[1].r=255;poly->colour[1].g=255;poly->colour[1].b=255;
+        poly->colour[2].r=255;poly->colour[2].g=255;poly->colour[2].b=255;
+        poly->colour[3].r=255;poly->colour[3].g=255;poly->colour[3].b=255;
+        }
+        if (mirrored) {
+            poly->u0=tex->u1;poly->v0=tex->v0;poly->u1=tex->u0;poly->v1=tex->v1;
+            poly->u2=tex->u3;poly->v2=tex->v2;poly->u3=tex->u2;
+        } else {
+            poly->u0=tex->u0;poly->v0=tex->v0;poly->u1=tex->u1;poly->v1=tex->v1;
+            poly->u2=tex->u2;poly->v2=tex->v2;poly->u3=tex->u3;
+        }
+        poly->v3=tex->v3;poly->cba=tex->cba;poly->tsb=tex->tsb;
+        break;
+    case 4:
+        if (droidBlinkTick%20>=10) {
+        poly->colour[0].r=128;poly->colour[0].g=128;poly->colour[0].b=128;
+        } else {
+        poly->colour[0].r=255;poly->colour[0].g=255;poly->colour[0].b=255;
+        }
+        poly->u0=tex->u0;poly->v0=tex->v0;poly->u1=tex->u1;poly->v1=tex->v1;
+        poly->u2=tex->u2;poly->v2=tex->v2;poly->u3=tex->u3;poly->v3=tex->v3;
+        poly->cba=tex->cba;poly->tsb=tex->tsb;
+        break;
+    }
+    shape->skeleton->update=1;
+    AsmDrawObject(shape, cameraPtr->camPos, 0); /* Port: roll was never passed; 0 stands for the console's stale a2 */
+}
+
+/* ... the board of checkpoint cell n: what the start droid shows the player (lap, final lap). */
+static int DroidTexture(ShipData *ships, DroidData *droids, ConfigData *game, int n)
+{
+    int texture=0;
+    if(ships[ownShip].lap!=0) {
+        texture=2;
+        if(ships[ownShip].lap==classLaps[game->shipClass] && droids[n].section==startLinePos[game->actTrackNum]) texture=1;
+    }
+    return texture;
+}
+
+void UpdateStartDroid(Object **shapes, ShipData *ships, DroidData *droids, short textureBase, ConfigData *game, int player)
+{
+    SideTable side;
+    short i,selected,distance;
+    u_short ownSection;
     side = droidSideTable;
     ownSection = raceLines[ships[ownShip].nearSecNo].distance;
     for (i=0;i<6;i++) {
@@ -988,62 +1047,17 @@ void UpdateStartDroid(Object **shapes, ShipData *ships, DroidData *droids, short
     selected = i;
     for (i=(selected==6);i<2;i++) {
         if (i==0 && droids[selected].active==0) i++;
-        if (i==0) section=droidStartSections[selected];
-        else section=droidPickSection;
-        previous=section->prevSection.ptr;
-        shape=shapes[i];
-        direction.vx=section->centre.vx-previous->centre.vx;
-        direction.vy=section->centre.vy-previous->centre.vy;
-        direction.vz=section->centre.vz-previous->centre.vz;
-        angle=ratan2(direction.vx,direction.vz);
-        angle=4096-angle;
-        SetSkeletonDirectionHPR(shape->skeleton,(short)angle,0,0);
-        SetSkeletonPosition(shape->skeleton,section->centre.vx,section->centre.vy-3000,section->centre.vz);
-        texture=3;
-        if(i==0) {
-            if(ships[ownShip].lap==0) texture=0;
-            else {
-                texture=2;
-                if(ships[ownShip].lap==classLaps[game->shipClass] && droids[selected].section==startLinePos[game->actTrackNum]) texture=1;
+        if (i==0) DrawDroid(shapes[0],droidStartSections[selected],DroidTexture(ships,droids,game,selected),0,textureBase);
+        else DrawDroid(shapes[1],droidPickSection,3,side.value[game->trackNum]==0,textureBase);
+    }
+    /* Port: with the far view (portfar.h), which shows the whole track, the other checkpoints' boards too: the
+       console drew only the one within 161 sections, the rest beyond its view, and here they popped in. */
+    if (PortFarViewEnabled()) {
+        for (i=0;i<6;i++) {
+            if (i!=selected && droids[i].active>0 && droids[i].section>=0) {
+                DrawDroid(shapes[0],droidStartSections[i],DroidTexture(ships,droids,game,i),0,textureBase);
             }
         }
-        poly=(GT4 *)shape->primitives;
-        tex=textureTable[texture+textureBase];
-        switch(poly->type) {
-        case 8:
-            if (droidBlinkTick%20>=10) {
-            poly->colour[0].r=128;poly->colour[0].g=128;poly->colour[0].b=128;
-            poly->colour[1].r=128;poly->colour[1].g=128;poly->colour[1].b=128;
-            poly->colour[2].r=128;poly->colour[2].g=128;poly->colour[2].b=128;
-            poly->colour[3].r=128;poly->colour[3].g=128;poly->colour[3].b=128;
-            } else {
-            poly->colour[0].r=255;poly->colour[0].g=255;poly->colour[0].b=255;
-            poly->colour[1].r=255;poly->colour[1].g=255;poly->colour[1].b=255;
-            poly->colour[2].r=255;poly->colour[2].g=255;poly->colour[2].b=255;
-            poly->colour[3].r=255;poly->colour[3].g=255;poly->colour[3].b=255;
-            }
-            if (i && side.value[game->trackNum]==0) {
-                poly->u0=tex->u1;poly->v0=tex->v0;poly->u1=tex->u0;poly->v1=tex->v1;
-                poly->u2=tex->u3;poly->v2=tex->v2;poly->u3=tex->u2;
-            } else {
-                poly->u0=tex->u0;poly->v0=tex->v0;poly->u1=tex->u1;poly->v1=tex->v1;
-                poly->u2=tex->u2;poly->v2=tex->v2;poly->u3=tex->u3;
-            }
-            poly->v3=tex->v3;poly->cba=tex->cba;poly->tsb=tex->tsb;
-            break;
-        case 4:
-            if (droidBlinkTick%20>=10) {
-            poly->colour[0].r=128;poly->colour[0].g=128;poly->colour[0].b=128;
-            } else {
-            poly->colour[0].r=255;poly->colour[0].g=255;poly->colour[0].b=255;
-            }
-            poly->u0=tex->u0;poly->v0=tex->v0;poly->u1=tex->u1;poly->v1=tex->v1;
-            poly->u2=tex->u2;poly->v2=tex->v2;poly->u3=tex->u3;poly->v3=tex->v3;
-            poly->cba=tex->cba;poly->tsb=tex->tsb;
-            break;
-        }
-        shape->skeleton->update=1;
-        AsmDrawObject(shape, cameraPtr->camPos, 0); /* Port: roll was never passed; 0 stands for the console's stale a2 */
     }
     if (player==-1) droidBlinkTick++;
 }
