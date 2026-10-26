@@ -715,6 +715,24 @@ void PortFarDraw(TrackCamera *camera, ShipData *ships, Object **shipShapes)
     frame++;
 }
 
+void PortFarObject(Object *object)
+{
+    PortView view;
+    int      complete;
+
+    if (!Enabled() || !track) {
+        return;
+    }
+    PortFarObjectDrawn(object, &complete);
+    if (complete) {
+        return;
+    }
+    SkeletonView(object->skeleton, &view);
+    if (MaybeVisible(view.t, (double)object->extent, PORT_FAR_BEHIND)) {
+        PortDrawObjectFar(object, &view, NULL);
+    }
+}
+
 void PortFarFlared(int ship)
 {
     if (ship >= 0 && ship < 15) {

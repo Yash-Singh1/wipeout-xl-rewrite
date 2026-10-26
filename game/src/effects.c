@@ -1017,6 +1017,7 @@ static void DrawDroid(Object *shape, TrackSection *section, int texture, int mir
     }
     shape->skeleton->update=1;
     AsmDrawObject(shape, cameraPtr->camPos, 0); /* Port: roll was never passed; 0 stands for the console's stale a2 */
+    PortFarObject(shape); /* Port: beyond the console's depth, the far view's (it popped in) */
 }
 
 /* ... the board of checkpoint cell n: what the start droid shows the player (lap, final lap). */
