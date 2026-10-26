@@ -60,7 +60,7 @@ void FillMedLoCrack(TrackSection *section, Skeleton *view)
             if (!((locals.flags[0] | locals.flags[1] | locals.flags[2]) & 0x80460000)) {
                 poly = &medLoCrackPolys[i][CurrentScreen];
                 SetPolyFT3((POLY_FT3 *)poly);
-                if (face->flags & 4) {
+                if (face->flags & FLIP) {
                     tile = &tileSurfaces[face->texture][1].low[0];
                 } else {
                     tile = &tileSurfaces[face->texture][0].low[0];
@@ -164,7 +164,7 @@ void FillHiMedCrack(TrackSection *hiSection, Skeleton *camera)
         if (!((flagA | flagB | flagC) & 0x80460000)) {
             ft3 = &hiMedCrackPolysA[i][CurrentScreen];
             SetPolyFT3((POLY_FT3 *)ft3);
-            if (hiFace->flags & 4) {
+            if (hiFace->flags & FLIP) {
                 surface = &tileSurfaces[hiFace->texture][1];
             } else {
                 surface = &tileSurfaces[hiFace->texture][0];
@@ -190,7 +190,7 @@ void FillHiMedCrack(TrackSection *hiSection, Skeleton *camera)
         if (!((flagC | flagD | flagE) & 0x80460000)) {
             ft3 = &hiMedCrackPolysA[i][CurrentScreen + 2];
             SetPolyFT3((POLY_FT3 *)ft3);
-            if (hiFace->flags & 4) {
+            if (hiFace->flags & FLIP) {
                 surface = &tileSurfaces[hiFace->texture][1];
             } else {
                 surface = &tileSurfaces[hiFace->texture][0];

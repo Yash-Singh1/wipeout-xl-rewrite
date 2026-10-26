@@ -9,6 +9,10 @@
 
 /* Frames of the start countdown (ShipData.updateCount while the ships are held on the grid). */
 #define START_COUNTDOWN_FRAMES PAL_TIME(200)
+/* updateCount values at which the grid countdown steps to its next light and sounds its beep. */
+#define COUNTDOWN_STEP_1 REGION(33, 41)
+#define COUNTDOWN_STEP_2 REGION(66, 83)
+#define COUNTDOWN_STEP_3 REGION(100, 125)
 
 /* One entry per track section, indexed by section number. */
 /* Race order table: position along the lap and the ship it belongs to. */

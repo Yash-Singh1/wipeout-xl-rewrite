@@ -80,6 +80,7 @@ void InitSystem(void)
 
 void InitMenuDisplay(int geomY, int keepOffsets)
 {
+    /* the menu display window: 180 lines on NTSC, 128 on PAL */
     SetDefDispEnv(&DispEnv0, 0, 0, 0x140, REGION(0xB4, 0x80));
     SetDefDispEnv(&DispEnv1, 0, 0x100, 0x140, REGION(0xB4, 0x80));
     /* Port: dispOffX0, dispOffY0, dispOffX1 and dispOffY1 were names for the screen.x and screen.y fields. */

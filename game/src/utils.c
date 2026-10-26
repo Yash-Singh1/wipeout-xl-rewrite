@@ -57,11 +57,11 @@ void CrossProduct(VECTOR *out, VECTOR a, VECTOR b)
 }
 
 
-void MinusVector(VECTOR v1, VECTOR v2, VECTOR *result)
+void MinusVector(VECTOR start, VECTOR end, VECTOR *result)
 {
-    result->vx = v2.vx - v1.vx;
-    result->vy = v2.vy - v1.vy;
-    result->vz = v2.vz - v1.vz;
+    result->vx = end.vx - start.vx;
+    result->vy = end.vy - start.vy;
+    result->vz = end.vz - start.vz;
 }
 
 

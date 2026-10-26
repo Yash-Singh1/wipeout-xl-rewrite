@@ -50,7 +50,7 @@ void InitGhostShip(ConfigData *config, ShipData *ships)
     }
     ghostDrone = 1;
     ships[ghostShip].update = UpdateDroneShipStart;
-    ships[ghostShip].updateCount = PAL_TIME(200); /* the start countdown */
+    ships[ghostShip].updateCount = START_COUNTDOWN_FRAMES;
     ships[ghostShip].numToSpeed = 0;
 }
 

@@ -145,11 +145,11 @@ void UpdatePlayerShipStart(ShipData *shipIndex, Object **shipShapes, int shipNo,
 void UpdateShips(ShipData *shipIndex, WeaponShape *unused, Object **shipShapes, WeaponData *weaponIndex);
 
 /* utils.c */
-int abs(int arg0);
+int abs(int value);
 void CrossProduct(VECTOR *out, VECTOR a, VECTOR b);
 int GetAng(VECTOR vec1, VECTOR vec2);
 int GetMagnitude(VECTOR vec1);
-void MinusVector(VECTOR v1, VECTOR v2, VECTOR *result);
+void MinusVector(VECTOR start, VECTOR end, VECTOR *result);
 int ScalarProduct(VECTOR v, VECTOR w);
 int ang(int angle);
 int arccos(int value);
@@ -167,7 +167,7 @@ void IntelLong(int *lvalue);
 short IntelPrim(Prm prm);
 void IntelShort(short *svalue);
 Object * LoadPrmCommon(WADFILE *wad, char *name, short textureStart);
-Object * LoadPrm(char *arg0, short arg1);
+Object * LoadPrm(char *fileName, short textureStart);
 Object * NewInstance(Object *source);
 void * WADLoadPrm(WADFILE *wad, short textureStart);
 
@@ -266,17 +266,17 @@ void AlterCheckPoint(CheckPoints *checkpoints, ShipData *shipIndex, int targetSh
 void DisplayContinues(Texture *texture, int x, int y);
 
 /* raceinit.c */
-void GetJoyPadPacketOnVsync(int arg0);
+void GetJoyPadPacketOnVsync(int flags);
 void InitAttractMode(int mode, ShipData *ships);
 void InitCDAudio(ConfigData *menu, unsigned char *unused);
 void InitCheckPoints(CheckPoints *checkpoints, ConfigData *config);
 void InitInGameMenu(struct InGameMenu *menu);
 void InitRaceData(struct PauseMenu *pause);
 void InitRaceLine(TrackData *track, ConfigData *game);
-void InitRaceResetData(struct ResetData *arg0, ShipData *arg1, ConfigData *arg2, WeaponData *arg3, WeaponShape *arg4, RescueData *arg5, Object **arg6, CheckPoints *arg7);
+void InitRaceResetData(struct ResetData *reset, ShipData *ships, ConfigData *config, WeaponData *weapons, WeaponShape *weaponShapes, RescueData *rescue, Object **shipShapes, CheckPoints *checkPoints);
 void InitShufflePlay(void);
 void InitTrackTextures(ConfigData *fileId);
-void InitWeaponGrids(WeaponGrid *weaponGrids, TrackData *context, int *noWeaponGrids, short *specialCount, SpecialGrid *specialGrid);
+void InitWeaponGrids(WeaponGrid *weaponGrids, TrackData *trackData, int *gridCount, short *specialCount, SpecialGrid *specialGrids);
 int myrand(void);
 
 /* ayrace.c */
@@ -587,8 +587,8 @@ BLK_FILL *BlockFill(short x, short y, short w, short h, short red, short green, 
 void CallbackSwap(void);
 POLY_F4 *ClearScreen(short red, short green, short blue);
 void ClearVram(void);
-void InitGameDisplay(int arg0);
-void InitMenuDisplay(int arg0, int arg1);
+void InitGameDisplay(int keepOffsets);
+void InitMenuDisplay(int geomY, int keepOffsets);
 void InitSonyDisplay(void);
 void InitSystem(void);
 void Swap(void);

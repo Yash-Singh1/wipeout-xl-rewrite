@@ -2,7 +2,6 @@
 #include "portorig.h" /* Port: the original Wipeout's tracks */
 #include "ghost.h"
 #include "pc/pc.h" /* Port: the PC version's loading screen */
-#include "include_asm_g8.h"
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
 extern s32            wadHandle;
