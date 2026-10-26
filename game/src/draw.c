@@ -1,5 +1,6 @@
 #include "functions.h"
 #include "track.h"
+#include "racectrl.h"
 #define TrackVersion 8
 extern Object     **trackObjects;
 extern int          raceType;
@@ -59,7 +60,7 @@ void DrawLandscape(ShipData *playerShip, TrackCamera *camera)
         /* The European program has no per-track range: one fixed landscape range. */
         minDistance = 0x800;
         maxDistance = 0x9538;
-    } else if (raceType != 2) {
+    } else if (raceType != RACE_ARCADE_LINK) {
         minDistance = clipNearTable1[clipLevel];
         maxDistance = clipFarTable1[clipLevel];
     } else {

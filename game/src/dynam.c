@@ -1,4 +1,6 @@
 #include "functions.h"
+#include "track.h"
+#include "racectrl.h"
 #include "portorig.h" /* Port: the original Wipeout's tracks */
 #include "ghost.h"
 #include "dynam.h"
@@ -36,36 +38,36 @@ void ShipTrkReaction(ShipData *playerShip, Object **shipShapes)
     targetVelocity.vx = sar(speed * playerShip->unitVecNose.vx, 12);
     targetVelocity.vy = sar(speed * playerShip->unitVecNose.vy, 12);
     targetVelocity.vz = sar(speed * playerShip->unitVecNose.vz, 12);
-    if (playerShip->nearTrkSect->flags & 1) {
+    if (playerShip->nearTrkSect->flags & TRACK_JUMP) {
         face = track->faces + playerShip->nearTrkSect->faceStart;
-        while (!(face->flags & 1)) {
+        while (!(face->flags & TRACK_BASE)) {
             face++;
         }
         facePoint.vx = track->vertices[face->vertex[0]].vx;
         facePoint.vy = track->vertices[face->vertex[0]].vy;
         facePoint.vz = track->vertices[face->vertex[0]].vz;
         alpha = PlaneLineCollision(facePoint, playerShip->ppivot, face->normal);
-        if (CheckPolygonCollision(face, playerShip->ppivot, alpha, 2) == 0) playerShip->attr |= 16;
+        if (CheckPolygonCollision(face, playerShip->ppivot, alpha, 2) == 0) playerShip->attr |= FLYING;
     }
-    if (!(playerShip->attr & 16)) {
+    if (!(playerShip->attr & FLYING)) {
         face = track->faces + playerShip->nearTrkSect->faceStart;
-        while (!(face->flags & 1)) {
+        while (!(face->flags & TRACK_BASE)) {
             face++;
         }
         Ship2Track(playerShip, face, shipShapes);
-        if ((face->flags & 32) && (playerShip->attr & 32)) {
+        if ((face->flags & SPEED_UP) && (playerShip->attr & LSIDE)) {
             playerShip->vpivot.vx += PAL_SPEED(playerShip->nearTrkSect->nextSection.ptr->centre.vx - playerShip->nearTrkSect->centre.vx);
             playerShip->vpivot.vy += PAL_SPEED(playerShip->nearTrkSect->nextSection.ptr->centre.vy - playerShip->nearTrkSect->centre.vy);
             playerShip->vpivot.vz += PAL_SPEED(playerShip->nearTrkSect->nextSection.ptr->centre.vz - playerShip->nearTrkSect->centre.vz);
         }
         face++;
-        if ((face->flags & 32) && !(playerShip->attr & 32)) {
+        if ((face->flags & SPEED_UP) && !(playerShip->attr & LSIDE)) {
             playerShip->vpivot.vx += PAL_SPEED(playerShip->nearTrkSect->nextSection.ptr->centre.vx - playerShip->nearTrkSect->centre.vx);
             playerShip->vpivot.vy += PAL_SPEED(playerShip->nearTrkSect->nextSection.ptr->centre.vy - playerShip->nearTrkSect->centre.vy);
             playerShip->vpivot.vz += PAL_SPEED(playerShip->nearTrkSect->nextSection.ptr->centre.vz - playerShip->nearTrkSect->centre.vz);
         }
         face--;
-        if (!(playerShip->attr & 32)) face++;
+        if (!(playerShip->attr & LSIDE)) face++;
         facePoint.vx = track->vertices[face->vertex[0]].vx;
         facePoint.vy = track->vertices[face->vertex[0]].vy;
         facePoint.vz = track->vertices[face->vertex[0]].vz;
@@ -96,16 +98,14 @@ void ShipTrkReaction(ShipData *playerShip, Object **shipShapes)
         playerShip->apivot.vx += (reaction.vx + playerShip->thrustVector.vx) / mass;
         playerShip->apivot.vy += (reaction.vy + playerShip->thrustVector.vy) / mass;
         playerShip->apivot.vz += (reaction.vz + playerShip->thrustVector.vz) / mass;
-        PAL_SPEED_UP(playerShip->apivot.vx);
-        PAL_SPEED_UP(playerShip->apivot.vy);
-        PAL_SPEED_UP(playerShip->apivot.vz);
+        PAL_SPEED_VECTOR(playerShip->apivot);
         friction = (playerShip->resistance * (74 - (brake >> 3))) >> 7;
         playerShip->vpivot.vx += playerShip->apivot.vx;
-        xDrag = ((volatile VECTOR *)&playerShip->vpivot)->vx; playerShip->vpivot.vx = xDrag - xDrag / friction;
+        xDrag = playerShip->vpivot.vx; playerShip->vpivot.vx = xDrag - xDrag / friction;
         playerShip->vpivot.vy += playerShip->apivot.vy;
-        yDrag = ((volatile VECTOR *)&playerShip->vpivot)->vy; playerShip->vpivot.vy = yDrag - yDrag / friction;
-        playerShip->vpivot.vz += ((volatile VECTOR *)&playerShip->apivot)->vz;
-        zDrag = ((volatile VECTOR *)&playerShip->vpivot)->vz; playerShip->vpivot.vz = zDrag - zDrag / friction;
+        yDrag = playerShip->vpivot.vy; playerShip->vpivot.vy = yDrag - yDrag / friction;
+        playerShip->vpivot.vz += playerShip->apivot.vz;
+        zDrag = playerShip->vpivot.vz; playerShip->vpivot.vz = zDrag - zDrag / friction;
         playerShip->ppivot.vx += sar(playerShip->vpivot.vx, 6);
         playerShip->ppivot.vy += sar(playerShip->vpivot.vy, 6);
         playerShip->ppivot.vz += sar(playerShip->vpivot.vz, 6);
@@ -125,7 +125,7 @@ void ShipTrkReaction(ShipData *playerShip, Object **shipShapes)
     } else {
         if (playerShip->vpivot.vy < playerShip->nearTrkSect->centre.vy) {
             face = track->faces + playerShip->nearTrkSect->faceStart;
-            while (!(face->flags & 1)) {
+            while (!(face->flags & TRACK_BASE)) {
                 face++;
             }
             Ship2Track(playerShip, face, shipShapes);
@@ -143,8 +143,8 @@ void ShipTrkReaction(ShipData *playerShip, Object **shipShapes)
         }
         if (GetMagnitude(toTarget) > 32000) {
             playerShip->update = UpdateRescueDroid; playerShip->updateCount = 500; droidFlyin = 1000;
-            playerShip->thrust = 0; playerShip->attr |= 0x401;
-            if (raceType == 1) recordBuffer->disabled = 1;
+            playerShip->thrust = 0; playerShip->attr |= (IN_TOW | RESCUE);
+            if (raceType == RACE_TIME_TRIAL) recordBuffer->disabled = 1;
         }
         brake = playerShip->r_brake_rot + playerShip->l_brake_rot;
         playerShip->apivot.vx = (targetVelocity.vx - playerShip->vpivot.vx) / ((brake << 2) + 20);
@@ -162,16 +162,14 @@ void ShipTrkReaction(ShipData *playerShip, Object **shipShapes)
         playerShip->apivot.vx += playerShip->thrustVector.vx / playerShip->mass;
         playerShip->apivot.vy += (playerShip->thrustVector.vy + 80000) / playerShip->mass;
         playerShip->apivot.vz += playerShip->thrustVector.vz / playerShip->mass;
-        PAL_SPEED_UP(playerShip->apivot.vx);
-        PAL_SPEED_UP(playerShip->apivot.vy);
-        PAL_SPEED_UP(playerShip->apivot.vz);
+        PAL_SPEED_VECTOR(playerShip->apivot);
         friction = (playerShip->resistance * (74 - (brake >> 3))) >> 7;
         playerShip->vpivot.vx += playerShip->apivot.vx;
-        xDragC = ((volatile VECTOR *)&playerShip->vpivot)->vx; playerShip->vpivot.vx = xDragC - xDragC / friction;
-        playerShip->vpivot.vy += ((volatile VECTOR *)&playerShip->apivot)->vy;
-        yDragC = ((volatile VECTOR *)&playerShip->vpivot)->vy; playerShip->vpivot.vy = yDragC - yDragC / friction;
-        playerShip->vpivot.vz += ((volatile VECTOR *)&playerShip->apivot)->vz;
-        zDragC = ((volatile VECTOR *)&playerShip->vpivot)->vz; playerShip->vpivot.vz = zDragC - zDragC / friction;
+        xDragC = playerShip->vpivot.vx; playerShip->vpivot.vx = xDragC - xDragC / friction;
+        playerShip->vpivot.vy += playerShip->apivot.vy;
+        yDragC = playerShip->vpivot.vy; playerShip->vpivot.vy = yDragC - yDragC / friction;
+        playerShip->vpivot.vz += playerShip->apivot.vz;
+        zDragC = playerShip->vpivot.vz; playerShip->vpivot.vz = zDragC - zDragC / friction;
         playerShip->ppivot.vx += sar(playerShip->vpivot.vx, 6);
         playerShip->ppivot.vy += sar(playerShip->vpivot.vy, 6);
         playerShip->ppivot.vz += sar(playerShip->vpivot.vz, 6);
@@ -190,7 +188,7 @@ void ShipTrkReaction(ShipData *playerShip, Object **shipShapes)
     playerShip->roll = ang(playerShip->roll);
     neighbour = playerShip->nearTrkSect->prevSection.ptr;
     current = playerShip->nearTrkSect;
-    if (!(playerShip->attr & 8) && !(current->flags & 1) && (neighbour->flags & 1)) {
+    if (!(playerShip->attr & DIRECTION) && !(current->flags & TRACK_JUMP) && (neighbour->flags & TRACK_JUMP)) {
         playerShip->pitch -= playerShip->vpitch >> 4;
         playerShip->ppivot.vx -= sar(playerShip->vpivot.vx, 6);
         playerShip->ppivot.vy -= sar(playerShip->vpivot.vy, 6);
@@ -209,8 +207,8 @@ void ShipTrkReaction(ShipData *playerShip, Object **shipShapes)
     nextDirection.vx = next->centre.vx - playerShip->nearTrkSect->centre.vx;
     nextDirection.vy = next->centre.vy - playerShip->nearTrkSect->centre.vy;
     nextDirection.vz = next->centre.vz - playerShip->nearTrkSect->centre.vz;
-    if (nextDirection.vx * playerShip->unitVecNose.vx + nextDirection.vy * playerShip->unitVecNose.vy + nextDirection.vz * playerShip->unitVecNose.vz < 0 && playerShip->ppivot.vy >= playerShip->nearTrkSect->centre.vy + 1000 && (playerShip->attr & 16) && (current->flags & 1) && !(current->prevSection.ptr->flags & 1)) {
-        playerShip->update = UpdateRescueDroid; playerShip->updateCount = 500; playerShip->thrust = 0; droidFlyin = 1000; playerShip->attr |= 0x401;
+    if (nextDirection.vx * playerShip->unitVecNose.vx + nextDirection.vy * playerShip->unitVecNose.vy + nextDirection.vz * playerShip->unitVecNose.vz < 0 && playerShip->ppivot.vy >= playerShip->nearTrkSect->centre.vy + 1000 && (playerShip->attr & FLYING) && (current->flags & TRACK_JUMP) && !(current->prevSection.ptr->flags & TRACK_JUMP)) {
+        playerShip->update = UpdateRescueDroid; playerShip->updateCount = 500; playerShip->thrust = 0; droidFlyin = 1000; playerShip->attr |= (IN_TOW | RESCUE);
     }
 }
 
@@ -320,7 +318,7 @@ void SetUnitVectors(ShipData *shipIndex)
         shipIndex[i].nearSecNo = shipIndex[i].nearTrkSect->secNo;
 
         facePtr = track->faces + shipIndex[i].nearTrkSect->faceStart;
-        while ((facePtr->flags & 1) == 0) {
+        while ((facePtr->flags & TRACK_BASE) == 0) {
             facePtr++;
         }
 
@@ -332,9 +330,9 @@ void SetUnitVectors(ShipData *shipIndex)
         direction.vz = shipIndex[i].nearTrkSect->centre.vz - shipIndex[i].ppivot.vz;
         toFace = ((direction.vx * toFaceVector.vx) + (direction.vy * toFaceVector.vy)) + (direction.vz * toFaceVector.vz);
         if (toFace > 0) {
-            shipIndex[i].attr |= 0x20;
+            shipIndex[i].attr |= LSIDE;
         } else {
-            shipIndex[i].attr &= ~0x20;
+            shipIndex[i].attr &= ~LSIDE;
         }
     }
 }
@@ -345,12 +343,12 @@ int SetTrackAttributes(TrackSection *section, short sectionNo, WeaponGrid *weapo
     Face *facePtr;
 
     facePtr = track->faces + section->faceStart;
-    while (!(facePtr->flags & 1)) {
+    while (!(facePtr->flags & TRACK_BASE)) {
         facePtr++;
     }
 
-    if (facePtr->flags & 2) {
-        if (raceType != 1) {
+    if (facePtr->flags & WEAPON_GRID_LEFT) {
+        if (raceType != RACE_TIME_TRIAL) {
             if (!tempGameData->weaponsOn) {
                 goto test_left;
             }
@@ -360,7 +358,7 @@ int SetTrackAttributes(TrackSection *section, short sectionNo, WeaponGrid *weapo
             goto skip_left;
         }
 test_left:
-        if (raceType != 4) {
+        if (raceType != RACE_CHALLENGE) {
             goto skip_left;
         }
 
@@ -374,20 +372,20 @@ color_left:
 skip_left:
         weaponGrid[noWeaponGrids].section = section;
         weaponGrid[noWeaponGrids].count = 0;
-        weaponGrid[noWeaponGrids].attr = 2;
+        weaponGrid[noWeaponGrids].attr = WEAPON_GRID_LEFT;
         noWeaponGrids++;
     }
-    if (facePtr->flags & 32) {
+    if (facePtr->flags & SPEED_UP) {
         facePtr->red = 35;
         facePtr->green = 35;
         facePtr->blue = 255;
     }
-    if (facePtr->flags & 64) {
+    if (facePtr->flags & PIT_LANE) {
         facePtr->red = 128;
         facePtr->green = 0;
         facePtr->blue = 0;
     }
-    if (facePtr->flags & 128) {
+    if (facePtr->flags & CHECKPOINT) {
         specialGrid[*specialCount].count = 10;
         specialGrid[*specialCount].section = section->secNo;
         specialGrid[*specialCount].attr = 0;
@@ -399,8 +397,8 @@ skip_left:
         (*specialCount)++;
     }
     facePtr++;
-    if (facePtr->flags & 8) {
-        if (raceType != 1) {
+    if (facePtr->flags & WEAPON_GRID_RIGHT) {
+        if (raceType != RACE_TIME_TRIAL) {
             if (!tempGameData->weaponsOn) {
                 goto test_right;
             }
@@ -410,7 +408,7 @@ skip_left:
             goto skip_right;
         }
 test_right:
-        if (raceType != 4) {
+        if (raceType != RACE_CHALLENGE) {
             goto skip_right;
         }
 
@@ -424,19 +422,19 @@ color_right:
 skip_right:
         weaponGrid[noWeaponGrids].section = section;
         weaponGrid[noWeaponGrids].count = 0;
-        weaponGrid[noWeaponGrids].attr = 8;
+        weaponGrid[noWeaponGrids].attr = WEAPON_GRID_RIGHT;
         noWeaponGrids++;
-    } else if (facePtr->flags & 32) {
+    } else if (facePtr->flags & SPEED_UP) {
         facePtr->red = 35;
         facePtr->green = 35;
         facePtr->blue = 255;
     }
-    if (facePtr->flags & 64) {
+    if (facePtr->flags & PIT_LANE) {
         facePtr->red = 128;
         facePtr->green = 0;
         facePtr->blue = 0;
     }
-    if ((facePtr->flags & 128) && !PortOriginalLooks()) { /* Port: (as the left face) */
+    if ((facePtr->flags & CHECKPOINT) && !PortOriginalLooks()) { /* Port: (as the left face) */
         facePtr->red = 255;
         facePtr->green = 255;
         facePtr->blue = 255;
