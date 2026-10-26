@@ -128,6 +128,9 @@ int PortOriginalStartLine(void);
 int PortOriginalSkyY(void);
 /* The textures of the chosen track's surface (its library.cmp), once the race has opened its files; 0 for none. */
 int PortOriginalLibraryTextures(void);
+/* A Wipeout 64 track's animated scenery (fans, steam, lava, flames): the pictures due at the race's tick (frames on
+   from its start, but while paused), loaded into video memory. */
+void PortOriginalAnimate(int tick);
 /* The game's file layer (iso9660.c): a file of the chosen track's (where, and how long), and its sectors. */
 int PortOriginalFileInfo(const char *pathname, int *loc, int *size);
 int PortOriginalRead(int loc, int sectors, void *buffer);

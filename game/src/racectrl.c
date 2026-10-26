@@ -530,6 +530,7 @@ frame:
         if(gameData->actTrackNum==8) AddSnow(particleSlots,20,(VECTOR *)cameraPtr->camPos->relative.t);
     } else {if(locals.firstTime) UpdateShipTrails(shipIndex,attractDelayFrames);locals.firstTime=0;}
     resetMiscFx();DrawShipTrails(cameraPtr);
+    if(!linkDropped && PortOriginalTrackIs64()) PortOriginalSceneUpdate(pauseState.selection!=-1); /* Port: a Wipeout 64 track's animated scenery (its droids are XL's) */
     if(!linkDropped && PortOriginalLooks()) PortOriginalSceneUpdate(pauseState.selection!=-1); /* Port: ... its own scenery, not XL's droids */
     else if(!linkDropped) {
         UpdateStartDroid(startDroidObjects,shipIndex,(DroidData *)CHECKPOINTS,startTextureBase,gameData,pauseState.selection);

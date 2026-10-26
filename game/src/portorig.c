@@ -325,13 +325,15 @@ void PortOriginalCount(int updateCount)
     }
 }
 
-/* Each frame of the race (but while paused): the beacons and the pumps. */
+/* Each frame of the race (but while paused): the beacons and the pumps; on Wipeout 64's tracks, its animated
+   scenery. */
 void PortOriginalSceneUpdate(int paused)
 {
     int i, red, angle;
 
     if (!paused) {
         sceneryFrame++;
+        PortOriginalAnimate(sceneryFrame);
     }
     red = 128 + rsin((short)((sceneryFrame * 4096 / PAL_TIME(30)) & 4095)) * 127 / 4096;
     for (i = 0; i < beaconCount; i++) {

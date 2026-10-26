@@ -22,6 +22,7 @@
 #include "saturn.h"
 #include "settings.h"
 #include "psx/disc.h"
+#include "psyq.h" /* (LoadImage: Wipeout 64's animated scenery) */
 
 #define SECTION_BYTES 156 /* a track section record (the original's and XL's alike) */
 #define FACE_BYTES 20
@@ -77,6 +78,7 @@ static char romSource[1024];
 static size_t wads[MAX_WADS];   /* where each track's wad starts */
 static int wadCount;
 static size_t frontEnd;         /* the wad of its menus' files (frntEnd.cmp, models.prm...), 0 when not found */
+static size_t effects;          /* ... of its scenery's moving pictures (steam.cmp, fan.cmp...) */
 /* Its tracks in the cartridge's order (its own track list's, each entry with its wad's place), and their models in
    its menus' models.prm */
 static const char *const n64Names[] = {"KLIES BRIDGE", "QORON IV", "SOKANA", "DYRONESS", "MACHAON II", "TERAFUMOS",
@@ -656,6 +658,8 @@ static uint8_t *MakeCheckpoints(size_t *size)
     return out;
 }
 
+static void FreeAnimations(void);
+
 static void FreeFiles(void)
 {
     int i;
@@ -667,6 +671,7 @@ static void FreeFiles(void)
     }
     builtFor = -1;
     libraryTextures = 0;
+    FreeAnimations();
 }
 
 static int32_t Be32(const uint8_t *p)
@@ -1356,6 +1361,7 @@ void PortWipeout64Close(void)
     romSource[0] = 0;
     wadCount = 0;
     frontEnd = 0;
+    effects = 0;
     ListGuests();
 }
 
@@ -1403,6 +1409,8 @@ int PortWipeout64Open(const char *path, char *message, int messageSize)
             wads[wadCount++] = i - 2;
         } else if (rom[i] == 'f' && !frontEnd && !memcmp(rom + i, "frntEnd.cmp", 12) && WadPart(i - 2, "models.prm", &size)) {
             frontEnd = i - 2;
+        } else if (rom[i] == 't' && !effects && !memcmp(rom + i, "turbSin.cmp", 12) && WadPart(i - 2, "steam.cmp", &size)) {
+            effects = i - 2;
         }
     }
     if (!wadCount) {
@@ -1603,11 +1611,11 @@ static int PlaceImage(Layout *l, int w, int h, int *x, int *y)
     return 1;
 }
 
-static int PlacePalette(Layout *l, const uint8_t *colours, int count, int *x, int *y)
+static int PlacePalette(Layout *l, const uint8_t *colours, int count, int own, int *x, int *y)
 {
     int i;
 
-    for (i = 0; i < l->paletteCount; i++) {
+    for (i = 0; i < l->paletteCount && !own; i++) {
         if (l->paletteSize[i] == count && !memcmp(l->palettes[i], colours, (size_t)count * 2)) {
             *x = l->paletteX[i];
             *y = l->paletteY[i];
@@ -1625,6 +1633,9 @@ static int PlacePalette(Layout *l, const uint8_t *colours, int count, int *x, in
     }
     if (PALETTE_Y + (l->small + 15) / 16 > 1023 - l->large + 1) {
         return 0; /* (the block is full) */
+    }
+    if (own) {
+        return 1; /* (one that changes: not for others to share) */
     }
     l->palettes = SDL_realloc(l->palettes, sizeof(*l->palettes) * (size_t)(l->paletteCount + 1));
     l->paletteX = SDL_realloc(l->paletteX, sizeof(int) * (size_t)(l->paletteCount + 1));
@@ -1665,8 +1676,8 @@ static uint8_t *TimBlocks(uint8_t *tim, size_t size, uint8_t **image)
     return clut;
 }
 
-/* Each TIM of the list given places for its image and palette. */
-static int PlaceTims(Layout *l, TimList *list)
+/* Each TIM of the list given places for its image and palette (a palette of its own for those `own` marks). */
+static int PlaceTims(Layout *l, TimList *list, const int *own)
 {
     int i, x, y;
 
@@ -1679,7 +1690,7 @@ static int PlaceTims(Layout *l, TimList *list)
         list->tims[i][4] &= 0x0F; /* (the N64's own flags above the mode) */
         PutLe16(image + 4, x);
         PutLe16(image + 6, y);
-        if (!PlacePalette(l, clut + 12, Le16(clut + 8), &x, &y)) {
+        if (!PlacePalette(l, clut + 12, Le16(clut + 8), own && own[i], &x, &y)) {
             return 0;
         }
         PutLe16(clut + 4, x);
@@ -1719,7 +1730,7 @@ static int MakeLibrary(const uint8_t *cmp, size_t length, Layout *l, uint8_t **l
                        uint8_t **templates, size_t *templatesSize)
 {
     TimList tiles = {0}, pieces = {0};
-    int t, k, ok = Unpack(cmp, length, &tiles) && PlaceTims(l, &tiles);
+    int t, k, ok = Unpack(cmp, length, &tiles) && PlaceTims(l, &tiles, NULL);
 
     *templates = SDL_malloc((size_t)(tiles.count ? tiles.count : 1) * 21 * 2);
     for (t = 0; ok && t < tiles.count; t++) {
@@ -1750,6 +1761,122 @@ static int MakeLibrary(const uint8_t *cmp, size_t length, Layout *l, uint8_t **l
     return ok;
 }
 
+/* ---- Wipeout 64's animated scenery ----
+
+   Its fans, steam, lava and flames are texture sequences in a wad of their own (with its turbo pads' and other
+   pictures), each picture with a palette of its own. A track's scene has a sequence's first picture, and the race
+   shows the others over it in turn (PortOriginalAnimate), so that texture is given a palette no other shares. The
+   pace is Wipeout 64's code's, not its data's: these are guesses, in game frames a picture. */
+
+static const struct {
+    const char *name;
+    int period;
+} effects64[] = {{"fan.cmp", 1}, {"steam.cmp", 2}, {"lava.cmp", 2}, {"flame.cmp", 2}};
+
+typedef struct Animation {
+    int scene;          /* the scene's TIM it shows on */
+    int period;
+    TimList pictures;   /* placed where that TIM is */
+} Animation;
+static Animation animations[SDL_arraysize(effects64)];
+static int animationCount;
+
+static void FreeAnimations(void)
+{
+    int i;
+
+    for (i = 0; i < animationCount; i++) {
+        TimFree(&animations[i].pictures);
+    }
+    animationCount = 0;
+}
+
+/* The sequences whose first picture is one of the scene's TIMs (marked in own: they get palettes of their own). */
+static void FindAnimations(TimList *scene, int *own)
+{
+    int e, i;
+
+    FreeAnimations();
+    for (e = 0; e < (int)SDL_arraysize(effects64); e++) {
+        size_t size;
+        const uint8_t *cmp = effects ? WadPart(effects, effects64[e].name, &size) : NULL;
+        TimList pictures = {0};
+        uint8_t *first = NULL, *image;
+
+        if (cmp && Unpack(cmp, size, &pictures) && pictures.count) {
+            TimBlocks(pictures.tims[0], pictures.sizes[0], &first);
+        }
+        for (i = 0; first && i < scene->count; i++) {
+            if (TimBlocks(scene->tims[i], scene->sizes[i], &image) && Le32(image) == Le32(first) &&
+                !memcmp(image + 8, first + 8, Le32(first) - 8)) {
+                break;
+            }
+        }
+        if (!first || i == scene->count) {
+            TimFree(&pictures);
+            continue;
+        }
+        own[i] = 1;
+        animations[animationCount].scene = i;
+        animations[animationCount].period = effects64[e].period;
+        animations[animationCount++].pictures = pictures;
+    }
+}
+
+/* ... once the scene is placed: each picture where its TIM is (the pictures after one of another size dropped). */
+static void PlaceAnimations(TimList *scene)
+{
+    int i, k;
+
+    for (i = 0; i < animationCount; i++) {
+        Animation *a = &animations[i];
+        uint8_t *sceneImage, *sceneClut = TimBlocks(scene->tims[a->scene], scene->sizes[a->scene], &sceneImage);
+
+        for (k = 0; k < a->pictures.count; k++) {
+            uint8_t *image, *clut = TimBlocks(a->pictures.tims[k], a->pictures.sizes[k], &image);
+
+            if (!clut || Le32(clut) != Le32(sceneClut) || Le32(image) != Le32(sceneImage) ||
+                memcmp(image + 8, sceneImage + 8, 4)) {
+                break;
+            }
+            memcpy(clut + 4, sceneClut + 4, 4);
+            memcpy(image + 4, sceneImage + 4, 4);
+        }
+        while (a->pictures.count > k) {
+            SDL_free(a->pictures.tims[--a->pictures.count]);
+        }
+    }
+}
+
+void PortOriginalAnimate(int tick)
+{
+    int i;
+
+    if (builtFor < 0 || builtFor != chosen || guests[chosen].from != FROM_64) {
+        return;
+    }
+    for (i = 0; i < animationCount; i++) {
+        const Animation *a = &animations[i];
+        int k = tick / a->period % a->pictures.count;
+        uint8_t *image, *clut = TimBlocks(a->pictures.tims[k], a->pictures.sizes[k], &image);
+        RECT rect;
+
+        if (tick % a->period) {
+            continue;
+        }
+        rect.x = (short)Le16(clut + 4);
+        rect.y = (short)Le16(clut + 6);
+        rect.w = (short)Le16(clut + 8);
+        rect.h = (short)Le16(clut + 10);
+        LoadImage(&rect, (u_long *)(clut + 12));
+        rect.x = (short)Le16(image + 4);
+        rect.y = (short)Le16(image + 6);
+        rect.w = (short)Le16(image + 8);
+        rect.h = (short)Le16(image + 10);
+        LoadImage(&rect, (u_long *)(image + 12));
+    }
+}
+
 /* XL's ten files of a Wipeout 64 track. */
 static int Wipeout64Parts(int index, uint8_t **parts, size_t *sizes)
 {
@@ -1758,7 +1885,7 @@ static int Wipeout64Parts(int index, uint8_t **parts, size_t *sizes)
     Layout layout = {0};
     TimList scene = {0}, sky = {0};
     const uint8_t *data, *com, *sin;
-    int i, comCount, ok = 1;
+    int i, comCount, ok = 1, *own;
 
     for (i = 0; i < 4; i++) {
         data = WadPart(at, copied[i], &size);
@@ -1773,9 +1900,18 @@ static int Wipeout64Parts(int index, uint8_t **parts, size_t *sizes)
     sin = WadPart(at, "sceneSin.cmp", &sinSize);
     ok = ok && Unpack(com, comSize, &scene);
     comCount = scene.count;
-    ok = ok && Unpack(sin, sinSize, &scene) && PlaceTims(&layout, &scene);
+    ok = ok && Unpack(sin, sinSize, &scene);
+    own = ok ? SDL_calloc((size_t)scene.count, sizeof(int)) : NULL;
+    if (own) {
+        FindAnimations(&scene, own);
+    }
+    ok = ok && PlaceTims(&layout, &scene, own);
+    if (ok) {
+        PlaceAnimations(&scene);
+    }
+    SDL_free(own);
     data = WadPart(at, "sky.cmp", &size);
-    ok = ok && Unpack(data, size, &sky) && PlaceTims(&layout, &sky);
+    ok = ok && Unpack(data, size, &sky) && PlaceTims(&layout, &sky, NULL);
     if (ok) {
         parts[6] = Pack(&scene, &sizes[6]);
         parts[7] = Pack(&sky, &sizes[7]);
