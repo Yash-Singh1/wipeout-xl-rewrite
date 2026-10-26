@@ -1,9 +1,10 @@
+#include "weapon.h"
 #include "hud.h"
+#include "racectrl.h"
 #include "pc/pc.h"
 #include "hiscores.h"
 #include "ayrace.h"
 #include "portorig.h" /* Port: the original Wipeout's tracks */
-#include "include_asm_g8.h"
 #include "../../platform/trace.h" /* Port: test hooks */
 
 /* Port: the PC version's text in place of the console's (pc/pctext.c), in its sizes and colours. Its letters are of
@@ -46,11 +47,11 @@ extern short   CurrentScreen;
 extern Texture *textureTable[];
 extern char    drFontsFile[];
 /* Leading part of every challenge texture path. */
-typedef struct PathSeed {
+typedef struct TexturePathPrefix {
     char text[22];
-} PathSeed; /* Port: the PlayStation compiler aligned this typedef to 4 (size stays 22); clang needs the size to be a multiple. */
+} TexturePathPrefix; /* Port: the PlayStation compiler aligned this typedef to 4 (size stays 22); clang needs the size to be a multiple. */
 
-extern PathSeed texturePathSeed[];
+extern TexturePathPrefix texturePathSeed[];
 extern char    extCmp[];
 extern char    msgLap[];
 extern char    msgBadLuck[];
@@ -113,16 +114,13 @@ void InitText(void)
     for (i = 0; i < 600; i++) {
         SetPolyFT4(&quadPool[i]);
         (&quadPool[i])->tpage = GetTPage(0, 0, 576, 256);
-        quadPool[i].code = 0x2D;
+        quadPool[i].code = GPU_FT4_RAW_TEXTURE;
         quadPool[i].r0 = 255;
         quadPool[i].g0 = 255;
         quadPool[i].b0 = 255;
     }
 }
 
-
-/* The PAL speedometer sits 22 lines lower. */
-#define SPEEDO_Y(y) ((y) + REGION(0, 22))
 
 void InitSpeedo(Speedo *speedo)
 {
@@ -141,14 +139,14 @@ void InitSpeedo(Speedo *speedo)
         speedo->frame[screen].r0 = 0xFF;
         speedo->frame[screen].g0 = 0xFF;
         speedo->frame[screen].b0 = 0xFF;
-        speedo->frame[screen].y0 = SPEEDO_Y(0xA3);
-        speedo->frame[screen].y1 = SPEEDO_Y(0xA3);
+        speedo->frame[screen].y0 = PAL_PANEL_Y(0xA3);
+        speedo->frame[screen].y1 = PAL_PANEL_Y(0xA3);
         speedo->frame[screen].x0 = 0xC3;
         speedo->frame[screen].x1 = 0x132;
         speedo->frame[screen].x2 = 0xC3;
-        speedo->frame[screen].y2 = SPEEDO_Y(0xE2);
+        speedo->frame[screen].y2 = PAL_PANEL_Y(0xE2);
         speedo->frame[screen].x3 = 0x132;
-        speedo->frame[screen].y3 = SPEEDO_Y(0xE2);
+        speedo->frame[screen].y3 = PAL_PANEL_Y(0xE2);
         speedo->frame[screen].u0 = (u_char) speedoFrameTex->u0;
         speedo->frame[screen].v0 = (u_char) speedoFrameTex->v0;
         speedo->frame[screen].u1 = (u_char) speedoFrameTex->u1;
@@ -164,13 +162,13 @@ void InitSpeedo(Speedo *speedo)
         speedo->speed[screen].g0 = 0xFF;
         speedo->speed[screen].b0 = 0xFF;
         speedo->speed[screen].x0 = 0xCE;
-        speedo->speed[screen].y0 = SPEEDO_Y(0xAD);
+        speedo->speed[screen].y0 = PAL_PANEL_Y(0xAD);
         speedo->speed[screen].x1 = 0x12E;
-        speedo->speed[screen].y1 = SPEEDO_Y(0xAD);
+        speedo->speed[screen].y1 = PAL_PANEL_Y(0xAD);
         speedo->speed[screen].x2 = 0xCE;
-        speedo->speed[screen].y2 = SPEEDO_Y(0xC3);
+        speedo->speed[screen].y2 = PAL_PANEL_Y(0xC3);
         speedo->speed[screen].x3 = 0x12E;
-        speedo->speed[screen].y3 = SPEEDO_Y(0xC3);
+        speedo->speed[screen].y3 = PAL_PANEL_Y(0xC3);
         speedo->speed[screen].u0 = (u_char) speedoSpeedTex->u0;
         speedo->speed[screen].v0 = (u_char) speedoSpeedTex->v0;
         speedo->speed[screen].u1 = (u_char) speedoSpeedTex->u1;
@@ -186,13 +184,13 @@ void InitSpeedo(Speedo *speedo)
         speedo->shield[screen].g0 = 0xFF;
         speedo->shield[screen].b0 = 0xFF;
         speedo->shield[screen].x0 = 0xC6;
-        speedo->shield[screen].y0 = SPEEDO_Y(0xC9);
+        speedo->shield[screen].y0 = PAL_PANEL_Y(0xC9);
         speedo->shield[screen].x1 = 0x126;
-        speedo->shield[screen].y1 = SPEEDO_Y(0xC9);
+        speedo->shield[screen].y1 = PAL_PANEL_Y(0xC9);
         speedo->shield[screen].x2 = 0xC6;
-        speedo->shield[screen].y2 = SPEEDO_Y(0xDF);
+        speedo->shield[screen].y2 = PAL_PANEL_Y(0xDF);
         speedo->shield[screen].x3 = 0x126;
-        speedo->shield[screen].y3 = SPEEDO_Y(0xDF);
+        speedo->shield[screen].y3 = PAL_PANEL_Y(0xDF);
         speedo->shield[screen].u0 = (u_char) speedoShieldTex->u0;
         speedo->shield[screen].v0 = (u_char) speedoShieldTex->v0;
         speedo->shield[screen].u1 = (u_char) speedoShieldTex->u1;
@@ -209,13 +207,13 @@ void InitSpeedo(Speedo *speedo)
         speedo->marker[screen].g0 = 0xFF;
         speedo->marker[screen].b0 = 0xFF;
         speedo->marker[screen].x0 = 0xCE;
-        speedo->marker[screen].y0 = SPEEDO_Y(0xAD);
+        speedo->marker[screen].y0 = PAL_PANEL_Y(0xAD);
         speedo->marker[screen].x1 = 0x12E;
-        speedo->marker[screen].y1 = SPEEDO_Y(0xAD);
+        speedo->marker[screen].y1 = PAL_PANEL_Y(0xAD);
         speedo->marker[screen].x2 = 0xCE;
-        speedo->marker[screen].y2 = SPEEDO_Y(0xC3);
+        speedo->marker[screen].y2 = PAL_PANEL_Y(0xC3);
         speedo->marker[screen].x3 = 0x12E;
-        speedo->marker[screen].y3 = SPEEDO_Y(0xC3);
+        speedo->marker[screen].y3 = PAL_PANEL_Y(0xC3);
         speedo->marker[screen].u0 = (u_char) speedoMarkerTex->u0;
         speedo->marker[screen].v0 = (u_char) speedoMarkerTex->v0;
         speedo->marker[screen].u1 = (u_char) speedoMarkerTex->u1;
@@ -264,13 +262,13 @@ void fill_speedo(Speedo *speedo, ShipData *ships, ConfigData *game, int player)
     }
     if (bottom < 0) bottom = 0;
     SPEEDO_QUAD(speed).x0 = 206;
-    SPEEDO_QUAD(speed).y0 = SPEEDO_Y(173);
+    SPEEDO_QUAD(speed).y0 = PAL_PANEL_Y(173);
     SPEEDO_QUAD(speed).x1 = 206 + top;
-    SPEEDO_QUAD(speed).y1 = SPEEDO_Y(173);
+    SPEEDO_QUAD(speed).y1 = PAL_PANEL_Y(173);
     SPEEDO_QUAD(speed).x2 = 206;
-    SPEEDO_QUAD(speed).y2 = SPEEDO_Y(195);
+    SPEEDO_QUAD(speed).y2 = PAL_PANEL_Y(195);
     SPEEDO_QUAD(speed).x3 = 206 + bottom;
-    SPEEDO_QUAD(speed).y3 = SPEEDO_Y(195);
+    SPEEDO_QUAD(speed).y3 = PAL_PANEL_Y(195);
     SPEEDO_QUAD(speed).u0 = (u_short)speedoSpeedTex->u0;
     SPEEDO_QUAD(speed).v0 = (u_short)speedoSpeedTex->v0;
     SPEEDO_QUAD(speed).u1 = (u_char)speedoSpeedTex->u0 + top;
@@ -287,13 +285,13 @@ void fill_speedo(Speedo *speedo, ShipData *ships, ConfigData *game, int player)
     if (bottom <= 0) bottom = 0;
     if (energyTop <= 0) energyTop = 0;
     SPEEDO_QUAD(shield).x0 = 198;
-    SPEEDO_QUAD(shield).y0 = SPEEDO_Y(201);
+    SPEEDO_QUAD(shield).y0 = PAL_PANEL_Y(201);
     SPEEDO_QUAD(shield).x1 = 198 + bottom;
-    SPEEDO_QUAD(shield).y1 = SPEEDO_Y(201);
+    SPEEDO_QUAD(shield).y1 = PAL_PANEL_Y(201);
     SPEEDO_QUAD(shield).x2 = 198;
-    SPEEDO_QUAD(shield).y2 = SPEEDO_Y(223);
+    SPEEDO_QUAD(shield).y2 = PAL_PANEL_Y(223);
     SPEEDO_QUAD(shield).x3 = 198 + energyTop;
-    SPEEDO_QUAD(shield).y3 = SPEEDO_Y(223);
+    SPEEDO_QUAD(shield).y3 = PAL_PANEL_Y(223);
     SPEEDO_QUAD(shield).u0 = (u_short)speedoShieldTex->u0;
     SPEEDO_QUAD(shield).v0 = (u_short)speedoShieldTex->v0;
     SPEEDO_QUAD(shield).u1 = (u_char)speedoShieldTex->u0 + bottom;
@@ -312,13 +310,13 @@ void fill_speedo(Speedo *speedo, ShipData *ships, ConfigData *game, int player)
     thrustBottom = thrustTop - secondInset + 1;
     if (thrustBottom < 0) thrustBottom = 0;
     SPEEDO_QUAD(marker).x0 = 206;
-    SPEEDO_QUAD(marker).y0 = SPEEDO_Y(173);
+    SPEEDO_QUAD(marker).y0 = PAL_PANEL_Y(173);
     SPEEDO_QUAD(marker).x1 = 206 + thrustTop;
-    SPEEDO_QUAD(marker).y1 = SPEEDO_Y(173);
+    SPEEDO_QUAD(marker).y1 = PAL_PANEL_Y(173);
     SPEEDO_QUAD(marker).x2 = 206;
-    SPEEDO_QUAD(marker).y2 = SPEEDO_Y(195);
+    SPEEDO_QUAD(marker).y2 = PAL_PANEL_Y(195);
     SPEEDO_QUAD(marker).x3 = 206 + thrustBottom;
-    SPEEDO_QUAD(marker).y3 = SPEEDO_Y(195);
+    SPEEDO_QUAD(marker).y3 = PAL_PANEL_Y(195);
     SPEEDO_QUAD(marker).u0 = (u_short)speedoMarkerTex->u0;
     SPEEDO_QUAD(marker).v0 = (u_short)speedoMarkerTex->v0;
     SPEEDO_QUAD(marker).u1 = (u_char)speedoMarkerTex->u0 + thrustTop;
@@ -363,7 +361,7 @@ void AddTime(int time, int x, int y, int size, int colour, unsigned char flags)
     time = time / FRAMES_PER_SECOND;
     secs = time % 60;
     mins = time / 60;
-    if (flags & 1) {
+    if (flags & TIME_SINGLE_MINUTE_DIGIT) {
         digits[0] = mins % 10;
     } else {
         digits[0] = mins % 10;
@@ -375,7 +373,7 @@ void AddTime(int time, int x, int y, int size, int colour, unsigned char flags)
         }
         length = 1;
     }
-    if (!(flags & 2)) {
+    if (!(flags & TIME_HIDE_MINUTES)) {
         for (j = length; j >= 0; j--) {
             minBottom = y + size;
             charNum = digits[j] + 26;
@@ -405,7 +403,7 @@ void AddTime(int time, int x, int y, int size, int colour, unsigned char flags)
             quadIndex++;
         }
     }
-    if (!(flags & 2)) {
+    if (!(flags & TIME_HIDE_MINUTES)) {
         width = font[36].width;
         glyph = &font[36];
         poly = &quadPool[quadIndex];
@@ -978,6 +976,11 @@ extern int trackNameScroll;
 extern int trackNameOffset;
 extern int hudFrame;
 
+/* The list of finished lap times: one row per lap, taller on PAL; the current lap time sits below the speedometer. */
+#define LAP_ROW_HEIGHT    REGION(10, 12)
+#define LAP_LABEL_OFFSET  REGION(4, 6)
+#define LAP_TIME_Y        REGION(201, 222)
+
 void UpdateRaceHud(ShipData *shipIndex, Speedo *speedo, int choice, ConfigData *gameData, HiScoreData *scoreData)
 {
     struct { int reserved[4]; HudTextRows rows; char text[8]; } locals;
@@ -989,7 +992,7 @@ void UpdateRaceHud(ShipData *shipIndex, Speedo *speedo, int choice, ConfigData *
     locals.rows = classRowY[portPal]; /* the European program has its own rows */
     racingCount = 0;
     for (i = 0; i < 15; i++) {
-        if (!(shipIndex[i].combatAttr & 0x8000) && shipIndex[i].lap < classLaps[gameData->shipClass] + 2) {
+        if (!(shipIndex[i].combatAttr & DESTROYED) && shipIndex[i].lap < classLaps[gameData->shipClass] + 2) {
             sectionDifference = shipIndex[i].trackDistance - raceLines[shipIndex[i].nearTrkSect->secNo].distance;
             if (sectionDifference > (numTrackSections >> 1)) {
                 if (shipIndex[i].reverseLap == 0) {
@@ -998,7 +1001,7 @@ void UpdateRaceHud(ShipData *shipIndex, Speedo *speedo, int choice, ConfigData *
                         CheckForHiScore(gameData, scoreData, shipIndex, i, 1);
                 } else shipIndex[i].reverseLap--;
                 shipIndex[i].combatAttr |= 0x4000;
-                if ((i == ownShip || i == ghostShip) && raceType == 1 && i < 12) shipIndex[i].weapon = 9;
+                if ((i == ownShip || i == ghostShip) && raceType == RACE_TIME_TRIAL && i < 12) shipIndex[i].weapon = WEAPON_TURBO;
                 if (i == ownShip) {
                     if (perfectLap) perfectLapCount = 120;
                     perfectLap = 1;
@@ -1024,26 +1027,26 @@ void UpdateRaceHud(ShipData *shipIndex, Speedo *speedo, int choice, ConfigData *
         if (lap == 0) lap = 1;
         if (choice == -1 && shipIndex[ownShip].lap < classLaps[gameData->shipClass] + 1)
             shipIndex[ownShip].lapTimes[lap - 1] += 2;
-        if (!(shipIndex[ownShip].attr & 64)) goto finishShips;
+        if (!(shipIndex[ownShip].attr & RACING)) goto finishShips;
         if (!PortPcData()) { /* Port: the PC version's HUD shows it with the rest (below) */
             if (shipIndex[ownShip].lap < classLaps[gameData->shipClass] + 1)
-                AddTime(shipIndex[ownShip].lapTimes[lap - 1], 16, REGION(201, 222), 16, 1, 1);
+                AddTime(shipIndex[ownShip].lapTimes[lap - 1], 16, LAP_TIME_Y, 16, 1, 1);
             else
-                AddTime(shipIndex[ownShip].lapTimes[classLaps[gameData->shipClass] - 1], 16, REGION(201, 222), 16, 1, 1);
+                AddTime(shipIndex[ownShip].lapTimes[classLaps[gameData->shipClass] - 1], 16, LAP_TIME_Y, 16, 1, 1);
         }
     }
-    if (PortPcData() && (shipIndex[ownShip].attr & 64)) {
+    if (PortPcData() && (shipIndex[ownShip].attr & RACING)) {
         PcRaceHud(shipIndex, choice, gameData, position); /* Port: the PC version's HUD (pc/pchud.c) */
-    } else if (shipIndex[ownShip].attr & 64) {
+    } else if (shipIndex[ownShip].attr & RACING) {
         if (shipIndex[ownShip].combatAttr & 0x4000) {
             Print(msgLapTimes, 22, locals.rows.y[gameData->shipClass] - 8, 8);
             for (i = 0; i < classLaps[gameData->shipClass] - 1; i++) {
                 sprintf(locals.text, fmtNumber, i + 1);
-                Print(locals.text, 16, locals.rows.y[gameData->shipClass] + i * REGION(10, 12) + REGION(4, 6), 8);
+                Print(locals.text, 16, locals.rows.y[gameData->shipClass] + i * LAP_ROW_HEIGHT + LAP_LABEL_OFFSET, 8);
             }
             for (i = 1; i < shipIndex[ownShip].lap; i++) {
                 if (i < classLaps[gameData->shipClass])
-                    AddTime(shipIndex[ownShip].lapTimes[i - 1], 24, locals.rows.y[gameData->shipClass] + i * REGION(10, 12) - 8, 8, 0, 1);
+                    AddTime(shipIndex[ownShip].lapTimes[i - 1], 24, locals.rows.y[gameData->shipClass] + i * LAP_ROW_HEIGHT - 8, 8, 0, 1);
             }
         }
         autopilot = shipIndex[ownShip].autopilotCount;
@@ -1053,9 +1056,9 @@ void UpdateRaceHud(ShipData *shipIndex, Speedo *speedo, int choice, ConfigData *
             else AddNumber((short)(autopilot / PAL_TIME(30)), 160, PAL_TEXT_Y(128), 12, 1);
             speed = shipIndex[ownShip].moveDist * 34;
         } else speed = shipIndex[ownShip].speed;
-        if (gameType != 2 && linkRaceEnd != 2) {
+        if (gameType != GAME_SINGLE_PLAYER && linkRaceEnd != 2) {
             AddText(msgP, 260, 84, 8, 0);
-            if (gameType == 0) AddNumber(2, 274, 84, 8, 0);
+            if (gameType == GAME_LINK_MASTER) AddNumber(2, 274, 84, 8, 0);
             else AddNumber(1, 274, 84, 8, 0);
             AddNumber(remoteRacePos, 290, 84, 8, 1);
         }
@@ -1065,7 +1068,7 @@ void UpdateRaceHud(ShipData *shipIndex, Speedo *speedo, int choice, ConfigData *
         else AddJustifyNumber(shipIndex[ownShip].lap, 260, PAL_TEXT_Y(60), 16, 1);
         AddText(msgOf, 260, PAL_TEXT_Y(68), 8, 0);
         AddNumber(classLaps[gameData->shipClass], 282, PAL_TEXT_Y(60), 16, 1);
-        if (shipIndex[ownShip].rearTarget != -1 && rearLockCycle < 13 && shipIndex[ownShip].weapon == 2)
+        if (shipIndex[ownShip].rearTarget != -1 && rearLockCycle < 13 && shipIndex[ownShip].weapon == WEAPON_MISSILE)
             /* Port: the call passed a fourth argument (the size, 8) that PrintCX never reads; dropped. */
             PrintCX(msgRearLock, 168, 68);
         if (perfectLapCount) {
@@ -1084,29 +1087,29 @@ void UpdateRaceHud(ShipData *shipIndex, Speedo *speedo, int choice, ConfigData *
             artist = (char *)GetCdTrackArtist(cdMusicTrack - 1);
             sprintf(trackNameText, fmtCdTrack, cdMusicTrack - 1, trackName, artist);
             /* Port: the call passed a fifth argument (1) that Print never reads; dropped. */
-            Print(trackNameText, 16, (trackNameOffset >> 2) + REGION(217, 239), 8);
+            Print(trackNameText, 16, (trackNameOffset >> 2) + PAL_PANEL_Y(217), 8);
         }
         AddText(msgCheck, 20, PAL_TEXT_Y(20), 8, 0);
         for (i = 0; i < 15; i++)
-            if (!(shipIndex[i].combatAttr & 0x8000)) racingCount++;
+            if (!(shipIndex[i].combatAttr & DESTROYED)) racingCount++;
         AddText(msgPos, 255, PAL_TEXT_Y(20), 8, 0);
         AddJustifyNumber(position, 260, PAL_TEXT_Y(30), 16, 1);
         AddText(msgOf, 260, PAL_TEXT_Y(38), 8, 0);
         AddNumber((short)racingCount, 282, PAL_TEXT_Y(30), 16, 1);
-        if ((shipIndex[ownShip].attr & 64) && shipIndex[ownShip].lap >= 0) {
+        if ((shipIndex[ownShip].attr & RACING) && shipIndex[ownShip].lap >= 0) {
             if (checkTimer <= 0) {
                 if (hudFrame % 30 < 21) AddTime(checkTimer, 20, PAL_TEXT_Y(30), 16, 0, 1);
             } else AddTime(checkTimer, 20, PAL_TEXT_Y(30), 16, 1, 1);
         }
         /* Port: junction.ptr == (TrackSection *)-1 tested the 32-bit slot; compare the slot as the index (-1 = no junction). */
-        if (choice == -1 && autopilot == 0 && shipDamage[ownShip] < 100 && !(shipIndex[ownShip].attr & 8) && shipIndex[ownShip].nearTrkSect->junction.index == -1 && shipIndex[ownShip].nearTrkSect->nextSection.ptr->junction.index == -1)
+        if (choice == -1 && autopilot == 0 && shipDamage[ownShip] < 100 && !(shipIndex[ownShip].attr & DIRECTION) && shipIndex[ownShip].nearTrkSect->junction.index == -1 && shipIndex[ownShip].nearTrkSect->nextSection.ptr->junction.index == -1)
             CentreText(msgWrongWay, 50, PAL_TEXT_Y(110), 8, 0);
-        AddJustifyNumber(speed / 95, 240, REGION(171, 193), 16, 1);
+        AddJustifyNumber(speed / 95, 240, PAL_PANEL_Y(171), 16, 1);
     }
 finishShips:
     for (i = 0; i < 15; i++) {
-        if (i != ownShip && shipIndex[i].lap > classLaps[gameData->shipClass] && (shipIndex[i].attr & 64)) {
-            shipIndex[i].attr &= ~64;
+        if (i != ownShip && shipIndex[i].lap > classLaps[gameData->shipClass] && (shipIndex[i].attr & RACING)) {
+            shipIndex[i].attr &= ~RACING;
             if (i == remoteShip) {
                 shipIndex[i].update = UpdateDroneShip;
                 shipIndex[i].updateCount = 0;
@@ -1118,7 +1121,7 @@ finishShips:
         }
     }
     if (shipIndex[ownShip].lap > classLaps[gameData->shipClass] && choice == -1) {
-        if (!(shipIndex[ownShip].attr & 64)) goto done;
+        if (!(shipIndex[ownShip].attr & RACING)) goto done;
         shipIndex[ownShip].update = UpdateDroneShip;
         shipIndex[ownShip].updateCount = 0;
         shipIndex[ownShip].attr = 0;
@@ -1134,8 +1137,8 @@ finishShips:
         finishPosition = playerPosition;
         AssignMedals(gameData);
     }
-    if (shipIndex[ownShip].attr & 64) {
-        if (shipIndex[ownShip].attr & 1024) shipIndex[ownShip].speed = 0;
+    if (shipIndex[ownShip].attr & RACING) {
+        if (shipIndex[ownShip].attr & RESCUE) shipIndex[ownShip].speed = 0;
         AddPrim(OT[CurrentScreen], &speedo->frame[CurrentScreen]);
         fill_speedo(speedo, shipIndex, gameData, choice);
     }
@@ -1160,7 +1163,7 @@ short CalcPosition(ShipData *ships)
     direction.vy = ships[ownShip].nearTrkSect->nextSection.ptr->centre.vy - ships[ownShip].nearTrkSect->centre.vy;
     direction.vz = ships[ownShip].nearTrkSect->nextSection.ptr->centre.vz - ships[ownShip].nearTrkSect->centre.vz;
     for (shipIndex = 0; shipIndex < 15; shipIndex++) {
-        if (shipIndex != ownShip && !(ships[shipIndex].combatAttr & 0x8000)) {
+        if (shipIndex != ownShip && !(ships[shipIndex].combatAttr & DESTROYED)) {
             if (playerProgress == ships[shipIndex].distance) {
                 shipOffset.vx = ships[shipIndex].ppivot.vx - ships[shipIndex].nearTrkSect->centre.vx;
                 shipOffset.vy = ships[shipIndex].ppivot.vy - ships[shipIndex].nearTrkSect->centre.vy;
@@ -1187,7 +1190,7 @@ void AssignMedals(ConfigData *config)
     if (PortOriginalTrack() >= 0) {
         return; /* Port: an original track's races give no medals for Talon's Reach */
     }
-    if (raceType == 0 || raceType == 4) {
+    if (raceType == RACE_ARCADE || raceType == RACE_CHALLENGE) {
         if ((unsigned int) ((u_short) finishPosition - 1) < 3U) {
             switch (finishPosition) {
             case 1:
@@ -1236,7 +1239,7 @@ void copyInTempLapTimes(ShipData *ships)
 
 void EndChallenge(ConfigData *config)
 {
-    if (raceType == 4) {
+    if (raceType == RACE_CHALLENGE) {
         if (config->venomComplete == 1) {
             config->venomChallengeDone = 1;
             config->class1Race = 0;
@@ -1255,7 +1258,7 @@ void InitScreenTex(Texture **textures, char *challengeName)
     char     filename[256];
     u_short  textureIndex;
 
-    *(PathSeed *) filename = *texturePathSeed;
+    *(TexturePathPrefix *) filename = *texturePathSeed;
     strcat(filename, challengeName);
     strcat(filename, extCmp);
     textureIndex = TextureTableCount;
@@ -1356,11 +1359,11 @@ void DisplayRaceInfo(ConfigData *state, HiScoreData *context, ShipData *scene)
             }
         }
     } else {
-        if (raceType != 1) {
-            if (raceType != 3) {
+        if (raceType != RACE_TIME_TRIAL) {
+            if (raceType != RACE_ONE_ON_ONE) {
                 if (finishPosition < 4) {
                     CentreText(msgCongratulations, 0xF, 0x18, 0xC, 0);
-                    if (gameType == 2) {
+                    if (gameType == GAME_SINGLE_PLAYER) {
                         shipClass = state->shipClass;
                         switch (shipClass) {
                         case 0: __builtin_memcpy(textBuffer.bytes, classNameVector, 7); break;
@@ -1378,8 +1381,8 @@ void DisplayRaceInfo(ConfigData *state, HiScoreData *context, ShipData *scene)
                     }
                 } else {
                     CentreText(msgBadLuck, 0xF, 0x18, 0xC, 0);
-                    if (gameType != 2 && finishPosition < rivalFinishPos) {
-                        if (gameType == 0) {
+                    if (gameType != GAME_SINGLE_PLAYER && finishPosition < rivalFinishPos) {
+                        if (gameType == GAME_LINK_MASTER) {
                             CentreText(msgBeatPlayerTwo, 0xF, 0x30, 8, 1);
                         } else {
                             CentreText(msgBeatPlayerOne, 0xF, 0x30, 8, 1);
@@ -1396,10 +1399,10 @@ void DisplayRaceInfo(ConfigData *state, HiScoreData *context, ShipData *scene)
                 }
             }
         }
-        if (raceType == 3) {
+        if (raceType == RACE_ONE_ON_ONE) {
             if (finishPosition < rivalFinishPos && (endState = raceEndState) == 1) {
                 CentreText(msgCongratulations, 0xF, 0x18, 0xC, 0);
-                if (gameType == 0) {
+                if (gameType == GAME_LINK_MASTER) {
                     CentreText(msgYouBeatPlayerTwo, 0xF, 0x30, 8, endState);
                 } else {
                     CentreText(msgYouBeatPlayerOne, 0xF, 0x30, 8, endState);
@@ -1422,11 +1425,11 @@ void DisplayRaceInfo(ConfigData *state, HiScoreData *context, ShipData *scene)
                 i = nextLap;
             } while (nextLap < (int) classLaps[state->shipClass]);
         }
-        if ((raceType == 0 || raceType == 4) && finishPosition < 4) {
+        if ((raceType == RACE_ARCADE || raceType == RACE_CHALLENGE) && finishPosition < 4) {
             DrawTeamShips(0x46, 0, 0xB4, cardNum, 0, teamShip[0]);
         }
         AddText(msgRaceTime, 0xF, 0xB4, 8, 0);
-        if (raceType == 0 || raceType == 4 || raceType == 1) {
+        if (raceType == RACE_ARCADE || raceType == RACE_CHALLENGE || raceType == RACE_TIME_TRIAL) {
             AddTime(context->totalTime, 0x80, 0xB4, 8, 1, 1);
         } else {
             laps = classLaps[state->shipClass];

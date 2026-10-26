@@ -15,6 +15,12 @@
 #define SFX_VOICES  24
 #define SFX_PLAYS   24
 
+#define SFX_QSOUND 3
+#define SFX_DOLBY  4
+#define SFX_REAR   4
+#define SFX_ATTR_PITCH   0x10
+#define SFX_ATTR_ADDRESS 0x80
+
 /* Header of a .VAG sample file; the multi-byte fields are big-endian. */
 typedef struct VagHeader {
     char  magic[4];

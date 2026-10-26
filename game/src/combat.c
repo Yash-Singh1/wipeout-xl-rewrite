@@ -1,6 +1,5 @@
 #include "functions.h"
 #include "portlink.h" /* Port: two players on one machine */
-#include "include_asm_g8.h"
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
 extern int serialEvent;
@@ -73,41 +72,42 @@ void InitLinkUpSign(void)
 
 void DrawLinkSign(ShipData *ships)
 {
-    SVECTOR    svec;
-    VECTOR     world;
-    short      sxy[2];
-    VECTOR     cam;
-    int       rtp[2];
+    SVECTOR    relativePos;
+    VECTOR     translatedPos;
+    short      screenPos[2];
+    VECTOR     cameraOffset;
+    int        projection[2];
     POLY_FT4  *poly;
-    int       sx, sy;
-    int        size, depth, half, screen, right, bottom, page;
+    int        sx, sy;
+    int        size, depth, halfSize, screen, right, bottom, texturePage;
 
-    if (ships[remoteShip].attr & 0x200) {
+    if (ships[remoteShip].attr & VISIBLE) {
         /* Port: cameraPtr is a TrackCamera *; the console code read its first field, camPos, through a Skeleton ** */
-        cam.vx = cameraPtr->camPos->relative.t[0];
-        cam.vy = cameraPtr->camPos->relative.t[1];
-        cam.vz = cameraPtr->camPos->relative.t[2];
+        cameraOffset.vx = cameraPtr->camPos->relative.t[0];
+        cameraOffset.vy = cameraPtr->camPos->relative.t[1];
+        cameraOffset.vz = cameraPtr->camPos->relative.t[2];
         cameraPtr->camPos->super->update = 1;
         SetSkeletonTransform(cameraPtr->camPos->super);
-        world.vx = ships[remoteShip].ppivot.vx + cam.vx;
-        world.vy = ships[remoteShip].ppivot.vy + cam.vy - 500;
-        world.vz = ships[remoteShip].ppivot.vz + cam.vz;
-        if (world.vx < 0 || (world.vx <= 0x7FFF && world.vz < 0) || world.vz <= 0x7FFF) {
-            svec.vx = world.vx;
-            svec.vy = world.vy;
-            svec.vz = world.vz;
-            depth = RotTransPers(&svec, (int *)sxy, &rtp[0], &rtp[1]);
-            sx = sxy[0];
-            sy = sxy[1];
-            if (!(rtp[1] & 0x80460000)) {
+        translatedPos.vx = ships[remoteShip].ppivot.vx + cameraOffset.vx;
+        translatedPos.vy = ships[remoteShip].ppivot.vy + cameraOffset.vy - 500;
+        translatedPos.vz = ships[remoteShip].ppivot.vz + cameraOffset.vz;
+        if (translatedPos.vx < 0 || (translatedPos.vx <= 0x7FFF && translatedPos.vz < 0) ||
+            translatedPos.vz <= 0x7FFF) {
+            relativePos.vx = translatedPos.vx;
+            relativePos.vy = translatedPos.vy;
+            relativePos.vz = translatedPos.vz;
+            depth = RotTransPers(&relativePos, (int *)screenPos, &projection[0], &projection[1]);
+            sx = screenPos[0];
+            sy = screenPos[1];
+            if (!(projection[1] & 0x80460000)) {
                 size = 0x6400 / depth;
                 if ((short)size > 0x78) {
                     size = 0x78;
                 }
-                half = (short)size >> 1;
-                sx -= half;
+                halfSize = (short)size >> 1;
+                sx -= halfSize;
                 depth -= 0x100;
-                sy -= half;
+                sy -= halfSize;
                 if (depth < 0) {
                     depth = 0;
                 }
@@ -133,9 +133,9 @@ void DrawLinkSign(ShipData *ships)
                 linkSign[CurrentScreen].v2 = linkSignTexture->v2;
                 linkSign[CurrentScreen].u3 = linkSignTexture->u3;
                 linkSign[CurrentScreen].v3 = linkSignTexture->v3;
-                page = GetTPage(0, 1, linkSignTexture->textureX, linkSignTexture->textureY);
+                texturePage = GetTPage(0, 1, linkSignTexture->textureX, linkSignTexture->textureY);
                 poly = &linkSign[CurrentScreen];
-                poly->tpage = page;
+                poly->tpage = texturePage;
                 linkSign[CurrentScreen].clut = linkSignTexture->cba;
                 AddPrim(OT[CurrentScreen] + (depth >> 1), poly);
                 PortSceneSprite(poly); /* Port: over the other ship, also when it is near (the HUD's entry) */
@@ -210,7 +210,9 @@ void doSerialMenu(ConfigData *config, MenuSelection *selection)
 }
 
 
-/* Per-frame packet exchanged with the other console during a linked race. */
+/* Per-frame packet exchanged with the other console during a linked race: ship state and race results. */
+#define LINK_RACE_PACKET_BYTES 66
+
 typedef struct LinkPacket {
     int    posX, posY, posZ;
     int    bestLap;
@@ -263,20 +265,21 @@ void doSerialGame(ConfigData *config, ShipData *ships)
     short i;
     int result;
     ShipData *ship;
-    u_char *packet;
+    u_char *targetCursor;
 
-    /* values copied out of the globals before the packet is filled */
+    /* Values copied into the outgoing packet. */
     int bestRace, attract, seed;
     u_short pressed, pad6;
     u_char thrust, steering, state;
-    int px, py, pz;
+    int posX, posY, posZ;
     u_short hdg, pitch, roll;
 
-    /* values read back from the received packet */
-    int lap, race;
+    /* Values read back from the received packet. */
+    int recvX, recvY, recvZ;
+    int bestLapIn, bestRaceIn;
     u_short hdgIn, pitchIn, rollIn, headIn, buttonsIn, pressedIn, pad6In;
     u_char thrustIn, steeringIn, stateIn, positionIn, finishIn, sendFlagIn, completeIn, endIn, doneIn;
-    int value;
+    int targetIndex;
 
     attract = attractShip;
     seed = seedWep;
@@ -285,9 +288,9 @@ void doSerialGame(ConfigData *config, ShipData *ships)
     pad6 = playerControl[0].previousButtons;
     thrust = playerControl[0].thrust;
     steering = playerControl[0].steering;
-    px = ships[ownShip].ppivot.vx;
-    py = ships[ownShip].ppivot.vy;
-    pz = ships[ownShip].ppivot.vz;
+    posX = ships[ownShip].ppivot.vx;
+    posY = ships[ownShip].ppivot.vy;
+    posZ = ships[ownShip].ppivot.vz;
     hdg = ships[ownShip].hdg;
     pitch = ships[ownShip].pitch;
     roll = ships[ownShip].roll;
@@ -301,15 +304,15 @@ void doSerialGame(ConfigData *config, ShipData *ships)
     send.head = playerControl[0].head;
     send.buttons = playerControl[0].buttons;
     send.steering = steering;
-    send.posX = px;
-    send.posY = py;
-    send.posZ = pz;
+    send.posX = posX;
+    send.posY = posY;
+    send.posZ = posZ;
     send.hdg = hdg;
     send.pitch = pitch;
     send.roll = roll;
     state = linkMyState;
     send.state = state;
-    packet = send.targets;
+    targetCursor = send.targets;
     i = 0;
     send.position = playerPosition;
     send.finishPosition = finishPosition;
@@ -321,27 +324,27 @@ void doSerialGame(ConfigData *config, ShipData *ships)
         u_char target = (u_char)shipTargetIndex[i];
 
         i++;
-        *packet++ = target;
+        *targetCursor++ = target;
     } while (i < 15);
-    result = doSerialTransfer((u_char *)&send, (u_char *)&recv, 0x42);
+    result = doSerialTransfer((u_char *)&send, (u_char *)&recv, LINK_RACE_PACKET_BYTES);
     serialResult = result;
     if (result == 0) {
         ship = &ships[remoteShip];
-        px = recv.posX;
-        py = recv.posY;
-        pz = recv.posZ;
-        lap = recv.bestLap;
-        race = recv.bestRace;
-        ship->ppivot.vx = px;
-        ship->ppivot.vy = py;
-        ship->ppivot.vz = pz;
-        remoteBestLap = lap;
-        remoteBestRace = race;
+        recvX = recv.posX;
+        recvY = recv.posY;
+        recvZ = recv.posZ;
+        bestLapIn = recv.bestLap;
+        bestRaceIn = recv.bestRace;
+        ship->ppivot.vx = recvX;
+        ship->ppivot.vy = recvY;
+        ship->ppivot.vz = recvZ;
+        remoteBestLap = bestLapIn;
+        remoteBestRace = bestRaceIn;
         if (gameType == 1) {
             attractShip = recv.attractShip;
             seedWep = recv.seedWep;
         }
-        packet = recv.targets;
+        targetCursor = recv.targets;
         hdgIn = recv.hdg;
         pitchIn = recv.pitch;
         rollIn = recv.roll;
@@ -376,11 +379,11 @@ void doSerialGame(ConfigData *config, ShipData *ships)
         linkRaceEnd = endIn;
         remoteRaceDone = doneIn;
         do {
-            int raw = *packet++;
+            int targetByte = *targetCursor++;
 
-            value = (signed char)raw;
-            if (value != -1) {
-                shipTargetIndex[i] = value;
+            targetIndex = (signed char)targetByte;
+            if (targetIndex != -1) {
+                shipTargetIndex[i] = targetIndex;
             }
             i++;
         } while (i < 15);
@@ -557,7 +560,6 @@ int sendSerialPacket(int type, u_char *data, int count)
     u_char *end;
     int    checksum;
     int    length;
-    int    result;
 
     checksum = 0;
     buffer[0] = (type << 4) | (serialWriteSeq & 15);
@@ -572,13 +574,8 @@ int sendSerialPacket(int type, u_char *data, int count)
     }
     buffer[count + 1] = checksum;
     write(serialWriteFd, buffer, count + 2);
-    result = 0;
-    if (count < 0) {
-        serialWriteSeq = (serialWriteSeq + 1) & 15;
-        return result;
-    }
     serialWriteSeq = (serialWriteSeq + 1) & 15;
-    return result;
+    return 0;
 }
 
 

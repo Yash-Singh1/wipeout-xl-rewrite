@@ -1,7 +1,6 @@
 #include "functions.h"
 #include "trails.h"
 #include "portfar.h"
-#include "include_asm_g8.h"
 #include "../../platform/psx/gte.h" /* Port: the flare is placed in 2D */
 #include "portinterp.h"
 #include "../../platform/trace.h" /* Port: lockstep test hooks */
@@ -80,141 +79,146 @@ static void KeyTrailSegment(Trail *trail, int i)
 }
 
 void DrawFlare(int x, int y, int distance, int ship) {
-    int speed, value, half, quarter, size;
-    ShipData *s;
-    POLY_G4 *p;
-    int offset;
-    int k; /* Port */
+    int speed, size, halfSize, quarterSize, rayWidth;
+    ShipData *shipData;
+    POLY_G4 *upperRightA, *upperRightB;
+    POLY_G4 *lowerLeftA, *lowerLeftB;
+    POLY_G4 *upperLeftA, *upperLeftB;
+    POLY_G4 *lowerRightA, *lowerRightB;
+    POLY_G4 *centerUpperRight, *centerUpperLeft;
+    POLY_G4 *centerLowerRight, *centerLowerLeft;
+    POLY_G4 *quad; /* Port */
+    int k;         /* Port */
     u_long *slot = PortFlareSlot(distance); /* Port: OT[CurrentScreen] + (distance >> 1), or the far view's */
     PortFarFlared(ship);
     if (ship < 15) {
-        s = &shipIndex[ship];
-        if (s->combatAttr & DESTROYED) return;
-        if (ship != ownShip || !(s->attr & RACING)) speed = s->speed >> 1;
-        else speed = s->thrust >> 5;
+        shipData = &shipIndex[ship];
+        if (shipData->combatAttr & DESTROYED) return;
+        if (ship != ownShip || !(shipData->attr & RACING)) speed = shipData->speed >> 1;
+        else speed = shipData->thrust >> 5;
     } else speed = 6000;
     if (distance == 0) distance = 1;
-    value = (speed * 8) / distance;
-    if (value > 80) value = 80;
-    half = value >> 1;
-    quarter = value >> 2;
-    size = value / 32;
-    if (size <= 0) size = 1;
+    /* the flare's size grows with the ship's speed and shrinks with distance; its rays' width with its size */
+    size = (speed * 8) / distance;
+    if (size > 80) size = 80;
+    halfSize = size >> 1;
+    quarterSize = size >> 2;
+    rayWidth = size / 32;
+    if (rayWidth <= 0) rayWidth = 1;
 
-    offset = CurrentScreen * sizeof(POLY_G4) + ship * sizeof(flare[0]);
-    p = (POLY_G4 *)((char *)&flare[0][4][0] + offset);
-    p->x0 = x + size;
-    p->y0 = y + size;
-    p->x1 = x;
-    p->y1 = y;
-    p->x2 = x + half + 1;
-    p->y2 = y - half + 1;
-    p->x3 = x + half;
-    p->y3 = y - half;
-    p = (POLY_G4 *)((char *)&flare[0][5][0] + offset);
-    p->x0 = x - size;
-    p->y0 = y - size;
-    p->x1 = x;
-    p->y1 = y;
-    p->x2 = x + half - 1;
-    p->y2 = y - half - 1;
-    p->x3 = x + half;
-    p->y3 = y - half;
-    p = (POLY_G4 *)((char *)&flare[0][6][0] + offset);
-    p->x0 = x + size;
-    p->y0 = y + size;
-    p->x1 = x;
-    p->y1 = y;
-    p->x2 = x - half + 1;
-    p->y2 = y + half + 1;
-    p->x3 = x - half;
-    p->y3 = y + half;
-    p = (POLY_G4 *)((char *)&flare[0][7][0] + offset);
-    p->x0 = x - size;
-    p->y0 = y - size;
-    p->x1 = x;
-    p->y1 = y;
-    p->x2 = x - half - 1;
-    p->y2 = y + half - 1;
-    p->x3 = x - half;
-    p->y3 = y + half;
-    p = (POLY_G4 *)((char *)&flare[0][8][0] + offset);
-    p->x0 = x - size;
-    p->y0 = y + size;
-    p->x1 = x;
-    p->y1 = y;
-    p->x2 = x - (quarter + 1);
-    p->y2 = y - quarter + 1;
-    p->x3 = x - quarter;
-    p->y3 = y - quarter;
-    p = (POLY_G4 *)((char *)&flare[0][9][0] + offset);
-    p->x0 = x + size;
-    p->y0 = y - size;
-    p->x1 = x;
-    p->y1 = y;
-    p->x2 = x - quarter + 1;
-    p->y2 = y - quarter - 1;
-    p->x3 = x - quarter;
-    p->y3 = y - quarter;
-    p = (POLY_G4 *)((char *)&flare[0][10][0] + offset);
-    p->x0 = x - size;
-    p->y0 = y + size;
-    p->x1 = x;
-    p->y1 = y;
-    p->x2 = x + quarter - 1;
-    p->y2 = y + quarter + 1;
-    p->x3 = x + quarter;
-    p->y3 = y + quarter;
-    p = (POLY_G4 *)((char *)&flare[0][11][0] + offset);
-    p->x0 = x + size;
-    p->y0 = y - size;
-    p->x1 = x;
-    p->y1 = y;
-    p->x2 = x + quarter + 1;
-    p->y2 = y + quarter - 1;
-    p->x3 = x + quarter;
-    p->y3 = y + quarter;
+    upperRightA = &flare[ship][4][CurrentScreen];
+    upperRightA->x0 = x + rayWidth;
+    upperRightA->y0 = y + rayWidth;
+    upperRightA->x1 = x;
+    upperRightA->y1 = y;
+    upperRightA->x2 = x + halfSize + 1;
+    upperRightA->y2 = y - halfSize + 1;
+    upperRightA->x3 = x + halfSize;
+    upperRightA->y3 = y - halfSize;
+    upperRightB = &flare[ship][5][CurrentScreen];
+    upperRightB->x0 = x - rayWidth;
+    upperRightB->y0 = y - rayWidth;
+    upperRightB->x1 = x;
+    upperRightB->y1 = y;
+    upperRightB->x2 = x + halfSize - 1;
+    upperRightB->y2 = y - halfSize - 1;
+    upperRightB->x3 = x + halfSize;
+    upperRightB->y3 = y - halfSize;
+    lowerLeftA = &flare[ship][6][CurrentScreen];
+    lowerLeftA->x0 = x + rayWidth;
+    lowerLeftA->y0 = y + rayWidth;
+    lowerLeftA->x1 = x;
+    lowerLeftA->y1 = y;
+    lowerLeftA->x2 = x - halfSize + 1;
+    lowerLeftA->y2 = y + halfSize + 1;
+    lowerLeftA->x3 = x - halfSize;
+    lowerLeftA->y3 = y + halfSize;
+    lowerLeftB = &flare[ship][7][CurrentScreen];
+    lowerLeftB->x0 = x - rayWidth;
+    lowerLeftB->y0 = y - rayWidth;
+    lowerLeftB->x1 = x;
+    lowerLeftB->y1 = y;
+    lowerLeftB->x2 = x - halfSize - 1;
+    lowerLeftB->y2 = y + halfSize - 1;
+    lowerLeftB->x3 = x - halfSize;
+    lowerLeftB->y3 = y + halfSize;
+    upperLeftA = &flare[ship][8][CurrentScreen];
+    upperLeftA->x0 = x - rayWidth;
+    upperLeftA->y0 = y + rayWidth;
+    upperLeftA->x1 = x;
+    upperLeftA->y1 = y;
+    upperLeftA->x2 = x - (quarterSize + 1);
+    upperLeftA->y2 = y - quarterSize + 1;
+    upperLeftA->x3 = x - quarterSize;
+    upperLeftA->y3 = y - quarterSize;
+    upperLeftB = &flare[ship][9][CurrentScreen];
+    upperLeftB->x0 = x + rayWidth;
+    upperLeftB->y0 = y - rayWidth;
+    upperLeftB->x1 = x;
+    upperLeftB->y1 = y;
+    upperLeftB->x2 = x - quarterSize + 1;
+    upperLeftB->y2 = y - quarterSize - 1;
+    upperLeftB->x3 = x - quarterSize;
+    upperLeftB->y3 = y - quarterSize;
+    lowerRightA = &flare[ship][10][CurrentScreen];
+    lowerRightA->x0 = x - rayWidth;
+    lowerRightA->y0 = y + rayWidth;
+    lowerRightA->x1 = x;
+    lowerRightA->y1 = y;
+    lowerRightA->x2 = x + quarterSize - 1;
+    lowerRightA->y2 = y + quarterSize + 1;
+    lowerRightA->x3 = x + quarterSize;
+    lowerRightA->y3 = y + quarterSize;
+    lowerRightB = &flare[ship][11][CurrentScreen];
+    lowerRightB->x0 = x + rayWidth;
+    lowerRightB->y0 = y - rayWidth;
+    lowerRightB->x1 = x;
+    lowerRightB->y1 = y;
+    lowerRightB->x2 = x + quarterSize + 1;
+    lowerRightB->y2 = y + quarterSize - 1;
+    lowerRightB->x3 = x + quarterSize;
+    lowerRightB->y3 = y + quarterSize;
     if (distance < 1000) {
-        p = (POLY_G4 *)((char *)&flare[0][0][0] + offset);
-        p->x0 = x;
-        p->y0 = y;
-        p->x1 = x;
-        p->y1 = y;
-        p->x2 = x;
-        p->y2 = y - quarter;
-        p->x3 = x + quarter;
-        p->y3 = y;
-        p = (POLY_G4 *)((char *)&flare[0][1][0] + offset);
-        p->x0 = x;
-        p->y0 = y;
-        p->x1 = x;
-        p->y1 = y;
-        p->x2 = x;
-        p->y2 = y - quarter;
-        p->x3 = x - quarter;
-        p->y3 = y;
-        p = (POLY_G4 *)((char *)&flare[0][2][0] + offset);
-        p->x0 = x;
-        p->y0 = y;
-        p->x1 = x;
-        p->y1 = y;
-        p->x2 = x + quarter;
-        p->y2 = y;
-        p->x3 = x;
-        p->y3 = y + quarter;
-        p = (POLY_G4 *)((char *)&flare[0][3][0] + offset);
-        p->x0 = x;
-        p->y0 = y;
-        p->x1 = x;
-        p->y1 = y;
-        p->x2 = x - quarter;
-        p->y2 = y;
-        p->x3 = x;
-        p->y3 = y + quarter;
-        AddPrim(slot, &flare[0][0][0] + ship * 24 + CurrentScreen);
-        AddPrim(slot, &flare[0][1][0] + ship * 24 + CurrentScreen);
-        AddPrim(slot, &flare[0][2][0] + ship * 24 + CurrentScreen);
-        AddPrim(slot, &flare[0][3][0] + ship * 24 + CurrentScreen);
+        centerUpperRight = &flare[ship][0][CurrentScreen];
+        centerUpperRight->x0 = x;
+        centerUpperRight->y0 = y;
+        centerUpperRight->x1 = x;
+        centerUpperRight->y1 = y;
+        centerUpperRight->x2 = x;
+        centerUpperRight->y2 = y - quarterSize;
+        centerUpperRight->x3 = x + quarterSize;
+        centerUpperRight->y3 = y;
+        centerUpperLeft = &flare[ship][1][CurrentScreen];
+        centerUpperLeft->x0 = x;
+        centerUpperLeft->y0 = y;
+        centerUpperLeft->x1 = x;
+        centerUpperLeft->y1 = y;
+        centerUpperLeft->x2 = x;
+        centerUpperLeft->y2 = y - quarterSize;
+        centerUpperLeft->x3 = x - quarterSize;
+        centerUpperLeft->y3 = y;
+        centerLowerRight = &flare[ship][2][CurrentScreen];
+        centerLowerRight->x0 = x;
+        centerLowerRight->y0 = y;
+        centerLowerRight->x1 = x;
+        centerLowerRight->y1 = y;
+        centerLowerRight->x2 = x + quarterSize;
+        centerLowerRight->y2 = y;
+        centerLowerRight->x3 = x;
+        centerLowerRight->y3 = y + quarterSize;
+        centerLowerLeft = &flare[ship][3][CurrentScreen];
+        centerLowerLeft->x0 = x;
+        centerLowerLeft->y0 = y;
+        centerLowerLeft->x1 = x;
+        centerLowerLeft->y1 = y;
+        centerLowerLeft->x2 = x - quarterSize;
+        centerLowerLeft->y2 = y;
+        centerLowerLeft->x3 = x;
+        centerLowerLeft->y3 = y + quarterSize;
+        AddPrim(slot, &flare[ship][0][CurrentScreen]);
+        AddPrim(slot, &flare[ship][1][CurrentScreen]);
+        AddPrim(slot, &flare[ship][2][CurrentScreen]);
+        AddPrim(slot, &flare[ship][3][CurrentScreen]);
     }
     {
         /* Port: the flare's corners are placed in 2D about one projected point: drawn about that point's precise
@@ -227,29 +231,29 @@ void DrawFlare(int x, int y, int distance, int ship) {
                     !centre.background;
 
         for (k = distance < 1000 ? 0 : 4; k < 12; k++) {
-            p = (POLY_G4 *)((char *)&flare[0][k][0] + offset);
+            quad = &flare[ship][k][CurrentScreen];
             if (known) {
-                BindFlareCorner(&p->x0, &centre, x, y, k * 4);
-                BindFlareCorner(&p->x1, &centre, x, y, k * 4 + 1);
-                BindFlareCorner(&p->x2, &centre, x, y, k * 4 + 2);
-                BindFlareCorner(&p->x3, &centre, x, y, k * 4 + 3);
+                BindFlareCorner(&quad->x0, &centre, x, y, k * 4);
+                BindFlareCorner(&quad->x1, &centre, x, y, k * 4 + 1);
+                BindFlareCorner(&quad->x2, &centre, x, y, k * 4 + 2);
+                BindFlareCorner(&quad->x3, &centre, x, y, k * 4 + 3);
             } else {
-                GteBindFlat(&p->x0);
-                GteBindFlat(&p->x1);
-                GteBindFlat(&p->x2);
-                GteBindFlat(&p->x3);
+                GteBindFlat(&quad->x0);
+                GteBindFlat(&quad->x1);
+                GteBindFlat(&quad->x2);
+                GteBindFlat(&quad->x3);
             }
         }
         flareCentre = 0;
     }
-    AddPrim(slot, &flare[0][4][0] + ship * 24 + CurrentScreen);
-    AddPrim(slot, &flare[0][5][0] + ship * 24 + CurrentScreen);
-    AddPrim(slot, &flare[0][6][0] + ship * 24 + CurrentScreen);
-    AddPrim(slot, &flare[0][7][0] + ship * 24 + CurrentScreen);
-    AddPrim(slot, &flare[0][8][0] + ship * 24 + CurrentScreen);
-    AddPrim(slot, &flare[0][9][0] + ship * 24 + CurrentScreen);
-    AddPrim(slot, &flare[0][10][0] + ship * 24 + CurrentScreen);
-    AddPrim(slot, &flare[0][11][0] + ship * 24 + CurrentScreen);
+    AddPrim(slot, &flare[ship][4][CurrentScreen]);
+    AddPrim(slot, &flare[ship][5][CurrentScreen]);
+    AddPrim(slot, &flare[ship][6][CurrentScreen]);
+    AddPrim(slot, &flare[ship][7][CurrentScreen]);
+    AddPrim(slot, &flare[ship][8][CurrentScreen]);
+    AddPrim(slot, &flare[ship][9][CurrentScreen]);
+    AddPrim(slot, &flare[ship][10][CurrentScreen]);
+    AddPrim(slot, &flare[ship][11][CurrentScreen]);
 }
 
 
