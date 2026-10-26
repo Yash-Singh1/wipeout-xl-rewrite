@@ -53,7 +53,6 @@ extern int shakeAmount;
 extern int droidBlinkTick;
 extern TrackSection *startDroidSection;
 #include "functions.h"
-#include "include_asm_g8.h"
 #include "portfar.h" /* Port: the far view's shadows */
 #include "portinterp.h" /* Port: frame interpolation of the missiles' and rockets' flares */
 #include "../../platform/trace.h" /* Port: lockstep test hooks */
@@ -563,17 +562,17 @@ void Video(Object **objects, int count)
     int k;
     int i;
     Object **objp;
-    void *cursor;
+    TexFields *cursor;
 
     objp = objects;
-    rectangles[0] .w = 0xFF;
-    rectangles[0] .h = SCREEN_HEIGHT - 1;
+    rectangles[0].w = 0xFF;
+    rectangles[0].h = SCREEN_HEIGHT - 1;
     if (CurrentScreen == 0) {
-        rectangles[0] .x = 0;
-        rectangles[0] .y = 0x100;
+        rectangles[0].x = 0;
+        rectangles[0].y = 0x100;
     } else {
-        rectangles[0] .x = 0;
-        rectangles[0] .y = 0;
+        rectangles[0].x = 0;
+        rectangles[0].y = 0;
     }
     lowerBound = 0;
     if (count > 0) {
@@ -584,72 +583,71 @@ void Video(Object **objects, int count)
         do {
             prim = (short *)(*objp)->primitives;
             k = 0;
-            cursor = (u_char *)prim + 0x10;
-loop_6:
-            hdr = *prim;
-            if (hdr != 4) {
-                if (hdr == 8) {
-                    if (tempGameData->actTrackNum  == 6) {
-                        (*(  signed char * )((signed char *)( cursor ) + (  2 )))  = 0;
-                        (*(  signed char * )((signed char *)( cursor ) + (  3 )))  = 0;
-                        colour = rectangles[0] .w;
-                        (*(  signed char * )((signed char *)( cursor ) + (  5 )))  = 0;
-                        (*(  signed char * )((signed char *)( cursor ) + (  6 )))  = 0;
-                        (*(  signed char * )((signed char *)( cursor ) + (  4 )))  = (signed char) colour;
-                        (*(  signed char * )((signed char *)( cursor ) + (  7 )))  = (signed char) rectangles[0] .h;
-                        (*(  signed char * )((signed char *)( cursor ) + (  8 )))  = (signed char) rectangles[0] .w;
-                        (*(  signed char * )((signed char *)( cursor ) + (  9 )))  = (signed char) rectangles[0] .h;
+            cursor = (TexFields *)&((FT4 *)prim)->tsb;
+            /* a single pass: only the first primitive of each object is given the screen picture */
+            do {
+                hdr = *prim;
+                if (hdr != 4) {
+                    if (hdr == 8) {
+                        if (tempGameData->actTrackNum == 6) {
+                            cursor->u0 = 0;
+                            cursor->v0 = 0;
+                            colour = rectangles[0].w;
+                            cursor->v1 = 0;
+                            cursor->u2 = 0;
+                            cursor->u1 = (signed char) colour;
+                            cursor->v2 = (signed char) rectangles[0].h;
+                            cursor->u3 = (signed char) rectangles[0].w;
+                            cursor->v3 = (signed char) rectangles[0].h;
+                        }
+                        if (tempGameData->actTrackNum == 7) {
+                            cursor->u0 = 0;
+                            colour = rectangles[0].h;
+                            cursor->u1 = 0;
+                            cursor->v1 = 0;
+                            cursor->v0 = (signed char) colour;
+                            cursor->u2 = (signed char) rectangles[0].w;
+                            cursor->v2 = (signed char) rectangles[0].h;
+                            colour = rectangles[0].w;
+                            cursor->v3 = 0;
+                            cursor->u3 = (signed char) colour;
+                        }
+                        ((short *)cursor)[-1] = 0; /* the clut word (cba), just before tsb */
+                        prim += 22;
+                        cursor->tsb = (short) ((((int) (rectangles[0].x << 0x10) >> 0x16) + ((rectangles[0].y >> 4) & 0x10)) | 0x120);
+                        cursor = (TexFields *)((char *)cursor + sizeof(GT4));
                     }
-                    if (tempGameData->actTrackNum  == 7) {
-                        (*(  signed char * )((signed char *)( cursor ) + (  2 )))  = 0;
-                        colour = rectangles[0] .h;
-                        (*(  signed char * )((signed char *)( cursor ) + (  4 )))  = 0;
-                        (*(  signed char * )((signed char *)( cursor ) + (  5 )))  = 0;
-                        (*(  signed char * )((signed char *)( cursor ) + (  3 )))  = (signed char) colour;
-                        (*(  signed char * )((signed char *)( cursor ) + (  6 )))  = (signed char) rectangles[0] .w;
-                        (*(  signed char * )((signed char *)( cursor ) + (  7 )))  = (signed char) rectangles[0] .h;
-                        colour = rectangles[0] .w;
-                        (*(  signed char * )((signed char *)( cursor ) + (  9 )))  = 0;
-                        (*(  signed char * )((signed char *)( cursor ) + (  8 )))  = (signed char) colour;
+                } else {
+                    if (tempGameData->actTrackNum == 6) {
+                        cursor->u0 = 0;
+                        cursor->v0 = 0;
+                        colour = rectangles[0].w;
+                        cursor->v1 = 0;
+                        cursor->u2 = 0;
+                        cursor->u1 = (signed char) colour;
+                        cursor->v2 = (signed char) rectangles[0].h;
+                        cursor->u3 = (signed char) rectangles[0].w;
+                        cursor->v3 = (signed char) rectangles[0].h;
                     }
-                    (*(  short * )((signed char *)( cursor ) + (  -2 )))  = 0;
-                    prim += 22;
-                    (*(  short * )((signed char *)( cursor ) + (  0 )))  = (short) ((((int) (rectangles[0] .x << 0x10) >> 0x16) + ((rectangles[0] .y >> 4) & 0x10)) | 0x120);
-                    cursor += 0x2C;
+                    if (tempGameData->actTrackNum == 7) {
+                        cursor->u0 = 0;
+                        colour = rectangles[0].h;
+                        cursor->u1 = 0;
+                        cursor->v1 = 0;
+                        cursor->v0 = (signed char) colour;
+                        cursor->u2 = (signed char) rectangles[0].w;
+                        cursor->v2 = (signed char) rectangles[0].h;
+                        colour = rectangles[0].w;
+                        cursor->v3 = 0;
+                        cursor->u3 = (signed char) colour;
+                    }
+                    ((short *)cursor)[-1] = 0; /* the clut word (cba), just before tsb */
+                    prim += 16;
+                    cursor->tsb = (short) ((((int) (rectangles[0].x << 0x10) >> 0x16) + ((rectangles[0].y >> 4) & 0x10)) | 0x120);
+                    cursor = (TexFields *)((char *)cursor + sizeof(FT4));
                 }
-            } else {
-                if (tempGameData->actTrackNum  == 6) {
-                    (*(  signed char * )((signed char *)( cursor ) + (  2 )))  = 0;
-                    (*(  signed char * )((signed char *)( cursor ) + (  3 )))  = 0;
-                    colour = rectangles[0] .w;
-                    (*(  signed char * )((signed char *)( cursor ) + (  5 )))  = 0;
-                    (*(  signed char * )((signed char *)( cursor ) + (  6 )))  = 0;
-                    (*(  signed char * )((signed char *)( cursor ) + (  4 )))  = (signed char) colour;
-                    (*(  signed char * )((signed char *)( cursor ) + (  7 )))  = (signed char) rectangles[0] .h;
-                    (*(  signed char * )((signed char *)( cursor ) + (  8 )))  = (signed char) rectangles[0] .w;
-                    (*(  signed char * )((signed char *)( cursor ) + (  9 )))  = (signed char) rectangles[0] .h;
-                }
-                if (tempGameData->actTrackNum  == 7) {
-                    (*(  signed char * )((signed char *)( cursor ) + (  2 )))  = 0;
-                    colour = rectangles[0] .h;
-                    (*(  signed char * )((signed char *)( cursor ) + (  4 )))  = 0;
-                    (*(  signed char * )((signed char *)( cursor ) + (  5 )))  = 0;
-                    (*(  signed char * )((signed char *)( cursor ) + (  3 )))  = (signed char) colour;
-                    (*(  signed char * )((signed char *)( cursor ) + (  6 )))  = (signed char) rectangles[0] .w;
-                    (*(  signed char * )((signed char *)( cursor ) + (  7 )))  = (signed char) rectangles[0] .h;
-                    colour = rectangles[0] .w;
-                    (*(  signed char * )((signed char *)( cursor ) + (  9 )))  = 0;
-                    (*(  signed char * )((signed char *)( cursor ) + (  8 )))  = (signed char) colour;
-                }
-                (*(  short * )((signed char *)( cursor ) + (  -2 )))  = 0;
-                prim += 16;
-                (*(  short * )((signed char *)( cursor ) + (  0 )))  = (short) ((((int) (rectangles[0] .x << 0x10) >> 0x16) + ((rectangles[0] .y >> 4) & 0x10)) | 0x120);
-                cursor += 0x20;
-            }
-            k += 1;
-            if (k <= 0) {
-                goto loop_6;
-            }
+                k += 1;
+            } while (k <= 0);
             lowerBound = (short)count;
             i += 1;
             objp += 1;
@@ -923,7 +921,7 @@ void LoadTrain(Object **objects, char *trackDir, Skeleton *parent, VECTOR *posit
     Object  *obj;
     Object **p;
     VECTOR  *dst;
-    int      temp;
+    int      z;
     u_short  textureStart;
 
     count = 0;
@@ -954,9 +952,9 @@ void LoadTrain(Object **objects, char *trackDir, Skeleton *parent, VECTOR *posit
             dst = positions + i;
             dst->vx = (*p)->skeleton->relative.t[0];
             dst->vy = (*p)->skeleton->relative.t[1];
-            temp = (*p)->skeleton->relative.t[2];
+            z = (*p)->skeleton->relative.t[2];
             p++;
-            dst->vz = temp;
+            dst->vz = z;
             i++;
         } while (i < count);
     }

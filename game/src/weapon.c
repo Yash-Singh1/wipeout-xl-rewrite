@@ -2,7 +2,6 @@
 #include "weapon.h"
 #include "scene.h"
 #include "sparks.h"
-#include "include_asm_g8.h"
 #include "port_widen.h"
 
 /* Frames between minigun bursts. */

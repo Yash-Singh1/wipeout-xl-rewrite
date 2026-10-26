@@ -3,6 +3,10 @@
 
 #include "functions.h"
 
+/* AddTime display flags. */
+#define TIME_SINGLE_MINUTE_DIGIT 1
+#define TIME_HIDE_MINUTES        2
+
 /* One glyph of a bitmap font: its VRAM origin and advance width. */
 typedef struct FontGlyph {
     u_short vramX;

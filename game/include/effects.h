@@ -2,12 +2,11 @@
 #define EFFECTS_H
 
 #include "functions.h"
-#include "include_asm_g8.h"
 #include "tim.h"
 
-/* Mono-rail carriage: current step index and per-frame deltas along the rail. */
+/* Mono-rail carriage: the player's last lap and per-frame deltas along the rail. */
 struct MonoRailData {
-    short index;                  /* 0x00 */
+    short index;                  /* 0x00: the player ship's lap when the carriage last set off */
     short pad02;                  /* 0x02 */
     int  stepX, stepY, stepZ;    /* 0x04 */
     int  pad10[5];               /* 0x10 */
