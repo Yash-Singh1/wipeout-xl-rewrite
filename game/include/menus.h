@@ -1,6 +1,30 @@
 #ifndef MENUS_H
 #define MENUS_H
 
+#define MENU_MAIN                0
+#define MENU_RACE_TYPE           1
+#define MENU_RACING_CLASS        2
+#define MENU_OPTIONS             3
+#define MENU_TEAM                4
+#define MENU_VECTOR_TRACK        5
+#define MENU_VENOM_TRACK         6
+#define MENU_RAPIER_TRACK        7
+#define MENU_PHANTOM_TRACK       8
+#define MENU_AUDIO               9
+#define MENU_DIGITAL_PAD         10
+#define MENU_LOAD_SAVE           12
+#define MENU_BEST_TIMES          13
+#define MENU_SHOW_PASSWORD       14
+#define MENU_GAME_CONFIG         15
+#define MENU_SCREEN              16
+#define MENU_ARCADE_SCORES       17
+#define MENU_TIME_TRIAL_SCORES   18
+#define MENU_LINK                19
+#define MENU_NEGCON_SELECT       20
+#define MENU_NEGCON_TWIST        21
+#define MENU_NEGCON_BUTTONS      22
+#define MENU_ENTER_PASSWORD      23
+
 #include "wipeout.h"
 
 /* Load/save screen selection state (fields follow the menu's use of each offset). */
@@ -19,17 +43,18 @@ enum {
     MUSIC_BAR, SFX_BAR, MUSIC_MARKER, SFX_MARKER, LEFT_ARROW, RIGHT_ARROW
 };
 
-/* Six rows of two textured polys, one per screen buffer: the bars of the music screen. */
-typedef struct MusicScreen {
-    unsigned char pad0[0x210];
-    POLY_FT4 rows[6][2];
-} MusicScreen;
-
 /* Six rows of box polys (one pair per screen buffer) and the outline of the screen. */
 typedef struct DrBox {
     short coords[24];
     POLY_FT4 rows[6][2];
 } DrBox;
+
+
+/* Six rows of two textured polys, one per screen buffer: the bars of the music screen. */
+typedef struct MusicScreen {
+    DrBox box;
+    POLY_FT4 rows[6][2];
+} MusicScreen;
 
 
 /* Fourteen seed words that scramble and check the password digits. */

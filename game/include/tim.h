@@ -9,6 +9,14 @@ typedef struct Tim {
     int flags;
 } Tim;
 
+/* TIM with direct 16-bit pixels and no CLUT. */
+typedef struct TimDirect16 {
+    int    id;
+    int    flags;
+    int    textureBytes;
+    u_short textureX, textureY, textureW, textureH;
+} TimDirect16;
+
 /* TIM with a 16-entry CLUT (4-bit pixels). */
 typedef struct TimClut4 {
     int   id;
