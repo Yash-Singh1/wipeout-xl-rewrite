@@ -39,6 +39,12 @@ void PortTraceBoundary(uint32_t marker);
 int PortAutopilot(void);
 int PortAutopilotPatched(void);
 
+/* WIPEOUT_CHECKPOINT_LOG=FILE (tools/checkpoint_times.py): the race's checkpoints timed. The game calls this each
+   frame of the player's race (gate -1) and as the player passes a gate; it writes each lap's start and each gate
+   with the frame, and ends the run after the third lap. 1 while timing (the game then stops the clock running
+   out). */
+int PortCheckpointLog(int lap, int gate);
+
 /* Loading screens (WIPEOUT_LOADS: the loading-screen frames of each load in
    a console recording, one number per line). The game draws its loading
    screen from the vertical-blank callback, which also advances the random

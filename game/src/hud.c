@@ -3,6 +3,7 @@
 #include "hiscores.h"
 #include "ayrace.h"
 #include "include_asm_g8.h"
+#include "../../platform/trace.h" /* Port: test hooks */
 
 /* Port: the PC version's text in place of the console's (pc/pctext.c), in its sizes and colours. Its letters are of
    one size, 8 (its code has 8 where the console's has 12 or 16: the results, the warnings, the hall of fame), its
@@ -1458,6 +1459,9 @@ void AlterCheckPoint(CheckPoints *checkpoints, ShipData *shipIndex, int targetSh
     u_short   combatAttr;
     ShipData *player;
 
+    if (PortCheckpointLog(shipIndex[ownShip].lap, -1)) {
+        cheatTime = 1; /* Port: the gates timed (tools/checkpoint_times.py): the clock never runs out */
+    }
     facePtr = track->faces + shipIndex[ownShip].nearTrkSect->faceStart;
     for (;;) {
         flags = facePtr->flags;
@@ -1510,6 +1514,7 @@ checkpointPass:
                             checkTimer += bonus;
                             shipIndex[ownShip].combatAttr &= ~8;
                             checkpoints[i].reached = shipIndex[ownShip].lap;
+                            PortCheckpointLog(shipIndex[ownShip].lap, i); /* Port */
                             PlayNote(45, 320, 15, 15, 256);
                         }
                         break;

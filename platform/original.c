@@ -26,8 +26,16 @@
 #define SECTION_BYTES 156 /* a track section record (the original's and XL's alike) */
 #define FACE_BYTES 20
 
+/* The seconds each of a guest's gates adds to the clock (the start line's, then those a third and two thirds round
+   the lap; see MakeCheckpoints): measured with tools/checkpoint_times.py, which times XL's autopilot from each gate
+   to the next and gives half as long again, as XL's own tracks give their gates (half as long again as the
+   autopilot's lap, about, at Venom and Rapier). */
+typedef struct GateSeconds {
+    int seconds[3];
+} GateSeconds;
+
 /* The original's circuits, each a Venom and a Rapier track (the folders track01 .. track14), with the
-   start line's section and the sky's height. */
+   start line's section, the sky's height and the gates' seconds. */
 static const struct {
     int folder;
     const char *name;
@@ -35,14 +43,22 @@ static const struct {
     int startLine;
     int skyY;
     const char *model; /* its circuit's model in the original's common/track.prm (its track menu's) */
+    GateSeconds gates;
 } originals[] = {
-    {2, "ALTIMA VII", 1, 27, -2520, "altima"},       {3, "ALTIMA VII", 2, 27, -1930, "altima"},
-    {4, "KARBONIS V", 1, 16, -5000, "karbonis"},     {5, "KARBONIS V", 2, 16, -5000, "karbonis"},
-    {1, "TERRAMAX", 1, 27, -820, "terramax"},        {6, "TERRAMAX", 2, 27, 0, "terramax"},
-    {12, "KORODERA", 1, 16, -2120, "korrodera"},     {7, "KORODERA", 2, 16, -2260, "korrodera"},
-    {8, "ARRIDOS IV", 1, 16, -40, "arridos"},        {11, "ARRIDOS IV", 2, 16, -240, "arridos"},
-    {9, "SILVERSTREAM", 1, 16, -2700, "silverstream"}, {13, "SILVERSTREAM", 2, 16, -2700, "silverstream"},
-    {10, "FIRESTAR", 1, 27, 0, "firestar"},          {14, "FIRESTAR", 2, 27, 0, "firestar"},
+    {2, "ALTIMA VII", 1, 27, -2520, "altima", {{27, 29, 28}}},
+    {3, "ALTIMA VII", 2, 27, -1930, "altima", {{24, 23, 23}}},
+    {4, "KARBONIS V", 1, 16, -5000, "karbonis", {{16, 19, 18}}},
+    {5, "KARBONIS V", 2, 16, -5000, "karbonis", {{12, 15, 15}}},
+    {1, "TERRAMAX", 1, 27, -820, "terramax", {{16, 18, 18}}},
+    {6, "TERRAMAX", 2, 27, 0, "terramax", {{14, 15, 15}}},
+    {12, "KORODERA", 1, 16, -2120, "korrodera", {{28, 29, 27}}},
+    {7, "KORODERA", 2, 16, -2260, "korrodera", {{24, 25, 23}}},
+    {8, "ARRIDOS IV", 1, 16, -40, "arridos", {{25, 26, 23}}},
+    {11, "ARRIDOS IV", 2, 16, -240, "arridos", {{20, 20, 19}}},
+    {9, "SILVERSTREAM", 1, 16, -2700, "silverstream", {{20, 8, 31}}},
+    {13, "SILVERSTREAM", 2, 16, -2700, "silverstream", {{18, 7, 24}}},
+    {10, "FIRESTAR", 1, 27, 0, "firestar", {{23, 23, 21}}},
+    {14, "FIRESTAR", 2, 27, 0, "firestar", {{19, 18, 17}}},
 };
 #define ORIGINALS ((int)SDL_arraysize(originals))
 
@@ -66,6 +82,8 @@ static size_t frontEnd;         /* the wad of its menus' files (frntEnd.cmp, mod
 static const char *const n64Names[] = {"KLIES BRIDGE", "QORON IV", "SOKANA", "DYRONESS", "MACHAON II", "TERAFUMOS",
                                        "VELOCITAR"};
 static const char *const n64Models[] = {"klies", "qoron", "sokana", "dyroness", "machaon", "terafumos", "velocitar"};
+static const GateSeconds n64Gates[] = {{{12, 12, 13}}, {{18, 19, 18}}, {{18, 21, 20}}, {{12, 15, 15}},
+                                       {{18, 18, 20}}, {{16, 15, 17}}, {{17, 19, 19}}}; /* (raced at Rapier) */
 
 /* The guests the class menu offers: the original's tracks the source has, then Wipeout 64's. */
 enum { FROM_ORIGINAL, FROM_64 };
@@ -607,19 +625,22 @@ static uint8_t *MakeViewLists(uint8_t *sections, int count, size_t *size)
     return out;
 }
 
-/* The arcade's checkpoints (gates): the start line, then a third and two thirds round the lap. A gate is a
-   section whose track faces say CHECKPOINT (track.tex); its cell gives the seconds it adds to the clock
-   (which starts with the class's own time): a lap's time, from the track's length (Talon's Reach gives
-   about 15 hundredths of a second a section; less for the faster classes), shared out among them. */
+/* The arcade's checkpoints (gates): the start line, then a third and two thirds round the lap (NumberSections). A
+   gate is a section whose track faces say CHECKPOINT (track.tex); its cell gives the seconds it adds to the clock
+   (which starts with the class's own time), the track's measured ones (GateSeconds). The same for every class: a
+   guest is raced at its own. */
 static int gates[3];        /* the gates' section numbers */
 static int mainSections;    /* the sections of the main loop (a lap) */
 
-static uint8_t *MakeCheckpoints(int shipClass, size_t *size)
+static uint8_t *MakeCheckpoints(size_t *size)
 {
-    static const int hundredthsPerSection[4] = {16, 12, 10, 9};
+    const Guest *guest = &guests[chosen];
+    static const GateSeconds unknown = {{18, 18, 18}}; /* (a cartridge with more tracks than Wipeout 64's own) */
+    const int *seconds = guest->from != FROM_64 ? originals[guest->track].gates.seconds
+                         : guest->track < (int)SDL_arraysize(n64Gates) ? n64Gates[guest->track].seconds
+                         : unknown.seconds;
     uint8_t *out = SDL_calloc(1, 36);
-    int lap = mainSections * hundredthsPerSection[shipClass & 3] / 100, i;
-    int seconds[3] = {lap * 40 / 100, lap * 30 / 100, lap * 30 / 100};
+    int i;
 
     for (i = 0; i < 6; i++) {
         uint8_t *cell = out + i * 6;
@@ -657,7 +678,10 @@ static int32_t Be32(const uint8_t *p)
    have none of their own: the original numbered its sections when it loaded them, differently): along the
    main loop from the first section, and where a branch starts (its first section says JunctionStart) the
    branch's sections, then on along the main loop after them. Then the gates: the start line and a third and
-   two thirds of the main loop on. */
+   two thirds of the main loop on, each moved to the nearest section every way round the lap goes through, two
+   sections or more from where ways part or meet. A gate on one of two ways (XL's tracks have none) gave nothing to
+   a ship that took the other, and one where they meet nothing to a ship that went from the way it came along to
+   the section after it in one step. */
 #define FIELD32(s, at) Be32(sections + (size_t)(s) * SECTION_BYTES + (at))
 #define FLAGS(s) Be16(sections + (size_t)(s) * SECTION_BYTES + 150)
 
@@ -703,6 +727,51 @@ static int Number(const uint8_t *sections, int count, int *numbers)
     return main;
 }
 
+/* Whether every way round the lap from `from` back to it goes through `section`: the ways are the sections' next
+   ones and their junctions (where a way parts or meets another). */
+static int OnEveryWay(const uint8_t *sections, int count, int from, int section)
+{
+    int *queue = SDL_malloc(sizeof(int) * (size_t)count * 2);
+    uint8_t *seen = SDL_calloc((size_t)count, 1);
+    int head = 0, tail = 0, back = 0;
+
+    queue[tail++] = from;
+    seen[from] = 1;
+    while (head < tail && !back) {
+        int at = queue[head++], next[2], k;
+
+        next[0] = FIELD32(at, 8);
+        next[1] = FIELD32(at, 0);
+        for (k = 0; k < 2; k++) {
+            if (next[k] == from) {
+                back = 1;
+            } else if (next[k] >= 0 && next[k] < count && next[k] != section && !seen[next[k]]) {
+                seen[next[k]] = 1;
+                queue[tail++] = next[k];
+            }
+        }
+    }
+    SDL_free(queue);
+    SDL_free(seen);
+    return !back;
+}
+
+/* Whether `section` and the two before and after it are on one way: no junction, nor a way's start or end. */
+static int Plain(const uint8_t *sections, int count, int section)
+{
+    int before = section, after = section, k;
+
+    for (k = 0; k < 3; k++) {
+        if (before < 0 || before >= count || after < 0 || after >= count || FIELD32(before, 0) != -1 ||
+            FIELD32(after, 0) != -1 || (FLAGS(before) & 0x18) || (FLAGS(after) & 0x18)) {
+            return 0;
+        }
+        before = FIELD32(before, 4);
+        after = FIELD32(after, 8);
+    }
+    return 1;
+}
+
 static int NumberSections(uint8_t *sections, int count)
 {
     int *numbers = SDL_malloc(sizeof(int) * (size_t)(count ? count : 1));
@@ -720,12 +789,37 @@ static int NumberSections(uint8_t *sections, int count)
         }
     }
     if (start >= 0 && mainSections >= 3) {
+        int at[3];
+
         for (i = 0; i < 3; i++) {
             section = start;
             for (steps = 0; steps < mainSections * i / 3; steps++) {
                 section = FIELD32(section, 8);
             }
-            gates[i] = numbers[section];
+            at[i] = section;
+        }
+        for (i = 2; i >= 0; i--) {
+            /* (the start line's, judged from the next gate on, which every way goes through) */
+            int from = i ? start : at[1];
+
+            int ahead = at[i], behind = at[i];
+
+            for (guard = 0; guard < mainSections / 3; guard++) {
+                if (Plain(sections, count, ahead) && OnEveryWay(sections, count, from, ahead)) {
+                    at[i] = ahead;
+                    break;
+                }
+                if (i && Plain(sections, count, behind) && OnEveryWay(sections, count, from, behind)) {
+                    at[i] = behind; /* (the start line's only ahead: it is where the race starts) */
+                    break;
+                }
+                ahead = FIELD32(ahead, 8);
+                behind = FIELD32(behind, 4);
+                if (ahead < 0 || ahead >= count || behind < 0 || behind >= count) {
+                    break;
+                }
+            }
+            gates[i] = numbers[at[i]];
         }
     }
     SDL_free(numbers);
@@ -848,7 +942,7 @@ static int Build(void)
             fileSizes[FILE_TEX] = n;
         }
         for (i = 0; i < 4; i++) {
-            files[FILE_CHK0 + i] = MakeCheckpoints(i, &fileSizes[FILE_CHK0 + i]);
+            files[FILE_CHK0 + i] = MakeCheckpoints(&fileSizes[FILE_CHK0 + i]);
         }
         /* (a .cmp's count of TIMs: its first four bytes, little-endian) */
         libraryTextures = sizes[4] >= 4 ? (int)(parts[4][0] | parts[4][1] << 8 | parts[4][2] << 16 |

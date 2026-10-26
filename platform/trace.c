@@ -421,6 +421,40 @@ int PortAutopilotPatched(void)
     return autopilotMode;
 }
 
+/* ---- the checkpoints timed ---- */
+
+int PortCheckpointLog(int lap, int gate)
+{
+    static FILE *log;
+    static int opened, frame, lastLap = -99;
+
+    if (!opened) {
+        const char *path = SDL_getenv("WIPEOUT_CHECKPOINT_LOG");
+
+        opened = 1;
+        log = path && *path ? fopen(path, "w") : NULL;
+    }
+    if (!log) {
+        return 0;
+    }
+    if (gate >= 0) {
+        fprintf(log, "gate %d frame %d lap %d\n", gate, frame, lap);
+        fflush(log);
+        return 1;
+    }
+    frame++;
+    if (lap != lastLap) {
+        lastLap = lap;
+        fprintf(log, "lap %d frame %d\n", lap, frame);
+        fflush(log);
+        if (lap > 3) {
+            fclose(log);
+            exit(0);
+        }
+    }
+    return 1;
+}
+
 /* ---- loading screens ---- */
 
 static uint32_t *loadFrames;
