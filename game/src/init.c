@@ -1,6 +1,7 @@
 #include "functions.h"
 #include "tim.h"
 #include "ships.h"
+#include "portorig.h" /* Port: the original Wipeout's and Wipeout 64's tracks */
 
 #define Clut4Bit 0
 #define Clut8Bit 1
@@ -104,6 +105,7 @@ short WADInitScene(Object **objects, u_short *objectCount, Skeleton *camera, Con
     object = objects[(short)sky];
     object->skeleton->super = camera->super;
     SetSkeletonPosition(objects[(short)sky]->skeleton, 0, skyPos[config->trackNum], 0);
+    PortOriginalPlaceSky(objects[(short)sky]); /* Port: Wipeout 64's sky (portorig.c) */
     SceneRadiusCheck(objects[0]);
     return (short)sky;
 }

@@ -282,6 +282,23 @@ int PortOriginalEightShips(void)
     return PortOriginalLooks() && gameType == 2 && raceType != 1;
 }
 
+/* Wipeout 64's tracks share one sky (Talon's Reach's model: an open cylinder about the camera, 2956 high), and
+   Wipeout 64 keeps its heights in its code, not its data. Its lower rim goes at the camera's height, so that it fills
+   all above the horizon: placed by the track's heights, it hung thousands of units above some tracks' cameras and
+   the black background showed below it (Velocitar's and Qoron IV's walls of panels missing, popping in). */
+void PortOriginalPlaceSky(Object *sky)
+{
+    int i, lowest = 0;
+
+    if (!PortOriginalTrackIs64()) {
+        return;
+    }
+    for (i = 0; i < (u_short)sky->vertexCount; i++) {
+        if (sky->vertices[i].vy > lowest) lowest = sky->vertices[i].vy; /* (y grows downward) */
+    }
+    SetSkeletonPosition(sky->skeleton, 0, -lowest, 0);
+}
+
 static void Collect(Object **prm, short prmCount, const char *name, Object **found, int *count, int max)
 {
     Object *obj;

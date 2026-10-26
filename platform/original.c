@@ -835,11 +835,6 @@ static uint8_t *Relocate(const uint8_t *cmp, size_t length, int *paletteSlot, si
 static int Wipeout64Parts(int index, uint8_t **parts, size_t *sizes);
 int PortPrmShiftTextures(char *file, int length, int shift); /* (game/src/port_widen.c) */
 
-static int CompareInts(const void *a, const void *b)
-{
-    return *(const int *)a - *(const int *)b;
-}
-
 static int Build(void)
 {
     static const char *const wadParts[] = {"track.trv", "track.trf", "track.trs", "track.vew", "library.cmp",
@@ -1435,15 +1430,16 @@ int PortWipeout64TrackCount(void)
     return wadCount;
 }
 
-/* A track's start line (the section after its starting grid, in XL's numbers) and sky height (the middle of
-   the track's heights: Wipeout 64's own heights are in its code, not its data). */
+/* A track's start line (the section after its starting grid, in XL's numbers) and sky height: none here, the
+   game places Wipeout 64's sky by the sky's model (PortOriginalPlaceSky; Wipeout 64's own heights are in its code,
+   not its data). */
 static int Wipeout64Track(int index, int *startLine, int *skyY)
 {
     size_t trsSize, trfSize, trvSize;
     const uint8_t *sections = WadPart(wads[index], "track.trs", &trsSize);
     const uint8_t *faces = WadPart(wads[index], "track.trf", &trfSize);
     const uint8_t *vertices = WadPart(wads[index], "track.trv", &trvSize);
-    int count = (int)(trsSize / SECTION_BYTES), *numbers, *heights, i, found = 0;
+    int count = (int)(trsSize / SECTION_BYTES), *numbers, i, found = 0;
     int vertexCount = (int)(trvSize / 16);
 
     if (!sections || !faces || !vertices || count < 3 || !vertexCount) {
@@ -1471,13 +1467,7 @@ static int Wipeout64Track(int index, int *startLine, int *skyY)
         }
     }
     SDL_free(numbers);
-    heights = SDL_malloc(sizeof(int) * (size_t)vertexCount);
-    for (i = 0; i < vertexCount; i++) {
-        heights[i] = Be32(vertices + (size_t)i * 16 + 4);
-    }
-    SDL_qsort(heights, (size_t)vertexCount, sizeof(int), CompareInts);
-    *skyY = heights[vertexCount / 2];
-    SDL_free(heights);
+    *skyY = 0;
     return found;
 }
 
