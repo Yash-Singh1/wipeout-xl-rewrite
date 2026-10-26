@@ -6,6 +6,7 @@
 #include "hiscores.h"
 #include "options.h"
 #include "raceinit.h"
+#include "trails.h" /* Port: Restart clears the trails */
 #include "include_asm_g8.h"
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
@@ -211,6 +212,15 @@ void Restart(ResetData *reset)
     StartControlledSound();
     FlattenTrack();
     initShipData(track->sections, reset->ships, reset->config);
+    if (!PortTracing()) {
+        /* Port: the ships' trails go, as a ship's does when it leaves view: one seen before the restart and after
+           it ran its trail for a frame from where it was in the race to its place on the grid */
+        int ship, j;
+
+        for (ship = 0; ship < 15; ship++) {
+            for (j = 0; j < TRAIL_SEGMENTS_MAX; j++) shipTrails[ship].segment[j].active = 0;
+        }
+    }
     InitRescueDroid(reset->rescue, reset->shipShapes, &reset->ships[ownShip]);
     if (raceType == 1) {
         InitGhostShip(reset->config, reset->ships);
