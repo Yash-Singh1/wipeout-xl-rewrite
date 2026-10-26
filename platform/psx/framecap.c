@@ -20,6 +20,8 @@
 #include "../platform.h"
 #include "../settings.h"
 
+int PortGameInfo(char *out, int size); /* (game/src/portinfo.c) */
+
 #define LAST_SECONDS 3 /* RECORD_LAST_SECONDS: the last three seconds */
 #define TAB_SECONDS 10 /* RECORD_WITH_TAB: up to the last ten */
 #define FRAMES 1200    /* (at most: ten seconds of 120 pictures a second, five of 240) */
@@ -860,6 +862,18 @@ static void Save(void)
             Put(file, f->jpeg, f->jpegSize);
             fclose(file);
         }
+    }
+    /* what the game was doing (game/src/portinfo.c) and how it was shown */
+    SDL_snprintf(path, sizeof(path), "%s/info.json", savedDir);
+    if ((file = fopen(path, "w"))) {
+        char info[2048];
+        int n = PortGameInfo(info, (int)sizeof(info));
+
+        fprintf(file, "{\n  \"version\": \"%s\",\n  %.*s  \"widescreen\": %d,\n  \"frame rate\": %d,\n"
+                      "  \"console depth\": %d,\n  \"recorded frames\": %d\n}\n",
+                PORT_VERSION, n, info, portSettings.widescreen, portSettings.frameRate, portSettings.consoleDepth,
+                count);
+        fclose(file);
     }
     PortLog("frame recorder: %d frames saved to %s\n", count, savedDir);
 }

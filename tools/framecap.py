@@ -8,6 +8,9 @@
   framecap.py DIR flicker              pixels that turn dark for a frame or two and back, with the
                                        primitives on top there before, during and after
   framecap.py DIR prim FRAME SERIAL    one primitive in full
+
+DIR/info.json says what the game was doing when it was saved: the track (and for a guest the game it is from),
+class, race type, the player's team, lap and section, and the version and display settings.
 """
 import math
 import os
@@ -297,6 +300,9 @@ def main():
     frames = load(sys.argv[1])
     command = sys.argv[2] if len(sys.argv) > 2 else 'list'
     if command == 'list':
+        info = os.path.join(sys.argv[1], 'info.json')
+        if os.path.exists(info):
+            print(open(info).read().strip())
         for f in frames:
             print('%3d game %6d shown %6d offset %s prims %5d vram %d' % (
                 f['index'], f['game'], f['shown'], f['offset'], len(f['prims']), f['vram']))

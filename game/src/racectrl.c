@@ -424,6 +424,7 @@ frame:
     if(!medalDisplay) DrawLandscape(&shipIndex[ownShip],&raceCamera);
     if(!medalDisplay) PortFarDraw(&raceCamera,shipIndex,shipShapeTable); /* Port: the rest of the track in view (portfar.h) */
     PortWideScene(); /* Port: widescreen shows the race wide */
+    PortInfoRaceDrawn(); /* Port: ... and the frame recorder's info.json says it is a race (portinfo.c) */
     if(medalDisplay) PortHudInPlace(); /* Port: ... the results' text and medal where the game puts them */
     prmObjects[(short)locals.skyIndex]->skeleton->update=one;
     savedUpperY=raceCamera.camPos->super->relative.t[1];

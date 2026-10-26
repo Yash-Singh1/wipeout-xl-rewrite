@@ -1,6 +1,8 @@
 #ifndef PORT_PLATFORM_H_GAME
 #define PORT_PLATFORM_H_GAME
 
+#include <stdint.h>
+
 /* What the game needs from the platform beyond the PsyQ libraries.  Implemented by platform/. */
 
 /* Plays the intro/outro movie that the console played by loading a movie-player executable
@@ -47,6 +49,10 @@ void PortTwoSided(int on);
    track lies just over its landscape. With the slack the game's own models have, the one of the two drawn later
    was on top, and the order (by depth, each frame) changed as the model turned: the track flickered. */
 void PortExactDepth(int on);
+/* What the game is doing, for the frame recorder's info.json (portinfo.c): the members of a JSON object, and
+   (each frame the race is drawn) that a race is on. */
+int PortGameInfo(char *out, int size);
+void PortInfoRaceDrawn(void);
 int PortLogoFields(int fields); /* how long a start-up logo is shown: the console's, or none (platform/main.c) */
 /* Widescreen (the settings): how far the picture reaches beyond each side of the console's 320 columns, in
    console pixels; 0 for the console's 4:3. A race's scene is shown wide (the game says so every frame it
@@ -130,6 +136,8 @@ int PortSaturnFileInfo(const char *pathname, int *loc, int *size);
 int PortSaturnRead(int loc, int sectors, void *buffer);
 /* ... and with the PC CD-ROM version's files (platform/pc.c): whether they are in use, the files the game reads. */
 int PortPcData(void);
+/* The game frames run so far (platform/trace.c). */
+uint64_t PortGameFrames(void);
 int PortPcFileInfo(const char *pathname, int *loc, int *size);
 int PortPcRead(int loc, int sectors, void *buffer);
 /* The PC version's texture pages (game/src/pc): pageCount 256x256 pages of an atlas in PICS\HI-RES (hud2.tga) from
