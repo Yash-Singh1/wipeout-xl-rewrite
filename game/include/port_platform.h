@@ -101,6 +101,9 @@ void PortPadRumbleLevel(int level);
 /* A wall's scrape, held as PortPadRumbleLevel's level is (said every frame the wing touches the wall), on
    the pads' small motor alone: a rattle under the hits, which keep the big one. */
 void PortPadRumbleScrape(int level);
+/* Whether a race should pause because the window has lost the focus (the setting pause_unfocused, on unless the
+   player turns it off; platform/video.c). */
+int PortFocusPause(void);
 
 /* The original Wipeout's tracks (platform/original.c), raced as guests in Talon's Reach's slot (trackNum 0,
    folder 1): the ones the player's copy of the original has, their names and classes (XL's: 1 Venom,

@@ -500,7 +500,9 @@ void RaceComplete(void *screen, void *unused, ConfigData *gameData, short *choic
 
 void CheckGamePause(ShipData *ships, int *pauseFlag, ConfigData *config, u_short *pauseChoice, int *pauseCounter)
 {
-    if ((ships[ownShip].attr & RACING) && (((GetMenuKey(6) << 0x10) != 0) || (padType == 0)) && (*pauseFlag == -1)) {
+    if ((ships[ownShip].attr & RACING) &&
+        (((GetMenuKey(6) << 0x10) != 0) || (padType == 0) || (gameType == 2 && PortFocusPause())) && /* Port: and when the window loses the focus (one player) */
+        (*pauseFlag == -1)) {
         *pauseCounter = 0;
         CdMusicStop();
         PlayNote(9, 0xFF, 0xF, 0xF, 0x100);
