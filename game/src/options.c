@@ -3,6 +3,8 @@
 #include "functions.h"
 #include "ayrace.h"
 #include "hud.h"
+#include "pad.h"
+#include "racectrl.h"
 #include "include_asm_g8.h"
 #include "pc/pc.h" /* Port: the PC version's songs */
 
@@ -57,7 +59,6 @@ extern short         boxHeight;
 extern short         boxX;
 extern short         boxY;
 
-extern unsigned short keysDown;
 extern unsigned char cdMusicIndex;
 extern int cdMusicCount;
 extern int cdMusicTrack;
@@ -73,7 +74,7 @@ extern char targang[];
 
 void InGameReset(struct PauseMenu *pause, ConfigData *game, struct InGameMenu *polys)
 {
-    MenuText options[4];
+    MenuText labels[4];
     int      i;
     short    y = 95;
 
@@ -92,10 +93,10 @@ void InGameReset(struct PauseMenu *pause, ConfigData *game, struct InGameMenu *p
             CentreText(msgPaused, 107, 70, 12, 0);
         }
     }
-    if (!portPal && gameType == 1) { /* the European program waits in race() instead */
+    if (!portPal && gameType == GAME_LINK_SLAVE) { /* the European program waits in race() instead */
         VSync(0);
     }
-    if (pause->selection != 3) {
+    if (pause->selection != PAUSE_AUDIO) {
         boxX = 160;
         boxWidth = 0;
         boxHeight = 0;
@@ -106,11 +107,11 @@ void InGameReset(struct PauseMenu *pause, ConfigData *game, struct InGameMenu *p
         boxOpen = 0;
         boxClosed = 0;
     }
-    if (pause->stage == 2 || pause->stage == 0) {
-        __builtin_memcpy(options[0].text, pauseTextContinue.text, 9);
-        __builtin_memcpy(options[1].text, restartText, 8);
-        __builtin_memcpy(options[2].text, pauseTextReturnToMenu.text, 15);
-        __builtin_memcpy(options[3].text, pauseTextAudioConfig.text, 13);
+    if (pause->stage == PAUSE_NONE || pause->stage == PAUSE_REQUESTED) {
+        __builtin_memcpy(labels[0].text, pauseTextContinue.text, 9);
+        __builtin_memcpy(labels[1].text, restartText, 8);
+        __builtin_memcpy(labels[2].text, pauseTextReturnToMenu.text, 15);
+        __builtin_memcpy(labels[3].text, pauseTextAudioConfig.text, 13);
         if (game->paused) {
             DoButton(133, 208, 1, labelAccept);
         } else {
@@ -119,21 +120,21 @@ void InGameReset(struct PauseMenu *pause, ConfigData *game, struct InGameMenu *p
         for (i = 0; i < 4; i++) {
             if (i == pause->selection) {
                 if (!(pause->frameCount & 1)) {
-                    CentreText(options[i].text, 0, y + pauseMenuGap * i, 8, 0);
+                    CentreText(labels[i].text, 0, y + pauseMenuGap * i, 8, 0);
                 } else {
-                    CentreText(options[i].text, 0, y + pauseMenuGap * i, 8, 1);
+                    CentreText(labels[i].text, 0, y + pauseMenuGap * i, 8, 1);
                 }
             } else {
-                CentreText(options[i].text, 0, y + pauseMenuGap * i, 8, 1);
+                CentreText(labels[i].text, 0, y + pauseMenuGap * i, 8, 1);
             }
         }
 
-        if (pause->selection == 3) {
+        if (pause->selection == PAUSE_AUDIO) {
             if (!game->paused && boxOpen) {
                 SetVolume(ambientVoice1, 0);
             } else {
                 if (!game->paused) {
-                    if (GetMenuKey(5)) {
+                    if (GetMenuKey(MENU_KEY_SELECT)) {
                         boxX = 160;
                         settingRow = 0;
                         boxWidth = 0;
@@ -147,7 +148,7 @@ void InGameReset(struct PauseMenu *pause, ConfigData *game, struct InGameMenu *p
                         }
                         game->paused = 1;
                     }
-                } else if (boxOpen && GetMenuKey(5)) {
+                } else if (boxOpen && GetMenuKey(MENU_KEY_SELECT)) {
                     boxWidth = 180;
                     boxHeight = 60;
                     boxX = 70;
@@ -164,15 +165,15 @@ void InGameReset(struct PauseMenu *pause, ConfigData *game, struct InGameMenu *p
                 }
                 if (game->paused) {
                     if (boxOpen) {
-                        if (GetMenuKey(0)) {
+                        if (GetMenuKey(MENU_KEY_UP)) {
                             settingRow--;
                             if (settingRow < 0) settingRow = 0;
-                        } else if (GetMenuKey(1)) {
+                        } else if (GetMenuKey(MENU_KEY_DOWN)) {
                             settingRow++;
                             if (settingRow >= 3) settingRow = 2;
                         }
                         if (settingRow == 0) {
-                            if (GetMenuKey(2)) {
+                            if (GetMenuKey(MENU_KEY_LEFT)) {
                                 PlayNote(8, 255, 15, 15, 256);
                                 game->cdTrack--;
                                 trackNameScroll = 480;
@@ -187,7 +188,7 @@ void InGameReset(struct PauseMenu *pause, ConfigData *game, struct InGameMenu *p
                                     CdMusicPlay(cdMusicTrack, 0);
                                     pause->musicPaused = 1;
                                 }
-                            } else if (GetMenuKey(3)) {
+                            } else if (GetMenuKey(MENU_KEY_RIGHT)) {
                                 PlayNote(8, 255, 15, 15, 256);
                                 game->cdTrack++;
                                 trackNameScroll = 480;
@@ -209,14 +210,14 @@ void InGameReset(struct PauseMenu *pause, ConfigData *game, struct InGameMenu *p
                             AddText(targang, 85, 185, 8, 1);
                         }
                         if (settingRow == 1) {
-                            if (keysDown & 128) {
+                            if (keysDown & PAD_LEFT) {
                                 volumeRepeat++;
                                 if (volumeRepeat == 5) {
                                     game->otherMusicVolume -= 5;
                                     if (game->otherMusicVolume < 0) game->otherMusicVolume = 0;
                                     volumeRepeat = 0;
                                 }
-                            } else if (keysDown & 32) {
+                            } else if (keysDown & PAD_RIGHT) {
                                 volumeRepeat++;
                                 if (volumeRepeat == 5) {
                                     game->otherMusicVolume += 5;
@@ -232,14 +233,14 @@ void InGameReset(struct PauseMenu *pause, ConfigData *game, struct InGameMenu *p
                             AddText(targang, 85, 185, 8, 1);
                         }
                         if (settingRow == 2) {
-                            if (keysDown & 128) {
+                            if (keysDown & PAD_LEFT) {
                                 volumeRepeat++;
                                 if (volumeRepeat == 5) {
                                     game->otherEffectVolume -= 5;
                                     if (game->otherEffectVolume < 0) game->otherEffectVolume = 0;
                                     volumeRepeat = 0;
                                 }
-                            } else if (keysDown & 32) {
+                            } else if (keysDown & PAD_RIGHT) {
                                 volumeRepeat++;
                                 if (volumeRepeat == 5) {
                                     game->otherEffectVolume += 5;
@@ -457,7 +458,7 @@ void InGameConfirm(u_char *confirmed, int mode, int unused, u_char *selection, i
         CentreText(msgWantToQuit, 0x69, 0x69, 8, highlight);
     }
     DoButton(0x85, 0xAA, 1, labelSelect);
-    if (GetMenuKey(2) != 0 || GetMenuKey(3) != 0) {
+    if (GetMenuKey(MENU_KEY_LEFT) != 0 || GetMenuKey(MENU_KEY_RIGHT) != 0) {
         *selection ^= 1;
         PlayNote(8, 0xFF, 0xF, 0xF, 0x100);
     }
@@ -479,10 +480,10 @@ void InGameConfirm(u_char *confirmed, int mode, int unused, u_char *selection, i
         }
     }
     PortHudCentred(choices, &quadPool[quadIndex]);
-    if (gameType == 1) {
+    if (gameType == GAME_LINK_SLAVE) {
         VSync(0);
     }
-    if (GetMenuKey(5) != 0 || GetMenuKey(6) != 0) {
+    if (GetMenuKey(MENU_KEY_SELECT) != 0 || GetMenuKey(MENU_KEY_START) != 0) {
         *confirmed = *selection;
     }
     *frameCount += 1;

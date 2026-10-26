@@ -1,6 +1,10 @@
 #ifndef SHIPS_H
 #define SHIPS_H
 
+/* ShipData.combatAttr */
+#define REMOTE_SHIP 0x0002
+#define LAP_STARTED 0x4000
+
 #include "wipeout.h"
 
 /* Frames of the start countdown (ShipData.updateCount while the ships are held on the grid). */

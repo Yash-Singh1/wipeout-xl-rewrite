@@ -219,7 +219,7 @@ typedef struct LinkPacket {
     int    seedWep;
     u_short hdg, pitch, roll;
     /* The sender's controller record, field for field: ControlInput.head, .buttons, .pressed,
-       .pad6 (viewed as one halfword), .thrust, .steering. */
+       .previousButtons, .thrust, .steering. */
     u_short head;
     u_short buttons;
     u_short pressed;
@@ -282,7 +282,7 @@ void doSerialGame(ConfigData *config, ShipData *ships)
     seed = seedWep;
     bestRace = myBestRace;
     pressed = playerControl[0].pressed;
-    pad6 = *(u_short *)playerControl[0].pad6;
+    pad6 = playerControl[0].previousButtons;
     thrust = playerControl[0].thrust;
     steering = playerControl[0].steering;
     px = ships[ownShip].ppivot.vx;
@@ -365,7 +365,7 @@ void doSerialGame(ConfigData *config, ShipData *ships)
         remoteControl[0].head = headIn;
         remoteControl[0].buttons = buttonsIn;
         remoteControl[0].pressed = pressedIn;
-        *(u_short *)remoteControl[0].pad6 = pad6In;
+        remoteControl[0].previousButtons = pad6In;
         remoteControl[0].thrust = thrustIn;
         remoteControl[0].steering = steeringIn;
         linkRemoteState = stateIn;

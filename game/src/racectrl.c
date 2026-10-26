@@ -398,7 +398,7 @@ frame:
         } else {raceEndTimer--;playCredits=one;}
         if(!raceEndTimer) goto quit;
     }
-    if(scoreTabData.highScore!=one && !raceEndTimer) {
+    if(scoreTabData.nameEntryActive!=one && !raceEndTimer) {
         UpdateRaceHud(shipIndex,&speedoHud,pauseState.selection,gameData,&scoreTabData);
         if(shipIndex[ownShip].update==UpdatePlayerShip || shipIndex[ownShip].update==UpdateRescueDroid || (shipIndex[ownShip].update==UpdateDroneShip && shipIndex[ownShip].autopilotCount>0)) {
             if((shipIndex[ownShip].combatAttr&0x8004)!=0x8004) AlterCheckPoint((CheckPoints *)CHECKPOINTS,shipIndex,pauseState.selection,gameData);

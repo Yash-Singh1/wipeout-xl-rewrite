@@ -1,4 +1,7 @@
 #include "functions.h"
+#include "sfx.h"
+#include "weapon.h"
+#include "racectrl.h"
 #include "../../platform/trace.h" /* Port: lockstep test hooks */
 #include "ships.h"
 #include "pad.h"
@@ -11,10 +14,6 @@ extern u_char cheatDamage;
 extern u_char cheatTime;
 extern u_char cheatMinigun;
 extern short  cheatfade;
-
-/* Pad state: the keys held now and last frame, and the pad type. */
-extern u_short keysDown;
-extern u_short keysPrev;
 
 /* Button masks of the default pad layout (PlayStation pad bits). */
 extern u_short buttonCross;
@@ -49,11 +48,11 @@ extern int     raceType;
 extern int     checkTimer;
 extern MenuEntry *menu;
 
-/* The cheat codes are a face button with L1, R1 and Select held (0xC01). */
-#define CHEAT_TRIANGLE 0x1C01
-#define CHEAT_CIRCLE   0x2C01
-#define CHEAT_CROSS    0x4C01
-#define CHEAT_SQUARE   0x8C01
+/* The cheat codes are a face button with L1, R1 and Select held. */
+#define CHEAT_TRIANGLE (PAD_TRIANGLE | PAD_CHEAT_MODIFIERS)
+#define CHEAT_CIRCLE   (PAD_CIRCLE | PAD_CHEAT_MODIFIERS)
+#define CHEAT_CROSS    (PAD_CROSS | PAD_CHEAT_MODIFIERS)
+#define CHEAT_SQUARE   (PAD_SQUARE | PAD_CHEAT_MODIFIERS)
 
 
 void InitPadSettings(void)
@@ -96,7 +95,7 @@ void buildGameKeyPad(struct PadPacket *pad, ControlInput *control)
     PortScriptGamePad((unsigned char *)pad); /* Port: scripted pad input for the lockstep tests (WIPEOUT_PADS) */
     prev = control->buttons;
     control->buttons = 0;
-    *(u_short *)control->pad6 = prev;
+    control->previousButtons = prev;
     if (pad->header == 0x2300 || pad->header == 0x4100) {
         held = ~pad->buttons;
         idx = pad->header == 0x2300;
@@ -106,96 +105,96 @@ void buildGameKeyPad(struct PadPacket *pad, ControlInput *control)
         keyDef[3] = keyDefineLBrake[idx];
         keyDef[4] = keyDefineRBrake[idx];
         keyDef[5] = keyDefineThrustPad[idx];
-        if (held & 0x10) control->buttons |= 0x10;
-        if (held & 0x40) control->buttons |= 0x40;
-        if (held & 0x1) control->buttons |= 0x1;
-        if (held & 0x8) control->buttons |= 0x8;
-        if (held & 0x80) control->buttons |= 0x80;
-        if (held & 0x20) control->buttons |= 0x20;
+        if (held & PAD_UP) control->buttons |= CONTROL_UP;
+        if (held & PAD_DOWN) control->buttons |= CONTROL_DOWN;
+        if (held & PAD_SELECT) control->buttons |= CONTROL_SELECT;
+        if (held & PAD_START) control->buttons |= CONTROL_START;
+        if (held & PAD_LEFT) control->buttons |= CONTROL_LEFT;
+        if (held & PAD_RIGHT) control->buttons |= CONTROL_RIGHT;
         if (pad->header == 0x2300) {
             control->head = 2;
             buttons = control->buttons;
             control->steering = pad->steering;
-            control->buttons = buttons | 4;
+            control->buttons = buttons | CONTROL_ANALOG_STEERING;
             if (keyDef[0] <= STICK_LIMIT) {
-                if (held & keyDef[0]) control->buttons = buttons | 0x1004;
+                if (held & keyDef[0]) control->buttons = buttons | (CONTROL_ANALOG_STEERING | CONTROL_VIEW);
             } else {
                 switch (keyDef[0] & 3) {
                 default:
-                    if (pad->analog[0] >= 0x80U) control->buttons = buttons | 0x1004;
+                    if (pad->analog[0] >= 0x80U) control->buttons = buttons | (CONTROL_ANALOG_STEERING | CONTROL_VIEW);
                     break;
                 case 1:
-                    if (pad->analog[1] >= 0x80U) control->buttons = buttons | 0x1004;
+                    if (pad->analog[1] >= 0x80U) control->buttons = buttons | (CONTROL_ANALOG_STEERING | CONTROL_VIEW);
                     break;
                 case 2:
-                    if (pad->analog[2] >= 0x80U) control->buttons = buttons | 0x1004;
+                    if (pad->analog[2] >= 0x80U) control->buttons = buttons | (CONTROL_ANALOG_STEERING | CONTROL_VIEW);
                     break;
                 }
             }
             if (keyDef[2] <= STICK_LIMIT) {
-                if (held & keyDef[2]) control->buttons |= 0x8000;
+                if (held & keyDef[2]) control->buttons |= CONTROL_DITCH;
             } else {
                 switch (keyDef[2] & 3) {
                 default:
-                    if (pad->analog[0] >= 0x80U) control->buttons |= 0x8000;
+                    if (pad->analog[0] >= 0x80U) control->buttons |= CONTROL_DITCH;
                     break;
                 case 1:
-                    if (pad->analog[1] >= 0x80U) control->buttons |= 0x8000;
+                    if (pad->analog[1] >= 0x80U) control->buttons |= CONTROL_DITCH;
                     break;
                 case 2:
-                    if (pad->analog[2] >= 0x80U) control->buttons |= 0x8000;
+                    if (pad->analog[2] >= 0x80U) control->buttons |= CONTROL_DITCH;
                     break;
                 }
             }
             if (keyDef[3] <= STICK_LIMIT) {
-                if (held & keyDef[3]) control->buttons |= 0x400;
+                if (held & keyDef[3]) control->buttons |= CONTROL_LEFT_BRAKE;
             } else {
                 switch (keyDef[3] & 3) {
                 default:
-                    if (pad->analog[0] >= 0x80U) control->buttons |= 0x400;
+                    if (pad->analog[0] >= 0x80U) control->buttons |= CONTROL_LEFT_BRAKE;
                     break;
                 case 1:
-                    if (pad->analog[1] >= 0x80U) control->buttons |= 0x400;
+                    if (pad->analog[1] >= 0x80U) control->buttons |= CONTROL_LEFT_BRAKE;
                     break;
                 case 2:
-                    if (pad->analog[2] >= 0x80U) control->buttons |= 0x400;
+                    if (pad->analog[2] >= 0x80U) control->buttons |= CONTROL_LEFT_BRAKE;
                     break;
                 }
             }
             if (keyDef[4] <= STICK_LIMIT) {
-                if (held & keyDef[4]) control->buttons |= 0x800;
+                if (held & keyDef[4]) control->buttons |= CONTROL_RIGHT_BRAKE;
             } else {
                 switch (keyDef[4] & 3) {
                 default:
-                    if (pad->analog[0] >= 0x80U) control->buttons |= 0x800;
+                    if (pad->analog[0] >= 0x80U) control->buttons |= CONTROL_RIGHT_BRAKE;
                     break;
                 case 1:
-                    if (pad->analog[1] >= 0x80U) control->buttons |= 0x800;
+                    if (pad->analog[1] >= 0x80U) control->buttons |= CONTROL_RIGHT_BRAKE;
                     break;
                 case 2:
-                    if (pad->analog[2] >= 0x80U) control->buttons |= 0x800;
+                    if (pad->analog[2] >= 0x80U) control->buttons |= CONTROL_RIGHT_BRAKE;
                     break;
                 }
             }
             if (keyDef[1] <= STICK_LIMIT) {
-                if (held & keyDef[1]) control->buttons |= 0x2000;
+                if (held & keyDef[1]) control->buttons |= CONTROL_FIRE;
             } else {
                 switch (keyDef[1] & 3) {
                 default:
-                    if (pad->analog[0] >= 0x80U) control->buttons |= 0x2000;
+                    if (pad->analog[0] >= 0x80U) control->buttons |= CONTROL_FIRE;
                     break;
                 case 1:
-                    if (pad->analog[1] >= 0x80U) control->buttons |= 0x2000;
+                    if (pad->analog[1] >= 0x80U) control->buttons |= CONTROL_FIRE;
                     break;
                 case 2:
-                    if (pad->analog[2] >= 0x80U) control->buttons |= 0x2000;
+                    if (pad->analog[2] >= 0x80U) control->buttons |= CONTROL_FIRE;
                     break;
                 }
             }
             if (keyDef[5] <= STICK_LIMIT) {
-                if (held & keyDef[5]) control->buttons |= 0x4000;
+                if (held & keyDef[5]) control->buttons |= CONTROL_THRUST;
             } else {
-                control->buttons |= 2;
+                control->buttons |= CONTROL_ANALOG_THRUST;
                 switch (keyDef[5] & 3) {
                 default: control->thrust = pad->analog[0]; break;
                 case 1: control->thrust = pad->analog[1]; break;
@@ -203,19 +202,19 @@ void buildGameKeyPad(struct PadPacket *pad, ControlInput *control)
                 }
             }
         } else {
-            if (held & keyDef[0]) control->buttons |= 0x1000;
-            if (held & keyDef[1]) control->buttons |= 0x2000;
-            if (held & keyDef[2]) control->buttons |= 0x8000;
-            if (held & keyDef[3]) control->buttons |= 0x400;
-            if (held & keyDef[4]) control->buttons |= 0x800;
-            if (held & keyDef[5]) control->buttons |= 0x4000;
+            if (held & keyDef[0]) control->buttons |= CONTROL_VIEW;
+            if (held & keyDef[1]) control->buttons |= CONTROL_FIRE;
+            if (held & keyDef[2]) control->buttons |= CONTROL_DITCH;
+            if (held & keyDef[3]) control->buttons |= CONTROL_LEFT_BRAKE;
+            if (held & keyDef[4]) control->buttons |= CONTROL_RIGHT_BRAKE;
+            if (held & keyDef[5]) control->buttons |= CONTROL_THRUST;
             control->head = 1;
         }
     } else {
         control->head = 0;
-        *(u_short *)control->pad6 = 0;
+        control->previousButtons = 0;
     }
-    control->pressed = control->buttons & (control->buttons ^ *(u_short *)control->pad6);
+    control->pressed = control->buttons & (control->buttons ^ control->previousButtons);
 }
 #undef STICK_LIMIT
 
@@ -234,62 +233,62 @@ void buildFixedPad(struct PadPacket *pad)
     if (header == 0x2300 || header == 0x4100) {
         held = ~pad->buttons;
         buttons = held;
-        if (held & 0x10) {
-            keysDown = 0x10;
+        if (held & PAD_UP) {
+            keysDown = PAD_UP;
         }
-        if (held & 0x40) {
-            keysDown |= 0x40;
+        if (held & PAD_DOWN) {
+            keysDown |= PAD_DOWN;
         }
-        if (held & 128) {
-            keysDown |= 0x80;
+        if (held & PAD_LEFT) {
+            keysDown |= PAD_LEFT;
         }
-        if (held & 32) {
-            keysDown |= 0x20;
+        if (held & PAD_RIGHT) {
+            keysDown |= PAD_RIGHT;
         }
-        if (held & 8) {
-            keysDown |= 8;
+        if (held & PAD_START) {
+            keysDown |= PAD_START;
         }
-        if (held & 4096) {
-            keysDown |= 0x1000;
+        if (held & PAD_TRIANGLE) {
+            keysDown |= PAD_TRIANGLE;
         }
-        if (held & 8192) {
-            keysDown |= 0x2000;
+        if (held & PAD_CIRCLE) {
+            keysDown |= PAD_CIRCLE;
         }
         if (pad->header == 0x2300) {
             if (pad->analog[0] >= 0x80U) {
-                keysDown |= 0x4000;
+                keysDown |= PAD_CROSS;
             }
             if (pad->analog[1] >= 0x80U) {
-                keysDown |= 0x8000;
+                keysDown |= PAD_SQUARE;
             }
             if (pad->analog[2] >= 0x80U) {
-                keysDown |= 0x400;
+                keysDown |= PAD_L1;
             }
-            if (buttons & 2048) {
-                keysDown |= 0x800;
+            if (buttons & PAD_R1) {
+                keysDown |= PAD_R1;
             }
             padType = 2;
         } else {
-            if (buttons & 0x4000) {
-                keysDown |= 0x4000;
+            if (buttons & PAD_CROSS) {
+                keysDown |= PAD_CROSS;
             }
-            if (buttons & 32768) {
-                keysDown |= 0x8000;
+            if (buttons & PAD_SQUARE) {
+                keysDown |= PAD_SQUARE;
             }
-            if (buttons & 1024) {
-                keysDown |= 0x400;
+            if (buttons & PAD_L1) {
+                keysDown |= PAD_L1;
             }
-            if (buttons & 2048) {
-                keysDown |= 0x800;
+            if (buttons & PAD_R1) {
+                keysDown |= PAD_R1;
             }
-            if (buttons & 256) {
-                keysDown |= 0x100;
+            if (buttons & PAD_L2) {
+                keysDown |= PAD_L2;
             }
-            if (buttons & 512) {
-                keysDown |= 0x200;
+            if (buttons & PAD_R2) {
+                keysDown |= PAD_R2;
             }
-            if (buttons & 1) {
-                keysDown |= 1;
+            if (buttons & PAD_SELECT) {
+                keysDown |= PAD_SELECT;
             }
             padType = 1;
         }
@@ -303,7 +302,7 @@ void buildFixedPad(struct PadPacket *pad)
 
 void SetBrake(ShipData *ship, ControlInput *control)
 {
-    if (control->buttons & 0x800) {
+    if (control->buttons & CONTROL_RIGHT_BRAKE) {
         ship->r_brake_rot += PAL_SPEED(0x20);
     } else if (ship->r_brake_rot > 0) {
         ship->r_brake_rot -= PAL_SPEED(0x20);
@@ -314,7 +313,7 @@ void SetBrake(ShipData *ship, ControlInput *control)
     if (ship->r_brake_rot >= 0x101) {
         ship->r_brake_rot = 0x100;
     }
-    if (control->buttons & 0x400) {
+    if (control->buttons & CONTROL_LEFT_BRAKE) {
         ship->l_brake_rot += PAL_SPEED(0x20);
     } else if (ship->l_brake_rot > 0) {
         ship->l_brake_rot -= PAL_SPEED(0x20);
@@ -330,7 +329,7 @@ void SetBrake(ShipData *ship, ControlInput *control)
 
 void SetView(ShipData *ship, ControlInput *control)
 {
-    if ((control->pressed & 0x1000) && !(ship->combatAttr & 2)) {
+    if ((control->pressed & CONTROL_VIEW) && !(ship->combatAttr & REMOTE_SHIP)) {
         if (!(ship->attr & VIEW_IN)) {
             CameraUpdate = UpdateCameraRaceInternal;
             ship->attr |= VIEW_IN;
@@ -344,8 +343,8 @@ void SetView(ShipData *ship, ControlInput *control)
 
 void SetFire(ShipData *ship, WeaponData *weapons, int shipNo, ControlInput *control)
 {
-    if (((control->pressed & 0x2000) && (ship->weapon != 0)) || ((control->buttons & 0x2000) && (ship->weapon == 0xF))) {
-        if (control->buttons & 0x40) {
+    if (((control->pressed & CONTROL_FIRE) && (ship->weapon != WEAPON_NONE)) || ((control->buttons & CONTROL_FIRE) && (ship->weapon == WEAPON_MINIGUN))) {
+        if (control->buttons & CONTROL_DOWN) {
             ship->rearFire = 1;
         } else {
             ship->rearFire = 0;
@@ -355,7 +354,7 @@ void SetFire(ShipData *ship, WeaponData *weapons, int shipNo, ControlInput *cont
             if (cheatWeapon != 0) {
                 GetCheatWeapon(shipIndex, ownShip);
             }
-        } else if (!(ship->combatAttr & 2)) {
+        } else if (!(ship->combatAttr & REMOTE_SHIP)) {
             PlayNote(8, 0xFF, 0xF, 0xF, 0x100);
         }
     }
@@ -364,12 +363,12 @@ void SetFire(ShipData *ship, WeaponData *weapons, int shipNo, ControlInput *cont
 
 void SetDitch(ShipData *ship, WeaponData *weapons, int shipNo, ControlInput *control)
 {
-    if (control->pressed & 0x8000) {
-        if (ship->weapon != 0) {
-            if (!(ship->combatAttr & 2)) {
-                PlayNote(0x2E, 0xFF, 0xF, 0xF, 0x100);
+    if (control->pressed & CONTROL_DITCH) {
+        if (ship->weapon != WEAPON_NONE) {
+            if (!(ship->combatAttr & REMOTE_SHIP)) {
+                PlayNote(SFX_WEAPON_DITCH, 0xFF, 0xF, 0xF, 0x100);
             }
-            ship->weapon = 0U;
+            ship->weapon = WEAPON_NONE;
         }
         if (cheatWeapon != 0) {
             GetCheatWeapon(shipIndex, ownShip);
@@ -378,28 +377,28 @@ void SetDitch(ShipData *ship, WeaponData *weapons, int shipNo, ControlInput *con
 }
 
 
-short GetMenuKey(short a)
+short GetMenuKey(short action)
 {
-    if ((keysDown & 0xC01) == 0xC01) {
+    if ((keysDown & PAD_CHEAT_MODIFIERS) == PAD_CHEAT_MODIFIERS) {
         return 0;
     }
-    switch (a) {
-    case 0: return keysPressed & 0x10;
-    case 1: return keysPressed & 0x40;
-    case 2: return keysPressed & 0x80;
-    case 3: return keysPressed & 0x20;
-    case 4: return keysPressed & 0x1000;
-    case 5: return keysPressed & 0x4000;
-    case 6: return keysPressed & 0x8;
-    case 7: return keysPressed & 0x1;
-    case 8: return keysPressed & 0x2000;
-    case 9: return keysPressed & 0x8000;
+    switch (action) {
+    case MENU_KEY_UP: return keysPressed & PAD_UP;
+    case MENU_KEY_DOWN: return keysPressed & PAD_DOWN;
+    case MENU_KEY_LEFT: return keysPressed & PAD_LEFT;
+    case MENU_KEY_RIGHT: return keysPressed & PAD_RIGHT;
+    case MENU_KEY_BACK: return keysPressed & PAD_TRIANGLE;
+    case MENU_KEY_SELECT: return keysPressed & PAD_CROSS;
+    case MENU_KEY_START: return keysPressed & PAD_START;
+    case MENU_KEY_PAD_SELECT: return keysPressed & PAD_SELECT;
+    case MENU_KEY_CIRCLE: return keysPressed & PAD_CIRCLE;
+    case MENU_KEY_SQUARE: return keysPressed & PAD_SQUARE;
     }
     return 0;
 }
 
 
-void UpdateCheatSequence(int arg0)
+void UpdateCheatSequence(int inMenu)
 {
     int i;
     u_char toggled;
@@ -409,10 +408,10 @@ void UpdateCheatSequence(int arg0)
             cheatHistory[i] = cheatHistory[i - 1];
         }
         cheatHistory[0] = (int)keysPressed;
-        if ((keysDown & 0xC01) == 0xC01) {
-            cheatHistory[0] = keysPressed | 0xC01;
+        if ((keysDown & PAD_CHEAT_MODIFIERS) == PAD_CHEAT_MODIFIERS) {
+            cheatHistory[0] = keysPressed | PAD_CHEAT_MODIFIERS;
         }
-        if (!(arg0 & 0xFF) && (gameType == 2) && (raceType != 1)) {
+        if (!(inMenu & 0xFF) && (gameType == GAME_SINGLE_PLAYER) && (raceType != RACE_TIME_TRIAL)) {
             if ((cheatHistory[6] == CHEAT_CROSS) && (cheatHistory[5] == cheatHistory[6]) && (cheatHistory[4] == CHEAT_SQUARE) && (cheatHistory[3] == cheatHistory[4]) && (cheatHistory[2] == CHEAT_CIRCLE) && (cheatHistory[1] == cheatHistory[2]) && (cheatHistory[0] == CHEAT_TRIANGLE)) {
                 toggled = cheatWeapon ^ 1;
                 cheatWeapon = toggled;
@@ -426,27 +425,18 @@ void UpdateCheatSequence(int arg0)
                     cheatfade = 0xFF;
                     cheatDamage ^= 1;
                 }
-                if (cheatHistory[7] == CHEAT_TRIANGLE) {
-                    if (cheatHistory[6] == CHEAT_SQUARE) {
-                        if ((cheatHistory[5] == CHEAT_CIRCLE) && (cheatHistory[4] == CHEAT_CROSS) && (cheatHistory[3] == cheatHistory[7]) && (cheatHistory[2] == cheatHistory[6]) && (cheatHistory[1] == cheatHistory[5]) && (cheatHistory[0] == cheatHistory[4])) {
-                            toggled = cheatTime ^ 1;
-                            cheatTime = toggled;
-                            if (toggled != 0) {
-                                checkTimer = 0x3E7;
-                            }
-                            cheatfade = 0xFF;
-                        }
-                        goto checkMinigun;
+                if ((cheatHistory[6] == CHEAT_SQUARE) && (cheatHistory[5] == CHEAT_CIRCLE) && (cheatHistory[4] == CHEAT_CROSS) && (cheatHistory[3] == cheatHistory[7]) && (cheatHistory[2] == cheatHistory[6]) && (cheatHistory[1] == cheatHistory[5]) && (cheatHistory[0] == cheatHistory[4])) {
+                    toggled = cheatTime ^ 1;
+                    cheatTime = toggled;
+                    if (toggled != 0) {
+                        checkTimer = 0x3E7;
                     }
-                } else {
-                    goto checkMinigun;
-                }
-            } else {
-checkMinigun:
-                if ((cheatHistory[6] == CHEAT_SQUARE) && (cheatHistory[5] == CHEAT_CIRCLE) && (cheatHistory[4] == CHEAT_CROSS) && (cheatHistory[3] == cheatHistory[6]) && (cheatHistory[2] == cheatHistory[5]) && (cheatHistory[1] == cheatHistory[4]) && (cheatHistory[0] == CHEAT_TRIANGLE)) {
                     cheatfade = 0xFF;
-                    cheatMinigun ^= 1;
                 }
+            }
+            if ((cheatHistory[6] == CHEAT_SQUARE) && (cheatHistory[5] == CHEAT_CIRCLE) && (cheatHistory[4] == CHEAT_CROSS) && (cheatHistory[3] == cheatHistory[6]) && (cheatHistory[2] == cheatHistory[5]) && (cheatHistory[1] == cheatHistory[4]) && (cheatHistory[0] == CHEAT_TRIANGLE)) {
+                cheatfade = 0xFF;
+                cheatMinigun ^= 1;
             }
         } else {
             if ((cheatHistory[6] == CHEAT_CROSS) && (cheatHistory[5] == cheatHistory[6]) && (cheatHistory[4] == cheatHistory[5]) && (cheatHistory[3] == cheatHistory[4]) && (cheatHistory[2] == CHEAT_CIRCLE) && (cheatHistory[1] == CHEAT_TRIANGLE) && (cheatHistory[0] == CHEAT_SQUARE)) {

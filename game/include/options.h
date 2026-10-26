@@ -3,6 +3,9 @@
 
 #include "psyq.h"
 
+enum { PAUSE_CONTINUE, PAUSE_RESTART, PAUSE_RETURN_TO_MENU, PAUSE_AUDIO };
+enum { PAUSE_REQUESTED, PAUSE_REMOTE, PAUSE_NONE };
+
 /* Background box and its semi-transparent blend mode, one pair per screen. */
 struct SelectBox {
     POLY_F4 box[2];

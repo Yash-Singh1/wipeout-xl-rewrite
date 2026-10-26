@@ -7,7 +7,7 @@ typedef struct GlyphWidth {
 } GlyphWidth;
 
 /* State of the race that has just finished and of the name entry for a new record.
-   flag holds the records waiting for a name (1: lap, 2: race); displayFlag the ones
+   pendingRecords holds the records waiting for a name (1: lap, 2: race); displayedRecords the ones
    being shown on the score tab. */
 struct HiScoreData {
     u8  nameEntered[9];     /* 0: entered name, NUL terminated */
@@ -23,7 +23,7 @@ struct HiScoreData {
     int count;              /* 24: frames since the entry finished */
     int padDelay;           /* 28: frames until the pad is read again */
     int totalTime;          /* 32: total time of the race */
-    u8  highScore;          /* 36 */
+    u8  nameEntryActive;    /* 36: the name entry is on screen */
     u8  displayHiScore;     /* 37 */
     short charX;            /* 38: x position after the letters entered so far */
     u8  confirm;            /* 40 */
@@ -35,8 +35,8 @@ struct HiScoreData {
     int lapTime;            /* 60: lap time for the lap record */
     u8  lapPilot;           /* 64: ship that set the lap record */
     u8  pad65[3];
-    u8  flag;               /* 68 */
-    u8  displayFlag;        /* 69 */
+    u8  pendingRecords;     /* 68 */
+    u8  displayedRecords;   /* 69 */
 };
 
 /* Default high-score table: a three-letter name (NUL padded) for each of eight track

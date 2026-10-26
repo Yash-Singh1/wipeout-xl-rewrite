@@ -246,7 +246,7 @@ void Restart(ResetData *reset)
     raceEndTimer = 0;
     raceEndState = 0;
     medalDisplay = 0;
-    scoreTabData.highScore = 0;
+    scoreTabData.nameEntryActive = 0;
     plasmaShotBusy = 0;
     perfectLapCount = 0;
     perfectLap = 0;
@@ -482,13 +482,13 @@ void RaceComplete(void *screen, void *unused, ConfigData *gameData, short *choic
             if (raceType == 1) storeGhostTrail(gameData, scoreData);
             gameData->highScore = 0;
             InitDefaultName(gameData, scoreData, 0);
-            if (!scoreData->flag) {
+            if (!scoreData->pendingRecords) {
                 raceCompleteFlag = 1;
                 gameData->complete = 1;
             }
         }
-        if (scoreData->flag) scoreData->highScore = 1;
-        if (scoreData->highScore) {
+        if (scoreData->pendingRecords) scoreData->nameEntryActive = 1;
+        if (scoreData->nameEntryActive) {
             DisplayScoreTab(gameData, scoreData);
             DeSelectScreen(screen);
             gameData->highScore = 0;

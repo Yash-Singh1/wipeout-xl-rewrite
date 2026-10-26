@@ -1,6 +1,22 @@
 #ifndef WEAPON_H
 #define WEAPON_H
 
+#define WEAPON_NONE            0
+#define WEAPON_ROCKET          1
+#define WEAPON_MISSILE         2
+#define WEAPON_MINE            3
+#define WEAPON_ELECTROBOLT     5
+#define WEAPON_ENERGY          6
+#define WEAPON_AUTOPILOT       7
+#define WEAPON_SHIELD          8
+#define WEAPON_TURBO           9
+#define WEAPON_ROCKET_LEFT     10
+#define WEAPON_ROCKET_RIGHT    11
+#define WEAPON_QUAKE           12
+#define WEAPON_PLASMA          13
+#define WEAPON_SMART_BOMB      14
+#define WEAPON_MINIGUN         15
+
 #include "wipeout.h"
 
 /* One entry of the weapon shape table: the object used to draw a weapon, and whether it is in use. */
