@@ -448,12 +448,15 @@ void initShipData(TrackSection *section, ShipData *shipIndex, ConfigData *option
         goto find_section;
     found_section:;
     }
-    if (PortOriginalLooks()) {
-        /* Port: a track of the original Wipeout has eight boxes painted on its grid, where the original put its
-           ships: four sections behind the line, then by turns two and one section further back, on its two sides
-           by turns. XL's longer grid goes on behind them the same way. */
-        for (i = 0; i < 4; i++) section = section->prevSection.ptr;
-        side = 1;
+    if (PortOriginalTrack() >= 0) {
+        /* Port: a guest track has boxes painted on its grid, where its own game put its ships: the original
+           Wipeout's eight from four sections behind the line, Wipeout 64's fifteen from three; then by turns two
+           and one section further back, on the track's two faces by turns (the original's first on the second
+           face, Wipeout 64's on the first). XL's longer grid goes on behind them the same way. */
+        int from64 = PortOriginalTrackIs64();
+
+        for (i = 0; i < (from64 ? 3 : 4); i++) section = section->prevSection.ptr;
+        side = !from64;
         for (i = 0; i < 15; i++) {
             locals.starts[i] = section;
             section = section->prevSection.ptr;
