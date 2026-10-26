@@ -92,6 +92,10 @@ static void Set(const char *key, const char *value)
         portSettings.noRumble = number == 0;
     } else if (!strcmp(key, "pause_unfocused")) {
         portSettings.noFocusPause = number == 0;
+    } else if (!strcmp(key, "surround")) {
+        portSettings.surround = number != 0;
+    } else if (!strcmp(key, "fullscreen")) {
+        portSettings.fullscreen = number != 0;
     } else if (!strcmp(key, "vibration_strength") && number > 0) {
         portSettings.rumbleStrength = SDL_clamp(number, 50, 300);
     }
@@ -223,7 +227,8 @@ int PortSettingsSave(void)
             "render_scale = %d\nhd_textures = %d\nhd_pack = %s\nwipeout64 = %s\n"
             "custom_music = %d\nmusic_shuffle = %d\nmusic_folder = %s\nsave_slot = %s\nautosave = %d\n"
             "touch_controls = %d\ntouch_size = %d\ntouch_opacity = %d\ndepth_buffer = %d\nskip_logos = %d\nrecord_rate = %d\n"
-            "video_standard = %d\nvibration = %d\nvibration_strength = %d\nfar_flares = %d\npause_unfocused = %d\n",
+            "video_standard = %d\nvibration = %d\nvibration_strength = %d\nfar_flares = %d\npause_unfocused = %d\n"
+            "surround = %d\nfullscreen = %d\n",
             portSettings.showFps, portSettings.farView, portSettings.fade, portSettings.fadeNear, portSettings.fadeFar,
             portSettings.widescreen, portSettings.frameRate,
             portSettings.frameCap, portSettings.skipIntro,
@@ -236,7 +241,7 @@ int PortSettingsSave(void)
             portSettings.touchOpacity ? portSettings.touchOpacity : 60, !portSettings.consoleDepth, portSettings.skipLogos,
             portSettings.recordRate ? portSettings.recordRate : 60, portSettings.videoStandard, !portSettings.noRumble,
             portSettings.rumbleStrength ? portSettings.rumbleStrength : 100, portSettings.farFlares,
-            !portSettings.noFocusPause);
+            !portSettings.noFocusPause, portSettings.surround, portSettings.fullscreen);
     fclose(file);
     return 1;
 }

@@ -292,6 +292,9 @@ int main(int argc, char **argv)
         }
     }
     PortSettingsLoad();
+    if (portSettings.fullscreen) {
+        portConfig.fullscreen = 1; /* full screen when the game was last left */
+    }
     PortMusicInit();
     if (!portConfig.savePath && portSettings.saveDir[0]) {
         static char saveDir[1040];

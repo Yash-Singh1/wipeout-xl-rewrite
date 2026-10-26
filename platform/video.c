@@ -13,6 +13,7 @@
 #include "psx/psx_io.h"
 #include "settings.h"
 #include "touch.h"
+#include "trace.h"
 #ifdef PORT_SECOND_GAME
 #include "second/second.h"
 #endif
@@ -296,6 +297,11 @@ int PortFocusPause(void)
     return !portSettings.noFocusPause && !PortWindowFocused();
 }
 
+int PortSurround(void)
+{
+    return portSettings.surround || PortTracing();
+}
+
 void PortAutoSaveAtExit(void); /* (game/src/portsave.c) */
 
 void PortQuit(void)
@@ -331,6 +337,14 @@ int PortPumpEvents(void)
             SDL_SetWindowFullscreen(window, !(SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN));
             continue;
         }
+#if !defined(__EMSCRIPTEN__) && !defined(PORT_MOBILE)
+        /* the next start is full screen or not as the window is now (F11, Alt+Enter or the title bar's button) */
+        if ((event.type == SDL_EVENT_WINDOW_ENTER_FULLSCREEN || event.type == SDL_EVENT_WINDOW_LEAVE_FULLSCREEN) &&
+            portSettings.fullscreen != (event.type == SDL_EVENT_WINDOW_ENTER_FULLSCREEN)) {
+            portSettings.fullscreen = event.type == SDL_EVENT_WINDOW_ENTER_FULLSCREEN;
+            PortSettingsSave();
+        }
+#endif
         if (DebugUiEvent(&event)) {
             continue; /* the debug console's (the ~ key) */
         }

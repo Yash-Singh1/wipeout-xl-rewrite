@@ -104,6 +104,10 @@ void PortPadRumbleScrape(int level);
 /* Whether a race should pause because the window has lost the focus (the setting pause_unfocused, on unless the
    player turns it off; platform/video.c). */
 int PortFocusPause(void);
+/* Whether the sounds the console's Dolby Surround mode puts behind the player keep its encoding, the right channel's
+   phase inverted for a Pro Logic decoder (the setting surround, off unless the player turns it on, and always in a
+   trace); without it they play in phase, as stereo speakers and headphones want (game/src/sfx.c). */
+int PortSurround(void);
 
 /* The original Wipeout's tracks (platform/original.c), raced as guests in Talon's Reach's slot (trackNum 0,
    folder 1): the ones the player's copy of the original has, their names and classes (XL's: 1 Venom,

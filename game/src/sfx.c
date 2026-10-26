@@ -817,7 +817,7 @@ void SetDolbyVolume(int sound)
     backRight = (back * pbRearLookup[30 - pan]) >> 8;
     if ((flags & 6) == 2 && driverMode != 1) {
         frontLeft = backLeft;
-        frontRight = -backRight;
+        frontRight = PortSurround() ? -backRight : backRight; /* Port: the console's was -backRight alone */
     }
     voice = playList[sound].voice;
     if (voiceList[voice].play == sound) {
@@ -832,7 +832,7 @@ void SetDolbyVolume(int sound)
     if (driverMode == 4 && (flags & 4)) {
         voice = playList[sound].voiceRight;
         frontLeft = backLeft;
-        frontRight = -backRight;
+        frontRight = PortSurround() ? -backRight : backRight; /* Port: the console's was -backRight alone */
         if (voiceList[voice].play == sound) {
             attr.voice = 1 << voice;
             attr.mask = 3;

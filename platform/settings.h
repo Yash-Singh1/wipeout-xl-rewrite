@@ -45,6 +45,9 @@ typedef struct PortSettings {
     int videoStandard;    /* VIDEO_BY_DISC, VIDEO_NTSC or VIDEO_PAL (region.c); takes effect at the next start */
     int farFlares;        /* the engine flares of the ships the whole track's view draws beyond the console's distance
                              (portfar.c; the console drew none there) */
+    int surround;         /* the console's Dolby Surround encoding: the sounds it puts behind the player play with the
+                             right channel's phase inverted, for a Pro Logic decoder (game/src/sfx.c) */
+    int fullscreen;       /* the window was full screen when last left: the next start is too (video.c) */
 } PortSettings;
 
 /* PortSettings.videoStandard: the disc's (Wipeout XL NTSC, WipEout 2097 PAL), or either for both */
