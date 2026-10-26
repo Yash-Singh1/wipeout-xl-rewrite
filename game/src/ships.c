@@ -1,6 +1,7 @@
 #include "functions.h"
 #include "ships.h"
 #include "portfar.h" /* Port: the far view */
+#include "portorig.h" /* Port: the original Wipeout's tracks */
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
 extern int           proximity;
@@ -446,14 +447,29 @@ void initShipData(TrackSection *section, ShipData *shipIndex, ConfigData *option
         goto find_section;
     found_section:;
     }
-    section = section->prevSection.ptr;
-    side = 0;
-    for (i = 0; i < 15; i++) {
-        locals.starts[i] = section;
+    if (PortOriginalLooks()) {
+        /* Port: a track of the original Wipeout has eight boxes painted on its grid, where the original put its
+           ships: four sections behind the line, then by turns two and one section further back, on its two sides
+           by turns. XL's longer grid goes on behind them the same way. */
+        for (i = 0; i < 4; i++) section = section->prevSection.ptr;
+        side = 1;
+        for (i = 0; i < 15; i++) {
+            locals.starts[i] = section;
+            section = section->prevSection.ptr;
+            if (!(i & 1)) section = section->prevSection.ptr;
+            locals.side[i] = side;
+            side ^= 1;
+        }
+    } else {
         section = section->prevSection.ptr;
-        section = section->prevSection.ptr;
-        locals.side[i] = side;
-        side ^= 1;
+        side = 0;
+        for (i = 0; i < 15; i++) {
+            locals.starts[i] = section;
+            section = section->prevSection.ptr;
+            section = section->prevSection.ptr;
+            locals.side[i] = side;
+            side ^= 1;
+        }
     }
     if (gameType != 2) {
         if (raceType == 3) {
@@ -516,6 +532,14 @@ void initShipData(TrackSection *section, ShipData *shipIndex, ConfigData *option
             gridPosition[12 + 0] = next;
             gridPosition[12 + 2] = next + 2;
         }
+    }
+    if (PortOriginalLooks() && gameType == 2 && gridPosition[ownShip] > 7) {
+        /* Port: the player starts in the grid's last box, as in the original (whose player started last of
+           eight); the ships XL has more start behind */
+        for (i = 0; i < 15; i++) {
+            if (gridPosition[i] == 7) gridPosition[i] = gridPosition[ownShip];
+        }
+        gridPosition[ownShip] = 7;
     }
     for (i = 0; i < 15; i++) {
         position = gridPosition[i];
