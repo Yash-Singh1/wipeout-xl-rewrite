@@ -245,6 +245,7 @@ void race(ConfigData *gameData, int context, int scene)
     trackCycleTimer=0;InitTrackCycle();
     InitDroidThings(startDroidObjects,startDroidNames,raceCamera.camPos,(Checkpoint *)CHECKPOINTS,gameData);
     InitDroidThings(lightGroups,lightGroupNames,raceCamera.camPos,(Checkpoint *)CHECKPOINTS,gameData);
+    PortOriginalSceneInit(prmObjects,prmCount); /* Port: an original Wipeout track's start gantries, beacons, pumps (portorig.c) */
     InitRaceLine(track,gameData);InitInGameMenu(&locals.inGameMenu);
     { int crowd=InitCrowdSound(prmObjects,prmCount,locals.crowdObjects,locals.crowdSample);
     unsigned char currentTrack=gameData->actTrackNum;
@@ -529,7 +530,8 @@ frame:
         if(gameData->actTrackNum==8) AddSnow(particleSlots,20,(VECTOR *)cameraPtr->camPos->relative.t);
     } else {if(locals.firstTime) UpdateShipTrails(shipIndex,attractDelayFrames);locals.firstTime=0;}
     resetMiscFx();DrawShipTrails(cameraPtr);
-    if(!linkDropped) {
+    if(!linkDropped && PortOriginalLooks()) PortOriginalSceneUpdate(pauseState.selection!=-1); /* Port: ... its own scenery, not XL's droids */
+    else if(!linkDropped) {
         UpdateStartDroid(startDroidObjects,shipIndex,(DroidData *)CHECKPOINTS,startTextureBase,gameData,pauseState.selection);
         UpdateLightStart(lightGroups,shipIndex,(DroidData *)CHECKPOINTS,startTextureBase,gameData,pauseState.selection);
     }

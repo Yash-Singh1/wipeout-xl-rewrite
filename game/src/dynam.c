@@ -1,4 +1,5 @@
 #include "functions.h"
+#include "portorig.h" /* Port: the original Wipeout's tracks */
 #include "ghost.h"
 #include "dynam.h"
 
@@ -390,9 +391,11 @@ skip_left:
         specialGrid[*specialCount].count = 10;
         specialGrid[*specialCount].section = section->secNo;
         specialGrid[*specialCount].attr = 0;
+        if (!PortOriginalLooks()) { /* Port: an original Wipeout track's checkpoint keeps its own look (portorig.c) */
         facePtr->red = 255;
         facePtr->green = 255;
         facePtr->blue = 255;
+        }
         (*specialCount)++;
     }
     facePtr++;
@@ -433,7 +436,7 @@ skip_right:
         facePtr->green = 0;
         facePtr->blue = 0;
     }
-    if (facePtr->flags & 128) {
+    if ((facePtr->flags & 128) && !PortOriginalLooks()) { /* Port: (as the left face) */
         facePtr->red = 255;
         facePtr->green = 255;
         facePtr->blue = 255;

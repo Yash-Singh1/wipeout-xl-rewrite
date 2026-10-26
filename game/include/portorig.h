@@ -16,5 +16,9 @@ Object *PortOriginalModel(int index);    /* ... the model of a WIPEOUT line's tr
 int   PortOriginalDrawPicture(int index, int x, int y); /* ... or its picture (1 when drawn) */
 short PortOriginalLibraryBase(short loaded);
 short PortOriginalLibraryPlaced(TexTemplate *tiles, short tileCount, short loaded);
+int   PortOriginalLooks(void);         /* the race is on a track of the original Wipeout (its scenery's look) */
+void  PortOriginalSceneInit(Object **prm, short prmCount);
+void  PortOriginalCount(int updateCount);
+void  PortOriginalSceneUpdate(int paused);
 
 #endif

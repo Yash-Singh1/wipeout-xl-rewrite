@@ -257,3 +257,100 @@ short PortOriginalLibraryPlaced(TexTemplate *tiles, short tileCount, short loade
     }
     return (short)TextureTableCount;
 }
+
+/* ---- the original's scenery ----
+
+   A track of the original Wipeout (not Wipeout 64's) looks as in its own race. Its start gantries ("start...")
+   light their three lamps one by one for the count, red at two, amber at one and green at go (the original's
+   code, which XL kept, ColourStartBoom, but no longer called); its beacons ("redl...") pulse once a second and
+   its oil pumps ("donkey...") nod. XL's own markers are not drawn over it: the droids with the start lights,
+   the lap boards and the checkpoint signs, and the white of its checkpoint sections (dynam.c). */
+
+#define MAX_BEACONS 8
+#define MAX_PUMPS   8
+
+static Object *beacons[MAX_BEACONS], *pumps[MAX_PUMPS];
+static int     beaconCount, pumpCount, sceneryFrame;
+
+int PortOriginalLooks(void)
+{
+    return PortOriginalTrack() >= 0 && !PortOriginalTrackIs64();
+}
+
+static void Collect(Object **prm, short prmCount, const char *name, Object **found, int *count, int max)
+{
+    Object *obj;
+    int     i;
+
+    *count = 0;
+    for (i = 0; i < prmCount; i++) {
+        for (obj = prm[i]; obj; obj = obj->next) {
+            if (!strncmp(obj->name, name, strlen(name)) && *count < max) {
+                found[(*count)++] = obj;
+            }
+        }
+    }
+}
+
+/* A race begins: its scenery's moving parts (none but on the original's tracks: XL's own start gantries are
+   left as they are). */
+void PortOriginalSceneInit(Object **prm, short prmCount)
+{
+    int looks = PortOriginalLooks();
+
+    InitStartBoom(prm, looks ? prmCount : 0);
+    ResetStartBoom();
+    Collect(prm, looks ? prmCount : 0, "redl", beacons, &beaconCount, MAX_BEACONS);
+    Collect(prm, looks ? prmCount : 0, "donkey", pumps, &pumpCount, MAX_PUMPS);
+    sceneryFrame = 0;
+}
+
+/* The count before the start (GeneralStartProcs): the gantries' lamps. */
+void PortOriginalCount(int updateCount)
+{
+    if (!PortOriginalLooks()) {
+        return;
+    }
+    if (updateCount == REGION(0x42, 83)) {
+        ColourStartBoom(1);
+    } else if (updateCount == REGION(0x21, 41)) {
+        ColourStartBoom(2);
+    } else if (updateCount == 0) {
+        ColourStartBoom(3);
+    }
+}
+
+/* Each frame of the race (but while paused): the beacons and the pumps. */
+void PortOriginalSceneUpdate(int paused)
+{
+    int i, red, angle;
+
+    if (!paused) {
+        sceneryFrame++;
+    }
+    red = 128 + rsin((short)((sceneryFrame * 4096 / PAL_TIME(30)) & 4095)) * 127 / 4096;
+    for (i = 0; i < beaconCount; i++) {
+        Poly     poly;
+        CVECTOR *colour = NULL;
+        int      corners = 0, k;
+
+        poly.prim = beacons[i]->primitives;
+        if (poly.prim->type == TypeGT4) {
+            colour = poly.gt4->colour;
+            corners = 4;
+        } else if (poly.prim->type == TypeGT3) {
+            colour = poly.gt3->colour;
+            corners = 3;
+        }
+        for (k = 0; k < corners; k++) {
+            colour[k].r = (u_char)red;
+            colour[k].g = 0;
+            colour[k].b = 0;
+        }
+    }
+    /* (a radian each way, every eight seconds) */
+    angle = rsin((short)((sceneryFrame * 4096 / PAL_TIME(240)) & 4095)) * 652 / 4096;
+    for (i = 0; i < pumpCount; i++) {
+        SetSkeletonDirection(pumps[i]->skeleton, (short)angle, 0, 0);
+    }
+}

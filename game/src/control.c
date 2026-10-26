@@ -1,4 +1,5 @@
 #include "functions.h"
+#include "portorig.h" /* Port: the original Wipeout's tracks */
 #include "../../platform/trace.h" /* Port: lockstep test hooks */
 #include "ships.h"
 #include "control.h"
@@ -516,6 +517,7 @@ void GeneralStartProcs(ShipData *s)
         PlayNote(0x1D, 0x1E0, 0xF, 0xF, 200);
         countdownActive = 0;
     }
+    PortOriginalCount(s->updateCount); /* Port: an original Wipeout track's start gantries (portorig.c) */
     if (s->updateCount == REGION(0x21, 41)) {
         PlayNote(0x1C, 0x1E0, 0xF, 0xF, 220);
     } else if (s->updateCount == REGION(0x42, 83)) {
