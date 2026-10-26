@@ -11,6 +11,7 @@
 #include "platform.h"
 #include "psx/gpu.h"
 #include "psx/psx_io.h"
+#include "settings.h"
 #include "touch.h"
 #ifdef PORT_SECOND_GAME
 #include "second/second.h"
@@ -288,6 +289,11 @@ int PortWindowFocused(void)
         return scriptedFocus;
     }
     return window && (SDL_GetWindowFlags(window) & SDL_WINDOW_INPUT_FOCUS);
+}
+
+int PortFocusPause(void)
+{
+    return !portSettings.noFocusPause && !PortWindowFocused();
 }
 
 void PortAutoSaveAtExit(void); /* (game/src/portsave.c) */

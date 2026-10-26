@@ -1917,6 +1917,13 @@ static void Console(void)
             }
             ImGui::EndDisabled();
             ImGui::Separator();
+            bool focusPause = !portSettings.noFocusPause;
+            if (ImGui::Checkbox("Pause the game when the window loses focus", &focusPause)) {
+                portSettings.noFocusPause = !focusPause;
+                Changed();
+            }
+            DisabledWrapped("A race pauses, as with Start, when another window is chosen (one player's races).");
+            ImGui::Separator();
             bool skip = portSettings.skipIntro != 0;
             if (ImGui::Checkbox("Skip the intro movie at start-up", &skip)) {
                 portSettings.skipIntro = skip;

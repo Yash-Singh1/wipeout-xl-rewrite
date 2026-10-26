@@ -428,6 +428,7 @@ void initShipData(TrackSection *section, ShipData *shipIndex, ConfigData *option
     int           side, index;
     short         next;
     u_short       position, sectionNum;
+    short         launch[15]; /* Port: the place each ship's launch is set by */
     ShipData   *ship;
     TrackSection *aheadSection;
     Face         *face;
@@ -449,12 +450,15 @@ void initShipData(TrackSection *section, ShipData *shipIndex, ConfigData *option
         goto find_section;
     found_section:;
     }
-    if (PortOriginalLooks()) {
-        /* Port: a track of the original Wipeout has eight boxes painted on its grid, where the original put its
-           ships: four sections behind the line, then by turns two and one section further back, on its two sides
-           by turns. XL's longer grid goes on behind them the same way. */
-        for (i = 0; i < 4; i++) section = section->prevSection.ptr;
-        side = 1;
+    if (PortOriginalTrack() >= 0) {
+        /* Port: a guest track has boxes painted on its grid, where its own game put its ships: the original
+           Wipeout's eight from four sections behind the line, Wipeout 64's fifteen from three; then by turns two
+           and one section further back, on the track's two faces by turns (the original's first on the second
+           face, Wipeout 64's on the first). XL's longer grid goes on behind them the same way. */
+        int from64 = PortOriginalTrackIs64();
+
+        for (i = 0; i < (from64 ? 3 : 4); i++) section = section->prevSection.ptr;
+        side = !from64;
         for (i = 0; i < 15; i++) {
             locals.starts[i] = section;
             section = section->prevSection.ptr;
@@ -535,24 +539,45 @@ void initShipData(TrackSection *section, ShipData *shipIndex, ConfigData *option
             gridPosition[12 + 2] = next + 2;
         }
     }
+    for (i = 0; i < 15; i++) launch[i] = gridPosition[i];
     if (PortOriginalEightShips()) {
         /* Port: on a track of the original Wipeout eight ships race, as in the original: two of each team (the
-           player and one other in the player's), in XL's grid order on the grid's eight boxes, and the player
-           in the last, as the original's player started last. The other ships sit the race out. */
-        short teamShips[4] = {0, 0, 0, 0}, racing = 0, out = 8;
+           player and one other in the player's), on the grid's eight boxes, the player in the last, as the
+           original's player started last. The other ships sit the race out. XL's grid order is its ships'
+           order of strength (each team's third pilot the fastest, then its second, then its first), and its
+           ships are picked to spread evenly over the eleven the player would race in XL rather than be its
+           fastest seven. Each keeps the launch (numToSpeed) of its place in XL's grid. */
+        short field[12], count = 0, teamShips[4], best = -1, racing = 0, out = 8;
+        int pick, error, bestError = 0, k, shift;
 
-        if (ownShip < 12) teamShips[ownShip / 3] = 1;
-        for (i = 0; i < 15; i++) {
-            index = 3 * (i % 5) + 2 - i / 5; /* each team's third ship, then its second, then its first */
-            if (index == ownShip) continue;
-            if (index < 12 && teamShips[index / 3] < 2 && racing < 7) {
-                teamShips[index / 3]++;
-                gridPosition[index] = racing++;
-            } else {
-                gridPosition[index] = out++;
+        for (i = 0; i < groups * 3; i++) {
+            index = locals.order[i];
+            if (index < 12 && index != ownShip) field[count++] = index;
+        }
+        for (pick = 0; pick < 1 << count; pick++) {
+            for (j = 0; j < 4; j++) teamShips[j] = ownShip / 3 == j;
+            error = 0;
+            k = 0;
+            for (j = 0; j < count; j++) {
+                if (!(pick >> j & 1)) continue;
+                teamShips[field[j] / 3]++;
+                shift = j * 6 - k++ * (count - 1); /* (its place - the even spread's) * 6 */
+                error += shift * shift;
+            }
+            if (k != 7 || teamShips[0] > 2 || teamShips[1] > 2 || teamShips[2] > 2 || teamShips[3] > 2) continue;
+            if (best < 0 || error < bestError) {
+                best = pick;
+                bestError = error;
             }
         }
+        for (i = 0; i < 15; i++) gridPosition[i] = -1;
+        for (j = 0; j < count; j++) {
+            if (best >> j & 1) gridPosition[field[j]] = racing++;
+        }
         gridPosition[ownShip] = 7;
+        for (i = 0; i < 15; i++) {
+            if (gridPosition[i] < 0) gridPosition[i] = out++;
+        }
     }
     for (i = 0; i < 15; i++) {
         position = gridPosition[i];
@@ -624,8 +649,8 @@ void initShipData(TrackSection *section, ShipData *shipIndex, ConfigData *option
         case 2: shipIndex[i].remoteMax = shipRemoteMaxClass2[i]; shipIndex[i].remoteMagnitude = shipRemoteMagClass2[i]; break;
         case 3: shipIndex[i].remoteMax = shipRemoteMaxClass3[i]; shipIndex[i].remoteMagnitude = shipRemoteMagClass3[i]; break;
         }
-        if (position < 2) shipIndex[i].remoteMax += options->shipClass * 30;
-        SetSpread(shipIndex, options, (short)position, i, bigGrid);
+        if (launch[i] < 2) shipIndex[i].remoteMax += options->shipClass * 30;
+        SetSpread(shipIndex, options, launch[i], i, bigGrid);
         shipIndex[i].nearTrkSect = locals.starts[(short)position];
         shipIndex[i].prevShipSect = locals.starts[(short)position];
         face = track->faces + locals.starts[(short)position]->faceStart;

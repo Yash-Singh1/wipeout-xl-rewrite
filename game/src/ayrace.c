@@ -9,6 +9,7 @@
 #include "hiscores.h"
 #include "options.h"
 #include "raceinit.h"
+#include "trails.h" /* Port: Restart clears the trails */
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
 extern short continueAnimFrame;
@@ -213,6 +214,15 @@ void Restart(ResetData *reset)
     StartControlledSound();
     FlattenTrack();
     initShipData(track->sections, reset->ships, reset->config);
+    if (!PortTracing()) {
+        /* Port: the ships' trails go, as a ship's does when it leaves view: one seen before the restart and after
+           it ran its trail for a frame from where it was in the race to its place on the grid */
+        int ship, j;
+
+        for (ship = 0; ship < 15; ship++) {
+            for (j = 0; j < TRAIL_SEGMENTS_MAX; j++) shipTrails[ship].segment[j].active = 0;
+        }
+    }
     InitRescueDroid(reset->rescue, reset->shipShapes, &reset->ships[ownShip]);
     if (raceType == RACE_TIME_TRIAL) {
         InitGhostShip(reset->config, reset->ships);
@@ -502,7 +512,10 @@ void RaceComplete(void *screen, void *unused, ConfigData *gameData, short *choic
 
 void CheckGamePause(ShipData *ships, int *pauseFlag, ConfigData *config, u_short *pauseChoice, int *pauseCounter)
 {
-    if ((ships[ownShip].attr & RACING) && (((GetMenuKey(MENU_KEY_START) << 0x10) != 0) || (padType == 0)) && (*pauseFlag == -1)) {
+    if ((ships[ownShip].attr & RACING) &&
+        (((GetMenuKey(MENU_KEY_START) << 0x10) != 0) || (padType == 0) ||
+         (gameType == GAME_SINGLE_PLAYER && PortFocusPause())) && /* Port: and when the window loses the focus (one player) */
+        (*pauseFlag == -1)) {
         *pauseCounter = 0;
         CdMusicStop();
         PlayNote(9, 0xFF, 0xF, 0xF, 0x100);
