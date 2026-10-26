@@ -645,11 +645,11 @@ int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMem
                     selectionNo = menu[MENU_MAIN].selection;
                 }
                 if (currMenu == MENU_MAIN && selectionNo == 2 && raceType == RACE_CHALLENGE) {
-                    /* (no two-player race from a challenge) */
+                    /* (a challenge sets the class and track) */
                 } else if (currMenu == MENU_MAIN && (selectionNo == 0 || selectionNo == 4) && remoteStartGame) {
-                    selectionErrorFrames = PAL_TIME(90); /* "cannot select as other player has started" */
+                    selectionErrorFrames = PAL_TIME(90); /* (the race type and options, once the other player has started) */
                 } else if (currMenu == MENU_MAIN && gameType == GAME_LINK_SLAVE && menu[MENU_MAIN].selection == 2) {
-                    /* (the link slave cannot start the two-player race) */
+                    /* (the link master chooses the class and track) */
                 } else {
                     PlayNote(9, 255, 15, 15, 256);
                     if (currMenu == MENU_MAIN && menu[MENU_MAIN].selection == 3) {
@@ -3232,14 +3232,10 @@ void InitNewDisplay(ConfigData *gameData)
     SetDefDispEnv(&DispEnv1, 0, 0x100, 0x140, SCREEN_HEIGHT);
     DispEnv0.screen.x = *(u16 *)&gameData->screenX + DISPLAY_SHIFT_X;
     DispEnv0.screen.y = *(u16 *)&gameData->screenY + DISPLAY_SHIFT_Y;
-    if (portPal) {
-        DispEnv0.screen.h = SCREEN_HEIGHT;
-    }
+    PAL_SCREEN_HEIGHT(DispEnv0);
     DispEnv1.screen.x = *(u16 *)&gameData->screenX + DISPLAY_SHIFT_X;
     DispEnv1.screen.y = *(u16 *)&gameData->screenY + DISPLAY_SHIFT_Y;
-    if (portPal) {
-        DispEnv1.screen.h = SCREEN_HEIGHT;
-    }
+    PAL_SCREEN_HEIGHT(DispEnv1);
     SetGeomOffset(0xA0, SCREEN_HEIGHT / 2);
     SetGeomScreen(0xA0);
     PutDispEnv(doubleBuffer[CurrentScreen].disp);

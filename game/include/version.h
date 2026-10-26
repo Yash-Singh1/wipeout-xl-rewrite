@@ -68,6 +68,9 @@ extern int portEuropeCard;
 #define DISPLAY_SHIFT_X REGION(0, 2)
 #define DISPLAY_SHIFT_Y REGION(0, 24)
 
+/* PAL_SCREEN_HEIGHT(env): a DISPENV's window spans PAL's 256 lines; on NTSC the default (240) stays. A statement. */
+#define PAL_SCREEN_HEIGHT(env) ((void)(portPal && ((env).screen.h = SCREEN_HEIGHT, 1)))
+
 /* SetVideoMode's argument: 0 NTSC, 1 PAL. */
 #define VIDEO_MODE REGION(0, 1)
 
