@@ -635,8 +635,8 @@ void DrawTrailLoRes(TrackCamera *camera, Trail *trail, int ship) {
 
                             if (near) GteBindPrecise(&poly->x0, near);
                             if (far) GteBindPrecise(&poly->x2, far);
-                            PortBindAbout(&poly->x1, near, screen[0].vx, screen[0].vy, 0);
-                            PortBindAbout(&poly->x3, far, screen[3].vx, screen[3].vy, 0);
+                            PortBindBeside(&poly->x1, near, screen[0].vx, screen[0].vy, 0);
+                            PortBindBeside(&poly->x3, far, screen[3].vx, screen[3].vy, 0);
                         }
                         poly->r0 = trail->segment[i].r;
                         poly->g0 = trail->segment[i].g;

@@ -14,6 +14,9 @@ uint32_t PortProjection(const void *sxy);
    holds the corner. Known by the projection's key and `which` (the same corner of the same thing every frame). Left
    as it is when the projection has no key or no view-space position. */
 void PortBindAbout(void *corner, uint32_t centre, int x, int y, uint64_t which);
+/* ... at the projection's depth too, for a corner of something drawn in 3D (the far trail's strip, its other corners
+   projected): hidden by what is nearer, as they are, where one corner without a depth drew it over everything. */
+void PortBindBeside(void *corner, uint32_t centre, int x, int y, uint64_t which);
 /* A packet's xy word that is a point of the screen with nothing projected behind it (a point the frame before
    projected, kept), known by `key`: between frames it goes in a straight line on the screen. */
 void PortBindScreen(void *corner, uint64_t key);

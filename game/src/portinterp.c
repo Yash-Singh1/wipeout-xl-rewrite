@@ -11,8 +11,8 @@ uint32_t PortProjection(const void *sxy)
 }
 
 /* Recorded beside the projection at its depth (so it goes with the projection and the view between frames), as what
-   moves with something does (GTE_KEY_MOVING) when the projection does. */
-void PortBindAbout(void *corner, uint32_t centre, int x, int y, uint64_t which)
+   moves with something does (GTE_KEY_MOVING) when the projection does; with a depth (PortBindBeside) or without. */
+static void BindAbout(void *corner, uint32_t centre, int x, int y, uint64_t which, int depth)
 {
     const short *xy = corner;
     GtePrecise   at;
@@ -25,9 +25,20 @@ void PortBindAbout(void *corner, uint32_t centre, int x, int y, uint64_t which)
     }
     scale = at.view[2] / (double)(u_short)GteReadControl(26);
     GteKeyNext(0, GteKeyMix(at.key, which + 1) | (at.key & GTE_KEY_MOVING));
-    handle = GteRecordProjection(*(const uint32_t *)corner, at.x + (float)dx, at.y + (float)dy, 0.0f, 1.0f);
+    handle = GteRecordProjection(*(const uint32_t *)corner, at.x + (float)dx, at.y + (float)dy, depth ? at.z : 0.0f,
+                                 depth ? at.fade : 1.0f);
     GteRecordView(handle, at.view[0] + dx * scale, at.view[1] + dy * scale, at.view[2]);
     GteBindPrecise(corner, handle);
+}
+
+void PortBindAbout(void *corner, uint32_t centre, int x, int y, uint64_t which)
+{
+    BindAbout(corner, centre, x, y, which, 0);
+}
+
+void PortBindBeside(void *corner, uint32_t centre, int x, int y, uint64_t which)
+{
+    BindAbout(corner, centre, x, y, which, 1);
 }
 
 /* At the projection distance, where view space is the screen's (offset by its centre). */
