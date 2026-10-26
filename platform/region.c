@@ -1,4 +1,5 @@
-/* The disc's region: Wipeout XL (USA, SCUS-94351) or WipEout 2097 (Europe, SLES-00327), and the video standard the
+/* The disc's region: Wipeout XL (USA, SCUS-94351, or Japan, SIPS-60010, whose disc holds the same files) or WipEout
+   2097 (Europe, SLES-00327), and the video standard the
    game runs to: NTSC's 60 fields a second and 240 lines, or PAL's 50 and 256 (version.h's portPal: the settings', by
    default the disc's). Both discs hold the same data, both releases' pieces among it: the program asks for its own
    (the title screen, the copyright and Red Bull screens, the menus' backdrop and logo, the screen before the game:
@@ -51,26 +52,45 @@ static size_t madeSize[PIECES];
 
 int portPal;
 int portEuropeDisc;
+int portJapanDisc;
 int portEuropeCard; /* (off: version.h) */
 
-/* The two switches the game's version.h reads, fixed for the run: the disc's region, and the video standard (the
+/* The switches the game's version.h reads, fixed for the run: the disc's region, and the video standard (the
    settings; by default the disc's). */
 void PortRegionStart(void)
 {
     portEuropeDisc = PortRegionEurope();
+    portJapanDisc = PortRegionJapan();
     portPal = portSettings.videoStandard == VIDEO_PAL ||
               (portSettings.videoStandard == VIDEO_BY_DISC && portEuropeDisc);
+}
+
+/* Whether the disc holds a program: its name in the disc's root ("\\SLES_003.27"). */
+static int Holds(const char *program)
+{
+    const Disc *disc = PsxIoDisc();
+    int32_t lba;
+    uint32_t size;
+
+    return disc && DiscFindFile(disc, program, &lba, &size);
 }
 
 int PortRegionEurope(void)
 {
     static int known = -1;
-    const Disc *disc = PsxIoDisc();
-    int32_t lba;
-    uint32_t size;
 
-    if (known < 0 && disc) {
-        known = DiscFindFile(disc, "\\SLES_003.27", &lba, &size);
+    if (known < 0 && PsxIoDisc()) {
+        known = Holds("\\SLES_003.27");
+    }
+    return known > 0;
+}
+
+int PortRegionJapan(void)
+{
+    static int known = -1;
+
+    if (known < 0 && PsxIoDisc()) {
+        known = Holds("\\SIPS_600.10");
     }
     return known > 0;
 }

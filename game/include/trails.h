@@ -16,14 +16,17 @@ typedef struct TrailSegment {
     DR_MODE drawMode[2];    /* double buffered */
 } TrailSegment;
 
-#define TRAIL_SEGMENTS 11
+/* The segments of a trail in use: the Japanese release keeps two fewer. Port: decided by the disc (version.h), so
+   the ring has room for the most. */
+#define TRAIL_SEGMENTS_MAX 11
+#define TRAIL_SEGMENTS     (portJapanDisc ? 9 : TRAIL_SEGMENTS_MAX)
 
 /* A ship's trail: a ring of segments, newest at index current. */
 struct Trail {
     u_char       colour[3][3];  /* normal, the occasional bright flash, white */
     char         pad9[3];
     int          current;
-    TrailSegment segment[TRAIL_SEGMENTS];
+    TrailSegment segment[TRAIL_SEGMENTS_MAX];
 };
 
 extern Trail *shipTrails; /* one for each ship */

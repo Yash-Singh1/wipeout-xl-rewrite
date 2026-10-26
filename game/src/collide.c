@@ -734,7 +734,7 @@ void WingCollision(ShipData *playerShip, Face *facePtr, int direction, int alpha
     DamageCollide(129, remoteShip);
   }
   else
-    if (portPal || !(playerShip->combatAttr & 1)) /* the European program has no combatAttr bit 1 test here */
+    if (!US_PROGRAM || !(playerShip->combatAttr & 1)) /* the European and Japanese programs have no combatAttr bit 1 test here */
   {
     DamageCollide(129, ownShip);  WallScrapeRumble(playerShip);
   }
@@ -785,7 +785,7 @@ void NoseCollision(ShipData *playerShip, Face *facePtr, int direction, int alpha
     DamageCollide(129, remoteShip);
   }
   else
-    if (portPal || !(playerShip->combatAttr & 1)) /* the European program has no combatAttr bit 1 test here */
+    if (!US_PROGRAM || !(playerShip->combatAttr & 1)) /* the European and Japanese programs have no combatAttr bit 1 test here */
   {
     DamageCollide(129, ownShip);
     DamageCollide(129, ownShip);

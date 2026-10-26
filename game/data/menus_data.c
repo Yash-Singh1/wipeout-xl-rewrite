@@ -144,13 +144,19 @@ char msgGoodAccelerationAndTurning[44] = "GOOD ACCELERATION AND TURNING ABILITY 
 char msgWeakShieldAmateur[] = "WEAK SHIELD.  [AMATEUR]";
 char msgGoodAllRounderButAverage[44] = "GOOD ALL ROUNDER BUT AVERAGE PERFORMANCE.";
 char msgIntermediate[16] = "[INTERMEDIATE]";
+/* Port: the Japanese program's msgIntermediate, chosen by portJapanDisc */
+char msgIntermediateJapan[] = "[EXPERT]";
 char msgFastWithGoodShieldCapability[48] = "FAST WITH GOOD SHIELD CAPABILITY BUT SLIGHTLY";
 char msgHeavyAtTurningExpert[] = "HEAVY AT TURNING.  [EXPERT]";
+/* Port: the Japanese program's msgHeavyAtTurningExpert, chosen by portJapanDisc */
+char msgHeavyAtTurningExpertJapan[] = "HEAVY AT TURNING.  [PRO]";
 char msgVeryFastWithExcellentShield[40] = "VERY FAST WITH EXCELLENT SHIELD BUT NO";
 char msgWeaponTechnologyMaster[32] = "WEAPON TECHNOLOGY.  [MASTER]";
 char msgPhantomTrackCheatActive[28] = "PHANTOM TRACK CHEAT ACTIVE";
 char msgTrackCheatActive[20] = "TRACK CHEAT ACTIVE";
 char msgIntermediate2[16] = "INTERMEDIATE";
+/* Port: the Japanese program's msgIntermediate2, chosen by portJapanDisc */
+char msgIntermediate2Japan[] = "EXPERT";
 char msgSpeedDemon[] = "SPEED DEMON";
 char msgAMajorCanadianIndustrial[] = "A MAJOR CANADIAN INDUSTRIAL";
 char msgComplexEasy[] = "COMPLEX. [EASY]";
@@ -192,15 +198,27 @@ char msgTimesMode[12] __attribute__((aligned(4))) = "TIMES MODE";
 char msgArcadeMode[] __attribute__((aligned(4))) = "ARCADE MODE";
 char msgTimeTrialMode[] __attribute__((aligned(4))) = "TIME TRIAL MODE";
 char msgOnePlayerSingleRaceAgainst[44] = "[ONE PLAYER]  SINGLE RACE AGAINST A FULL";
+/* Port: the Japanese program's msgOnePlayerSingleRaceAgainst, chosen by portJapanDisc */
+char msgOnePlayerSingleRaceAgainstJapan[] = "[1 PLAYER]  SINGLE RACE AGAINST A FULL";
 char msgGridOfCompetitors[24] = "GRID OF COMPETITORS.";
 char msgOnePlayerSingleRaceTimeTrial[40] = "[ONE PLAYER]  SINGLE RACE TIME TRIAL.";
+/* Port: the Japanese program's msgOnePlayerSingleRaceTimeTrial, chosen by portJapanDisc */
+char msgOnePlayerSingleRaceTimeTrialJapan[] = "[1 PLAYER]  SINGLE RACE TIME TRIAL.";
 char msgNoCompetitors[] = "NO COMPETITORS.";
 char msgTwoPlayerSingleRaceAgainst[44] = "[TWO PLAYER]  SINGLE RACE AGAINST A FULL";
+/* Port: the Japanese program's msgTwoPlayerSingleRaceAgainst, chosen by portJapanDisc */
+char msgTwoPlayerSingleRaceAgainstJapan[] = "[2 PLAYER]  SINGLE RACE AGAINST A FULL";
 char msgTwoPlayerSingleRaceWithNo[] = "[TWO PLAYER]  SINGLE RACE WITH NO OTHER";
+/* Port: the Japanese program's msgTwoPlayerSingleRaceWithNo, chosen by portJapanDisc */
+char msgTwoPlayerSingleRaceWithNoJapan[] = "[2 PLAYER]  SINGLE RACE WITH NO OTHER";
 char msgCompetitors[16] = "COMPETITORS.";
 char msgOnePlayerPhantomChallenge[44] = "[ONE PLAYER]  PHANTOM CHALLENGE. SIX RACES";
+/* Port: the Japanese program's msgOnePlayerPhantomChallenge, chosen by portJapanDisc */
+char msgOnePlayerPhantomChallengeJapan[] = "[1 PLAYER]  PHANTOM CHALLENGE. SIX RACES";
 char msgAtRapierClassWeaponsAreActivated[] = "AT RAPIER CLASS. WEAPONS ARE ACTIVATED.";
 char msgOnePlayerPiranhaChallenge[48] = "[ONE PLAYER]  PIRANHA CHALLENGE. EIGHT RACES";
+/* Port: the Japanese program's msgOnePlayerPiranhaChallenge, chosen by portJapanDisc */
+char msgOnePlayerPiranhaChallengeJapan[] = "[1 PLAYER]  PIRANHA CHALLENGE. EIGHT RACES";
 char msgAtPhantomClassWeaponsAre[44] = "AT PHANTOM CLASS. WEAPONS ARE ACTIVATED.";
 char pathMenuDat[] = "c:\\wipeout2\\common\\menu.dat";
 char errLoadMenuLineDataFileHasZero[44] = "LoadMenuLineData: File has zero length \n";
@@ -339,6 +357,8 @@ s32 classBlink = 0;
 ClassOrder classOrderTable[1] = { { { 1, 0, 3, 5 } } };
 char msgNovice[8] = "NOVICE";
 char msgExpert[8] = "EXPERT";
+/* Port: the Japanese program's msgExpert, chosen by portJapanDisc */
+char msgExpertJapan[] = "PRO";
 char msgEasy[8] = "[EASY]";
 char msgHard[8] = "[HARD]";
 char msgGold[8] = "GOLD";
@@ -350,8 +370,14 @@ char msgLink[8] __attribute__((aligned(4))) = "LINK UP";
 short lastTopOption = 0;
 RaceOrder raceOrderTable[1] = { { { 9, 2, 8, 10, 6, 4 } } };
 char msgSelect2[8] = "SELECT";
+/* Port: the Japanese program's msgSelect2, chosen by portJapanDisc */
+char msgSelect2Japan[] = "OK";
 char msgAccept[8] = "ACCEPT";
+/* Port: the Japanese program's msgAccept, chosen by portJapanDisc */
+char msgAcceptJapan[] = "OK";
 char msgBack[8] = "BACK";
+/* Port: the Japanese program's msgBack, chosen by portJapanDisc */
+char msgBackJapan[] = "GO BACK";
 Chars5 msgType = { "TYPE" };
 Chars6A msgClass = { "CLASS" };
 Chars4A msgAnd = { "AND" };

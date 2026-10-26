@@ -365,7 +365,7 @@ int main(int argc, char **argv)
                                     DiscFindFile(disc, "\\WIPEOUT2\\SOUND\\SAMPLES.WAD", &lba, &size));
                 if (disc && !image.ok) {
                     SDL_snprintf(image.message, sizeof(image.message),
-                                 "%s is not Wipeout XL (SCUS-94351) or WipEout 2097 (SLES-00327).\n\n"
+                                 "%s is not Wipeout XL (SCUS-94351, SIPS-60010) or WipEout 2097 (SLES-00327).\n\n"
                                  "The game's files are not on it, nor the Sega Saturn's or the PC CD-ROM version's.",
                                  PortPathName(image.path));
                 }

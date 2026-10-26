@@ -214,8 +214,10 @@ extern char msgGoodAccelerationAndTurning[];
 extern char msgWeakShieldAmateur[];
 extern char msgGoodAllRounderButAverage[];
 extern char msgIntermediate[];
+extern char msgIntermediateJapan[];
 extern char msgFastWithGoodShieldCapability[];
 extern char msgHeavyAtTurningExpert[];
+extern char msgHeavyAtTurningExpertJapan[];
 extern char msgVeryFastWithExcellentShield[];
 extern char msgWeaponTechnologyMaster[];
 extern s32 teamSelectFrames;
@@ -223,6 +225,7 @@ extern ClassOrder classOrderTable[];
 extern char msgPhantomTrackCheatActive[];
 extern char msgTrackCheatActive[];
 extern char msgIntermediate2[];
+extern char msgIntermediate2Japan[];
 extern char msgSpeedDemon[];
 extern char msgAMajorCanadianIndustrial[];
 extern char msgComplexEasy[];
@@ -244,6 +247,7 @@ extern s32 envmapb;
 extern s32 classBlink;
 extern char msgNovice[];
 extern char msgExpert[];
+extern char msgExpertJapan[];
 extern char msgEasy[];
 extern char msgHard[];
 extern char msgGold[];
@@ -284,22 +288,31 @@ extern s32 raceType;
 extern s16 linked;
 extern RaceOrder raceOrderTable[];
 extern char msgOnePlayerSingleRaceAgainst[];
+extern char msgOnePlayerSingleRaceAgainstJapan[];
 extern char msgGridOfCompetitors[];
 extern char msgOnePlayerSingleRaceTimeTrial[];
+extern char msgOnePlayerSingleRaceTimeTrialJapan[];
 extern char msgNoCompetitors[];
 extern char msgTwoPlayerSingleRaceAgainst[];
+extern char msgTwoPlayerSingleRaceAgainstJapan[];
 extern char msgTwoPlayerSingleRaceWithNo[];
+extern char msgTwoPlayerSingleRaceWithNoJapan[];
 extern char msgCompetitors[];
 extern char msgOnePlayerPhantomChallenge[];
+extern char msgOnePlayerPhantomChallengeJapan[];
 extern char msgAtRapierClassWeaponsAreActivated[];
 extern char msgOnePlayerPiranhaChallenge[];
+extern char msgOnePlayerPiranhaChallengeJapan[];
 extern char msgAtPhantomClassWeaponsAre[];
 extern short menuEditor;
 extern int cardNum;
 extern short lastTopOption;
 extern char msgSelect2[];
+extern char msgSelect2Japan[];
 extern char msgAccept[];
+extern char msgAcceptJapan[];
 extern char msgBack[];
+extern char msgBackJapan[];
 extern MenuLayout *menuLayout;
 extern char pathMenuDat[];
 extern char errLoadMenuLineDataFileHasZero[];
@@ -804,6 +817,9 @@ idleCheck:
 /* The polygon of the button being drawn, addressed from the start of the button table. */
 #define BUTTON_POLY polys[buttonCount][CurrentScreen]
 
+/* Where a label left of its button (the back button's) starts: the Japanese "GO BACK" is longer than "BACK". */
+#define LEFT_LABEL_X (portJapanDisc ? -40 : -25)
+
 void DoButton(short x, short y, int requestedIcon, char *text)
 {
     Texture *texture;
@@ -887,10 +903,10 @@ void DoButton(short x, short y, int requestedIcon, char *text)
         labelShift=PortButtonGlyph(&BUTTON_POLY,iconNo,x,y); /* Port: the glyph of the keyboard or gamepad in use; a wider glyph pushes the label right */
         AddPrim(OT[CurrentScreen],& menuButtons[buttonCount][CurrentScreen] );
         if(playerControl[0].head==2) {
-            if(iconNo==9) Print(text,x-25,y+6,8);
+            if(iconNo==9) Print(text,x+LEFT_LABEL_X,y+6,8);
             else Print(text,x+18+labelShift,y+6,8);
         } else {
-            if(iconNo==3) Print(text,x-25,y+6,8);
+            if(iconNo==3) Print(text,x+LEFT_LABEL_X,y+6,8);
             else Print(text,x+18+labelShift,y+6,8);
         }
         buttonCount++;
@@ -1410,7 +1426,7 @@ void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSele
             selection->calibration[1] = keyConfig->calibration[1];
             keyConfig->active = 0;
             selection->current = 0;
-            if (!portEuropeDisc) { /* (WipEout 2097 has no replay lock) */
+            if (US_PROGRAM) { /* (the European and Japanese releases have no replay lock) */
                 replayBuffer->disabled = 1;
             }
         }
@@ -1430,7 +1446,7 @@ void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSele
             if (nc < 128) turnDivisor = ~nc;
             menu[currMenu].selection = 0;
             for (i = 0; i < 3; i++) negconEditing[i] = 0;
-            if (!portEuropeDisc) { /* (WipEout 2097 has no replay lock) */
+            if (US_PROGRAM) { /* (the European and Japanese releases have no replay lock) */
                 replayBuffer->disabled = 1;
             }
         } else {
@@ -4468,11 +4484,11 @@ void TeamSelect(ConfigData *gameData, MenuSelection *selection, void *shipShapes
         break;
     case 2:
         Print(msgGoodAllRounderButAverage, 30, 182, 8);
-        teamDescription = msgIntermediate;
+        teamDescription = JAPAN_STR(msgIntermediate, msgIntermediateJapan);
         break;
     case 3:
         Print(msgFastWithGoodShieldCapability, 30, 182, 8);
-        teamDescription = msgHeavyAtTurningExpert;
+        teamDescription = JAPAN_STR(msgHeavyAtTurningExpert, msgHeavyAtTurningExpertJapan);
         break;
     case 4:
         Print(msgVeryFastWithExcellentShield, 30, 182, 8);
@@ -4614,10 +4630,10 @@ void ClassSelect(ConfigData *gameData, MenuSelection *selection)
         className = msgNovice;
         break;
     case 1:
-        className = msgIntermediate2;
+        className = JAPAN_STR(msgIntermediate2, msgIntermediate2Japan);
         break;
     case 2:
-        className = msgExpert;
+        className = JAPAN_STR(msgExpert, msgExpertJapan);
         break;
     case 3:
         className = msgSpeedDemon;
@@ -5025,19 +5041,19 @@ void ShowMenu(ConfigData *gameData, MenuBars *polys, MenuSelection *selection)
             HighlightBox(menu[currMenu].selection, 0);
         }
     }
-    if(currMenu!=19 && currMenu!=17 && currMenu!=18 && currMenu!=9 && currMenu!=10 && currMenu!=15 && currMenu!=23 && currMenu!=21 && currMenu!=22) DoButton(30,198,1,msgSelect2);
-    if(currMenu==9 || currMenu==10 || currMenu==15 || currMenu==23 || currMenu==21 || currMenu==22) DoButton(30,198,1,msgAccept);
-    if(currMenu!=0) DoButton(278,198,3,msgBack);
+    if(currMenu!=19 && currMenu!=17 && currMenu!=18 && currMenu!=9 && currMenu!=10 && currMenu!=15 && currMenu!=23 && currMenu!=21 && currMenu!=22) DoButton(30,198,1,JAPAN_STR(msgSelect2, msgSelect2Japan));
+    if(currMenu==9 || currMenu==10 || currMenu==15 || currMenu==23 || currMenu==21 || currMenu==22) DoButton(30,198,1,JAPAN_STR(msgAccept, msgAcceptJapan));
+    if(currMenu!=0) DoButton(278,198,3,JAPAN_STR(msgBack, msgBackJapan));
     if(currMenu==2) ClassSelect(gameData,selection);
     if(currMenu==1) {
         switch(menu[1].selection) {
-        case 0: Print(msgOnePlayerSingleRaceAgainst,30,182,8);Print(msgGridOfCompetitors,30,189,8);break;
-        case 1: Print(msgOnePlayerSingleRaceTimeTrial,30,182,8);Print(msgNoCompetitors,30,189,8);break;
-        case 2: Print(msgTwoPlayerSingleRaceAgainst,30,182,8);Print(msgGridOfCompetitors,30,189,8);break;
-        case 3: Print(msgTwoPlayerSingleRaceWithNo,30,182,8);Print(msgCompetitors,30,189,8);break;
+        case 0: Print(JAPAN_STR(msgOnePlayerSingleRaceAgainst, msgOnePlayerSingleRaceAgainstJapan),30,182,8);Print(msgGridOfCompetitors,30,189,8);break;
+        case 1: Print(JAPAN_STR(msgOnePlayerSingleRaceTimeTrial, msgOnePlayerSingleRaceTimeTrialJapan),30,182,8);Print(msgNoCompetitors,30,189,8);break;
+        case 2: Print(JAPAN_STR(msgTwoPlayerSingleRaceAgainst, msgTwoPlayerSingleRaceAgainstJapan),30,182,8);Print(msgGridOfCompetitors,30,189,8);break;
+        case 3: Print(JAPAN_STR(msgTwoPlayerSingleRaceWithNo, msgTwoPlayerSingleRaceWithNoJapan),30,182,8);Print(msgCompetitors,30,189,8);break;
         case 4:
-            if(gameData->venomComplete) {Print(msgOnePlayerPhantomChallenge,30,182,8);Print(msgAtRapierClassWeaponsAreActivated,30,189,8);}
-            else if(gameData->rapierComplete) {Print(msgOnePlayerPiranhaChallenge,30,182,8);Print(msgAtPhantomClassWeaponsAre,30,189,8);}
+            if(gameData->venomComplete) {Print(JAPAN_STR(msgOnePlayerPhantomChallenge, msgOnePlayerPhantomChallengeJapan),30,182,8);Print(msgAtRapierClassWeaponsAreActivated,30,189,8);}
+            else if(gameData->rapierComplete) {Print(JAPAN_STR(msgOnePlayerPiranhaChallenge, msgOnePlayerPiranhaChallengeJapan),30,182,8);Print(msgAtPhantomClassWeaponsAre,30,189,8);}
             break;
         }
     }

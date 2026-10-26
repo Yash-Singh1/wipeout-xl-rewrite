@@ -1162,14 +1162,15 @@ static bool CheckDisc(const char *path, char *message, size_t size)
         SDL_snprintf(message, size, "%s", error);
         return false;
     }
-    bool ok = ((DiscFindFile(disc, "\\SCUS_943.51", &lba, &length) || DiscFindFile(disc, "\\SLES_003.27", &lba, &length)) &&
+    bool ok = ((DiscFindFile(disc, "\\SCUS_943.51", &lba, &length) || DiscFindFile(disc, "\\SLES_003.27", &lba, &length) ||
+                DiscFindFile(disc, "\\SIPS_600.10", &lba, &length)) &&
                DiscFindFile(disc, "\\WIPEOUT2\\TEXTURES\\MENUTIMS.CMP", &lba, &length)) ||
               PortSaturnDiscIs(disc) || // (the Sega Saturn's: saturn.c)
               PortPcDiscIs(disc);       // (the PC CD-ROM version's: pc.c)
     DiscClose(disc);
     if (!ok) {
-        SDL_snprintf(message, size, "That is not Wipeout XL (USA) or WipEout 2097 (Europe) for the PlayStation (its program, "
-                                    "SCUS_943.51 or SLES_003.27, and WIPEOUT2 folder), nor the Sega Saturn's or the PC CD-ROM version's.");
+        SDL_snprintf(message, size, "That is not Wipeout XL (USA, Japan) or WipEout 2097 (Europe) for the PlayStation (its "
+                                    "program, SCUS_943.51, SIPS_600.10 or SLES_003.27, and WIPEOUT2 folder), nor the Sega Saturn's or the PC CD-ROM version's.");
     }
     return ok;
 }

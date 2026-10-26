@@ -6,7 +6,8 @@
    .mcr, .srm, .mc, .ps, .ddf, .vm1 ...), and the ones with a header in front (DexDrive .gme, Connectix .mem/.vgs,
    the PSP's .vmp), and single saves (.mcs/.mcb/.psx: a directory frame, then the blocks). A card's directory
    names each save; Wipeout XL's are "BASCUS-94351" and a name of 8 letters (WipEout 2097's in Europe
-   BESLES-00327, in Japan BISCPS-45078: the same game, imported under the name of the disc's release). An import
+   BESLES-00327, in Japan BISIPS-60010 (and BISCPS-45078): the same game, imported under the name of the disc's
+   release). An import
    copies the save's blocks (its header with title and icon, the records, the options) onto the game's first card;
    WipEout 2097's header is 256 bytes where the others' is 512, so a save from the other format has its header cut
    to the title and icon, or padded, before the records. */
@@ -109,7 +110,7 @@ static int foundCount;
 static const struct {
     const char *prefix;
     const char *region;
-} games[] = {{"BASCUS-94351", "USA"}, {"BESLES-00327", "Europe"}, {"BISCPS-45078", "Japan"}};
+} games[] = {{"BASCUS-94351", "USA"}, {"BESLES-00327", "Europe"}, {"BISIPS-60010", "Japan"}, {"BISCPS-45078", "Japan"}};
 
 /* The game a directory entry's name is a save of (an index of games[]), -1 when another's. */
 static int GameOf(const uint8_t *name)

@@ -496,7 +496,7 @@ void NewTrailSegment(int ship, VECTOR *left, VECTOR *right)
         if (segment->g < 0) segment->g = 0;
         if (segment->b < 0) segment->b = 0;
     }
-    current = shipTrails[ship].current + 10;
+    current = shipTrails[ship].current + TRAIL_SEGMENTS - 1;
     current %= TRAIL_SEGMENTS;
     segment = &shipTrails[ship].segment[current];
     shipTrails[ship].current = current;
@@ -581,8 +581,8 @@ void DrawTrailLoRes(TrackCamera *camera, Trail *trail, int ship) {
     int lx, ly, lz, rx, ry, rz;
     int depth;
 
-    oldest = (trail->current + 10) % 11;
-    secondOldest = (oldest + 10) % 11;
+    oldest = (trail->current + TRAIL_SEGMENTS - 1) % TRAIL_SEGMENTS;
+    secondOldest = (oldest + TRAIL_SEGMENTS - 1) % TRAIL_SEGMENTS;
     view = camera->camPos;
     vertex[0].vx = shipIndex[ship].ppivot.vx + view->relative.t[0];
     vertex[0].vy = shipIndex[ship].ppivot.vy + view->relative.t[1];
@@ -593,7 +593,7 @@ void DrawTrailLoRes(TrackCamera *camera, Trail *trail, int ship) {
     if (i < TRAIL_SEGMENTS) {
         do {
             if ((i != oldest && i != secondOldest && shipP < 4000) || i == trail->current) {
-                n = (i + 2) % 11;
+                n = (i + 2) % TRAIL_SEGMENTS;
                 if (trail->segment[i].active && trail->segment[n].active) {
                     lx = trail->segment[i].left.vx;
                     ly = trail->segment[i].left.vy;
@@ -704,7 +704,7 @@ void DrawTrail(TrackCamera *camera, Trail *trail, int ship) {
             }
             if (shipIndex[ship].combatAttr & 0x80) return;
         }
-        oldest = (trail->current + 10) % TRAIL_SEGMENTS;
+        oldest = (trail->current + TRAIL_SEGMENTS - 1) % TRAIL_SEGMENTS;
         i = 0;
         do {
             if (i != oldest) {
@@ -1052,7 +1052,7 @@ void NewPlasmaSeg(VECTOR *pos, Trail *trail)
             if (trail->segment[i].b < 0) trail->segment[i].b = 0;
         }
     }
-    trail->current += 10;
+    trail->current += TRAIL_SEGMENTS - 1;
     trail->current %= TRAIL_SEGMENTS;
     trail->segment[trail->current].active = 1;
     trail->segment[trail->current].left.vx = pos->vx - 40;

@@ -160,11 +160,15 @@ int PsxMain(void) { /* Port: was void main(void), noreturn; the platform owns th
             VSync(0);
             frame += 1;
         }
-        Load16BitTexture(REGION_STR("c:\\wipeout2\\textures\\redbntsc.tim", "c:\\wipeout2\\textures\\redbpal.tim"), 1);
-        frame = 0;
-        while (frame < PortLogoFields(PAL_TIME(0x78))) {
+        if (portJapanDisc) { /* the Japanese release shows no Red Book logo, it waits one frame */
             VSync(0);
-            frame += 1;
+        } else {
+            Load16BitTexture(REGION_STR("c:\\wipeout2\\textures\\redbntsc.tim", "c:\\wipeout2\\textures\\redbpal.tim"), 1);
+            frame = 0;
+            while (frame < PortLogoFields(PAL_TIME(0x78))) {
+                VSync(0);
+                frame += 1;
+            }
         }
     }
     frame = 0;

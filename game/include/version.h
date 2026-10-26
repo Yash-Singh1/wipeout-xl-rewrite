@@ -2,18 +2,24 @@
 #define VERSION_H
 
 /*
- * The two releases: Wipeout XL (USA, SCUS-94351, NTSC) and WipEout 2097 (Europe, SLES-00327, PAL). The
- * decompilation builds either from the same sources with these macros; the port is one program that plays both,
- * so they are decided when it starts (platform/region.c), by two things that need not go together:
+ * The three releases: Wipeout XL (USA, SCUS-94351, NTSC), WipEout 2097 (Europe, SLES-00327, PAL) and Wipeout XL
+ * (Japan, SIPS-60010, NTSC). The decompilation builds each from the same sources with these macros; the port is
+ * one program that plays all three, so they are decided when it starts (platform/region.c), by things that need
+ * not go together:
  *
  *   portPal          the video standard: PAL's 50 fields a second and 256 lines, with the European program's
  *                    timing, physics and layout (the settings; by default the disc's).
  *   portEuropeDisc   the disc is WipEout 2097's: the files the game asks for, its text.
+ *   portJapanDisc    the disc is the Japanese release's. Its program is NTSC like the US one, but otherwise follows
+ *                    the European one (US_PROGRAM), with a few changes of its own: its text, no Red Book logo,
+ *                    shorter exhaust trails. Its disc's files are the US disc's.
  *
- * REGION and the PAL_ macros follow the video standard, REGION_STR the disc; the memory card neither (portEuropeCard).
+ * REGION and the PAL_ macros follow the video standard, REGION_STR, JAPAN_STR and US_PROGRAM the disc; the memory
+ * card none of them (portEuropeCard).
  */
 extern int portPal;
 extern int portEuropeDisc;
+extern int portJapanDisc;
 /* The memory card's saves in WipEout 2097's own format (BESLES-00327, a header of 256 bytes): off, so that both
    discs share Wipeout XL's saves and a player's progress goes from one to the other (platform/saves.c converts a
    European save it imports). */
@@ -24,6 +30,14 @@ extern int portEuropeCard;
 
 /* REGION_STR(us, eu): a string the European program has in place of the US one (each a whole literal). */
 #define REGION_STR(us, eu) (portEuropeDisc ? (eu) : (us))
+
+/* JAPAN_STR(us, jp): a string the Japanese program has in place of the US (and European) one. */
+#define JAPAN_STR(us, jp) (portJapanDisc ? (jp) : (us))
+
+/* US_PROGRAM: the US program's own changes, made after the European and Japanese programs were finished (the
+   decompilation's #ifdef VERSION_US): the replay lock, multi-block saves, the collision damage test. The other two
+   have the code from before them. */
+#define US_PROGRAM (!portEuropeDisc && !portJapanDisc)
 
 /* Frames per second (the field rate) and per tenth of a second. */
 #define FRAMES_PER_SECOND REGION(60, 50)
