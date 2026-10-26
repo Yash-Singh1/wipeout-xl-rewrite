@@ -136,6 +136,10 @@ int PortSaturnFileInfo(const char *pathname, int *loc, int *size);
 int PortSaturnRead(int loc, int sectors, void *buffer);
 /* ... and with the PC CD-ROM version's files (platform/pc.c): whether they are in use, the files the game reads. */
 int PortPcData(void);
+/* The picture drawn at (x, y) into video memory: the console's GPU drew into the same memory the textures come
+   from, and Spilskinanke's and Vostok Island's video screens show the picture before as a texture. Here the
+   picture is drawn on the graphics card, at the display's scale: read back at the console's (libgpu.c). */
+void PortReadPicture(int x, int y, int w, int h);
 /* The game frames run so far (platform/trace.c). */
 uint64_t PortGameFrames(void);
 int PortPcFileInfo(const char *pathname, int *loc, int *size);

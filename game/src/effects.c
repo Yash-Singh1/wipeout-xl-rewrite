@@ -576,6 +576,9 @@ void Video(Object **objects, int count)
         rectangles[0] .y = 0;
     }
     lowerBound = 0;
+    if (count > 0) {
+        PortReadPicture(rectangles[0].x, rectangles[0].y, rectangles[0].w + 1, rectangles[0].h + 1); /* Port */
+    }
     if ((count << 0x10) > lowerBound) {
         i = 0;
         do {

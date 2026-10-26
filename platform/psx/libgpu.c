@@ -785,6 +785,12 @@ int LoadImage(RECT *rect, u_long *p)
     return 0;
 }
 
+/* The drawn picture at (x, y) into video memory, where the game's video screens read it (Video). */
+void PortReadPicture(int x, int y, int w, int h)
+{
+    GpuReadBack(x, y, w, h);
+}
+
 int StoreImage(RECT *rect, u_long *p)
 {
     uint16_t *pixels = (uint16_t *)p;

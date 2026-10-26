@@ -1357,12 +1357,37 @@ void GpuReadBack(int x, int y, int w, int h)
         return;
     }
     SyncWide();
-    pixels = malloc((size_t)w * h * scale * scale * 4);
-    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
-    glReadPixels(x * scale, y * scale, w * scale, h * scale, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    pixels = malloc((size_t)w * h * 4);
+    {
+        /* shrunk to the console's pixels first, each the framebuffer's at its centre (a nearest blit samples
+           there), so that little is read (a picture each frame for the video screens, Video) */
+        static GLuint small, smallTexture;
+        static int smallW, smallH;
+
+        if (!small) {
+            glGenFramebuffers(1, &small);
+            glGenTextures(1, &smallTexture);
+        }
+        if (w > smallW || h > smallH) {
+            smallW = SDL_max(w, smallW);
+            smallH = SDL_max(h, smallH);
+            glBindTexture(GL_TEXTURE_2D, smallTexture);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, smallW, smallH, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+            glBindFramebuffer(GL_FRAMEBUFFER, small);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, smallTexture, 0);
+        }
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, small);
+        glDisable(GL_SCISSOR_TEST);
+        glBlitFramebuffer(x * scale, y * scale, (x + w) * scale, (y + h) * scale, 0, 0, w, h, GL_COLOR_BUFFER_BIT,
+                          GL_NEAREST);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, small);
+        glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    }
     for (j = 0; j < h; j++) {
         for (i = 0; i < w; i++) {
-            const uint8_t *p = pixels + (((size_t)j * scale + scale / 2) * w * scale + (size_t)i * scale + scale / 2) * 4;
+            const uint8_t *p = pixels + ((size_t)j * w + i) * 4;
             uint16_t pixel = (uint16_t)((p[0] >> 3) | ((p[1] >> 3) << 5) | ((p[2] >> 3) << 10));
             if (!drawnBlocks[(y + j) / BLOCK][(x + i) / BLOCK]) {
                 continue; /* uploaded, never drawn over: psxVram holds it */
