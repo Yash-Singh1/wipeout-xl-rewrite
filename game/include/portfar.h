@@ -54,6 +54,9 @@ void PortShadowGrid(TrackCamera *camera, const ShipData *ship, const VECTOR corn
 
 /* The pass, after the game's scenery (racectrl.c). */
 void PortFarDraw(TrackCamera *camera, ShipData *ships, Object **shipShapes);
+/* An object the game draws apart from the scene's, after PortFarDraw (a checkpoint droid's board): what of it the
+   game's drawing left out for its depth, drawn by the far view, so that it does not pop in. */
+void PortFarObject(Object *object);
 
 /* The engine flares of the ships the far view drew (after DrawShipTrails, which draws the near ones'): DrawFlare
    says which it drew (PortFarFlared) and links them where PortFlareSlot says. */
