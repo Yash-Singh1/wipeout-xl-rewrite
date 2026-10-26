@@ -65,6 +65,15 @@ void doShipShipCollision(int shipNo, ShipData *shipIndex, Object **shipShapes)
         Ship2ShipCollision(shipIndex, shipShapes, infrontShip, shipNo);
     }
 }
+/* Port: whether a face of the section beside the track (beside: its neighbour toward the track) is a wall the ship
+   meets. The original Wipeout's ships met only the walls along the track's edges; its sections have more faces
+   beyond them (the landscape), one of which stands across Arridos IV's track (its track file's section 299): met as a wall, as XL
+   meets every face of a section beside its track, it stopped the ship in mid-track. */
+static int PortWall(const Face *beside)
+{
+    return PortOriginalTrack() < 0 || PortOriginalTrackIs64() || (beside->flags & 1);
+}
+
 void Ship2ShipCollision(ShipData *shipIndex, Object **shipShapes, int i, int j) {
   int mag;
   VECTOR distance;
@@ -421,7 +430,7 @@ void Ship2Track(ShipData *playerShip, Face *facePtr, Object **shipShapes) {
         for(j=0;j<playerShip->nearTrkSect->faceCount;j++) {
             if(facePtr->flags&1) break;
             playerShip->attr|=32;
-            if(facePtr==track->faces+playerShip->nearTrkSect->faceStart || playerShip->nearTrkSect->junction.ptr!=0) {
+            if((facePtr==track->faces+playerShip->nearTrkSect->faceStart || playerShip->nearTrkSect->junction.ptr!=0) && PortWall(facePtr+1)) {
             facePoint.vx=track->vertices[facePtr->vertex[0]].vx;
             facePoint.vy=track->vertices[facePtr->vertex[0]].vy;
             facePoint.vz=track->vertices[facePtr->vertex[0]].vz;
@@ -514,7 +523,7 @@ void Ship2Track(ShipData *playerShip, Face *facePtr, Object **shipShapes) {
         while(!(facePtr->flags&1)) {facePtr++;i++;}
         do {facePtr++;i++;} while(facePtr->flags&1);
         for(j=i;j<playerShip->nearTrkSect->faceCount;j++,facePtr++) {
-            if(playerShip->nearTrkSect->faceCount>3 || playerShip->nearTrkSect->junction.ptr!=0) {
+            if((playerShip->nearTrkSect->faceCount>3 || playerShip->nearTrkSect->junction.ptr!=0) && PortWall(facePtr-1)) {
             facePoint.vx=track->vertices[facePtr->vertex[0]].vx;
             facePoint.vy=track->vertices[facePtr->vertex[0]].vy;
             facePoint.vz=track->vertices[facePtr->vertex[0]].vz;
