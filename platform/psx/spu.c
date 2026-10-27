@@ -553,6 +553,7 @@ void SpuSample(Spu *spu, const int16_t *cd, int16_t out[2])
 {
     int32_t mixed[2] = {0, 0};
     int32_t wet_input[2] = {0, 0};
+    int32_t rear[2] = {0, 0};
     int32_t wet[2];
     int32_t previous = 0;
     uint16_t control = spu->reg[SPU_CONTROL / 2];
@@ -562,10 +563,18 @@ void SpuSample(Spu *spu, const int16_t *cd, int16_t out[2])
 
     memset(spu->stems, 0, sizeof(spu->stems));
     for (i = 0; i < SPU_VOICES; i++) {
+        const SpuVoice *v = &spu->voice[i];
+        bool behind;
+
         previous = sample_voice(spu, i, previous);
+        behind = spu->split_rear && (v->volume[0].level < 0) != (v->volume[1].level < 0);
         for (c = 0; c < 2; c++) {
             if (control & SPU_CTRL_UNMUTE) {
-                mixed[c] += spu->stems[i][c];
+                if (behind) {
+                    rear[c] += v->volume[c].level < 0 ? -spu->stems[i][c] : spu->stems[i][c];
+                } else {
+                    mixed[c] += spu->stems[i][c];
+                }
                 if ((reverb_mask >> i) & 1) {
                     wet_input[c] += spu->stems[i][c];
                 }
@@ -587,6 +596,7 @@ void SpuSample(Spu *spu, const int16_t *cd, int16_t out[2])
         spu->stems[24][c] = clamp16(wet[c]);
         mixed[c] += wet[c];
         out[c] = clamp16(sar((int64_t)clamp16(mixed[c]) * spu->main[c].level, 15));
+        spu->rear[c] = clamp16(sar((int64_t)clamp16(rear[c]) * spu->main[c].level, 15));
         sweep_tick(&spu->main[c]);
     }
     /* The capture buffers at the start of RAM: CD left/right, voice 1, voice 3. */

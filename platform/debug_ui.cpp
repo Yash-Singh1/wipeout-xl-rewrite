@@ -1924,14 +1924,14 @@ static void Console(void)
             }
             DisabledWrapped("A race pauses, as with Start, when another window is chosen (one player's races).");
             ImGui::Separator();
-            bool surround = portSettings.surround != 0;
-            if (ImGui::Checkbox("Dolby Surround sound", &surround)) {
-                portSettings.surround = surround;
+            static const char *const surroundNames[] = {"Off", "Pro Logic receiver", "Headphones"};
+            ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12);
+            if (ImGui::Combo("Dolby Surround", &portSettings.surround, surroundNames, IM_ARRAYSIZE(surroundNames))) {
                 Changed();
             }
-            DisabledWrapped("With Stereo chosen in the game's sound options, the console encoded its sound effects for "
-                            "a Dolby Pro Logic receiver: the right channel's phase inverted. Off, they play in phase, as "
-                            "speakers and headphones want.");
+            DisabledWrapped("With Stereo chosen in the game's sound options, the console encoded the sounds behind the "
+                            "player for a Dolby Pro Logic receiver: the right channel's phase inverted. Off, they play "
+                            "in phase. Pro Logic receiver: the console's encoding. Headphones: heard from behind.");
             ImGui::Separator();
             bool skip = portSettings.skipIntro != 0;
             if (ImGui::Checkbox("Skip the intro movie at start-up", &skip)) {

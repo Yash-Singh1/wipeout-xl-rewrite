@@ -10,6 +10,7 @@
 #include "cdrom.h"
 #include "psx_io.h"
 #include "spu.h"
+#include "surround.h"
 
 /* The fields a second: 59.94 = 60000 / 1001 (NTSC) or 50 (PAL, region.c's portPal). */
 extern int portPal;

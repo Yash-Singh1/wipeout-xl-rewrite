@@ -93,7 +93,7 @@ static void Set(const char *key, const char *value)
     } else if (!strcmp(key, "pause_unfocused")) {
         portSettings.noFocusPause = number == 0;
     } else if (!strcmp(key, "surround")) {
-        portSettings.surround = number != 0;
+        portSettings.surround = SDL_clamp(number, SURROUND_OFF, SURROUND_HEADPHONES);
     } else if (!strcmp(key, "fullscreen")) {
         portSettings.fullscreen = number != 0;
     } else if (!strcmp(key, "vibration_strength") && number > 0) {
@@ -174,6 +174,11 @@ void PortSettingsLoad(void)
         /* "ntsc", "pal", anything else the disc's */
         portSettings.videoStandard = !SDL_strcasecmp(value, "ntsc") ? VIDEO_NTSC
                                      : !SDL_strcasecmp(value, "pal") ? VIDEO_PAL : VIDEO_BY_DISC;
+    }
+    if ((value = SDL_getenv("WIPEOUT_SURROUND"))) {
+        /* "off", "receiver" or "headphones" */
+        portSettings.surround = !strcmp(value, "receiver")     ? SURROUND_RECEIVER
+                                : !strcmp(value, "headphones") ? SURROUND_HEADPHONES : SURROUND_OFF;
     }
     if ((value = SDL_getenv("WIPEOUT_DEPTH_BUFFER"))) {
         portSettings.consoleDepth = SDL_atoi(value) == 0;

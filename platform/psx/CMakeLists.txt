@@ -4,7 +4,7 @@
 option(PSXIO_SDL "Audio output and keyboard/gamepad input through SDL3" ON)
 
 add_library(psxio STATIC
-    spu.c disc.c cdrom.c psx_io.c libspu.c libcd.c libapi.c libcard.c pad.c)
+    spu.c surround.c disc.c cdrom.c psx_io.c libspu.c libcd.c libapi.c libcard.c pad.c)
 target_include_directories(psxio PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 set_target_properties(psxio PROPERTIES C_STANDARD 11)
 if(ANDROID)

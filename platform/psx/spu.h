@@ -107,6 +107,11 @@ typedef struct Spu {
     /* Per-sample stems before the main volume: dry voices 0-23 (after voice volume),
        24 = reverb return, 25 = CD input after its volume. */
     int16_t stems[26][2];
+    /* The port's headphone surround (surround.c): when split_rear is set, the voices whose two volumes have opposite
+       signs (a game's Dolby Surround encoding of the sounds behind the player) are left out of the output and mixed
+       here instead, in phase, after the main volume. The reverb still hears them as encoded. */
+    bool split_rear;
+    int16_t rear[2];
     SpuTraceFn trace;
     void *trace_user;
 } Spu;

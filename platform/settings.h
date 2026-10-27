@@ -1,7 +1,7 @@
 /* The player's settings (settings.c): a small INI file in the user's data folder, changed from the
    debug console (debug_ui.cpp, the ~ key). Environment variables still override them for a
    run (WIPEOUT_FAR_VIEW, WIPEOUT_FAR_FLARES, WIPEOUT_FADE, WIPEOUT_WIDESCREEN, WIPEOUT_FRAME_RATE, WIPEOUT_SAVE_DIR, WIPEOUT_RENDER_SCALE,
-   WIPEOUT_HD_PACK, WIPEOUT_MUSIC, WIPEOUT_TOUCH); the tests' hidden runs ignore the file. */
+   WIPEOUT_HD_PACK, WIPEOUT_MUSIC, WIPEOUT_TOUCH, WIPEOUT_SURROUND); the tests' hidden runs ignore the file. */
 #ifndef PORT_SETTINGS_H
 #define PORT_SETTINGS_H
 
@@ -45,10 +45,16 @@ typedef struct PortSettings {
     int videoStandard;    /* VIDEO_BY_DISC, VIDEO_NTSC or VIDEO_PAL (region.c); takes effect at the next start */
     int farFlares;        /* the engine flares of the ships the whole track's view draws beyond the console's distance
                              (portfar.c; the console drew none there) */
-    int surround;         /* the console's Dolby Surround encoding: the sounds it puts behind the player play with the
-                             right channel's phase inverted, for a Pro Logic decoder (game/src/sfx.c) */
+    int surround;         /* the sounds the game's Stereo (Dolby Surround) mode puts behind the player: SURROUND_* */
     int fullscreen;       /* the window was full screen when last left: the next start is too (video.c) */
 } PortSettings;
+
+/* PortSettings.surround */
+enum {
+    SURROUND_OFF,        /* in phase with the rest, as stereo speakers and headphones want (game/src/sfx.c) */
+    SURROUND_RECEIVER,   /* the console's encoding, the right channel's phase inverted, for a Pro Logic receiver */
+    SURROUND_HEADPHONES  /* heard from behind on headphones (platform/psx/surround.c) */
+};
 
 /* PortSettings.videoStandard: the disc's (Wipeout XL NTSC, WipEout 2097 PAL), or either for both */
 enum { VIDEO_BY_DISC, VIDEO_NTSC, VIDEO_PAL };

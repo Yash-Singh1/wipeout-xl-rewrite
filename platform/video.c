@@ -299,7 +299,7 @@ int PortFocusPause(void)
 
 int PortSurround(void)
 {
-    return portSettings.surround || PortTracing();
+    return portSettings.surround != SURROUND_OFF || PortTracing();
 }
 
 void PortAutoSaveAtExit(void); /* (game/src/portsave.c) */
@@ -324,6 +324,15 @@ int PortPumpEvents(void)
     if (PortLinkRole() == LINK_SLAVE) {
         /* the second player's game: the window and its events are the first's */
         return !PortLinkQuitRequested();
+    }
+    {
+        static int headphones = -1;
+        int now = portSettings.surround == SURROUND_HEADPHONES && !PortTracing();
+
+        if (now != headphones) {
+            headphones = now;
+            PsxAudioSetSurround(now); /* (the setting can change in the debug console) */
+        }
     }
     while (SDL_PollEvent(&event)) {
         if (event.type == SDL_EVENT_QUIT) {

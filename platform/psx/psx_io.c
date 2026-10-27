@@ -76,6 +76,9 @@ void PsxAudioRenderLocked(int16_t *out, uint32_t frames)
 
         CdDriveSample(&g_io.cd, cd);
         SpuSample(g_io.spu, cd, dest);
+        if (g_io.spu->split_rear) {
+            SurroundRender(dest, g_io.spu->rear, dest);
+        }
         if (g_io.wav) {
             uint8_t b[4] = {(uint8_t)dest[0], (uint8_t)((uint16_t)dest[0] >> 8), (uint8_t)dest[1],
                             (uint8_t)((uint16_t)dest[1] >> 8)};
@@ -84,6 +87,16 @@ void PsxAudioRenderLocked(int16_t *out, uint32_t frames)
             g_io.wavFrames++;
         }
     }
+}
+
+void PsxAudioSetSurround(int headphones)
+{
+    PsxLock();
+    if (g_io.spu && g_io.spu->split_rear != (headphones != 0)) {
+        g_io.spu->split_rear = headphones != 0;
+        SurroundReset();
+    }
+    PsxUnlock();
 }
 
 void PsxAudioRender(int16_t *out, uint32_t frames)
