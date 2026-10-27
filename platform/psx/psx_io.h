@@ -54,8 +54,8 @@ void PsxInputEvent(const union SDL_Event *event);
 typedef int (*PsxExecHook)(void *block);
 void PsxSetExecHook(PsxExecHook hook);
 
-/* Headphone surround (surround.c): the sounds a game's Dolby Surround mode puts behind the player are heard from
-   behind, on headphones; off, the output is the console's. */
+/* Headphone surround (surround.c): what a game's Dolby Surround mode encodes for the speakers behind the listener
+   is heard from behind, on headphones; off, the output is the console's. */
 void PsxAudioSetSurround(int headphones);
 
 /* The lock (above), for the platform's own audio that the drive or the SPU call into (platform/music.c), while

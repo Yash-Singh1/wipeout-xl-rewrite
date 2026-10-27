@@ -45,7 +45,7 @@ typedef struct PortSettings {
     int videoStandard;    /* VIDEO_BY_DISC, VIDEO_NTSC or VIDEO_PAL (region.c); takes effect at the next start */
     int farFlares;        /* the engine flares of the ships the whole track's view draws beyond the console's distance
                              (portfar.c; the console drew none there) */
-    int surround;         /* the sounds the game's Stereo (Dolby Surround) mode puts behind the player: SURROUND_* */
+    int surround;         /* the game's Stereo mode, a Dolby Surround encoding of its sound effects: SURROUND_* */
     int fullscreen;       /* the window was full screen when last left: the next start is too (video.c) */
 } PortSettings;
 
@@ -53,7 +53,7 @@ typedef struct PortSettings {
 enum {
     SURROUND_OFF,        /* in phase with the rest, as stereo speakers and headphones want (game/src/sfx.c) */
     SURROUND_RECEIVER,   /* the console's encoding, the right channel's phase inverted, for a Pro Logic receiver */
-    SURROUND_HEADPHONES  /* heard from behind on headphones (platform/psx/surround.c) */
+    SURROUND_HEADPHONES  /* decoded, its surround channel heard from behind on headphones (platform/psx/surround.c) */
 };
 
 /* PortSettings.videoStandard: the disc's (Wipeout XL NTSC, WipEout 2097 PAL), or either for both */

@@ -104,8 +104,8 @@ void PortPadRumbleScrape(int level);
 /* Whether a race should pause because the window has lost the focus (the setting pause_unfocused, on unless the
    player turns it off; platform/video.c). */
 int PortFocusPause(void);
-/* Whether the sounds the console's Dolby Surround mode puts behind the player keep its encoding, the right channel's
-   phase inverted: for a Pro Logic receiver, for the port's headphone surround (which finds them by it) and always in a
+/* Whether the sound effects the console's Dolby Surround mode (the game's Stereo) encodes keep the encoding, the right
+   channel's phase inverted: for a Pro Logic receiver, for the port's headphone surround (which finds them by it) and always in a
    trace (the setting surround); without it they play in phase, as stereo speakers and headphones want (game/src/sfx.c). */
 int PortSurround(void);
 

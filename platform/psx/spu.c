@@ -1,5 +1,6 @@
 #include "spu.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 /* Arithmetic shift right with the sign preserved: the hardware's "SAR". */
@@ -564,15 +565,24 @@ void SpuSample(Spu *spu, const int16_t *cd, int16_t out[2])
     memset(spu->stems, 0, sizeof(spu->stems));
     for (i = 0; i < SPU_VOICES; i++) {
         const SpuVoice *v = &spu->voice[i];
-        bool behind;
 
         previous = sample_voice(spu, i, previous);
-        behind = spu->split_rear && (v->volume[0].level < 0) != (v->volume[1].level < 0);
+        if ((control & SPU_CTRL_UNMUTE) && spu->split_rear &&
+            (v->volume[0].level < 0) != (v->volume[1].level < 0)) {
+            /* a surround-encoded voice, as a decoder hears it: the part common to both sides in opposite phase (the
+               quieter side's) is the surround channel, and what the louder side has beyond it plays at the front */
+            int32_t left = v->volume[0].level < 0 ? -spu->stems[i][0] : spu->stems[i][0];
+            int32_t right = v->volume[1].level < 0 ? -spu->stems[i][1] : spu->stems[i][1];
+            int32_t common = abs(v->volume[0].level) < abs(v->volume[1].level) ? left : right;
+
+            rear[0] += common;
+            rear[1] += common;
+            mixed[0] += left - common;
+            mixed[1] += right - common;
+        }
         for (c = 0; c < 2; c++) {
             if (control & SPU_CTRL_UNMUTE) {
-                if (behind) {
-                    rear[c] += v->volume[c].level < 0 ? -spu->stems[i][c] : spu->stems[i][c];
-                } else {
+                if (!spu->split_rear || (v->volume[0].level < 0) == (v->volume[1].level < 0)) {
                     mixed[c] += spu->stems[i][c];
                 }
                 if ((reverb_mask >> i) & 1) {

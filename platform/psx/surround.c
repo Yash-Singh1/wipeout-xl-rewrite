@@ -1,6 +1,7 @@
-/* Headphone surround. A Dolby Surround receiver plays the sounds a game encodes as behind the player from speakers
-   behind the listener; on headphones the encoding (the right channel's phase inverted) only sounds hollow. Here the
-   SPU hands those sounds over separately (spu.h's rear) and each ear hears what a pair of speakers would give it:
+/* Headphone surround. A Dolby Surround receiver plays what a game encodes in opposite phase on the two sides from
+   speakers behind the listener; on headphones the encoding only sounds hollow. Wipeout XL's Stereo mode encodes every
+   sound effect so: one in the middle plays from behind alone, one panned to a side from that side's front speaker
+   too. Here the SPU decodes it per voice (spu.h's rear) and each ear hears what the speakers would give it:
 
    - the front pair at about 30 degrees: each ear also hears the other side, a little later and duller (crossfeed),
      as the head lets through from a speaker on the far side;

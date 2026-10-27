@@ -1929,9 +1929,10 @@ static void Console(void)
             if (ImGui::Combo("Dolby Surround", &portSettings.surround, surroundNames, IM_ARRAYSIZE(surroundNames))) {
                 Changed();
             }
-            DisabledWrapped("With Stereo chosen in the game's sound options, the console encoded the sounds behind the "
-                            "player for a Dolby Pro Logic receiver: the right channel's phase inverted. Off, they play "
-                            "in phase. Pro Logic receiver: the console's encoding. Headphones: heard from behind.");
+            DisabledWrapped("With Stereo chosen in the game's sound options, the console encoded its sound effects "
+                            "for a Dolby Pro Logic receiver's rear speakers: the right channel's phase inverted. Off, they "
+                            "play in phase. Pro Logic receiver: the console's encoding. Headphones: as a receiver plays "
+                            "them, from behind (and the sides' front speakers for the ones panned).");
             ImGui::Separator();
             bool skip = portSettings.skipIntro != 0;
             if (ImGui::Checkbox("Skip the intro movie at start-up", &skip)) {

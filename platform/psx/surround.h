@@ -1,5 +1,5 @@
-/* Headphone surround: the SPU's output with the sounds behind the player (spu.h's rear) placed behind the listener,
-   for headphones. */
+/* Headphone surround: the SPU's output with its Dolby Surround channel (spu.h's rear) played from behind the
+   listener, for headphones. */
 #ifndef PSX_SURROUND_H
 #define PSX_SURROUND_H
 
