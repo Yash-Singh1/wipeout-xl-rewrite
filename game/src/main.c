@@ -62,7 +62,6 @@ static union { long long alignment; char bytes[MAIN_HEAP_SIZE + RESERVE_HEAP_SIZ
 int PsxMain(void) { /* Port: was void main(void), noreturn; the platform owns the program entry */
     char callWorkspace[64];
     char *introFilename = REGION_STR("C:\\ntscanim.exe", "C:\\palanim.exe");
-    char initMemory[8];
     /* Port: the console's stack was still zero here (RAM is clear at boot): the recording shows the title
        background packets with clut 0, and ShowMenuBackground never sets the clut or the colour of the two
        primitives it draws. Native stack is not zero, so clear them. */
@@ -89,7 +88,6 @@ int PsxMain(void) { /* Port: was void main(void), noreturn; the platform owns th
     int timeout;
     int musicSelection;
 
-    memset(initMemory, 0, 4);
     promptTimer = 0;
     ResetCallback();
     SetMem(2);
@@ -292,7 +290,7 @@ music_done:
                         attractLoopFlag = 0;
                         break;
                     }
-                    if (titleFrames >= 0xB && ((GetMenuKey(6) << 0x10) != 0 || PortLinkRole() == PORT_LINK_SLAVE)) { /* Port: the second player's game goes straight on */
+                    if (titleFrames >= 0xB && ((GetMenuKey(MENU_KEY_START) << 0x10) != 0 || PortLinkRole() == PORT_LINK_SLAVE)) { /* Port: the second player's game goes straight on */
                         PlayNote(9, 0xFF, 0xF, 0xF, 0x100);
                         frame = 0;
                         do {

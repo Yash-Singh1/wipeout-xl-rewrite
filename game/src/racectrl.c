@@ -1,5 +1,6 @@
-#include "include_asm_g8.h"
 #include "functions.h"
+#include "racectrl.h"
+#include "sfx.h"
 #include "portorig.h" /* Port: the original Wipeout's tracks */
 #include "portlink.h" /* Port: two players on one machine */
 #include "hud.h"
@@ -174,17 +175,17 @@ typedef struct RaceLocals {
     ResetData  resetData;       /* what a restart of the race needs (InitRaceResetData) */
     InGameMenu inGameMenu;      /* polygons of the pause menu */
     short      tileCount;       /* texture tiles of the track (WADLoadTtfFile, AsmGenerateTiles) */
-    int        noWeaponGrids;   /* weapon grids of the track (InitWeaponGrids) */
-    short      specialCount;
+    int        weaponGridCount; /* weapon grids of the track (InitWeaponGrids) */
+    short      specialGridCount;
     signed char cdTrack;        /* SetInGameCDTrack: track the CD drive reports */
     int        cdMode;
     signed char viewMode;       /* the two-player pause status seen last */
     short      raceComplete;
-    int        crowdSample;     /* objects found by InitCrowdSound */
+    int        crowdCount;      /* crowd objects found by InitCrowdSound */
     u_short    skyIndex;        /* index in prmObjects of the sky model (returned by WADInitScene) */
     int        rainTimer;       /* frames of rain/thunder, 0..255 */
     int        thunderAt;       /* rainTimer value at which the thunder flash started */
-    u_char     firstTime;
+    u_char     updateTrails;    /* the trails are updated once more on the first paused frame */
 } RaceLocals;
 
 /* Port: the PC version's race loads the Red Bull boards of track 1 only, as one picture (platform/pc.c makes
@@ -200,23 +201,24 @@ static void InitRedBull(char *textureSequence)
     LoadCmpFiles(LoadCompressedTextureSequence(textureSequence));
 }
 
+/* Loads the track and runs the race: its frames until it ends, again from the start after each restart. attractMode
+   is 1 for the attract mode's race; idleLimit, the frames without input after which a player's ship goes on alone. */
 #define CHECKPOINTS (checkCells[gameData->trackNum][gameData->shipClass])
-void race(ConfigData *gameData, int context, int scene)
+void race(ConfigData *gameData, int attractMode, int idleLimit)
 {
     RaceLocals locals;
     WADFILE *wad;
     TexTemplate *tiles;
     int i,j,radius,x,y,z,bob;
     int advance;
-    int one=1; int two=2;
-    locals.tileCount=0;locals.noWeaponGrids=0;locals.cdMode=one;locals.viewMode=two;locals.specialCount=0;locals.raceComplete=0;
+    locals.tileCount=0;locals.weaponGridCount=0;locals.cdMode=1;locals.viewMode=2;locals.specialGridCount=0;locals.raceComplete=0;
     InitDynamicMem(reserveHeap,RESERVE_HEAP_SIZE);
-    locals.crowdSample=0;
+    locals.crowdCount=0;
     advertCount=0;cameraCount=0;neonCount=0;girderCount=0;videoCount=0;zepCount=0;dishCount=0;pylonCount=0;fanCount=0;smokeSlowCount=0;smokeFastCount=0;smokeNumber=0;
     fastCount=0;fastTexCount=0;slowCount=0;slowTexCount=0;torchCount=0;torchNumber=0;redBullCount=0;redBullNumber=0;bobCount=0;prmCount=0;
-    attractModeFlag=0;firstTimeIn=one;pauseState.confirmed=two;pauseState.confirmChoice=0;checkTimer=0;savedHeap=heap;heap=reserveHeap;savedTextureCount=TextureTableCount;masterWait=0;writeFlag=0x3938700;
-    locals.rainTimer=0;locals.thunderAt=0;locals.firstTime=1;
-    if(context==0) raceFlag=1;
+    attractModeFlag=0;firstTimeIn=1;pauseState.confirmed=2;pauseState.confirmChoice=0;checkTimer=0;savedHeap=heap;heap=reserveHeap;savedTextureCount=TextureTableCount;masterWait=0;writeFlag=0x3938700;
+    locals.rainTimer=0;locals.thunderAt=0;locals.updateTrails=1;
+    if(attractMode==0) raceFlag=1;
     trackCache=DAlloc(reserveHeap,sizeof(AutoMeshData));
     trackCache->triCount=0;trackCache->quadCount=0;trackCache->mode=0;trackCache->active=1;
     locals.clearPolys[0]=BlockFill(0,0,320,SCREEN_HEIGHT,0,0,0);
@@ -240,17 +242,15 @@ void race(ConfigData *gameData, int context, int scene)
         CHECKPOINTS[j].done=-1;
     }
     InitTrackTextures(gameData);
-    InitWeaponGrids(weaponGrids,track,&locals.noWeaponGrids,&locals.specialCount,(SpecialGrid *)CHECKPOINTS);
+    InitWeaponGrids(weaponGrids,track,&locals.weaponGridCount,&locals.specialGridCount,(SpecialGrid *)CHECKPOINTS);
     InitCheckPoints((CheckPoints *)CHECKPOINTS,gameData);
     trackCycleTimer=0;InitTrackCycle();
     InitDroidThings(startDroidObjects,startDroidNames,raceCamera.camPos,(Checkpoint *)CHECKPOINTS,gameData);
     InitDroidThings(lightGroups,lightGroupNames,raceCamera.camPos,(Checkpoint *)CHECKPOINTS,gameData);
     PortOriginalSceneInit(prmObjects,prmCount); /* Port: an original Wipeout track's start gantries, beacons, pumps (portorig.c) */
     InitRaceLine(track,gameData);InitInGameMenu(&locals.inGameMenu);
-    { int crowd=InitCrowdSound(prmObjects,prmCount,locals.crowdObjects,locals.crowdSample);
-    unsigned char currentTrack=gameData->actTrackNum;
-    locals.crowdSample=crowd;
-    if(currentTrack==1) {
+    locals.crowdCount=InitCrowdSound(prmObjects,prmCount,locals.crowdObjects,locals.crowdCount);
+    if(gameData->actTrackNum==1) {
         InitObject(prmObjects,prmCount,cameraDroids,cameraDroidNames,6,&cameraCount);
         InitObject(prmObjects,prmCount,fans,fanNames,3,&fanCount);
         InitObject(prmObjects,prmCount,smokeSlowObjects,smokeSlowNames,6,&smokeSlowCount);
@@ -258,7 +258,6 @@ void race(ConfigData *gameData, int context, int scene)
         smokeNumber=TextureTableCount;LoadCmpFiles(LoadCompressedTextureSequence(track1SmokeTextureSequence));
         InitRedBull(sharedTrackTextureSequence);
         smokeColour.r=64;smokeColour.g=64;smokeColour.b=64;
-    }
     }
     if(gameData->actTrackNum==6) {
         InitObject(prmObjects,prmCount,advert,advertNames,6,&advertCount);
@@ -301,10 +300,11 @@ void race(ConfigData *gameData, int context, int scene)
         InitObject(prmObjects,prmCount,girderObjects,girderNames,5,&girderCount);
         InitTrainLights(prmObjects,prmCount,monoRailObjs,pauseState.selection);
         InitRedBull(track2TextureSequence);
-        { Object *trainObject=zeppelinObj;
+        /* the train's flag and its muzzle position (pad10[1..3]) are cleared; the zeppelin is moved 8000 down z,
+           where it is based */
         monoRail.index=0;monoRail.pad10[1]=0;monoRail.pad10[2]=0;monoRail.pad10[3]=0;
-        { Skeleton *trainSkeleton=trainObject->skeleton; trainSkeleton->relative.t[2]-=8000; } }
-        { Object *trainPosition=zeppelinObj; zeppelinBaseX=trainPosition->skeleton->relative.t[0];zeppelinBaseY=trainPosition->skeleton->relative.t[1];zeppelinBaseZ=trainPosition->skeleton->relative.t[2]; }
+        zeppelinObj->skeleton->relative.t[2]-=8000;
+        zeppelinBaseX=zeppelinObj->skeleton->relative.t[0];zeppelinBaseY=zeppelinObj->skeleton->relative.t[1];zeppelinBaseZ=zeppelinObj->skeleton->relative.t[2];
         InitObject(prmObjects,prmCount,pylons,pylonNames,5,&pylonCount);
         InitMonoData(pylons,pylonCount,&monoRail);
     }
@@ -316,237 +316,238 @@ void race(ConfigData *gameData, int context, int scene)
     InitRaceResetData(&locals.resetData,shipIndex,gameData,weaponIndex,weaponBars,&rescueData,shipShapeTable,(CheckPoints *)CHECKPOINTS);
     for(j=0;j<15;j++) {shipDamage[j]=0;fracdamage[j]=0;}
     particleSlots=InitParticle();InitExplode();InitRing();InitScoreTabData(&scoreTabData);InitialiseBumps();
-    if(raceType==0) {
+    if(raceType==RACE_ARCADE) {
         switch(gameData->shipClass) {
         case 0: LoadModel(teamShip,vectorShipName);break;
         case 1: LoadModel(teamShip,venomShipName);break;
         case 2: LoadModel(teamShip,rapierShipName);break;
         case 3: LoadModel(teamShip,phantomShipName);break;
         }
-    } else if(raceType==4) {
+    } else if(raceType==RACE_CHALLENGE) {
         if(gameData->venomComplete) LoadModel(teamShip,rapierShipName);
-        else {
-            goto checkRapier;
-quit:
-            PortLinkRaceView(0); /* Port: the window is whole again (portlink.c) */
-            PortFade(0);
-            QuitGame();
-            return;
-checkRapier:
-            if(gameData->rapierComplete) LoadModel(teamShip,phantomShipName);
-        }
+        else if(gameData->rapierComplete) LoadModel(teamShip,phantomShipName);
     }
-    one=1;
     trackNameScroll=480;gameData->raceInfo=0;medalDisplay=0;
     PortLinkRaceView(1); /* Port: a linked race splits the window between the two players (portlink.c) */
-restart:
-    Restart(&locals.resetData);InitRaceData(&pauseState);
-    if(context!=one) attractDelayFrames=0;
-    InitAttractMode(context,shipIndex);gameData->complete=0;SetUpFirstCheckPoint();
-    /* Port: the droid is drawn before the camera moves, with the last frame's view: on a restart that was the
-       paused race's, and the first frame showed it huge beside the track. The start's view is set first. */
-    if(CameraUpdate==UpdateCameraRaceStart && !PortTracing()) CameraUpdate(&raceCamera,&shipIndex[ownShip],&rescueData);
-frame:
-    if(portPal) GetJoyPadPacketOnVsync(pauseState.stage); /* the European program: the link slave waits a field while a two-player pause is requested */
-    buildGameKeyPad(padBuf1,playerControl);buildFixedPad(padBuf1);
-    PortRaceControls((shipIndex[ownShip].attr&RACING) && pauseState.selection==-1,keyDef); /* Port: the keyboard steers the ship only while racing */
-    if(raceType==one) RecordKeypresses(shipIndex);
-    UpdateCheatSequence(0);ClearOTagR(OT[CurrentScreen],8192);ClearOTagR(OT2[CurrentScreen],1600);
-    PortFade(1); /* Port: distant geometry fades out (portfar.c) */
-    buttonCount=0;quadIndex=CurrentScreen*300;shipClassIndex=gameData->shipClass;clipLevel=gameData->trackNum;
-    SetInGameCDTrack(&locals.cdTrack,&locals.cdPosition,gameData,&locals.cdMode);
-    if(gameType!=2) doSerialGame(gameData,shipIndex);
-    ShowLinkBroken();writeFlag=0;
-    CheckShipDestroyed(shipIndex,gameData,&context,scene);PlayCredits(context);
-    CheckGamePause(shipIndex,&pauseState.selection,gameData,&keysPressed,&pauseState.musicPaused);
-    Check2PlayerPause(pauseState.stage,&locals.viewMode,&pauseState.musicPaused);
-    PerformPauseOperations(&pauseState,(struct SelectBox *)&locals.inGameMenu,gameData);
-    InitiateTwoPlayerPause(&pauseState);
-    if(!raceEndTimer) Perform2PlayerPauseCommand(&pauseState);
-    if((pauseState.selection==-1 || oneMoreTime) && !masterWait && !linkDropped) {
-        oneMoreTime=0;CheckForButtonPress();UpdateShips(shipIndex,weaponBars,shipShapeTable,weaponIndex);
-        rescueData.droidUpdate(&rescueData,&shipIndex[ownShip],shipShapeTable);
-        CameraUpdate(&raceCamera,&shipIndex[ownShip],&rescueData);
-        if(shipIndex[ownShip].attr&64) {
-            if(shipIndex[ownShip].weapon==2 || shipIndex[ownShip].weapon==5) {
-                MissileLock(ownShip,shipIndex);if(shipIndex[ownShip].weapon==2) RearMissileLock(ownShip,shipIndex);
-            }
-            ShakeScreen();
-        }
-        if(gameType!=2 && (shipIndex[remoteShip].attr&64)) {
-            if(shipIndex[remoteShip].weapon==2 || shipIndex[remoteShip].weapon==5) {
-                MissileLock(remoteShip,shipIndex);if(shipIndex[remoteShip].weapon==2) RearMissileLock(remoteShip,shipIndex);
-            }
-        }
-        UpdateWeapons(shipIndex,weaponBars,weaponIndex);CheckPitShips();
-        if(pauseState.selection==-1 && !linkDropped) {AdjustEngineSound(&shipIndex[ownShip],&raceCamera);AdjustCrowdSound(locals.crowdObjects,locals.crowdSample);}
-        TrackSpecificFunctions();ColourDroidLights(shipShapeTable[30]);AddEffects(weaponIndex,shipIndex);raceElapsed=GsGetVcount()-raceStartVcount;
-        if(raceType!=one && gameData->weaponsOn) CycleWeaponGrids(shipIndex,(struct WeaponGridZone *)weaponGrids,locals.noWeaponGrids);
-        else if(!gameData->weaponsOn && raceType==4) CycleWeaponGrids(shipIndex,(struct WeaponGridZone *)weaponGrids,locals.noWeaponGrids);
-    }
-    masterWait=0;
-    if(!linkSendFlag) {
-        if(attractDelayFrames>0) {
-            attractDelayFrames--;
-            if((context==one && CheckAttractOver(gameData)) || !attractDelayFrames) raceEndTimer=2;
-        }
-    } else RaceComplete(&locals.inGameMenu,&locals.resetData,gameData,&locals.raceComplete,&scoreTabData,shipIndex);
-    if(raceEndTimer>0) {
-        if(linked) {
-            if(linkRemoteState==4) raceEndTimer=0;
-            else if(linkRemoteState==3) {linkMyState=4;raceEndTimer=one;playCredits=one;}
-        } else {raceEndTimer--;playCredits=one;}
-        if(!raceEndTimer) goto quit;
-    }
-    if(scoreTabData.highScore!=one && !raceEndTimer) {
-        UpdateRaceHud(shipIndex,&speedoHud,pauseState.selection,gameData,&scoreTabData);
-        if(shipIndex[ownShip].update==UpdatePlayerShip || shipIndex[ownShip].update==UpdateRescueDroid || (shipIndex[ownShip].update==UpdateDroneShip && shipIndex[ownShip].autopilotCount>0)) {
-            if((shipIndex[ownShip].combatAttr&0x8004)!=0x8004) AlterCheckPoint((CheckPoints *)CHECKPOINTS,shipIndex,pauseState.selection,gameData);
-        }
-    }
-    if(gameData->weaponsOn || raceType==one || raceType==4) {
-        if((shipIndex[ownShip].attr&64) && ownShip<12) {
-            DrawWeaponIcons(weaponIcons,weaponIconTextureTable,&shipIndex[ownShip]);AddPrim(OT[CurrentScreen],&weaponIconPrims[CurrentScreen]);
-        }
-    }
-    if(gameData->actTrackNum==2 && raceType!=two && (unsigned int)(shipIndex[ownShip].nearTrkSect->secNo-200)<76) {
-        MoveMonoRail(monoRailObjs,6,&monoRail,shipIndex,pauseState.selection);InitTrainLights(prmObjects,prmCount,monoRailObjs,pauseState.selection);
-    }
-    if((unsigned int)(gameData->actTrackNum-6)<2) Video(videoObjects,videoCount);
-    {
-        char *trackPackets = nextPrim.ptr; /* Port: the track's packets, for the shadows (libgpu.c) */
-        if(!(shipIndex[ownShip].attr&64) || shipTargetIndex[ownShip]>=0) DrawAllTrack(&raceCamera,trackCache);
-        else DrawNewTrack(&raceCamera,trackCache);
-        PortTrackPackets(trackPackets, nextPrim.ptr);
-        PortTrackPools();
-    }
-    DrawShadow(shipShapeTable,shipIndex,shadowData);
-    DrawShips(shipIndex,shipShapeTable,ownShip,raceCamera,pauseState.selection);
-    if(!medalDisplay) DrawLandscape(&shipIndex[ownShip],&raceCamera);
-    if(!medalDisplay) PortFarDraw(&raceCamera,shipIndex,shipShapeTable); /* Port: the rest of the track in view (portfar.h) */
-    PortWideScene(); /* Port: widescreen shows the race wide */
-    PortInfoRaceDrawn(); /* Port: ... and the frame recorder's info.json says it is a race (portinfo.c) */
-    if(medalDisplay) PortHudInPlace(); /* Port: ... the results' text and medal where the game puts them */
-    prmObjects[(short)locals.skyIndex]->skeleton->update=one;
-    savedUpperY=raceCamera.camPos->super->relative.t[1];
-    if(gameData->actTrackNum==17) {
-        if(raceCamera.camPos->relative.t[1]>0) {
-            bob=rsin(skycyc);
-            raceCamera.camPos->super->relative.t[1]+=1024+(((raceCamera.camPos->relative.t[1]>>3)*bob)>>12);
-        }
-        if(pauseState.selection==-1 && (unsigned int)(raceCamera.section->secNo-303)>=26) skycyc=(skycyc+96)&4095;
-    }
-    PortFade(0); /* Port: the sky is not faded with distance: it is behind everything */
-    AsmDrawObjectFixed(prmObjects[(short)locals.skyIndex],raceCamera.camPos,8191);
-    PortFade(1);
-    raceCamera.camPos->super->relative.t[1]=savedUpperY;
-    if(prevCameraUpdate!=CameraUpdate) {UnsetParticles(particleSlots);prevCameraUpdate=CameraUpdate;}
-    AsmDrawParticles(particleSlots,raceCamera.camPos,pauseState.selection+1);DrawExplode();
-    if(gameData->actTrackNum==13) DrawBirds();DrawRing();if(sillyShips) UpdateSharkModel();
-    if(gameType!=2 && !(shipIndex[remoteShip].combatAttr&0x8000)) DrawLinkSign(shipIndex);
-    if(pauseState.selection<0) {
-        UpdateShipTrails(shipIndex,attractDelayFrames);locals.firstTime=1;
-        if(shipTargetIndex[ownShip]==100) shipIndex[ownShip].attr&=~4;
-        if((shipTargetIndex[ownShip]&7)<4 && shipTargetIndex[ownShip]>=16 && !(shipIndex[ownShip].combatAttr&4)) {
-            CentreText(overtakeMessage,15,64,12,one);CentreText(msgOvertake,45,128,8,0);
-            if(!(shipTargetIndex[ownShip]&7)) PlayNote(48,255,15,15,256);
-        }
-        for(i=0;i<15;i++) {
-            if(!(shipIndex[i].combatAttr&0x8000) && shipTargetIndex[i]>0) {
-                if(i==ownShip) { if(shipTargetIndex[i]>=16) goto damp_ship; }
-                if(i!=remoteShip) goto damping_done;
-                if(shipTargetIndex[i]<16) goto damping_done;
-                damp_ship: {
-                    ShipData *ship=shipIndex;
-                    int oldVx=ship[i].vpivot.vx, oldVz=ship[i].vpivot.vz;
-                    ship[i].vpivot.vx-=ship[i].vpivot.vx>>3;
-                    ship[i].vpivot.vz-=ship[i].vpivot.vz>>3;
-                    ship[i].ppivot.vx+=oldVx>>6;
-                    ship[i].ppivot.vz+=oldVz>>6;
-                    ship[i].vhdg=0;
-                    ship[i].ppivot.vy+=ship[i].vpivot.vy>>6;
-                    ship[i].vpivot.vy-=ship[i].vpivot.vy>>3;
-                    ship[i].roll+=(ship[i].vpivot.vx+ship[i].vpivot.vz)>>5;
+    for(;;) {
+        Restart(&locals.resetData);InitRaceData(&pauseState);
+        if(attractMode!=1) attractDelayFrames=0;
+        InitAttractMode(attractMode,shipIndex);gameData->complete=0;SetUpFirstCheckPoint();
+        /* Port: the droid is drawn before the camera moves, with the last frame's view: on a restart that was the
+           paused race's, and the first frame showed it huge beside the track. The start's view is set first. */
+        if(CameraUpdate==UpdateCameraRaceStart && !PortTracing()) CameraUpdate(&raceCamera,&shipIndex[ownShip],&rescueData);
+        do {
+            if(portPal) GetJoyPadPacketOnVsync(pauseState.stage); /* the European program: the link slave waits a field while a two-player pause is requested */
+            buildGameKeyPad(padBuf1,playerControl);buildFixedPad(padBuf1);
+            PortRaceControls((shipIndex[ownShip].attr&RACING) && pauseState.selection==-1,keyDef); /* Port: the keyboard steers the ship only while racing */
+            if(raceType==RACE_TIME_TRIAL) RecordKeypresses(shipIndex);
+            UpdateCheatSequence(0);ClearOTagR(OT[CurrentScreen],8192);ClearOTagR(OT2[CurrentScreen],1600);
+            PortFade(1); /* Port: distant geometry fades out (portfar.c) */
+            buttonCount=0;quadIndex=CurrentScreen*300;shipClassIndex=gameData->shipClass;clipLevel=gameData->trackNum;
+            SetInGameCDTrack(&locals.cdTrack,&locals.cdPosition,gameData,&locals.cdMode);
+            if(gameType!=GAME_SINGLE_PLAYER) doSerialGame(gameData,shipIndex);
+            ShowLinkBroken();writeFlag=0;
+            CheckShipDestroyed(shipIndex,gameData,&attractMode,idleLimit);PlayCredits(attractMode);
+            CheckGamePause(shipIndex,&pauseState.selection,gameData,&keysPressed,&pauseState.musicPaused);
+            Check2PlayerPause(pauseState.stage,&locals.viewMode,&pauseState.musicPaused);
+            PerformPauseOperations(&pauseState,(struct SelectBox *)&locals.inGameMenu,gameData);
+            InitiateTwoPlayerPause(&pauseState);
+            if(!raceEndTimer) Perform2PlayerPauseCommand(&pauseState);
+            if((pauseState.selection==-1 || oneMoreTime) && !masterWait && !linkDropped) {
+                oneMoreTime=0;CheckForButtonPress();UpdateShips(shipIndex,weaponBars,shipShapeTable,weaponIndex);
+                rescueData.droidUpdate(&rescueData,&shipIndex[ownShip],shipShapeTable);
+                CameraUpdate(&raceCamera,&shipIndex[ownShip],&rescueData);
+                if(shipIndex[ownShip].attr&RACING) {
+                    if(shipIndex[ownShip].weapon==WEAPON_MISSILE || shipIndex[ownShip].weapon==WEAPON_ELECTROBOLT) {
+                        MissileLock(ownShip,shipIndex);if(shipIndex[ownShip].weapon==WEAPON_MISSILE) RearMissileLock(ownShip,shipIndex);
+                    }
+                    ShakeScreen();
                 }
-                damping_done:
-                if(shipTargetIndex[i]<15) {
-                    radius=(15-shipTargetIndex[i])*64;
-                    /* the European program spaces the explosions by its own tenth of a second (5 frames) */
-                    if(portPal ? shipTargetIndex[i]%5==one : (shipTargetIndex[i]&7)==7) {
-                        x=shipIndex[i].ppivot.vx+newRand()%radius-(radius>>1);
-                        y=shipIndex[i].ppivot.vy-newRand()%127;
-                        z=shipIndex[i].ppivot.vz+newRand()%radius-(radius>>1);
-                        AddExplode(x,y,z,-1);
-                    }
-                    if((shipTargetIndex[i]/6)*6==shipTargetIndex[i]-4) {
-                        x=shipIndex[i].ppivot.vx+newRand()%radius-(radius>>1);
-                        y=shipIndex[i].ppivot.vy-newRand()%127;
-                        z=shipIndex[i].ppivot.vz+newRand()%radius-(radius>>1);
-                        AddSmokeExplode(x,y,z,-1);
-                    }
-                    radius=(20-shipTargetIndex[i])*64;
-                    if((shipTargetIndex[i]-shipTargetIndex[i]/FRAMES_PER_TENTH*FRAMES_PER_TENTH)==one) {
-                        x=shipIndex[i].ppivot.vx+newRand()%radius-(radius>>1);
-                        y=shipIndex[i].ppivot.vy-newRand()%127;
-                        z=shipIndex[i].ppivot.vz+newRand()%radius-(radius>>1);
-                        AddSpurtExplode(x,y,z,-1);
+                if(gameType!=GAME_SINGLE_PLAYER && (shipIndex[remoteShip].attr&RACING)) {
+                    if(shipIndex[remoteShip].weapon==WEAPON_MISSILE || shipIndex[remoteShip].weapon==WEAPON_ELECTROBOLT) {
+                        MissileLock(remoteShip,shipIndex);if(shipIndex[remoteShip].weapon==WEAPON_MISSILE) RearMissileLock(remoteShip,shipIndex);
                     }
                 }
-                if(shipTargetIndex[i]==14) {
-                    PlayDirectionalNote(5,0,40,shipIndex[i].ppivot);
-                    PlayDirectionalNote(5,0,40,shipIndex[i].ppivot);
-                    PlayDirectionalNote(5,-64,40,shipIndex[i].ppivot);
-                    PlayDirectionalNote(5,-128,40,shipIndex[i].ppivot);
-                    PlayDirectionalNote(5,-128,40,shipIndex[i].ppivot);
-                    PlayDirectionalNote(5,-192,40,shipIndex[i].ppivot);
+                UpdateWeapons(shipIndex,weaponBars,weaponIndex);CheckPitShips();
+                if(pauseState.selection==-1 && !linkDropped) {AdjustEngineSound(&shipIndex[ownShip],&raceCamera);AdjustCrowdSound(locals.crowdObjects,locals.crowdCount);}
+                TrackSpecificFunctions();ColourDroidLights(shipShapeTable[30]);AddEffects(weaponIndex,shipIndex);raceElapsed=GsGetVcount()-raceStartVcount;
+                if(raceType!=RACE_TIME_TRIAL && gameData->weaponsOn) CycleWeaponGrids(shipIndex,(struct WeaponGridZone *)weaponGrids,locals.weaponGridCount);
+                else if(!gameData->weaponsOn && raceType==RACE_CHALLENGE) CycleWeaponGrids(shipIndex,(struct WeaponGridZone *)weaponGrids,locals.weaponGridCount);
+            }
+            masterWait=0;
+            if(!linkSendFlag) {
+                if(attractDelayFrames>0) {
+                    attractDelayFrames--;
+                    if((attractMode==1 && CheckAttractOver(gameData)) || !attractDelayFrames) raceEndTimer=2;
                 }
-                if((newRand()&3)==one && shipTargetIndex[i]>=16) AddSmallSmokeExplode(shipIndex[i].ppivot.vx-(shipIndex[i].unitVecNose.vx>>4),shipIndex[i].ppivot.vy-(shipIndex[i].unitVecNose.vy>>4),shipIndex[i].ppivot.vz-(shipIndex[i].unitVecNose.vz>>4),-1);
-                if((shipTargetIndex[i]&3)==one && shipTargetIndex[i]>=16) {
-                    x=(newRand()&511)-(shipIndex[i].unitVecNose.vx>>5)-256;
-                    z=(newRand()&511)-(shipIndex[i].unitVecNose.vz>>5)-256;
-                    AddSmallSpurtExplode(x,-(shipIndex[i].unitVecNose.vy>>5)+128,z,i);
-                }
-                shipTargetIndex[i]--;
-                if(!shipTargetIndex[i]) {
-                    if(i!=ownShip && i!=remoteShip) {shipIndex[i].attr&=~64;PlayNote(51,480,15,15,256);}
-                    shipIndex[i].combatAttr|=0x8000;
+            } else RaceComplete(&locals.inGameMenu,&locals.resetData,gameData,&locals.raceComplete,&scoreTabData,shipIndex);
+            if(raceEndTimer>0) {
+                if(linked) {
+                    if(linkRemoteState==4) raceEndTimer=0;
+                    else if(linkRemoteState==3) {linkMyState=4;raceEndTimer=1;playCredits=1;}
+                } else {raceEndTimer--;playCredits=1;}
+                if(!raceEndTimer) {
+                    PortLinkRaceView(0); /* Port: the window is whole again (portlink.c) */
+                    PortFade(0);
+                    QuitGame();
+                    return;
                 }
             }
-            if((i==ownShip && (shipIndex[i].combatAttr&0x8000)) || (i==remoteShip && (shipIndex[i].combatAttr&0x8000))) {
-                if((newRand()&31)<3) AddSmallSmokeExplode(shipIndex[i].ppivot.vx,shipIndex[i].nearTrkSect->centre.vy+128,shipIndex[i].ppivot.vz,-1);
+            if(scoreTabData.nameEntryActive!=1 && !raceEndTimer) {
+                UpdateRaceHud(shipIndex,&speedoHud,pauseState.selection,gameData,&scoreTabData);
+                if(shipIndex[ownShip].update==UpdatePlayerShip || shipIndex[ownShip].update==UpdateRescueDroid || (shipIndex[ownShip].update==UpdateDroneShip && shipIndex[ownShip].autopilotCount>0)) {
+                    if((shipIndex[ownShip].combatAttr&0x8004)!=0x8004) AlterCheckPoint((CheckPoints *)CHECKPOINTS,shipIndex,pauseState.selection,gameData);
+                }
             }
-        }
-        if(gameData->actTrackNum==2 || gameData->actTrackNum==7 || cheatRain) {
-            AddRain(particleSlots,one,(VECTOR *)cameraPtr->camPos->relative.t); /* Port: the camera position is the first three ints of the skeleton's relative translation */
-            advance=locals.rainTimer+1;locals.rainTimer=advance&255;
-            if(!undercover && !(newRand()&3) && locals.rainTimer<32 && !(advance&3)) {
-                if(fadeAmount<228) fadeAmount=228;locals.thunderAt=locals.rainTimer;
+            if(gameData->weaponsOn || raceType==RACE_TIME_TRIAL || raceType==RACE_CHALLENGE) {
+                if((shipIndex[ownShip].attr&RACING) && ownShip<12) {
+                    DrawWeaponIcons(weaponIcons,weaponIconTextureTable,&shipIndex[ownShip]);AddPrim(OT[CurrentScreen],&weaponIconPrims[CurrentScreen]);
+                }
             }
-            if(fadeAmount==220) fadeAmount=118;if(fadeAmount==110) fadeAmount=0;
-            advance=locals.thunderAt+32;
-            if(locals.rainTimer==advance) PlayNote(35,380,15,15,128);
-            if(advance<locals.rainTimer && locals.rainTimer<64 && !(newRand()&3) && !(locals.rainTimer&3)) PlayNote(35,(short)(412-locals.rainTimer),15,15,320-locals.rainTimer);
-        }
-        if(gameData->actTrackNum==8) AddSnow(particleSlots,20,(VECTOR *)cameraPtr->camPos->relative.t);
-    } else {if(locals.firstTime) UpdateShipTrails(shipIndex,attractDelayFrames);locals.firstTime=0;}
-    resetMiscFx();DrawShipTrails(cameraPtr);
-    if(!linkDropped && PortOriginalTrackIs64()) PortOriginalSceneUpdate(pauseState.selection!=-1); /* Port: a Wipeout 64 track's animated scenery (its droids are XL's) */
-    if(!linkDropped && PortOriginalLooks()) PortOriginalSceneUpdate(pauseState.selection!=-1); /* Port: ... its own scenery, not XL's droids */
-    else if(!linkDropped) {
-        UpdateStartDroid(startDroidObjects,shipIndex,(DroidData *)CHECKPOINTS,startTextureBase,gameData,pauseState.selection);
-        UpdateLightStart(lightGroups,shipIndex,(DroidData *)CHECKPOINTS,startTextureBase,gameData,pauseState.selection);
+            if(gameData->actTrackNum==2 && raceType!=RACE_ARCADE_LINK && (unsigned int)(shipIndex[ownShip].nearTrkSect->secNo-200)<76) {
+                MoveMonoRail(monoRailObjs,6,&monoRail,shipIndex,pauseState.selection);InitTrainLights(prmObjects,prmCount,monoRailObjs,pauseState.selection);
+            }
+            if(gameData->actTrackNum==6 || gameData->actTrackNum==7) Video(videoObjects,videoCount);
+            {
+                char *trackPackets = nextPrim.ptr; /* Port: the track's packets, for the shadows (libgpu.c) */
+                if(!(shipIndex[ownShip].attr&RACING) || shipTargetIndex[ownShip]>=0) DrawAllTrack(&raceCamera,trackCache);
+                else DrawNewTrack(&raceCamera,trackCache);
+                PortTrackPackets(trackPackets, nextPrim.ptr);
+                PortTrackPools();
+            }
+            DrawShadow(shipShapeTable,shipIndex,shadowData);
+            DrawShips(shipIndex,shipShapeTable,ownShip,raceCamera,pauseState.selection);
+            if(!medalDisplay) DrawLandscape(&shipIndex[ownShip],&raceCamera);
+            if(!medalDisplay) PortFarDraw(&raceCamera,shipIndex,shipShapeTable); /* Port: the rest of the track in view (portfar.h) */
+            PortWideScene(); /* Port: widescreen shows the race wide */
+            PortInfoRaceDrawn(); /* Port: ... and the frame recorder's info.json says it is a race (portinfo.c) */
+            if(medalDisplay) PortHudInPlace(); /* Port: ... the results' text and medal where the game puts them */
+            /* the sky is drawn around the camera; on track 17 it also bobs with the camera's height */
+            prmObjects[(short)locals.skyIndex]->skeleton->update=1;
+            savedUpperY=raceCamera.camPos->super->relative.t[1];
+            if(gameData->actTrackNum==17) {
+                if(raceCamera.camPos->relative.t[1]>0) {
+                    bob=rsin(skycyc);
+                    raceCamera.camPos->super->relative.t[1]+=1024+(((raceCamera.camPos->relative.t[1]>>3)*bob)>>12);
+                }
+                if(pauseState.selection==-1 && (unsigned int)(raceCamera.section->secNo-303)>=26) skycyc=(skycyc+96)&4095;
+            }
+            PortFade(0); /* Port: the sky is not faded with distance: it is behind everything */
+            AsmDrawObjectFixed(prmObjects[(short)locals.skyIndex],raceCamera.camPos,8191);
+            PortFade(1);
+            raceCamera.camPos->super->relative.t[1]=savedUpperY;
+            if(prevCameraUpdate!=CameraUpdate) {UnsetParticles(particleSlots);prevCameraUpdate=CameraUpdate;}
+            AsmDrawParticles(particleSlots,raceCamera.camPos,pauseState.selection+1);DrawExplode();
+            if(gameData->actTrackNum==13) DrawBirds();
+            DrawRing();if(sillyShips) UpdateSharkModel();
+            if(gameType!=GAME_SINGLE_PLAYER && !(shipIndex[remoteShip].combatAttr&DESTROYED)) DrawLinkSign(shipIndex);
+            if(pauseState.selection<0) {
+                UpdateShipTrails(shipIndex,attractDelayFrames);locals.updateTrails=1;
+                if(shipTargetIndex[ownShip]==100) shipIndex[ownShip].attr&=~VIEW_IN;
+                if((shipTargetIndex[ownShip]&7)<4 && shipTargetIndex[ownShip]>=16 && !(shipIndex[ownShip].combatAttr&4)) {
+                    CentreText(overtakeMessage,15,64,12,1);CentreText(msgOvertake,45,128,8,0);
+                    if(!(shipTargetIndex[ownShip]&7)) PlayNote(48,255,15,15,256);
+                }
+                /* the ships being destroyed: shipTargetIndex counts down their last frames */
+                for(i=0;i<15;i++) {
+                    if(!(shipIndex[i].combatAttr&DESTROYED) && shipTargetIndex[i]>0) {
+                        if((i==ownShip && shipTargetIndex[ownShip]>=16) || (i==remoteShip && shipTargetIndex[remoteShip]>=16)) {
+                            /* the players' own ships drift to a stop */
+                            ShipData *ship=shipIndex;
+                            ship[i].ppivot.vx+=ship[i].vpivot.vx>>6;
+                            ship[i].ppivot.vy+=ship[i].vpivot.vy>>6;
+                            ship[i].ppivot.vz+=ship[i].vpivot.vz>>6;
+                            ship[i].vpivot.vx-=ship[i].vpivot.vx>>3;
+                            ship[i].vpivot.vy-=ship[i].vpivot.vy>>3;
+                            ship[i].vpivot.vz-=ship[i].vpivot.vz>>3;
+                            ship[i].vhdg=0;
+                            ship[i].roll+=(ship[i].vpivot.vx+ship[i].vpivot.vz)>>5;
+                        }
+                        if(shipTargetIndex[i]<15) {
+                            radius=(15-shipTargetIndex[i])*64;
+                            /* the European program spaces the explosions by its own tenth of a second (5 frames) */
+                            if(portPal ? shipTargetIndex[i]%5==1 : (shipTargetIndex[i]&7)==7) {
+                                x=shipIndex[i].ppivot.vx+newRand()%radius-(radius>>1);
+                                y=shipIndex[i].ppivot.vy-newRand()%127;
+                                z=shipIndex[i].ppivot.vz+newRand()%radius-(radius>>1);
+                                AddExplode(x,y,z,-1);
+                            }
+                            if((shipTargetIndex[i]/6)*6==shipTargetIndex[i]-4) {
+                                x=shipIndex[i].ppivot.vx+newRand()%radius-(radius>>1);
+                                y=shipIndex[i].ppivot.vy-newRand()%127;
+                                z=shipIndex[i].ppivot.vz+newRand()%radius-(radius>>1);
+                                AddSmokeExplode(x,y,z,-1);
+                            }
+                            radius=(20-shipTargetIndex[i])*64;
+                            if(shipTargetIndex[i]%FRAMES_PER_TENTH==1) {
+                                x=shipIndex[i].ppivot.vx+newRand()%radius-(radius>>1);
+                                y=shipIndex[i].ppivot.vy-newRand()%127;
+                                z=shipIndex[i].ppivot.vz+newRand()%radius-(radius>>1);
+                                AddSpurtExplode(x,y,z,-1);
+                            }
+                        }
+                        if(shipTargetIndex[i]==14) {
+                            PlayDirectionalNote(5,0,40,shipIndex[i].ppivot);
+                            PlayDirectionalNote(5,0,40,shipIndex[i].ppivot);
+                            PlayDirectionalNote(5,-64,40,shipIndex[i].ppivot);
+                            PlayDirectionalNote(5,-128,40,shipIndex[i].ppivot);
+                            PlayDirectionalNote(5,-128,40,shipIndex[i].ppivot);
+                            PlayDirectionalNote(5,-192,40,shipIndex[i].ppivot);
+                        }
+                        if((newRand()&3)==1 && shipTargetIndex[i]>=16) AddSmallSmokeExplode(shipIndex[i].ppivot.vx-(shipIndex[i].unitVecNose.vx>>4),shipIndex[i].ppivot.vy-(shipIndex[i].unitVecNose.vy>>4),shipIndex[i].ppivot.vz-(shipIndex[i].unitVecNose.vz>>4),-1);
+                        if((shipTargetIndex[i]&3)==1 && shipTargetIndex[i]>=16) {
+                            x=(newRand()&511)-(shipIndex[i].unitVecNose.vx>>5)-256;
+                            z=(newRand()&511)-(shipIndex[i].unitVecNose.vz>>5)-256;
+                            AddSmallSpurtExplode(x,-(shipIndex[i].unitVecNose.vy>>5)+128,z,i);
+                        }
+                        shipTargetIndex[i]--;
+                        if(!shipTargetIndex[i]) {
+                            if(i!=ownShip && i!=remoteShip) {shipIndex[i].attr&=~RACING;PlayNote(51,480,15,15,256);}
+                            shipIndex[i].combatAttr|=DESTROYED;
+                        }
+                    }
+                    if((i==ownShip && (shipIndex[i].combatAttr&DESTROYED)) || (i==remoteShip && (shipIndex[i].combatAttr&DESTROYED))) {
+                        if((newRand()&31)<3) AddSmallSmokeExplode(shipIndex[i].ppivot.vx,shipIndex[i].nearTrkSect->centre.vy+128,shipIndex[i].ppivot.vz,-1);
+                    }
+                }
+                /* rain and lightning on tracks 2 and 7 (and with the rain cheat), snow on track 8 */
+                if(gameData->actTrackNum==2 || gameData->actTrackNum==7 || cheatRain) {
+                    AddRain(particleSlots,1,(VECTOR *)cameraPtr->camPos->relative.t); /* Port: the camera position is the first three ints of the skeleton's relative translation */
+                    advance=locals.rainTimer+1;locals.rainTimer=advance&255;
+                    if(!undercover && !(newRand()&3) && locals.rainTimer<32 && !(advance&3)) {
+                        if(fadeAmount<228) fadeAmount=228;
+                        locals.thunderAt=locals.rainTimer;
+                    }
+                    if(fadeAmount==220) fadeAmount=118;
+                    if(fadeAmount==110) fadeAmount=0;
+                    advance=locals.thunderAt+32;
+                    if(locals.rainTimer==advance) PlayNote(35,380,15,15,128);
+                    if(advance<locals.rainTimer && locals.rainTimer<64 && !(newRand()&3) && !(locals.rainTimer&3)) PlayNote(35,(short)(412-locals.rainTimer),15,15,320-locals.rainTimer);
+                }
+                if(gameData->actTrackNum==8) AddSnow(particleSlots,20,(VECTOR *)cameraPtr->camPos->relative.t);
+            } else {
+                if(locals.updateTrails) UpdateShipTrails(shipIndex,attractDelayFrames);
+                locals.updateTrails=0;
+            }
+            resetMiscFx();DrawShipTrails(cameraPtr);
+            if(!linkDropped && PortOriginalTrackIs64()) PortOriginalSceneUpdate(pauseState.selection!=-1); /* Port: a Wipeout 64 track's animated scenery (its droids are XL's) */
+            if(!linkDropped && PortOriginalLooks()) PortOriginalSceneUpdate(pauseState.selection!=-1); /* Port: ... its own scenery, not XL's droids */
+            else if(!linkDropped) {
+                UpdateStartDroid(startDroidObjects,shipIndex,(DroidData *)CHECKPOINTS,startTextureBase,gameData,pauseState.selection);
+                UpdateLightStart(lightGroups,shipIndex,(DroidData *)CHECKPOINTS,startTextureBase,gameData,pauseState.selection);
+            }
+            if(playCredits) {ClearOTagR(OT[CurrentScreen],8192);ClearOTagR(OT2[CurrentScreen],1600);}
+            AddPrim(OT[CurrentScreen]+8191,locals.clearPolys[CurrentScreen]);
+            PortTagPrims(locals.clearPolys[CurrentScreen],locals.clearPolys[CurrentScreen]+1,"screen clear",NULL,CurrentScreen); /* Port: the frame recorder */
+            if(portPal && !pauseState.stage && gameType==GAME_LINK_SLAVE) VSync(0); /* the European program: the link slave waits another field while a two-player pause is requested */
+            /* the fields the last frame took (Swap); a link slave uses the master's count */
+            if(gameType!=GAME_LINK_SLAVE) advance=menuSendFlags;else advance=menuRecvFlags;
+            cardNum-=advance*30;heading-=advance*15;
+            Swap();firstTimeIn=0;UpdateNotes(0);
+            PortAutoSave(gameData,0); /* Port: the game saves itself: records, medals (portsave.c) */
+        } while(!linkRaceDone || (gameType!=GAME_SINGLE_PLAYER && !remoteRaceDone));
+        attractMode=0;
     }
-    if(playCredits) {ClearOTagR(OT[CurrentScreen],8192);ClearOTagR(OT2[CurrentScreen],1600);}
-    AddPrim(OT[CurrentScreen]+8191,locals.clearPolys[CurrentScreen]);
-    PortTagPrims(locals.clearPolys[CurrentScreen],locals.clearPolys[CurrentScreen]+1,"screen clear",NULL,CurrentScreen); /* Port: the frame recorder */
-    if(portPal && !pauseState.stage && gameType==one) VSync(0); /* the European program: the link slave waits another field while a two-player pause is requested */
-    if(gameType!=one) advance=menuSendFlags;else advance=menuRecvFlags;
-    cardNum-=advance*30;heading-=advance*15;
-    Swap();firstTimeIn=0;UpdateNotes(0);
-    PortAutoSave(gameData,0); /* Port: the game saves itself: records, medals (portsave.c) */
-    if(!linkRaceDone) goto frame;
-    if(gameType!=2 && !remoteRaceDone) goto frame;
-    context=0;goto restart;
 }
 #undef CHECKPOINTS
 

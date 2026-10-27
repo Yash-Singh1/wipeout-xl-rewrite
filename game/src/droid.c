@@ -1,4 +1,5 @@
 #include "functions.h"
+#include "track.h"
 #include "droid.h"
 
 extern TrackData    *track;
@@ -22,7 +23,7 @@ void UpdateRescueDroid(ShipData *ships, Object **unused1, int shipNo, WeaponData
 
     ship = &ships[shipNo];
     ship->attr |= FLYING;
-    if (control->buttons & 2) {
+    if (control->buttons & CONTROL_ANALOG_THRUST) {
         maxThrust = ship->maxThrust;
         throttle = control->thrust;
         target = (maxThrust * throttle) / 200;
@@ -48,7 +49,7 @@ void UpdateRescueDroid(ShipData *ships, Object **unused1, int shipNo, WeaponData
             }
         }
     } else {
-        if (control->buttons & 0x4000) {
+        if (control->buttons & CONTROL_THRUST) {
             ship->thrust += PAL_SPEED(16);
         } else if (ship->thrust >= PAL_SPEED(16)) {
             ship->thrust -= PAL_SPEED(16);
@@ -67,7 +68,7 @@ void UpdateRescueDroid(ShipData *ships, Object **unused1, int shipNo, WeaponData
         do {
             section = section->nextSection.ptr;
             i++;
-        } while (!(section->flags & TRACK_BASE) && i < 10);
+        } while (!(section->flags & TRACK_JUMP) && i < 10);
         ship->nearTrkSect = section;
         next = section->nextSection.ptr;
         droidTarget.vx = (section->centre.vx + next->centre.vx) >> 1;
@@ -206,7 +207,7 @@ void UpdateDroidCircle(RescueData *d, ShipData *ship, Object **shapes)
         SetVolume(controlledSfxId, 255);
         CameraUpdate = UpdateCameraDroidView;
         ship->attr |= REMOTE_VIEW;
-        if (ship->nearTrkSect->flags & TRACK_BASE) {
+        if (ship->nearTrkSect->flags & TRACK_JUMP) {
             cameraPtr->section = ship->nearTrkSect->nextSection.ptr;
         } else {
             cameraPtr->section = ship->nearTrkSect;
@@ -255,7 +256,7 @@ void UpdateDroidRescue(RescueData *rescueDroid, ShipData *ship, Object **shapes)
             CameraUpdate = UpdateCameraRaceExternal;
         }
         section = rescueDroid->section;
-        if (!(section->flags & TRACK_BASE)) {
+        if (!(section->flags & TRACK_JUMP)) {
             trackData = track;
             while (1) {
                 newCount = count + 1;
@@ -265,7 +266,7 @@ void UpdateDroidRescue(RescueData *rescueDroid, ShipData *ship, Object **shapes)
                 if (newCount == trackData->sectionCount) {
                     break;
                 }
-                if (prevSection->flags & TRACK_BASE) {
+                if (prevSection->flags & TRACK_JUMP) {
                     break;
                 }
                 section = prevSection;
@@ -310,7 +311,7 @@ void InitRescueDroid(RescueData *rescueDroid, Object **shipShapes, ShipData *shi
     i = 0;
     while (1) {
         rescueDroid->section = rescueDroid->section->nextSection.ptr;
-        if (rescueDroid->section->flags & TRACK_BASE) {
+        if (rescueDroid->section->flags & TRACK_JUMP) {
             break;
         }
         i++;

@@ -332,35 +332,12 @@ extern int envmapb;
 extern short CurrentScreen;
 extern unsigned char medalDisplay;
 
-/* DrawEnvMap's stack frame. The gapNNN members stand for stack slots the function never uses; the
-   struct is only a local, so its size and the offsets of its pointer members do not matter. */
-typedef struct EnvMapWork {
-    VECTOR reflect, unusedVector, eye;
-    MATRIX matrix;
-    VECTOR translation;
-    int gap0[4];
-    int transformFlag;
-    int gap140;
-    int savedX;
-    int gap148;
-    unsigned short *depth;
-    int gap156;
-    unsigned short *clip;
-    int gap164;
-    unsigned short i;
-    unsigned char gap170[6];
-    short v0;
-    unsigned char gap178[6];
-    short v1;
-    unsigned char gap186[6];
-    short v2;
-    unsigned char gap194[6];
-    short primitiveCount;
-    unsigned char gap202[6];
-    s32 lastVertex;
-    int gap212[17];
-    F4 *volatile nextPrimitive;
-} EnvMapWork;
+/* Port: NormalClip takes each screen point packed in one word (x in the low half, y in the high half),
+   as the console passed a DVECTOR by value. */
+static int PackScreenPoint(DVECTOR point)
+{
+    return (int)((u_short)point.vx | ((u32)(u_short)point.vy << 16));
+}
 
 /* Port: a packet vertex the game scaled about the screen from a projected one (DrawEnvMap): bound to the
    projection's precise position scaled the same way, so the scaled model does not snap to whole pixels. Known by the
@@ -390,293 +367,302 @@ static void BindScaled(short *x, const DVECTOR *source, int scale, int xOffset, 
     }
 }
 
-void DrawEnvMap(Object *object, void *unused, SVECTOR *normals, int xOffsetIn, int yOffset, int scale)
-{
-    EnvMapWork ws;
-    DVECTOR *screen;
-    short v3, triangleUnused; int triangleLast, triangle0, triangle1; u16 clip0,clip1,clip2; int quadLast,quad0,quad1,quad3; int initialCount; unsigned int count;
-    int dot,u,vertical,z,u0,u1,u2,u3,original0,original1,original2,original3;
-    Primitive *primitive;
-    F4 *primitiveCursor; F4 *triangleNext;
-    SVECTOR *vertices;
-    s32 pad[4];
-    char *start = nextPrim.ptr; /* Port: the frame recorder */
+/* The clip flags of a vertex that keep its face out of the environment map. */
+#define ENV_CLIP_FLAGS 0x460
 
-    ws.savedX = xOffsetIn;
-    ws.eye.vx = 0; ws.eye.vy = 0; ws.eye.vz = 4096;
+void DrawEnvMap(Object *object, void *unused, SVECTOR *normals, int xOffset, int yOffset, int scale)
+{
+    VECTOR    reflect, eye;
+    MATRIX    matrix;
+    VECTOR    translation;
+    int       transformFlag;
+    u_short  *depth, *clip;
+    short     i;
+    short     vertex0, vertex1, vertex2, vertex3;
+    short     primitiveCount;
+    short     vertexCount;
+    DVECTOR  *screen;
+    /* A face's U at each vertex as the reflection gives it (baseU), and as drawn: where an edge crosses the
+       texture's seam (U wraps from 63 to 0), the vertex on the low side moves one texture width (64) up. */
+    int       reflectionValue, v, z, u0, u1, u2, lastU, baseU0, baseU1, baseU2, baseU3;
+    Poly      currentPrimitive;
+    SVECTOR  *vertices;
+    char     *start = nextPrim.ptr; /* Port: the frame recorder */
+
+    eye.vx = 0;
+    eye.vy = 0;
+    eye.vz = 4096;
     SetSkeletonTransform(object->skeleton);
-    initialCount = object->primitiveCount;
-    count = (unsigned short)object->vertexCount;
+    primitiveCount = object->primitiveCount;
+    vertexCount = object->vertexCount;
     vertices = object->vertices;
-    primsDrawn += initialCount; ws.primitiveCount = initialCount;
-    if ((short)count <= 128) { screen = (DVECTOR *)PsxScratchpad; ws.depth = (unsigned short *)(PsxScratchpad + 0x200); ws.clip = (unsigned short *)(PsxScratchpad + 0x300); } /* Port: the console's scratchpad RAM at 0x1F800000 */
-    else { screen = StaticScreen; ws.depth = StaticDepth; ws.clip = StaticFlags; }
-    RotTransPersN(vertices, screen, ws.depth, ws.clip, (short)count);
-    ws.translation.vx = 0; ws.translation.vy = 0; ws.translation.vz = 0;
-    TransMatrix(&ws.matrix, &ws.translation);
-    SetTransMatrix(&ws.matrix);
-    for (ws.i = 0; (short)ws.i < (short)count; ws.i++) {
-        s32 transformIndex = (s16)*(volatile u16 *)&ws.i;
-        RotTrans(&normals[transformIndex], &StaticRVert[transformIndex], &ws.transformFlag);
+    primsDrawn += primitiveCount;
+    if (vertexCount <= 128) {
+        /* Port: the console's scratchpad RAM at 0x1F800000 */
+        screen = (DVECTOR *)PsxScratchpad;
+        depth = (u_short *)(PsxScratchpad + 0x200);
+        clip = (u_short *)(PsxScratchpad + 0x300);
+    } else {
+        screen = StaticScreen;
+        depth = StaticDepth;
+        clip = StaticFlags;
     }
-    {
-        short reflectIndex;
-        for (reflectIndex = 0; reflectIndex < (short)count; reflectIndex++) {
-            ws.reflect.vx = StaticRVert[reflectIndex].vx;
-            ws.reflect.vy = StaticRVert[reflectIndex].vy;
-            ws.reflect.vz = StaticRVert[reflectIndex].vz;
-            dot = DotProduct(&ws.reflect, &ws.eye);
-            ws.reflect.vx = ((s32)((u32)ws.reflect.vx * (u32)dot) >> 11) - ws.eye.vx;
-            ws.reflect.vz = ((s32)((u32)ws.reflect.vz * (u32)dot) >> 11) - ws.eye.vz;
-            ws.reflect.vy = ((s32)((u32)ws.reflect.vy * (u32)dot) >> 11) - ws.eye.vy;
-            envMapU[reflectIndex] = (ratan2(ws.reflect.vx, ws.reflect.vz) >> 6) & 63;
-            vertical = 31 - ((s32)((u32)ws.reflect.vy << 6) >> 13);
-            if (vertical < 0) vertical = 0;
-            if (vertical >= 64) vertical = 63;
-            envMapV[reflectIndex] = vertical;
+    RotTransPersN(vertices, screen, depth, clip, vertexCount);
+    translation.vx = 0;
+    translation.vy = 0;
+    translation.vz = 0;
+    TransMatrix(&matrix, &translation);
+    SetTransMatrix(&matrix);
+    for (i = 0; i < vertexCount; i++) {
+        RotTrans(&normals[i], &StaticRVert[i], &transformFlag);
+    }
+    /* Each vertex's texture coordinates: U from the reflected direction's heading, V from its height. */
+    for (i = 0; i < vertexCount; i++) {
+        reflect.vx = StaticRVert[i].vx;
+        reflect.vy = StaticRVert[i].vy;
+        reflect.vz = StaticRVert[i].vz;
+        reflectionValue = DotProduct(&reflect, &eye);
+        reflect.vx = ((s32)((u32)reflect.vx * (u32)reflectionValue) >> 11) - eye.vx;
+        reflect.vz = ((s32)((u32)reflect.vz * (u32)reflectionValue) >> 11) - eye.vz;
+        reflect.vy = ((s32)((u32)reflect.vy * (u32)reflectionValue) >> 11) - eye.vy;
+        envMapU[i] = (ratan2(reflect.vx, reflect.vz) >> 6) & 63;
+        v = 31 - ((s32)((u32)reflect.vy << 6) >> 13);
+        if (v < 0) {
+            v = 0;
+        }
+        if (v >= 64) {
+            v = 63;
+        }
+        envMapV[i] = v;
+    }
+    /* Each edge's midpoint normal tells whether the edge crosses the seam: its U then lies outside the
+       range between the two ends' U. */
+    currentPrimitive.prim = object->primitives;
+    for (i = 0; i < primitiveCount; i++) {
+        switch (currentPrimitive.prim->type) {
+        case TypeF3:
+            vertex0 = currentPrimitive.f3->coords[0];
+            vertex1 = currentPrimitive.f3->coords[1];
+            vertex2 = currentPrimitive.f3->coords[2];
+            if (!((clip[vertex0] | clip[vertex1] | clip[vertex2]) & ENV_CLIP_FLAGS)
+                && NormalClip(PackScreenPoint(screen[vertex0]), PackScreenPoint(screen[vertex1]),
+                              PackScreenPoint(screen[vertex2])) > 0) {
+                POLY_FT3 *packet = (POLY_FT3 *)nextPrim.ptr;
+
+                SetPolyFT3(packet);
+                packet->tpage = GetTPage(1, 0, 640, 256);
+                baseU0 = envMapU[vertex0];
+                baseU1 = envMapU[vertex1];
+                baseU2 = envMapU[vertex2];
+                u0 = baseU0;
+                u1 = baseU1;
+                u2 = baseU2;
+                reflect.vx = (StaticRVert[vertex0].vx + StaticRVert[vertex1].vx) >> 1;
+                reflect.vy = (StaticRVert[vertex0].vy + StaticRVert[vertex1].vy) >> 1;
+                reflect.vz = (StaticRVert[vertex0].vz + StaticRVert[vertex1].vz) >> 1;
+                Normalise(&reflect);
+                reflectionValue = DotProduct(&reflect, &eye);
+                reflect.vx = ((s32)((u32)reflect.vx * (u32)reflectionValue) >> 11) - eye.vx;
+                reflect.vz = ((s32)((u32)reflect.vz * (u32)reflectionValue) >> 11) - eye.vz;
+                reflectionValue = (ratan2(reflect.vx, reflect.vz) >> 6) & 63;
+                if (baseU1 < baseU0) {
+                    if (reflectionValue < baseU1 || baseU0 < reflectionValue) {
+                        u1 = baseU1 + 64;
+                    }
+                } else {
+                    if (reflectionValue < baseU0 || baseU1 < reflectionValue) {
+                        u0 = baseU0 + 64;
+                    }
+                }
+                reflect.vx = (StaticRVert[vertex1].vx + StaticRVert[vertex2].vx) >> 1;
+                reflect.vy = (StaticRVert[vertex1].vy + StaticRVert[vertex2].vy) >> 1;
+                reflect.vz = (StaticRVert[vertex1].vz + StaticRVert[vertex2].vz) >> 1;
+                Normalise(&reflect);
+                reflectionValue = DotProduct(&reflect, &eye);
+                reflect.vx = ((s32)((u32)reflect.vx * (u32)reflectionValue) >> 11) - eye.vx;
+                reflect.vz = ((s32)((u32)reflect.vz * (u32)reflectionValue) >> 11) - eye.vz;
+                reflectionValue = (ratan2(reflect.vx, reflect.vz) >> 6) & 63;
+                if (baseU2 < baseU1) {
+                    if (reflectionValue < baseU2 || baseU1 < reflectionValue) {
+                        u2 = baseU2 + 64;
+                    }
+                } else {
+                    if (reflectionValue < baseU1 || baseU2 < reflectionValue) {
+                        u1 = baseU1 + 64;
+                    }
+                }
+                reflect.vx = (StaticRVert[vertex0].vx + StaticRVert[vertex2].vx) >> 1;
+                reflect.vy = (StaticRVert[vertex0].vy + StaticRVert[vertex2].vy) >> 1;
+                reflect.vz = (StaticRVert[vertex0].vz + StaticRVert[vertex2].vz) >> 1;
+                Normalise(&reflect);
+                reflectionValue = DotProduct(&reflect, &eye);
+                reflect.vx = ((s32)((u32)reflect.vx * (u32)reflectionValue) >> 11) - eye.vx;
+                reflect.vz = ((s32)((u32)reflect.vz * (u32)reflectionValue) >> 11) - eye.vz;
+                reflectionValue = (ratan2(reflect.vx, reflect.vz) >> 6) & 63;
+                if (baseU2 < baseU0) {
+                    if (reflectionValue < baseU2 || baseU0 < reflectionValue) {
+                        u2 = baseU2 + 64;
+                    }
+                } else {
+                    if (reflectionValue < baseU0 || baseU2 < reflectionValue) {
+                        u0 = baseU0 + 64;
+                    }
+                }
+                packet->u0 = u0;
+                packet->u1 = u1;
+                packet->u2 = u2;
+                packet->v0 = envMapV[vertex0];
+                packet->v1 = envMapV[vertex1];
+                packet->v2 = envMapV[vertex2];
+                packet->clut = GetClut(704, 258);
+                packet->r0 = envmapr;
+                packet->g0 = envmapg;
+                packet->b0 = envmapb;
+                *(DVECTOR *)&packet->x0 = screen[vertex0];
+                *(DVECTOR *)&packet->x1 = screen[vertex1];
+                *(DVECTOR *)&packet->x2 = screen[vertex2];
+                packet->x0 = ((packet->x0 * scale) >> 8) + xOffset;
+                packet->x1 = ((packet->x1 * scale) >> 8) + xOffset;
+                packet->x2 = ((packet->x2 * scale) >> 8) + xOffset;
+                packet->y0 = ((packet->y0 * scale) >> 8) + yOffset;
+                packet->y1 = ((packet->y1 * scale) >> 8) + yOffset;
+                packet->y2 = ((packet->y2 * scale) >> 8) + yOffset;
+                BindScaled(&packet->x0, &screen[vertex0], scale, xOffset, yOffset);
+                BindScaled(&packet->x1, &screen[vertex1], scale, xOffset, yOffset);
+                BindScaled(&packet->x2, &screen[vertex2], scale, xOffset, yOffset);
+                z = AverageZ3(depth[vertex0], depth[vertex1], depth[vertex2]);
+                z %= 1600;
+                AddPrim(OT2[CurrentScreen] + z, nextPrim.ptr);
+                nextPrim.ptr += sizeof(POLY_FT3);
+            }
+            currentPrimitive.f3++;
+            break;
+
+        case TypeF4:
+            vertex0 = currentPrimitive.f4->coords[0];
+            vertex1 = currentPrimitive.f4->coords[1];
+            vertex2 = currentPrimitive.f4->coords[2];
+            vertex3 = currentPrimitive.f4->coords[3];
+            if (!((clip[vertex0] | clip[vertex1] | clip[vertex2] | clip[vertex3]) & ENV_CLIP_FLAGS)
+                && NormalClip(PackScreenPoint(screen[vertex0]), PackScreenPoint(screen[vertex1]),
+                              PackScreenPoint(screen[vertex2])) > 0) {
+                POLY_FT4 *packet = (POLY_FT4 *)nextPrim.ptr;
+
+                SetPolyFT4(packet);
+                packet->tpage = GetTPage(1, 0, 640, 256);
+                baseU0 = envMapU[vertex0];
+                baseU1 = envMapU[vertex1];
+                baseU2 = envMapU[vertex2];
+                baseU3 = envMapU[vertex3];
+                u0 = baseU0;
+                u1 = baseU1;
+                u2 = baseU2;
+                lastU = baseU3;
+                reflect.vx = (StaticRVert[vertex0].vx + StaticRVert[vertex1].vx) >> 1;
+                reflect.vy = (StaticRVert[vertex0].vy + StaticRVert[vertex1].vy) >> 1;
+                reflect.vz = (StaticRVert[vertex0].vz + StaticRVert[vertex1].vz) >> 1;
+                Normalise(&reflect);
+                reflectionValue = DotProduct(&reflect, &eye);
+                reflect.vx = ((s32)((u32)reflect.vx * (u32)reflectionValue) >> 11) - eye.vx;
+                reflect.vz = ((s32)((u32)reflect.vz * (u32)reflectionValue) >> 11) - eye.vz;
+                reflectionValue = (ratan2(reflect.vx, reflect.vz) >> 6) & 63;
+                if (baseU1 < baseU0) {
+                    if (reflectionValue < baseU1 || baseU0 < reflectionValue) {
+                        u1 = baseU1 + 64;
+                    }
+                } else {
+                    if (reflectionValue < baseU0 || baseU1 < reflectionValue) {
+                        u0 = baseU0 + 64;
+                    }
+                }
+                reflect.vx = (StaticRVert[vertex1].vx + StaticRVert[vertex2].vx) >> 1;
+                reflect.vy = (StaticRVert[vertex1].vy + StaticRVert[vertex2].vy) >> 1;
+                reflect.vz = (StaticRVert[vertex1].vz + StaticRVert[vertex2].vz) >> 1;
+                Normalise(&reflect);
+                reflectionValue = DotProduct(&reflect, &eye);
+                reflect.vx = ((s32)((u32)reflect.vx * (u32)reflectionValue) >> 11) - eye.vx;
+                reflect.vz = ((s32)((u32)reflect.vz * (u32)reflectionValue) >> 11) - eye.vz;
+                reflectionValue = (ratan2(reflect.vx, reflect.vz) >> 6) & 63;
+                if (baseU2 < baseU1) {
+                    if (reflectionValue < baseU2 || baseU1 < reflectionValue) {
+                        u2 = baseU2 + 64;
+                    }
+                } else {
+                    if (reflectionValue < baseU1 || baseU2 < reflectionValue) {
+                        u1 = baseU1 + 64;
+                    }
+                }
+                reflect.vx = (StaticRVert[vertex2].vx + StaticRVert[vertex3].vx) >> 1;
+                reflect.vy = (StaticRVert[vertex2].vy + StaticRVert[vertex3].vy) >> 1;
+                reflect.vz = (StaticRVert[vertex2].vz + StaticRVert[vertex3].vz) >> 1;
+                Normalise(&reflect);
+                reflectionValue = DotProduct(&reflect, &eye);
+                reflect.vx = ((s32)((u32)reflect.vx * (u32)reflectionValue) >> 11) - eye.vx;
+                reflect.vz = ((s32)((u32)reflect.vz * (u32)reflectionValue) >> 11) - eye.vz;
+                reflectionValue = (ratan2(reflect.vx, reflect.vz) >> 6) & 63;
+                if (baseU3 < baseU2) {
+                    if (reflectionValue < baseU3 || baseU2 < reflectionValue) {
+                        lastU = baseU3 + 64;
+                    }
+                } else {
+                    if (reflectionValue < baseU2 || baseU3 < reflectionValue) {
+                        u2 = baseU2 + 64;
+                    }
+                }
+                reflect.vx = (StaticRVert[vertex0].vx + StaticRVert[vertex3].vx) >> 1;
+                reflect.vy = (StaticRVert[vertex0].vy + StaticRVert[vertex3].vy) >> 1;
+                reflect.vz = (StaticRVert[vertex0].vz + StaticRVert[vertex3].vz) >> 1;
+                Normalise(&reflect);
+                reflectionValue = DotProduct(&reflect, &eye);
+                reflect.vx = ((s32)((u32)reflect.vx * (u32)reflectionValue) >> 11) - eye.vx;
+                reflect.vz = ((s32)((u32)reflect.vz * (u32)reflectionValue) >> 11) - eye.vz;
+                reflectionValue = (ratan2(reflect.vx, reflect.vz) >> 6) & 63;
+                if (baseU3 < baseU0) {
+                    if (reflectionValue < baseU3 || baseU0 < reflectionValue) {
+                        lastU = baseU3 + 64;
+                    }
+                } else {
+                    if (reflectionValue < baseU0 || baseU3 < reflectionValue) {
+                        u0 = baseU0 + 64;
+                    }
+                }
+                packet->u0 = u0;
+                packet->u1 = u1;
+                packet->u2 = u2;
+                packet->u3 = lastU;
+                packet->v0 = envMapV[vertex0];
+                packet->v1 = envMapV[vertex1];
+                packet->v2 = envMapV[vertex2];
+                packet->v3 = envMapV[vertex3];
+                packet->clut = GetClut(704, 258);
+                packet->r0 = envmapr;
+                packet->g0 = envmapg;
+                packet->b0 = envmapb;
+                *(DVECTOR *)&packet->x0 = screen[vertex0];
+                *(DVECTOR *)&packet->x1 = screen[vertex1];
+                *(DVECTOR *)&packet->x2 = screen[vertex2];
+                *(DVECTOR *)&packet->x3 = screen[vertex3];
+                packet->x0 = ((packet->x0 * scale) >> 8) + xOffset;
+                packet->x1 = ((packet->x1 * scale) >> 8) + xOffset;
+                packet->x2 = ((packet->x2 * scale) >> 8) + xOffset;
+                packet->x3 = ((packet->x3 * scale) >> 8) + xOffset;
+                packet->y0 = ((packet->y0 * scale) >> 8) + yOffset;
+                packet->y1 = ((packet->y1 * scale) >> 8) + yOffset;
+                packet->y2 = ((packet->y2 * scale) >> 8) + yOffset;
+                packet->y3 = ((packet->y3 * scale) >> 8) + yOffset;
+                BindScaled(&packet->x0, &screen[vertex0], scale, xOffset, yOffset);
+                BindScaled(&packet->x1, &screen[vertex1], scale, xOffset, yOffset);
+                BindScaled(&packet->x2, &screen[vertex2], scale, xOffset, yOffset);
+                BindScaled(&packet->x3, &screen[vertex3], scale, xOffset, yOffset);
+                z = AverageZ4(depth[vertex0], depth[vertex1], depth[vertex2], depth[vertex3]);
+                z %= 1600;
+                AddPrim(OT2[CurrentScreen] + z, nextPrim.ptr);
+                nextPrim.ptr += sizeof(POLY_FT4);
+            }
+            currentPrimitive.f4++;
+            break;
         }
     }
-    primitiveCursor = (F4 *)object->primitives;
-    ws.i = 0;
-    if ((short)*(volatile unsigned short *)&ws.primitiveCount <= 0) goto envDone;
-    ws.nextPrimitive = primitiveCursor + 1;
-envLoop:
-    {
-        switch (primitiveCursor->type) {
-        case 1:
-            triangle0 = ((F3 *)ws.nextPrimitive - 1)->coords[0];
-            triangle1 = ((F3 *)ws.nextPrimitive - 1)->coords[1];
-            ws.v0 = *(volatile u16 *)&((F3 *)ws.nextPrimitive - 1)->coords[0];
-            triangleLast = ((F3 *)ws.nextPrimitive - 1)->coords[2];
-            clip1 = ws.clip[triangle1];
-            clip0 = ws.clip[triangle0];
-            clip2 = ws.clip[triangleLast];
-            ws.v1 = *(volatile u16 *)&((F3 *)ws.nextPrimitive - 1)->coords[1];
-            v3 = (s16)*(volatile u16 *)&((F3 *)ws.nextPrimitive - 1)->coords[2];
-            triangleNext = ws.nextPrimitive;
-            if ((clip0 | clip1 | clip2) & 0x460) goto triAdvanceCached;
-            if (NormalClip((unsigned short)screen[triangle0].vx | ((u32)(unsigned short)screen[triangle0].vy << 16), (unsigned short)screen[triangle1].vx | ((u32)(unsigned short)screen[triangle1].vy << 16), (unsigned short)screen[triangleLast].vx | ((u32)(unsigned short)screen[triangleLast].vy << 16)) > 0) {
-                SetPolyFT3((POLY_FT3 *)nextPrim.ptr);
-                ((POLY_FT4 *)nextPrim.ptr)->tpage = GetTPage(1, 0, 640, 256);
-                original0 = envMapU[triangle0];
-                original1 = envMapU[triangle1];
-                original2 = envMapU[triangleLast];
-                u0 = original0;
-                u1 = original1;
-                u2 = original2;
-                ws.reflect.vx = (StaticRVert[triangle0].vx + StaticRVert[triangle1].vx) >> 1;
-                ws.reflect.vy = (StaticRVert[triangle0].vy + StaticRVert[triangle1].vy) >> 1;
-                ws.reflect.vz = (StaticRVert[triangle0].vz + StaticRVert[triangle1].vz) >> 1;
-                Normalise(&ws.reflect);
-                dot = DotProduct(&ws.reflect, &ws.eye);
-                ws.reflect.vx = ((s32)((u32)ws.reflect.vx * (u32)dot) >> 11) - ws.eye.vx;
-                ws.reflect.vz = ((s32)((u32)ws.reflect.vz * (u32)dot) >> 11) - ws.eye.vz;
-                u = (ratan2(ws.reflect.vx, ws.reflect.vz) >> 6) & 63;
-                if (original1 < original0) {
-                    if (u < original1 || original0 < u) u1 = original1 + 64;
-                } else {
-                    if (u < original0 || original1 < u) u0 = original0 + 64;
-                }
-                triangle1 = (s16)*(volatile u16 *)&ws.v1;
-                ws.reflect.vx = (StaticRVert[triangle1].vx + StaticRVert[v3].vx) >> 1;
-                ws.reflect.vy = (StaticRVert[triangle1].vy + StaticRVert[v3].vy) >> 1;
-                ws.reflect.vz = (StaticRVert[triangle1].vz + StaticRVert[v3].vz) >> 1;
-                Normalise(&ws.reflect);
-                dot = DotProduct(&ws.reflect, &ws.eye);
-                ws.reflect.vx = ((s32)((u32)ws.reflect.vx * (u32)dot) >> 11) - ws.eye.vx;
-                ws.reflect.vz = ((s32)((u32)ws.reflect.vz * (u32)dot) >> 11) - ws.eye.vz;
-                u = (ratan2(ws.reflect.vx, ws.reflect.vz) >> 6) & 63;
-                if (original2 < original1) {
-                    if (u < original2 || original1 < u) u2 = original2 + 64;
-                } else {
-                    if (u < original1 || original2 < u) u1 = original1 + 64;
-                }
-                triangle0 = (s16)*(volatile u16 *)&ws.v0;
-                ws.reflect.vx = (StaticRVert[triangle0].vx + StaticRVert[v3].vx) >> 1;
-                ws.reflect.vy = (StaticRVert[triangle0].vy + StaticRVert[v3].vy) >> 1;
-                ws.reflect.vz = (StaticRVert[triangle0].vz + StaticRVert[v3].vz) >> 1;
-                Normalise(&ws.reflect);
-                dot = DotProduct(&ws.reflect, &ws.eye);
-                ws.reflect.vx = ((s32)((u32)ws.reflect.vx * (u32)dot) >> 11) - ws.eye.vx;
-                ws.reflect.vz = ((s32)((u32)ws.reflect.vz * (u32)dot) >> 11) - ws.eye.vz;
-                u = (ratan2(ws.reflect.vx, ws.reflect.vz) >> 6) & 63;
-                {
-                    int seam2 = original0 < u, seam0 = original2 < u;
-                    if (original2 < original0) {
-                        if (u < original2 || seam2) u2 = original2 + 64;
-                    } else {
-                        if (u < original0 || seam0) u0 = original0 + 64;
-                    }
-                }
-                ((POLY_FT4 *)nextPrim.ptr)->u0 = u0;
-                ((POLY_FT4 *)nextPrim.ptr)->u1 = u1;
-                ((POLY_FT4 *)nextPrim.ptr)->u2 = u2;
-                triangle0 = (s16)*(volatile u16 *)&ws.v0;
-                ((POLY_FT4 *)nextPrim.ptr)->v0 = envMapV[triangle0];
-                triangle1 = (s16)*(volatile u16 *)&ws.v1;
-                ((POLY_FT4 *)nextPrim.ptr)->v1 = envMapV[triangle1];
-                ((POLY_FT4 *)nextPrim.ptr)->v2 = envMapV[v3];
-                *(volatile u_short *)&((POLY_FT4 *)nextPrim.ptr)->clut = GetClut(704, 258);
-                ((POLY_FT4 *)nextPrim.ptr)->r0 = envmapr;
-                ((POLY_FT4 *)nextPrim.ptr)->g0 = envmapg;
-                ((POLY_FT4 *)nextPrim.ptr)->b0 = envmapb;
-                *(DVECTOR *)&((POLY_FT4 *)nextPrim.ptr)->x0 = screen[triangle0];
-                *(DVECTOR *)&((POLY_FT4 *)nextPrim.ptr)->x1 = screen[triangle1];
-                *(DVECTOR *)&((POLY_FT4 *)nextPrim.ptr)->x2 = screen[v3];
-                *(volatile short *)&((POLY_FT4 *)nextPrim.ptr)->x0 = ((((POLY_FT4 *)nextPrim.ptr)->x0 * scale) >> 8) + ws.savedX;
-                *(volatile short *)&((POLY_FT4 *)nextPrim.ptr)->x1 = ((((POLY_FT4 *)nextPrim.ptr)->x1 * scale) >> 8) + ws.savedX;
-                *(volatile short *)&((POLY_FT4 *)nextPrim.ptr)->x2 = ((((POLY_FT4 *)nextPrim.ptr)->x2 * scale) >> 8) + ws.savedX;
-                { POLY_FT4 *packet = (POLY_FT4 *)nextPrim.ptr; *(volatile short *)&packet->y0 = ((packet->y0 * scale) >> 8) + yOffset; }
-                { POLY_FT4 *packet = (POLY_FT4 *)nextPrim.ptr; *(volatile short *)&packet->y1 = ((packet->y1 * scale) >> 8) + yOffset; }
-                { POLY_FT4 *packet = (POLY_FT4 *)nextPrim.ptr; *(volatile short *)&packet->y2 = ((packet->y2 * scale) >> 8) + yOffset; }
-                {
-                    POLY_FT4 *packet = (POLY_FT4 *)nextPrim.ptr;
-                    BindScaled(&packet->x0, &screen[triangle0], scale, ws.savedX, yOffset);
-                    BindScaled(&packet->x1, &screen[triangle1], scale, ws.savedX, yOffset);
-                    BindScaled(&packet->x2, &screen[v3], scale, ws.savedX, yOffset);
-                }
-                z = AverageZ3(ws.depth[triangle0], ws.depth[triangle1], ws.depth[v3]);
-                AddPrim(OT2[CurrentScreen] + z % 1600, nextPrim.ptr);
-                nextPrim.ptr += 32;
-            }
-            triangleNext = ws.nextPrimitive;
-triAdvanceCached:
-            primitiveCursor++;
-            ws.nextPrimitive = triangleNext + 1;
-            break;
-        case 3:
-            ws.v0 = *(volatile u16 *)&((F4 *)ws.nextPrimitive - 1)->coords[0];
-            triangle0 = ((F4 *)ws.nextPrimitive - 1)->coords[0];
-            ws.v1 = *(volatile u16 *)&((F4 *)ws.nextPrimitive - 1)->coords[1];
-            triangle1 = ((F4 *)ws.nextPrimitive - 1)->coords[1];
-            v3 = (s16)*(volatile u16 *)&((F4 *)ws.nextPrimitive - 1)->coords[2];
-            triangleLast = ((F4 *)ws.nextPrimitive - 1)->coords[2];
-            quadLast = ((F4 *)ws.nextPrimitive - 1)->coords[3];
-            {
-                u16 quadClip3;
-                clip0 = ws.clip[triangle0]; clip1 = ws.clip[triangle1]; clip2 = ws.clip[triangleLast]; quadClip3 = ws.clip[quadLast];
-                ws.v2 = quadLast;
-                if (!((clip0 | clip1 | clip2 | quadClip3) & 0x460) && NormalClip((unsigned short)screen[triangle0].vx | ((u32)(unsigned short)screen[triangle0].vy << 16), (unsigned short)screen[triangle1].vx | ((u32)(unsigned short)screen[triangle1].vy << 16), (unsigned short)screen[triangleLast].vx | ((u32)(unsigned short)screen[triangleLast].vy << 16)) > 0) {
-                    SetPolyFT4((POLY_FT4 *)nextPrim.ptr);
-                    ((POLY_FT4 *)nextPrim.ptr)->tpage = GetTPage(1, 0, 640, 256);
-                    original0 = envMapU[triangle0];
-                    original1 = envMapU[triangle1];
-                    original2 = envMapU[triangleLast];
-                    original3 = envMapU[quadLast];
-                    u0 = original0;
-                    u1 = original1;
-                    u2 = original2;
-                    ws.reflect.vx = (StaticRVert[triangle0].vx + StaticRVert[triangle1].vx) >> 1;
-                    ws.reflect.vy = (StaticRVert[triangle0].vy + StaticRVert[triangle1].vy) >> 1;
-                    ws.reflect.vz = (StaticRVert[triangle0].vz + StaticRVert[triangle1].vz) >> 1;
-                    Normalise(&ws.reflect);
-                    dot = DotProduct(&ws.reflect, &ws.eye);
-                    ws.lastVertex = original3;
-                    ws.reflect.vx = ((s32)((u32)ws.reflect.vx * (u32)dot) >> 11) - ws.eye.vx;
-                    ws.reflect.vz = ((s32)((u32)ws.reflect.vz * (u32)dot) >> 11) - ws.eye.vz;
-                    u = (ratan2(ws.reflect.vx, ws.reflect.vz) >> 6) & 63;
-                    if (original1 < original0) {
-                        if (u < original1 || original0 < u) u1 = original1 + 64;
-                    } else {
-                        if (u < original0 || original1 < u) u0 = original0 + 64;
-                    }
-                    triangle1 = (s16)*(volatile u16 *)&ws.v1;
-                    ws.reflect.vx = (StaticRVert[triangle1].vx + StaticRVert[v3].vx) >> 1;
-                    ws.reflect.vy = (StaticRVert[triangle1].vy + StaticRVert[v3].vy) >> 1;
-                    ws.reflect.vz = (StaticRVert[triangle1].vz + StaticRVert[v3].vz) >> 1;
-                    Normalise(&ws.reflect);
-                    dot = DotProduct(&ws.reflect, &ws.eye);
-                    ws.reflect.vx = ((s32)((u32)ws.reflect.vx * (u32)dot) >> 11) - ws.eye.vx;
-                    ws.reflect.vz = ((s32)((u32)ws.reflect.vz * (u32)dot) >> 11) - ws.eye.vz;
-                    u = (ratan2(ws.reflect.vx, ws.reflect.vz) >> 6) & 63;
-                    if (original2 < original1) {
-                        if (u < original2 || original1 < u) u2 = original2 + 64;
-                    } else {
-                        if (u < original1 || original2 < u) u1 = original1 + 64;
-                    }
-                    {
-                        int lastIndex = (short)*(volatile unsigned short *)&ws.v2;
-                        ws.reflect.vx = (StaticRVert[v3].vx + StaticRVert[lastIndex].vx) >> 1;
-                        ws.reflect.vy = (StaticRVert[v3].vy + StaticRVert[lastIndex].vy) >> 1;
-                        ws.reflect.vz = (StaticRVert[v3].vz + StaticRVert[lastIndex].vz) >> 1;
-                    }
-                    Normalise(&ws.reflect);
-                    dot = DotProduct(&ws.reflect, &ws.eye);
-                    ws.reflect.vx = ((s32)((u32)ws.reflect.vx * (u32)dot) >> 11) - ws.eye.vx;
-                    ws.reflect.vz = ((s32)((u32)ws.reflect.vz * (u32)dot) >> 11) - ws.eye.vz;
-                    u = (ratan2(ws.reflect.vx, ws.reflect.vz) >> 6) & 63;
-                    if (original3 < original2) {
-                        if (u < original3 || original2 < u) ws.lastVertex = original3 + 64;
-                    } else {
-                        if (u < original2 || original3 < u) u2 = original2 + 64;
-                    }
-                    {
-                        int firstIndex = (short)*(volatile unsigned short *)&ws.v0;
-                        int lastIndex = (short)*(volatile unsigned short *)&ws.v2;
-                        ws.reflect.vx = (StaticRVert[firstIndex].vx + StaticRVert[lastIndex].vx) >> 1;
-                        ws.reflect.vy = (StaticRVert[firstIndex].vy + StaticRVert[lastIndex].vy) >> 1;
-                        ws.reflect.vz = (StaticRVert[firstIndex].vz + StaticRVert[lastIndex].vz) >> 1;
-                    }
-                    Normalise(&ws.reflect);
-                    dot = DotProduct(&ws.reflect, &ws.eye);
-                    ws.reflect.vx = ((s32)((u32)ws.reflect.vx * (u32)dot) >> 11) - ws.eye.vx;
-                    ws.reflect.vz = ((s32)((u32)ws.reflect.vz * (u32)dot) >> 11) - ws.eye.vz;
-                    u = (ratan2(ws.reflect.vx, ws.reflect.vz) >> 6) & 63;
-                    {
-                        int seam0 = original0 < u, seam3 = original3 < u;
-                        if (original3 < original0) {
-                            if (u < original3 || seam0) ws.lastVertex = original3 + 64;
-                        } else {
-                            if (u < original0 || seam3) u0 = original0 + 64;
-                        }
-                    }
-                    ((POLY_FT4 *)nextPrim.ptr)->u0 = u0;
-                    ((POLY_FT4 *)nextPrim.ptr)->u1 = u1;
-                    ((POLY_FT4 *)nextPrim.ptr)->u2 = u2;
-                    ((POLY_FT4 *)nextPrim.ptr)->u3 = *(volatile unsigned char *)&ws.lastVertex;
-                    quad0 = (short)*(volatile unsigned short *)&ws.v0;
-                    ((POLY_FT4 *)nextPrim.ptr)->v0 = envMapV[quad0];
-                    quad1 = (short)*(volatile unsigned short *)&ws.v1;
-                    ((POLY_FT4 *)nextPrim.ptr)->v1 = envMapV[quad1];
-                    ((POLY_FT4 *)nextPrim.ptr)->v2 = envMapV[v3];
-                    quad3 = (short)*(volatile unsigned short *)&ws.v2;
-                    ((POLY_FT4 *)nextPrim.ptr)->v3 = envMapV[quad3];
-                    *(volatile u_short *)&((POLY_FT4 *)nextPrim.ptr)->clut = GetClut(704, 258);
-                    ((POLY_FT4 *)nextPrim.ptr)->r0 = envmapr;
-                    ((POLY_FT4 *)nextPrim.ptr)->g0 = envmapg;
-                    ((POLY_FT4 *)nextPrim.ptr)->b0 = envmapb;
-                    *(DVECTOR *)&((POLY_FT4 *)nextPrim.ptr)->x0 = screen[quad0];
-                    *(DVECTOR *)&((POLY_FT4 *)nextPrim.ptr)->x1 = screen[quad1];
-                    *(DVECTOR *)&((POLY_FT4 *)nextPrim.ptr)->x2 = screen[v3];
-                    *(DVECTOR *)&((POLY_FT4 *)nextPrim.ptr)->x3 = screen[quad3];
-                    *(volatile short *)&((POLY_FT4 *)nextPrim.ptr)->x0 = ((((POLY_FT4 *)nextPrim.ptr)->x0 * scale) >> 8) + ws.savedX;
-                    *(volatile short *)&((POLY_FT4 *)nextPrim.ptr)->x1 = ((((POLY_FT4 *)nextPrim.ptr)->x1 * scale) >> 8) + ws.savedX;
-                    *(volatile short *)&((POLY_FT4 *)nextPrim.ptr)->x2 = ((((POLY_FT4 *)nextPrim.ptr)->x2 * scale) >> 8) + ws.savedX;
-                    *(volatile short *)&((POLY_FT4 *)nextPrim.ptr)->x3 = ((((POLY_FT4 *)nextPrim.ptr)->x3 * scale) >> 8) + ws.savedX;
-                    *(volatile short *)&((POLY_FT4 *)nextPrim.ptr)->y0 = ((((POLY_FT4 *)nextPrim.ptr)->y0 * scale) >> 8) + yOffset;
-                    *(volatile short *)&((POLY_FT4 *)nextPrim.ptr)->y1 = ((((POLY_FT4 *)nextPrim.ptr)->y1 * scale) >> 8) + yOffset;
-                    *(volatile short *)&((POLY_FT4 *)nextPrim.ptr)->y2 = ((((POLY_FT4 *)nextPrim.ptr)->y2 * scale) >> 8) + yOffset;
-                    *(volatile short *)&((POLY_FT4 *)nextPrim.ptr)->y3 = ((((POLY_FT4 *)nextPrim.ptr)->y3 * scale) >> 8) + yOffset;
-                    {
-                        POLY_FT4 *packet = (POLY_FT4 *)nextPrim.ptr;
-                        BindScaled(&packet->x0, &screen[quad0], scale, ws.savedX, yOffset);
-                        BindScaled(&packet->x1, &screen[quad1], scale, ws.savedX, yOffset);
-                        BindScaled(&packet->x2, &screen[v3], scale, ws.savedX, yOffset);
-                        BindScaled(&packet->x3, &screen[quad3], scale, ws.savedX, yOffset);
-                    }
-                    z = AverageZ4(ws.depth[quad0], ws.depth[quad1], ws.depth[v3], ws.depth[quad3]);
-                    AddPrim(OT2[CurrentScreen] + z % 1600, nextPrim.ptr);
-                    nextPrim.ptr += 40;
-                }
-            }
-            primitiveCursor = ws.nextPrimitive;
-            ws.nextPrimitive++;
-            break;
-        }
-        ws.i++;
-        if ((short)ws.i < (short)*(volatile unsigned short *)&ws.primitiveCount) goto envLoop;
-    }
-envDone:
     medalDisplay = 1;
     PortTagPrims(start, nextPrim.ptr, "env map", object->name, 0);
 }

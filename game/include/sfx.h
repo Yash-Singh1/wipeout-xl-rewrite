@@ -1,9 +1,25 @@
 #ifndef SFX_H
 #define SFX_H
 
+#define SFX_WEAPON_LAUNCH      12
+#define SFX_TURBO              34
+#define SFX_START_STALL        36
+#define SFX_MISSILE_LOCK       37
+#define SFX_QUAKE              38
+#define SFX_PLASMA             39
+#define SFX_WEAPON_DITCH       46
+#define SFX_ENERGY_PICKUP      47
+#define SFX_LOW_ENERGY         54
+
 #define SFX_EFFECTS 128
 #define SFX_VOICES  24
 #define SFX_PLAYS   24
+
+#define SFX_QSOUND 3
+#define SFX_DOLBY  4
+#define SFX_REAR   4
+#define SFX_ATTR_PITCH   0x10
+#define SFX_ATTR_ADDRESS 0x80
 
 /* Header of a .VAG sample file; the multi-byte fields are big-endian. */
 typedef struct VagHeader {

@@ -321,24 +321,24 @@ int CreateFile(char *fileName)
 void BuildSaveBlock(u_long *block, ConfigData *settings)
 {
     short     i, j;
-    u_short   a, b, c, d, e, f;
+    u_short   musicVolume, effectVolume, otherMusicVolume, otherEffectVolume, screenX, screenY;
     u_short  *keys;
     u_char   *out;
 
     keys = (u_short *)&block[3];
-    a = *(u_short *)&settings->musicVolume;
-    b = *(u_short *)&settings->effectVolume;
-    c = *(u_short *)&settings->otherMusicVolume;
-    d = *(u_short *)&settings->otherEffectVolume;
-    e = *(u_short *)&settings->screenX;
-    f = *(u_short *)&settings->screenY;
+    musicVolume = (u_short)settings->musicVolume;
+    effectVolume = (u_short)settings->effectVolume;
+    otherMusicVolume = (u_short)settings->otherMusicVolume;
+    otherEffectVolume = (u_short)settings->otherEffectVolume;
+    screenX = (u_short)settings->screenX;
+    screenY = (u_short)settings->screenY;
     i = 0;
-    ((u_short *)block)[0] = a;
-    ((u_short *)block)[1] = b;
-    ((u_short *)block)[2] = c;
-    ((u_short *)block)[3] = d;
-    ((u_short *)block)[4] = e;
-    ((u_short *)block)[5] = f;
+    ((u_short *)block)[0] = musicVolume;
+    ((u_short *)block)[1] = effectVolume;
+    ((u_short *)block)[2] = otherMusicVolume;
+    ((u_short *)block)[3] = otherEffectVolume;
+    ((u_short *)block)[4] = screenX;
+    ((u_short *)block)[5] = screenY;
     for (; i < 2; i++) {
         for (j = 0; j < 9; j++) {
             *keys = savedKeyConfig.pad[i][j];
@@ -657,7 +657,7 @@ void LoadCardFiles(CardSlot *cards, int slot)
 /* Reads a save file into the game settings and the key/track tables; returns 1 on success. */
 u_char LoadCardData(char *name, int slot, ConfigData *settings)
 {
-    u_char *cursor;
+    u_short *keyCursor;
     short   pair;
     short   k;
     u_char  header[0x200];
@@ -677,7 +677,7 @@ u_char LoadCardData(char *name, int slot, ConfigData *settings)
         return 0;
     }
     ReInitGameProgress();
-    cursor = (u_char *)data + 12;
+    keyCursor = &data[6];
     setting0 = data[0];
     setting1 = data[1];
     setting2 = data[2];
@@ -693,12 +693,12 @@ u_char LoadCardData(char *name, int slot, ConfigData *settings)
     settings->screenY = setting5;
     for (; pair < 2; pair++) {
         for (k = 0; k < 9; k++) {
-            savedKeyConfig.pad[pair][k] = *(u_short *)cursor;
-            cursor += 2;
+            savedKeyConfig.pad[pair][k] = *keyCursor;
+            keyCursor++;
         }
         for (k = 0; k < 6; k++) {
-            savedKeyConfig.other[pair][k] = *(u_short *)cursor;
-            cursor += 2;
+            savedKeyConfig.other[pair][k] = *keyCursor;
+            keyCursor++;
         }
     }
     pair = 0;
@@ -710,7 +710,7 @@ u_char LoadCardData(char *name, int slot, ConfigData *settings)
         keyDefineRBrake[pair] = savedKeyConfig.pad[pair][4];
         keyDefineLBrake[pair] = savedKeyConfig.pad[pair][5];
     }
-    bytes = cursor;
+    bytes = (u_char *)keyCursor;
     settings->cdTrack = *bytes++;
     settings->soundMode = *bytes++;
     settings->negconMin = *bytes++;
@@ -804,19 +804,15 @@ void LoadFirstFile(u_short *count, int slot, char *name)
 {
     DIRENTRY record;
     char    *path;
-    char    *dirName;
     u_char   i;
     u_char   j;
-    char    *dirName2;
 
     *count = 0;
     *name = 0;
     if ((slot << 16) == 0) {
         path = cardPattern0;
     } else {
-        dirName2 = cardPattern1;
-        dirName = dirName2;
-        path = dirName;
+        path = cardPattern1;
     }
     if (firstfile(path, &record) != &record) {
         *count = 0;

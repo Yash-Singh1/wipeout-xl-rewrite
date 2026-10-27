@@ -1,4 +1,5 @@
 #include "functions.h"
+#include "racectrl.h"
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
 extern short cameraTarget;
@@ -136,7 +137,7 @@ void UpdateCameraRaceStart(TrackCamera *camera, ShipData *camShip, RescueData *r
     section = camShip->nearTrkSect->nextSection.ptr;
     speed = 2;
     acceleration = -5;
-    if (raceType == 1) {
+    if (raceType == RACE_TIME_TRIAL) {
         sectionsAhead = 2;
         do {
             section = section->nextSection.ptr;
@@ -202,7 +203,7 @@ void UpdateCameraRaceStart(TrackCamera *camera, ShipData *camShip, RescueData *r
 void UpdateCameraAttractCircle(TrackCamera *camera, ShipData *camShip, RescueData *rescueDroid)
 {
     VECTOR pos;
-    int    hdg, pitch, temp;
+    int    hdg, pitch, horizontalDistance;
     VECTOR targetVector;
     short  sx, sy, sz;
     short  cx, cy, cz;
@@ -239,12 +240,12 @@ void UpdateCameraAttractCircle(TrackCamera *camera, ShipData *camShip, RescueDat
     targetVector.vy = camShip->ppivot.vy - pos.vy;
     targetVector.vz = camShip->ppivot.vz - pos.vz;
 
-    temp = SquareRoot0(targetVector.vx * targetVector.vx + targetVector.vz * targetVector.vz);
+    horizontalDistance = SquareRoot0(targetVector.vx * targetVector.vx + targetVector.vz * targetVector.vz);
 
     SetSkeletonPosition(camera->camPos, -pos.vx, -pos.vy, -pos.vz);
 
     camera->hdg = ratan2(targetVector.vx, targetVector.vz);
-    camera->pitch = ratan2(targetVector.vy, temp);
+    camera->pitch = ratan2(targetVector.vy, horizontalDistance);
     SetSkeletonDirection(camera->camPos->super, camera->pitch, camera->hdg, 0);
 
     camera->camPos->super->update = 1;
@@ -254,7 +255,7 @@ void UpdateCameraAttractCircle(TrackCamera *camera, ShipData *camShip, RescueDat
 void UpdateCameraAttractMedal(TrackCamera *camera, ShipData *camShip, RescueData *rescueDroid)
 {
     VECTOR pos;
-    int    hdg, pitch, temp;
+    int    hdg, pitch, horizontalDistance;
     VECTOR targetVector;
     short  sx, sy, sz;
     short  cx, cy, cz;
@@ -284,12 +285,12 @@ void UpdateCameraAttractMedal(TrackCamera *camera, ShipData *camShip, RescueData
     targetVector.vy = camShip->ppivot.vy - pos.vy;
     targetVector.vz = camShip->ppivot.vz - pos.vz;
 
-    temp = SquareRoot0(targetVector.vx * targetVector.vx + targetVector.vz * targetVector.vz);
+    horizontalDistance = SquareRoot0(targetVector.vx * targetVector.vx + targetVector.vz * targetVector.vz);
 
     SetSkeletonPosition(camera->camPos, -pos.vx, -pos.vy, -pos.vz);
 
     camera->hdg = ratan2(targetVector.vx, targetVector.vz);
-    camera->pitch = ratan2(targetVector.vy, temp);
+    camera->pitch = ratan2(targetVector.vy, horizontalDistance);
     SetSkeletonDirection(camera->camPos->super, camera->pitch, camera->hdg, 0);
 
     camera->camPos->super->update = 1;
@@ -299,7 +300,7 @@ void UpdateCameraAttractMedal(TrackCamera *camera, ShipData *camShip, RescueData
 void UpdateCameraAttractDestroyed(TrackCamera *camera, ShipData *camShip, RescueData *rescueDroid)
 {
     VECTOR pos;
-    int    hdg, pitch, temp;
+    int    hdg, pitch, horizontalDistance;
     VECTOR targetVector;
     short  sx, sy, sz;
     short  cx, cy, cz;
@@ -331,12 +332,12 @@ void UpdateCameraAttractDestroyed(TrackCamera *camera, ShipData *camShip, Rescue
     targetVector.vy = camShip->ppivot.vy - pos.vy;
     targetVector.vz = camShip->ppivot.vz - pos.vz;
 
-    temp = SquareRoot0(targetVector.vx * targetVector.vx + targetVector.vz * targetVector.vz);
+    horizontalDistance = SquareRoot0(targetVector.vx * targetVector.vx + targetVector.vz * targetVector.vz);
 
     SetSkeletonPosition(camera->camPos, -pos.vx, -pos.vy, -pos.vz);
 
     camera->hdg = ratan2(targetVector.vx, targetVector.vz);
-    camera->pitch = ratan2(targetVector.vy, temp);
+    camera->pitch = ratan2(targetVector.vy, horizontalDistance);
     SetSkeletonDirection(camera->camPos->super, camera->pitch, camera->hdg, 0);
 
     camera->camPos->super->update = 1;
@@ -428,7 +429,7 @@ void UpdateCameraAttractInternal(TrackCamera *camera, ShipData *camShip, RescueD
 /* Fixed camera ten sections ahead that watches the ship go past. */
 void UpdateCameraStaticFollow(TrackCamera *camera, ShipData *camShip, RescueData *rescueDroid)
 {
-    int           temp;
+    int           horizontalDistance;
     VECTOR        targetVector;
     TrackSection *section;
     int           i;
@@ -454,10 +455,10 @@ void UpdateCameraStaticFollow(TrackCamera *camera, ShipData *camShip, RescueData
     targetVector.vx = camShip->ppivot.vx - staticFollowPos.vx;
     targetVector.vy = camShip->ppivot.vy - staticFollowPos.vy;
     targetVector.vz = camShip->ppivot.vz - staticFollowPos.vz;
-    temp = SquareRoot0(targetVector.vx * targetVector.vx + targetVector.vz * targetVector.vz);
+    horizontalDistance = SquareRoot0(targetVector.vx * targetVector.vx + targetVector.vz * targetVector.vz);
     SetSkeletonPosition(camera->camPos, -staticFollowPos.vx, -staticFollowPos.vy, -staticFollowPos.vz);
     camera->hdg = ratan2(targetVector.vx, targetVector.vz);
-    camera->pitch = ratan2(targetVector.vy, temp);
+    camera->pitch = ratan2(targetVector.vy, horizontalDistance);
     SetSkeletonDirection(camera->camPos->super, camera->pitch, camera->hdg, 0);
     camera->camPos->super->update = 1;
 }

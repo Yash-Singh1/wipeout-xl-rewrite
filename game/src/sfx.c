@@ -1,6 +1,5 @@
 #include "functions.h"
 #include "sfx.h"
-#include "include_asm_g8.h"
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
 extern u_char sfxInitialized;
@@ -519,41 +518,42 @@ int SfxChainId(int parent, int sample, int volume, int lrPan, u_char fbPan, int 
     voiceList[voice].pitch = voicePitch;
     voiceList[voice].play = sound;
     attr.voice = 1 << voice;
-    attr.mask = 0x90;
+    attr.mask = SFX_ATTR_PITCH | SFX_ATTR_ADDRESS;
     attr.addr = effectList[sample].address;
     attr.pitch = voiceList[voice].pitch;
     SpuSetVoiceAttr(&attr);
-    if (driverMode == 3 && effectList[sample].addressRight) {
+    if (driverMode == SFX_QSOUND && effectList[sample].addressRight) {
         voice = GetFreeVoice();
-        if (voice == -1) goto done;
-        playList[sound].voiceRight = voice;
-        voiceList[voice].flags = VOICE_USED;
-        voiceList[voice].count = 1;
-        voiceList[voice].pitch = voicePitch;
-        voiceList[voice].play = sound;
-        attr.voice = 1 << voice;
-        attr.mask = 0x90;
-        attr.addr = effectList[sample].addressRight;
-        attr.pitch = voiceList[voice].pitch;
-        SpuSetVoiceAttr(&attr);
-    } else if (driverMode == 4 && (flags & 4)) {
+        if (voice != -1) {
+            playList[sound].voiceRight = voice;
+            voiceList[voice].flags = VOICE_USED;
+            voiceList[voice].count = 1;
+            voiceList[voice].pitch = voicePitch;
+            voiceList[voice].play = sound;
+            attr.voice = 1 << voice;
+            attr.mask = SFX_ATTR_PITCH | SFX_ATTR_ADDRESS;
+            attr.addr = effectList[sample].addressRight;
+            attr.pitch = voiceList[voice].pitch;
+            SpuSetVoiceAttr(&attr);
+        }
+    } else if (driverMode == SFX_DOLBY && (flags & SFX_REAR)) {
         voiceList[voice].count = 3;
         voice = GetFreeVoice();
-        if (voice == -1) goto done;
-        playList[sound].voiceRight = voice;
-        voiceList[voice].flags = VOICE_USED | VOICE_CHAINED;
-        voiceList[voice].count = 2;
-        voiceList[voice].pitch = (short)(pitch * rate / 256);
-        voiceList[voice].play = sound;
-        attr.voice = 1 << voice;
-        attr.mask = 0x90;
-        attr.addr = effectList[sample].address;
-        attr.pitch = voiceList[voice].pitch;
-        SpuSetVoiceAttr(&attr);
+        if (voice != -1) {
+            playList[sound].voiceRight = voice;
+            voiceList[voice].flags = VOICE_USED | VOICE_CHAINED;
+            voiceList[voice].count = 2;
+            voiceList[voice].pitch = (short)(pitch * rate / 256);
+            voiceList[voice].play = sound;
+            attr.voice = 1 << voice;
+            attr.mask = SFX_ATTR_PITCH | SFX_ATTR_ADDRESS;
+            attr.addr = effectList[sample].address;
+            attr.pitch = voiceList[voice].pitch;
+            SpuSetVoiceAttr(&attr);
+        }
     } else {
         playList[sound].voiceRight = -1;
     }
-done:
     SetEffectVolume(sound);
     return sound;
 }

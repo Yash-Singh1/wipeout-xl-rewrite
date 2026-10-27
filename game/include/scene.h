@@ -1,6 +1,9 @@
 #ifndef SCENE_H
 #define SCENE_H
 
+/* GPU command for an unmodulated textured quadrilateral. */
+#define GPU_FT4_RAW_TEXTURE 0x2D
+
 #include "wipeout.h"
 
 /* One entry of a scene (.PRM) file while it is walked: an object header, a skeleton,

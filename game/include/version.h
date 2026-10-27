@@ -63,10 +63,17 @@ extern int portEuropeCard;
 /* PAL_TEXT_Y(y): a text row or icon placed at y on NTSC, 8 lines higher on PAL. */
 #define PAL_TEXT_Y(y) REGION((y), (y) - 8)
 
+/* PAL_PANEL_Y(y): the speedometer and the bottom of the race HUD, placed at y on NTSC, 22 lines lower on PAL (the
+   frame's 16 extra lines and 6 more). */
+#define PAL_PANEL_Y(y) REGION((y), (y) + 22)
+
 /* The display: 240 lines (NTSC) or 256 (PAL); the PAL picture starts 2 pixels right and 24 lines lower. */
 #define SCREEN_HEIGHT   REGION(240, 256)
 #define DISPLAY_SHIFT_X REGION(0, 2)
 #define DISPLAY_SHIFT_Y REGION(0, 24)
+
+/* PAL_SCREEN_HEIGHT(env): a DISPENV's window spans PAL's 256 lines; on NTSC the default (240) stays. A statement. */
+#define PAL_SCREEN_HEIGHT(env) ((void)(portPal && ((env).screen.h = SCREEN_HEIGHT, 1)))
 
 /* SetVideoMode's argument: 0 NTSC, 1 PAL. */
 #define VIDEO_MODE REGION(0, 1)

@@ -1,5 +1,7 @@
 #include "functions.h"
 #include "../../platform/controls.h" /* Port: a name typed on the keyboard */
+#include "pad.h"
+#include "racectrl.h"
 #include "hiscores.h"
 #include "pc/pc.h"
 #include "include_asm_g8.h"
@@ -106,9 +108,9 @@ void InitScoreTabData(HiScoreData *score)
     score->count = 0;
     score->padDelay = 0;
     score->totalTime = 0;
-    score->flag = 0;
-    score->displayFlag = 0;
-    score->highScore = 0;
+    score->pendingRecords = 0;
+    score->displayedRecords = 0;
+    score->nameEntryActive = 0;
     score->confirm = 2;
     score->lConfirm = 0;
 }
@@ -124,23 +126,22 @@ void CheckForHiScore(ConfigData *config, HiScoreData *score, ShipData *ships, in
     u8 flag;
     ShipData *ship;
     ShipData *own;
-    int *times;
 
-    if (raceType == 1) trackNum = config->trackNum + 8;
+    if (raceType == RACE_TIME_TRIAL) trackNum = config->trackNum + 8;
     else trackNum = config->trackNum;
     score->totalTime = 0;
     if (lap == 1) {
         ship = &ships[shipNum];
         lapNum = ship->lap;
-        if (lapNum == 2 || !score->flag) {
+        if (lapNum == 2 || !score->pendingRecords) {
             if (PortOriginalTrack() < 0 && ship->lapTimes[lapNum - 2] < hiScoreTable[trackNum][config->shipClass].lapTime) { /* Port: an original track's times are no records of Talon's Reach */
                 shipNo = ownShip;
                 own = &ships[shipNo];
-                record = *(volatile s32 *)&own->lapTimes[own->lap - 2];
-                flag = *(volatile u8 *)&score->flag | 1;
+                record = own->lapTimes[own->lap - 2];
+                flag = score->pendingRecords | 1;
                 score->lapPilot = shipNo;
-                score->flag = flag;
-                score->displayFlag = flag;
+                score->pendingRecords = flag;
+                score->displayedRecords = flag;
                 score->lapTime = record;
             }
         } else if (ship->lapTimes[lapNum - 2] < score->lapTime) {
@@ -148,29 +149,21 @@ void CheckForHiScore(ConfigData *config, HiScoreData *score, ShipData *ships, in
             score->lapTime = ships[shipNo].lapTimes[ships[shipNo].lap - 2];
             score->lapPilot = shipNo;
             myBestLap = score->lapTime;
-            flag = score->flag | 1;
-            score->flag = flag;
-            score->displayFlag = flag;
+            flag = score->pendingRecords | 1;
+            score->pendingRecords = flag;
+            score->displayedRecords = flag;
         }
     } else {
-        i = 0;
-        if ((int)classLaps[config->shipClass] > i) {
-            times = savedLapTimes;
-            do {
-                score->totalTime += *times;
-                i++;
-                times++;
-            } while (i < classLaps[config->shipClass]);
+        for (i = 0; i < classLaps[config->shipClass]; i++) {
+            score->totalTime += savedLapTimes[i];
         }
-        shipNo = score->totalTime;
-        if (PortOriginalTrack() < 0 && shipNo < hiScoreTable[trackNum][config->shipClass].time) { /* Port: (as the lap's) */
-            record = ownShip;
-            myBestRace = shipNo;
-            flag = score->flag | 2;
-            score->raceTime = shipNo;
-            score->racePilot = record;
-            score->flag = flag;
-            score->displayFlag = flag;
+        if (PortOriginalTrack() < 0 && score->totalTime < hiScoreTable[trackNum][config->shipClass].time) { /* Port: (as the lap's) */
+            myBestRace = score->totalTime;
+            flag = score->pendingRecords | 2;
+            score->raceTime = score->totalTime;
+            score->racePilot = ownShip;
+            score->pendingRecords = flag;
+            score->displayedRecords = flag;
         }
     }
 }
@@ -181,19 +174,19 @@ void DisplayScoreTab(ConfigData *config, HiScoreData *score)
     int track;
     int cls;
 
-    if (raceType == 1) track = config->trackNum + 8;
+    if (raceType == RACE_TIME_TRIAL) track = config->trackNum + 8;
     else track = config->trackNum;
     cls = config->shipClass;
-    if (score->flag != 0) {
+    if (score->pendingRecords != 0) {
         EnterHighScore(config, score);
     }
-    if (score->displayFlag != 0) {
+    if (score->displayedRecords != 0) {
         CentreText("ENTER PLAYER NAME", 0x28, 0x28, 8, 0);
         DoButton(0x85, RESULT_BUTTON_Y, 1, msgSelect);
     } else {
         CentreText("PLAYER TRACK RECORDS", 0x28, 0x28, 8, 0);
     }
-    if (score->displayFlag & 2) {
+    if (score->displayedRecords & 2) {
         if ((scoreTabFrame % 30) < 0x15) {
             AddText("NEW RACE RECORD", 0x28, 0x3C, 8, 1);
         }
@@ -203,7 +196,7 @@ void DisplayScoreTab(ConfigData *config, HiScoreData *score)
         AddText(hiScoreTable[track][cls].name, 0x28, 0x50, 8, 1);
         AddTime(hiScoreTable[track][cls].time, 0xA0, 0x50, 8, 1, 1);
     }
-    if (score->displayFlag & 1) {
+    if (score->displayedRecords & 1) {
         if ((scoreTabFrame % 30) < 0x15) {
             AddText("NEW LAP RECORD", 0x28, 0x64, 8, 1);
         }
@@ -287,7 +280,7 @@ void EnterHighScore(ConfigData *gameData, HiScoreData *hiScoreData)
             }
         }
         hiScoreData->charVal = hiScoreData->currChar - 65;
-        if ((keysDown & 0x20) && hiScoreData->padDelay == 0) {
+        if ((keysDown & PAD_RIGHT) && hiScoreData->padDelay == 0) {
             PlayNote(8, 255, 15, 15, 256);
             hiScoreData->padDelay = 5;
             hiScoreData->charVal++;
@@ -296,7 +289,7 @@ void EnterHighScore(ConfigData *gameData, HiScoreData *hiScoreData)
                 else hiScoreData->charVal = 26;
             }
         }
-        if ((keysDown & 0x80) && hiScoreData->padDelay == 0) {
+        if ((keysDown & PAD_LEFT) && hiScoreData->padDelay == 0) {
             PlayNote(8, 255, 15, 15, 256);
             hiScoreData->padDelay = 5;
             hiScoreData->charVal--;
@@ -305,9 +298,9 @@ void EnterHighScore(ConfigData *gameData, HiScoreData *hiScoreData)
             if (hiScoreData->charVal < hiScoreData->checkVal) hiScoreData->charVal = 27;
         }
         if (hiScoreData->padDelay > 0) hiScoreData->padDelay--;
-        select = GetMenuKey(5);
+        select = GetMenuKey(MENU_KEY_SELECT);
         {
-            int typed = PortNameTyped(hiScoreData->numChars, (keysDown & 0xA0) != 0, hiScoreData->charVal);
+            int typed = PortNameTyped(hiScoreData->numChars, (keysDown & (PAD_RIGHT | PAD_LEFT)) != 0, hiScoreData->charVal);
 
             if (typed >= 0) {
                 hiScoreData->charVal = typed; /* Port: typed on the keyboard */
@@ -345,19 +338,19 @@ void EnterHighScore(ConfigData *gameData, HiScoreData *hiScoreData)
     } else if (hiScoreData->enterHs) {
         hiScoreData->userEntry = 0;
         hiScoreData->nameEntered[hiScoreData->numChars] = 0;
-        if (raceType == 1) scoreTrack = gameData->trackNum + 8;
+        if (raceType == RACE_TIME_TRIAL) scoreTrack = gameData->trackNum + 8;
         else scoreTrack = gameData->trackNum;
-        if (hiScoreData->flag & 2) {
+        if (hiScoreData->pendingRecords & 2) {
             strcpy(hiScoreTable[scoreTrack][gameData->shipClass].name, hiScoreData->nameEntered);
             hiScoreTable[scoreTrack][gameData->shipClass].time = hiScoreData->raceTime;
             hiScoreTable[scoreTrack][gameData->shipClass].ship = hiScoreData->racePilot;
         }
-        if (hiScoreData->flag & 1) {
+        if (hiScoreData->pendingRecords & 1) {
             strcpy(hiScoreTable[scoreTrack][gameData->shipClass].lapName, hiScoreData->nameEntered);
             hiScoreTable[scoreTrack][gameData->shipClass].lapTime = hiScoreData->lapTime;
             hiScoreTable[scoreTrack][gameData->shipClass].lapShip = hiScoreData->lapPilot;
         }
-        hiScoreData->displayFlag = 0;
+        hiScoreData->displayedRecords = 0;
         hiScoreData->numChars = 0;
         hiScoreData->nameEntered[0] = 0;
         hiScoreData->charX = 80;
@@ -377,12 +370,12 @@ void EnterHighScore(ConfigData *gameData, HiScoreData *hiScoreData)
     if (!hiScoreData->userEntry) {
         if (hiScoreData->count > 2) {
             DoButton(127, RESULT_BUTTON_Y, 1, "CONTINUE");
-            if (GetMenuKey(5)) {
+            if (GetMenuKey(MENU_KEY_SELECT)) {
                 hiScoreData->charX = 40;
-                hiScoreData->highScore = 0;
+                hiScoreData->nameEntryActive = 0;
                 hiScoreData->count = 0;
                 hiScoreData->totalTime = 0;
-                hiScoreData->flag = 0;
+                hiScoreData->pendingRecords = 0;
                 gameData->complete = 1;
                 gameData->highScore = 0;
                 raceCompleteFlag = 1;

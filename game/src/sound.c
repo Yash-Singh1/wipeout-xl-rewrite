@@ -1,5 +1,4 @@
 #include "functions.h"
-#include "include_asm_g8.h"
 #include "pc/pc.h" /* Port: the PC version's music */
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */

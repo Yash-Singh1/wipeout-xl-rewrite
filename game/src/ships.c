@@ -1,5 +1,7 @@
 #include "functions.h"
+#include "weapon.h"
 #include "ships.h"
+#include "racectrl.h"
 #include "portfar.h" /* Port: the far view */
 #include "portorig.h" /* Port: the original Wipeout's tracks */
 
@@ -66,7 +68,7 @@ void DrawShips(ShipData *shipIndex, Object **shipShapes, int camShip, TrackCamer
 {
     int       i;
     VECTOR    distance;
-    VECTOR    v2;
+    VECTOR    viewPosition;
     SVECTOR   toCentre;
     int       firstMag, secondMag, firstShip, secondShip;
     Object   *obj;
@@ -96,7 +98,7 @@ void DrawShips(ShipData *shipIndex, Object **shipShapes, int camShip, TrackCamer
         toCentre.vy = shipIndex[i].ppivot.vy + camera.camPos->relative.t[1];
         toCentre.vz = shipIndex[i].ppivot.vz + camera.camPos->relative.t[2];
         SetSkeletonTransform(camera.camPos->super);
-        RotTrans(&toCentre, &v2, &rflag);
+        RotTrans(&toCentre, &viewPosition, &rflag);
         if (mag < 2900) {
             proximity |= 1 << i;
             shipIndex[i].attr |= VISIBLE;
@@ -110,7 +112,7 @@ void DrawShips(ShipData *shipIndex, Object **shipShapes, int camShip, TrackCamer
                 }
             }
         }
-        if (((mag < 1200) && (v2.vz > 0)) || (i == camShip)) {
+        if (((mag < 1200) && (viewPosition.vz > 0)) || (i == camShip)) {
             obj = shipShapes[shipIndex[i].highResTableIndex];
             SetSkeletonPosition(obj->skeleton, shipIndex[i].ppivot.vx, shipIndex[i].ppivot.vy, shipIndex[i].ppivot.vz);
             SetSkeletonDirectionHPR(obj->skeleton, shipIndex[i].hdg, shipIndex[i].pitch, shipIndex[i].roll);
@@ -131,16 +133,16 @@ void DrawShips(ShipData *shipIndex, Object **shipShapes, int camShip, TrackCamer
                     do {
                         flags = face->flags;
                         face++;
-                    } while (!(flags & 1));
+                    } while (!(flags & TRACK_BASE));
                     face--;
                     if (!(shipIndex[i].attr & LSIDE)) face++;
                     win = (CVECTOR *)&face->red;
                     PortInterpInstance(i); /* Port: frame interpolation: the model's drawing is this ship's */
-                    if (raceType == 3) {
+                    if (raceType == RACE_ONE_ON_ONE) {
                         if ((i == remoteShip) || (i == ownShip)) {
                             AsmDrawObjectLit(obj, camera.camPos, 0, win);
                         }
-                    } else if (raceType == 1) {
+                    } else if (raceType == RACE_TIME_TRIAL) {
                         if (i == ownShip) {
                             AsmDrawObjectLit(obj, camera.camPos, 0, win);
                         }
@@ -267,10 +269,10 @@ void InitTransShip(Object *lights, short flag)
                 prm.ft3->tsb = GetTPage(0, 0, textureTable[prm.ft3->texture]->textureX, textureTable[prm.ft3->texture]->textureY);
                 if (!flag) {
                     prm.ft3->cba = (textureTable[prm.ft3->texture]->clutY << 6) | ((short)textureTable[prm.ft3->texture]->clutX >> 4);
-                    prm.ft3->flag &= ~4;
+                    prm.ft3->flag &= ~Translucent;
                 } else {
                     prm.ft3->cba = (ghostCluts[prm.ft3->texture - shipTex].clutY << 6) | ((short)ghostCluts[prm.ft3->texture - shipTex].clutX >> 4);
-                    prm.ft3->flag |= 4;
+                    prm.ft3->flag |= Translucent;
                 }
                 prm.ft3 += 1;
                 break;
@@ -278,10 +280,10 @@ void InitTransShip(Object *lights, short flag)
                 prm.ft4->tsb = GetTPage(0, 0, textureTable[prm.ft4->texture]->textureX, textureTable[prm.ft4->texture]->textureY);
                 if (!flag) {
                     prm.ft4->cba = (textureTable[prm.ft4->texture]->clutY << 6) | ((short)textureTable[prm.ft4->texture]->clutX >> 4);
-                    prm.ft4->flag &= ~4;
+                    prm.ft4->flag &= ~Translucent;
                 } else {
                     prm.ft4->cba = (ghostCluts[prm.ft4->texture - shipTex].clutY << 6) | ((short)ghostCluts[prm.ft4->texture - shipTex].clutX >> 4);
-                    prm.ft4->flag |= 4;
+                    prm.ft4->flag |= Translucent;
                 }
                 prm.ft4 += 1;
                 break;
@@ -295,10 +297,10 @@ void InitTransShip(Object *lights, short flag)
                 prm.gt3->tsb = GetTPage(0, 0, textureTable[prm.gt3->texture]->textureX, textureTable[prm.gt3->texture]->textureY);
                 if (!flag) {
                     prm.gt3->cba = (textureTable[prm.gt3->texture]->clutY << 6) | ((short)textureTable[prm.gt3->texture]->clutX >> 4);
-                    prm.gt3->flag &= ~4;
+                    prm.gt3->flag &= ~Translucent;
                 } else {
                     prm.gt3->cba = (ghostCluts[prm.gt3->texture - shipTex].clutY << 6) | ((short)ghostCluts[prm.gt3->texture - shipTex].clutX >> 4);
-                    prm.gt3->flag |= 4;
+                    prm.gt3->flag |= Translucent;
                 }
                 prm.gt3 += 1;
                 break;
@@ -475,20 +477,20 @@ void initShipData(TrackSection *section, ShipData *shipIndex, ConfigData *option
             side ^= 1;
         }
     }
-    if (gameType != 2) {
-        if (raceType == 3) {
+    if (gameType != GAME_SINGLE_PLAYER) {
+        if (raceType == RACE_ONE_ON_ONE) {
             slot = 0;
-        } else if (raceType == 2) {
+        } else if (raceType == RACE_ARCADE_LINK) {
             slot = 10;
             if (bigGrid) slot = 13;
         }
         locals.starts[slot + 1] = locals.starts[slot];
     }
-    if (raceType == 1) {
+    if (raceType == RACE_TIME_TRIAL) {
         gridPosition[ghostShip] = 0;
         gridPosition[ownShip] = 0;
-    } else if (raceType == 3) {
-        if (gameType == 1) {
+    } else if (raceType == RACE_ONE_ON_ONE) {
+        if (gameType == GAME_LINK_SLAVE) {
             gridPosition[ownShip] = 1;
             gridPosition[remoteShip] = 0;
         } else {
@@ -515,11 +517,11 @@ void initShipData(TrackSection *section, ShipData *shipIndex, ConfigData *option
             }
             i++;
         } while (i < groups * 3);
-        if (gameType == 2) {
+        if (gameType == GAME_SINGLE_PLAYER) {
             gridPosition[ownShip] = (int)next;
             next = (int)next + 1;
         } else {
-            if (gameType == 0) {
+            if (gameType == GAME_LINK_MASTER) {
                 gridPosition[ownShip] = next;
                 next++;
                 gridPosition[remoteShip] = next;
@@ -579,7 +581,7 @@ void initShipData(TrackSection *section, ShipData *shipIndex, ConfigData *option
     }
     for (i = 0; i < 15; i++) {
         position = gridPosition[i];
-        shipIndex[i].attr = 0x248;
+        shipIndex[i].attr = (DIRECTION | RACING | VISIBLE);
         shipIndex[i].vpivot.vx = 0;
         shipIndex[i].vpivot.vy = 0;
         shipIndex[i].vpivot.vz = 0;
@@ -600,7 +602,7 @@ void initShipData(TrackSection *section, ShipData *shipIndex, ConfigData *option
         shipIndex[i].thrust = 0;
         shipIndex[i].thrustCount = 0;
         shipIndex[i].rotationCorrectionDisabled = 0;
-        shipIndex[i].weapon = 0;
+        shipIndex[i].weapon = WEAPON_NONE;
         shipIndex[i].lastWeapon = 0;
         shipIndex[i].targetShip = -1;
         shipIndex[i].rearTarget = -1;
@@ -614,14 +616,14 @@ void initShipData(TrackSection *section, ShipData *shipIndex, ConfigData *option
         if (i == ownShip) {
             shipIndex[i].combatAttr = 0;
         } else if (i == remoteShip) {
-            shipIndex[i].combatAttr = 2;
-        } else if (raceType == 1) {
-            if (i != ghostShip) shipIndex[i].combatAttr |= 0x8000;
-        } else if (raceType == 3) {
-            shipIndex[i].combatAttr |= 0x8000;
+            shipIndex[i].combatAttr = REMOTE_SHIP;
+        } else if (raceType == RACE_TIME_TRIAL) {
+            if (i != ghostShip) shipIndex[i].combatAttr |= DESTROYED;
+        } else if (raceType == RACE_ONE_ON_ONE) {
+            shipIndex[i].combatAttr |= DESTROYED;
         } else {
             shipIndex[i].combatAttr = locals.states.state[i];
-            if (!bigGrid && i >= 12) shipIndex[i].combatAttr |= 0x8000;
+            if (!bigGrid && i >= 12) shipIndex[i].combatAttr |= DESTROYED;
             if (PortOriginalEightShips() && position >= 8) shipIndex[i].combatAttr |= 0x8000; /* Port */
         }
         switch (options->shipClass) {
@@ -636,7 +638,7 @@ void initShipData(TrackSection *section, ShipData *shipIndex, ConfigData *option
         case 2: shipIndex[i].headingInc = SHIP_RATE(shipHeadingIncClass2[i]); shipIndex[i].maxHeading = SHIP_RATE(shipMaxHeadingClass2[i]); break;
         case 3: shipIndex[i].headingInc = SHIP_RATE(shipHeadingIncClass3[i]); shipIndex[i].maxHeading = SHIP_RATE(shipMaxHeadingClass3[i]); break;
         }
-        if (i == ownShip || i == remoteShip || (i == ghostShip && raceType == 1)) {
+        if (i == ownShip || i == remoteShip || (i == ghostShip && raceType == RACE_TIME_TRIAL)) {
             shipIndex[i].update = UpdatePlayerShipStart;
         } else {
             shipIndex[i].update = UpdateDroneShipStart;
@@ -655,7 +657,7 @@ void initShipData(TrackSection *section, ShipData *shipIndex, ConfigData *option
         do {
             flags = face->flags;
             face++;
-        } while (!(flags & 1));
+        } while (!(flags & TRACK_BASE));
         face--;
         if (locals.side[(short)position]) face++;
         locals.point.vx = (track->vertices[face->vertex[0]].vx + track->vertices[face->vertex[2]].vx) >> 1;
@@ -679,7 +681,7 @@ void initShipData(TrackSection *section, ShipData *shipIndex, ConfigData *option
     activeShipCount = 0;
     i = 0;
     do {
-        if (!(shipIndex[i].combatAttr & 0x8000)) {
+        if (!(shipIndex[i].combatAttr & DESTROYED)) {
             short distance = raceLines[shipIndex[i].nearSecNo].distance;
             short nextCount;
             index = activeShipCount;
@@ -694,27 +696,27 @@ void initShipData(TrackSection *section, ShipData *shipIndex, ConfigData *option
 }
 
 
-void SetSpread(ShipData *shipIndex, ConfigData *snd, int vol, short idx, short a4)
+void SetSpread(ShipData *shipIndex, ConfigData *config, int position, short shipNo, short largeGrid)
 {
 
-    vol = (a4 ? 15 : 12) - vol;
-    switch (snd->shipClass) {
+    position = (largeGrid ? 15 : 12) - position;
+    switch (config->shipClass) {
     case 0:
-        shipIndex[idx].numToSpeed = vol * spreadScale0[snd->trackNum];
+        shipIndex[shipNo].numToSpeed = position * spreadScale0[config->trackNum];
         break;
     case 1:
-        shipIndex[idx].numToSpeed = vol * spreadScale1[snd->trackNum];
+        shipIndex[shipNo].numToSpeed = position * spreadScale1[config->trackNum];
         break;
     case 2:
-        shipIndex[idx].numToSpeed = vol * spreadScale2[snd->trackNum];
+        shipIndex[shipNo].numToSpeed = position * spreadScale2[config->trackNum];
         break;
     case 3:
-        shipIndex[idx].numToSpeed = vol * spreadScale3[snd->trackNum];
+        shipIndex[shipNo].numToSpeed = position * spreadScale3[config->trackNum];
         break;
     }
-    shipIndex[idx].numToSpeed = PAL_TIME(shipIndex[idx].numToSpeed);
-    if (idx == ownShip || idx == remoteShip) {
-        shipIndex[idx].numToSpeed = 0;
+    shipIndex[shipNo].numToSpeed = PAL_TIME(shipIndex[shipNo].numToSpeed);
+    if (shipNo == ownShip || shipNo == remoteShip) {
+        shipIndex[shipNo].numToSpeed = 0;
     }
 }
 

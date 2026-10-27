@@ -50,7 +50,7 @@ void InitGhostShip(ConfigData *config, ShipData *ships)
     }
     ghostDrone = 1;
     ships[ghostShip].update = UpdateDroneShipStart;
-    ships[ghostShip].updateCount = PAL_TIME(200); /* the start countdown */
+    ships[ghostShip].updateCount = START_COUNTDOWN_FRAMES;
     ships[ghostShip].numToSpeed = 0;
 }
 
@@ -84,7 +84,7 @@ void buildGhostReplayData(ShipData *ships)
     u16          buttons;
     u16          analogue;
 
-    (*(u16 *)ghostControl[0].pad6) = ghostControl[0].buttons;
+    ghostControl[0].previousButtons = ghostControl[0].buttons;
     if (ghostDrone == 0) {
         take = replayBuffer;
         if (take->keyCount < take->keyTotal) {
@@ -106,12 +106,12 @@ void buildGhostReplayData(ShipData *ships)
             humanToDroneSpeed(ships, ghostShip);
         }
     }
-    ghostControl[0].pressed = ghostControl[0].buttons & (ghostControl[0].buttons ^ (*(u16 *)ghostControl[0].pad6));
+    ghostControl[0].pressed = ghostControl[0].buttons & (ghostControl[0].buttons ^ ghostControl[0].previousButtons);
 }
 
 void storeGhostTrail(ConfigData *config, HiScoreData *score)
 {
-    if (recordBuffer->disabled == 0 && (score->flag & 2)) {
+    if (recordBuffer->disabled == 0 && (score->pendingRecords & 2)) {
         replayBuffer[0] = recordBuffer[0];
     }
 }

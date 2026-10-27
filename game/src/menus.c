@@ -6,6 +6,8 @@
 #include "hiscores.h"
 #include "card.h"
 #include "pad.h"
+#include "racectrl.h"
+#include "sfx.h"
 #include "../../platform/controls.h" /* Port: keyboard and gamepad glyphs and button names */
 #include "ayrace.h"
 #include "ghost.h"
@@ -24,7 +26,6 @@
    (offsets 10, 11, 43 and 75 of each 90-byte entry); the fields are used directly. */
 #define SelectedCardFlags() (cardSlots[myFinished].entry[fadescreen].type)
 typedef struct Str20 { s32 w[5]; } Str20;
-typedef struct TimImageBlock { u8 pad0[0xC]; u16 x; u16 y; u16 width; u16 height; } TimImageBlock;
 extern short buttonCount;
 extern int buttonTextures;
 /* Port: endTextures, menuTexturePtrs, menuTexturePtrsB, menuTexturePtrsC, menuTexturePtrsD are parts of textureTable; the uses read them directly. */
@@ -377,36 +378,30 @@ extern u32 slideCount;
 extern u16 topOffSet;
 extern u16 middleOffSet;
 extern u16 bottomOffSet;
-typedef struct TrackList { char track[15]; } TrackList;
+typedef struct TrackList {
+    char track[15];
+} TrackList;
 extern TrackList defaultTrackList[];
 
 typedef struct MenuWorkspace {
     char cdState[8];
     MenuBars menus;
     MenuPolys menuPolys;
-    volatile short screenX;
-    volatile short screenY;
-    volatile short screenWidth;
-    volatile short screenHeight;
+    short screenX;
+    short screenY;
+    short screenWidth;
+    short screenHeight;
     char pad1910[12];
-    volatile short musicX;
-    volatile short musicY;
-    volatile short musicWidth;
-    volatile short musicHeight;
+    short musicX;
+    short musicY;
+    short musicWidth;
+    short musicHeight;
     char pad1924[164];
     MenuSelection selection;
     HiScoreData cardState;
     MusicScreen musicScreen;
-    char displayScreen[1168];
-    volatile int cdTrack;
-    char pad2354[4];
-    int inputDelay;
-    char pad235c[4];
-    unsigned short fadeLevel;
-    char pad2362[6];
-    Texture *volatile musicTexture;
-    char pad236c[4];
-    unsigned short attractMode;
+    DrBox displayScreen;
+    int cdTrack;
 } MenuWorkspace;
 
 void InitMenuBox(MenuBars *bars);
@@ -445,21 +440,25 @@ extern s16 linkState;
 int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMemorySize)
 {
     TrackList trackList;
-    int gap[2];
     MenuWorkspace work;
+    int inputDelay;
+    unsigned short fadeLevel;
+    Texture *musicTexture;
+    short attractMode;
     int musicIndex;
     int i;
     int steps, selectionNo;
-    int idleCount;
-    short negcon;
-    short errorCount;
-    work.inputDelay = 2;
+    int idleFrames;
+    short usingNegcon;
+    short selectionErrorFrames;
+
+    inputDelay = 2;
     trackList = defaultTrackList[0];
-    work.fadeLevel = 200;
-    negcon = 0;
-    idleCount = 0;
-    errorCount = 0;
-    work.attractMode = 0;
+    fadeLevel = 200;
+    usingNegcon = 0;
+    idleFrames = 0;
+    selectionErrorFrames = 0;
+    attractMode = 0;
     work.cdTrack = 1;
     InitDynamicMem(reserveHeap, RESERVE_HEAP_SIZE);
     keyDefineThrust = 1;
@@ -515,29 +514,31 @@ int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMem
             gameData->actTrackNum = raceTracks[0];
             raceType = 99;
         }
-    } else raceFlag = 0;
-    *(volatile short *)&menu[1].selection = savedSelection[0];
-    menu[4].selection = savedSelection[1];
-    menu[2].selection = savedClassSelection[0];
-    if (gameData->shipClass == 0) menu[5].selection = savedTrackSelection;
-    if (gameData->shipClass == 1) menu[6].selection = savedTrackSelection;
-    if (gameData->shipClass == 2) menu[7].selection = savedTrackSelection;
-    if (gameData->shipClass == 3) menu[8].selection = savedTrackSelection;
-    menu[0].selection = savedMainSelection;
-    switch (menu[1].selection) {
+    } else {
+        raceFlag = 0;
+    }
+    menu[MENU_RACE_TYPE].selection = savedSelection[0];
+    menu[MENU_TEAM].selection = savedSelection[1];
+    menu[MENU_RACING_CLASS].selection = savedClassSelection[0];
+    if (gameData->shipClass == 0) menu[MENU_VECTOR_TRACK].selection = savedTrackSelection;
+    if (gameData->shipClass == 1) menu[MENU_VENOM_TRACK].selection = savedTrackSelection;
+    if (gameData->shipClass == 2) menu[MENU_RAPIER_TRACK].selection = savedTrackSelection;
+    if (gameData->shipClass == 3) menu[MENU_PHANTOM_TRACK].selection = savedTrackSelection;
+    menu[MENU_MAIN].selection = savedMainSelection;
+    switch (menu[MENU_RACE_TYPE].selection) {
     case 0:
-        raceType = 0;
+        raceType = RACE_ARCADE;
         break;
     case 1:
-        raceType = 1;
+        raceType = RACE_TIME_TRIAL;
         break;
     case 2:
     case 3:
-        raceType = 0;
-        menu[1].selection = 0;
+        raceType = RACE_ARCADE;
+        menu[MENU_RACE_TYPE].selection = 0;
         break;
     case 4:
-        raceType = 4;
+        raceType = RACE_CHALLENGE;
         break;
     }
     PortLinkMenusStart(); /* Port: the two-player modes start at the lobby (portlink.c) */
@@ -549,15 +550,15 @@ int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMem
     InitMenuTextures(&menuTextures);
     InitMenuPolys((MenuPrims *)&work.menuPolys);
     LoadCardTexture();
-    work.musicTexture = textureTable[menuTextures];
-    InitDrBox(work.musicTexture, (DrBox *)&work.musicScreen);
+    musicTexture = textureTable[menuTextures];
+    InitDrBox(musicTexture, &work.musicScreen.box);
     InitMusicScreen(&work.musicScreen, menuTextures);
     InitKeyConfig((KeyConfig *)&savedKeyConfig);
     LoadMenuLineData();
     LoadModel(menuModels, modelNameHarry);
     LoadModel(shipModels, modelNameJune);
     PortOriginalModelsLoad(); /* Port: the original's track models, for the WIPEOUT line's tracks */
-    if (raceType == 4) {
+    if (raceType == RACE_CHALLENGE) {
         gameData->shipClass = gameData->savedClass;
         gameData->actTrackNum = gameData->savedActTrackNum;
         gameData->trackNum = gameData->savedTrackNum;
@@ -568,15 +569,14 @@ int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMem
     work.screenHeight = 240;
     musicIndex = gameData->cdTrack;
     if (musicIndex == 1) {
-        unsigned char q = (unsigned char)cdMusicIndex;
-        q = (unsigned char)(((unsigned char)cdMusicIndex + 1)%(cdMusicCount - 1));
-        cdMusicIndex = q;
-        musicIndex = cdMusicTable[q];
+        /* Track 1 is shuffle play: the next of the shuffled cdMusicTable */
+        cdMusicIndex = (unsigned char)(((unsigned char)cdMusicIndex + 1) % (cdMusicCount - 1));
+        musicIndex = cdMusicTable[cdMusicIndex];
         cdMusicTrack = musicIndex;
     }
     CdMusicPlay(musicIndex, 0);
     while (!negconCentre) {
-        if ((unsigned)currMenu < 2 || currMenu == 2 || (unsigned)(currMenu - 17) < 2) fastFrame = 0;
+        if (currMenu == MENU_MAIN || currMenu == MENU_RACE_TYPE || currMenu == MENU_RACING_CLASS || currMenu == MENU_ARCADE_SCORES || currMenu == MENU_TIME_TRIAL_SCORES) fastFrame = 0;
         else fastFrame = 1;
         buttonCount = 0;
         SfxDoSfx();
@@ -586,34 +586,31 @@ int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMem
         quadIndex = CurrentScreen * 300;
         ClearOTagR(OT[CurrentScreen], 8192);
         ClearOTagR(OT2[CurrentScreen], 1600);
-        if (currMenu != 9) SetInGameCDTrack(cdPlaySeconds, (struct WipeCdStatus *)work.cdState, gameData, (int *)&work.cdTrack);
-        {
-            unsigned short fade = *(volatile unsigned short *)&work.fadeLevel;
-            if ((short)fade < 200) work.fadeLevel = fade + 8;
-        }
-        if (!negcon) {
+        if (currMenu != MENU_AUDIO) SetInGameCDTrack(cdPlaySeconds, (struct WipeCdStatus *)work.cdState, gameData, &work.cdTrack);
+        if ((short)fadeLevel < 200) fadeLevel += 8;
+        if (!usingNegcon) {
             if (playerControl->head == 2) {
-                if (currMenu == 10) currMenu = 20;
-                negcon = 1;
-                menu[3].options[1].nextMenu = 20;
+                if (currMenu == MENU_DIGITAL_PAD) currMenu = MENU_NEGCON_SELECT;
+                usingNegcon = 1;
+                menu[MENU_OPTIONS].options[1].nextMenu = MENU_NEGCON_SELECT;
             }
         }
-        if (negcon && playerControl->head == 1) {
-            if (currMenu == 20 || (unsigned)(currMenu - 21) < 2) currMenu = 10;
-            negcon = 0;
-            menu[3].options[1].nextMenu = 10;
+        if (usingNegcon && playerControl->head == 1) {
+            if (currMenu == MENU_NEGCON_SELECT || currMenu == MENU_NEGCON_TWIST || currMenu == MENU_NEGCON_BUTTONS) currMenu = MENU_DIGITAL_PAD;
+            usingNegcon = 0;
+            menu[MENU_OPTIONS].options[1].nextMenu = MENU_DIGITAL_PAD;
         }
-        if (errorCount > 0 && !screenCount) {
+        if (selectionErrorFrames > 0 && !screenCount) {
             PrintCX(msgCannotSelect, 160, 110);
             PrintCX(msgAsOtherPlayer, 160, 118);
             PrintCX(msgHasStarted, 160, 126);
             AddPrim(OT[CurrentScreen], &work.menuPolys.topFill[CurrentScreen]);
-            errorCount--;
+            selectionErrorFrames--;
             AddPrim(OT[CurrentScreen], &work.menuPolys.topBorder[CurrentScreen]);
         }
         if (!screenCount) {
             ShowMenu(gameData, &work.menus, &work.selection);
-            if (currMenu == 9) DrawMusicScreen(&work.musicScreen);
+            if (currMenu == MENU_AUDIO) DrawMusicScreen(&work.musicScreen);
         } else {
             SlideScreen(&work.musicScreen);
             fastFrame = 1;
@@ -621,14 +618,14 @@ int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMem
         if (shakeAmount) fastFrame = 1;
         ShakeScreen();
         Update2DParticle();
-        DrawDrBox(work.musicTexture, (DrBox *)&work.musicScreen);
-        DisplayScreen(textureTable[5 + menuTextures], (DrBox *)work.displayScreen);
+        DrawDrBox(musicTexture, &work.musicScreen.box);
+        DisplayScreen(textureTable[5 + menuTextures], &work.displayScreen);
         if (!screenCount) MenuFunction(gameData, &work.menuPolys, &savedKeyConfig, &work.selection, &work.cardState, &work.musicScreen);
-        if (work.inputDelay > 0) {
+        if (inputDelay > 0) {
             steps = 2;
-            work.inputDelay = *(volatile int *)&work.inputDelay - 1;
+            inputDelay--;
         } else {
-            if (gameType != 1) steps = menuSendFlags;
+            if (gameType != GAME_LINK_SLAVE) steps = menuSendFlags;
             else steps = menuRecvFlags;
         }
         cardNum -= steps * 30;
@@ -637,120 +634,115 @@ int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMem
         if (cardPending.timer <= 0 && cardNotice.timer <= 0) {
             PortAutoSave(gameData, 1); /* Port: the game saves itself (portsave.c) */
         }
-        if (menuEditor) goto serial;
-        if (((GetMenuKey(5) || PortLinkMenuSelect(screenCount)) && !screenCount && currMenu != 19) || (currMenu == 19 && ((linked && linkState == 5) || linkTimedOut == 1))) { /* Port: the linked players' way through the menus (portlink.c) */
-            if (linkTimedOut) {
-                raceType = 0;
-                linkTimedOut = 0;
-                killLink();
-            }
-            if (currMenu == 0) {
-                selectionNo = menu[0].selection;
-                if (selectionNo == 2 && raceType == 4) goto cancel;
-                if ((selectionNo == 0 || selectionNo == 4) && remoteStartGame) goto error;
-                if (currMenu == 0 && gameType == 1 && menu[0].selection == 2) goto cancel;
-            }
-            PlayNote(9, 255, 15, 15, 256);
-            if (currMenu == 0 && menu[0].selection == 3) {
-                savedSelection[0] = menu[1].selection;
-                savedSelection[1] = menu[4].selection;
-                savedClassSelection[0] = menu[2].selection;
-                negconCentre = 1;
-                menuSendKey = 2;
-                errorCount = 0;
-                if (gameData->shipClass == 0) savedTrackSelection = menu[5].selection;
-                if (gameData->shipClass == 1) savedTrackSelection = menu[6].selection;
-                if (gameData->shipClass == 2) savedTrackSelection = menu[7].selection;
-                if (gameData->shipClass == 3) savedTrackSelection = menu[8].selection;
-                savedMainSelection = menu[0].selection;
-            } else if (menu[currMenu].numOptions && prevMenu != 10 && (unsigned short)(prevMenu - 22) >= 2 && prevMenu != 12 && (unsigned short)(prevMenu - 17) >= 2) {
-                CopyGameData(gameData, &work.selection, 1, (KeyConfig *)&savedKeyConfig, &work.cardState);
-                PortLinkMenuSelected(currMenu); /* Port */
-                currMenu = menu[currMenu].options[menu[currMenu].selection].nextMenu;
-                CopyGameData(gameData, &work.selection, 0, (KeyConfig *)&savedKeyConfig, &work.cardState);
-                errorCount = 0;
-                InitMenuDisplay(currMenu == 4 ? 110 : 150, 0);
-                if (CurrentScreen) {
-                    work.screenX = 0;
-                    work.screenY = 240;
+        if (!menuEditor) {
+            if (((GetMenuKey(MENU_KEY_SELECT) || PortLinkMenuSelect(screenCount)) && !screenCount && currMenu != MENU_LINK) || (currMenu == MENU_LINK && ((linked && linkState == 5) || linkTimedOut == 1))) { /* Port: the linked players' way through the menus (portlink.c) */
+                if (linkTimedOut) {
+                    raceType = RACE_ARCADE;
+                    linkTimedOut = 0;
+                    killLink();
+                }
+                if (currMenu == MENU_MAIN) {
+                    selectionNo = menu[MENU_MAIN].selection;
+                }
+                if (currMenu == MENU_MAIN && selectionNo == 2 && raceType == RACE_CHALLENGE) {
+                    /* (a challenge sets the class and track) */
+                } else if (currMenu == MENU_MAIN && (selectionNo == 0 || selectionNo == 4) && remoteStartGame) {
+                    selectionErrorFrames = PAL_TIME(90); /* (the race type and options, once the other player has started) */
+                } else if (currMenu == MENU_MAIN && gameType == GAME_LINK_SLAVE && menu[MENU_MAIN].selection == 2) {
+                    /* (the link master chooses the class and track) */
                 } else {
-                    work.screenX = 0;
-                    work.screenY = 0;
+                    PlayNote(9, 255, 15, 15, 256);
+                    if (currMenu == MENU_MAIN && menu[MENU_MAIN].selection == 3) {
+                        savedSelection[0] = menu[MENU_RACE_TYPE].selection;
+                        savedSelection[1] = menu[MENU_TEAM].selection;
+                        savedClassSelection[0] = menu[MENU_RACING_CLASS].selection;
+                        negconCentre = 1;
+                        menuSendKey = 2;
+                        selectionErrorFrames = 0;
+                        if (gameData->shipClass == 0) savedTrackSelection = menu[MENU_VECTOR_TRACK].selection;
+                        if (gameData->shipClass == 1) savedTrackSelection = menu[MENU_VENOM_TRACK].selection;
+                        if (gameData->shipClass == 2) savedTrackSelection = menu[MENU_RAPIER_TRACK].selection;
+                        if (gameData->shipClass == 3) savedTrackSelection = menu[MENU_PHANTOM_TRACK].selection;
+                        savedMainSelection = menu[MENU_MAIN].selection;
+                    } else if (menu[currMenu].numOptions && prevMenu != MENU_DIGITAL_PAD && prevMenu != MENU_NEGCON_BUTTONS && prevMenu != MENU_ENTER_PASSWORD && prevMenu != MENU_LOAD_SAVE && prevMenu != MENU_ARCADE_SCORES && prevMenu != MENU_TIME_TRIAL_SCORES) {
+                        CopyGameData(gameData, &work.selection, 1, (KeyConfig *)&savedKeyConfig, &work.cardState);
+                        PortLinkMenuSelected(currMenu); /* Port */
+                        currMenu = menu[currMenu].options[menu[currMenu].selection].nextMenu;
+                        CopyGameData(gameData, &work.selection, 0, (KeyConfig *)&savedKeyConfig, &work.cardState);
+                        selectionErrorFrames = 0;
+                        InitMenuDisplay(currMenu == MENU_TEAM ? 110 : 150, 0);
+                        if (CurrentScreen) {
+                            work.screenX = 0;
+                            work.screenY = 240;
+                        } else {
+                            work.screenX = 0;
+                            work.screenY = 0;
+                        }
+                        InitSlider();
+                        if (currMenu == MENU_RACE_TYPE && linked) {
+                            menuSendKey = 1;
+                            raceType = RACE_ARCADE;
+                            menu[MENU_RACE_TYPE].selection = 0;
+                        }
+                    } else if (currMenu != MENU_DIGITAL_PAD && prevMenu != MENU_DIGITAL_PAD && currMenu != MENU_ENTER_PASSWORD && prevMenu != MENU_ENTER_PASSWORD && currMenu != MENU_NEGCON_BUTTONS && prevMenu != MENU_NEGCON_BUTTONS && currMenu != MENU_LOAD_SAVE && prevMenu != MENU_LOAD_SAVE && currMenu != MENU_ARCADE_SCORES && prevMenu != MENU_ARCADE_SCORES && currMenu != MENU_TIME_TRIAL_SCORES && prevMenu != MENU_TIME_TRIAL_SCORES) {
+                        CopyGameData(gameData, &work.selection, 1, (KeyConfig *)&savedKeyConfig, &work.cardState);
+                        PortLinkMenuSelected(currMenu); /* Port */
+                        currMenu = menu[currMenu].nextMenu;
+                        CopyGameData(gameData, &work.selection, 0, (KeyConfig *)&savedKeyConfig, &work.cardState);
+                        InitSlider();
+                        selectionErrorFrames = 0;
+                        InitMenuDisplay(currMenu == MENU_TEAM ? 110 : 150, 0);
+                        if (currMenu == MENU_RACE_TYPE && linked) {
+                            menuSendKey = 1;
+                            raceType = RACE_ARCADE;
+                            menu[MENU_RACE_TYPE].selection = 0;
+                        }
+                    }
                 }
-                InitSlider();
-                goto entered;
-            } else if (currMenu != 10 && prevMenu != 10 && currMenu != 23 && prevMenu != 23 && currMenu != 22 && prevMenu != 22 && currMenu != 12 && prevMenu != 12 && currMenu != 17 && prevMenu != 17 && currMenu != 18 && prevMenu != 18) {
-                CopyGameData(gameData, &work.selection, 1, (KeyConfig *)&savedKeyConfig, &work.cardState);
-                PortLinkMenuSelected(currMenu); /* Port */
-                currMenu = menu[currMenu].nextMenu;
-                CopyGameData(gameData, &work.selection, 0, (KeyConfig *)&savedKeyConfig, &work.cardState);
-                InitSlider();
-                errorCount = 0;
-                InitMenuDisplay(currMenu == 4 ? 110 : 150, 0);
-entered:
-                if (currMenu == 1 && linked) {
-                    menuSendKey = 1;
-                    raceType = 0;
-                    menu[1].selection = 0;
+            }
+            if (GetMenuKey(MENU_KEY_BACK) && !(currMenu == MENU_LINK && (linkState == 3 || linkState == 4))) {
+                if (currMenu == MENU_LINK) {
+                    raceType = RACE_ARCADE;
+                    killLink();
+                    PortLobbyLeave(); /* Port: out of the lobby: the second player's game closes */
+                }
+                if (menu[currMenu].prevMenu != 999 && currMenu != MENU_DIGITAL_PAD && prevMenu != MENU_DIGITAL_PAD && currMenu != MENU_ENTER_PASSWORD && prevMenu != MENU_ENTER_PASSWORD && currMenu != MENU_NEGCON_BUTTONS && prevMenu != MENU_NEGCON_BUTTONS && currMenu != MENU_LOAD_SAVE && prevMenu != MENU_LOAD_SAVE) {
+                    PlayNote(49, 255, 15, 15, 256);
+                    CopyGameData(gameData, &work.selection, 0, (KeyConfig *)&savedKeyConfig, &work.cardState);
+                    { int from = currMenu; currMenu = menu[currMenu].prevMenu; PortLinkMenuCancelled(from, currMenu); } /* Port */
+                    selectionErrorFrames = 0;
+                    InitMenuDisplay(currMenu == MENU_TEAM ? 110 : 150, 0);
+                    InitSlider();
                 }
             }
+            prevMenu = 0;
         }
-        goto cancel;
-error:
-        errorCount = PAL_TIME(90);
-cancel:
-        if (GetMenuKey(4)) {
-            if (currMenu == 19) {
-                if ((unsigned short)(linkState - 3) < 2) goto noCancel;
-                raceType = 0;
-                killLink();
-                PortLobbyLeave(); /* Port: out of the lobby: the second player's game closes */
-            }
-            if (menu[currMenu].prevMenu != 999 && currMenu != 10 && prevMenu != 10 && currMenu != 23 && prevMenu != 23 && currMenu != 22 && prevMenu != 22 && currMenu != 12 && prevMenu != 12) {
-                PlayNote(49, 255, 15, 15, 256);
-                CopyGameData(gameData, &work.selection, 0, (KeyConfig *)&savedKeyConfig, &work.cardState);
-                { int from = currMenu; currMenu = menu[currMenu].prevMenu; PortLinkMenuCancelled(from, currMenu); } /* Port */
-                errorCount = 0;
-                InitMenuDisplay(currMenu == 4 ? 110 : 150, 0);
-                InitSlider();
-            }
-        }
-noCancel:
-        prevMenu = 0;
-serial:
         if (linked) {
             doSerialMenu(gameData, &work.selection);
             if (menuSendKey == 1 || menuRecvKey == 1) {
                 killLink();
-                raceType = 0;
-                menu[1].selection = 0;
+                raceType = RACE_ARCADE;
+                menu[MENU_RACE_TYPE].selection = 0;
             }
         }
-        if (currMenu == 0) {
-            if (negcon) {
-                if (playerControl[0].buttons != 0) goto idleReset;
-                if (playerControl[0].thrust >= 31) goto idleReset;
-                if ((unsigned)(playerControl[0].steering-120) >= 47) goto idleReset;
-                idleCount = (s32)((u32)idleCount + 1);
-                goto idleCheck;
+        if (currMenu == MENU_MAIN) {
+            /* The attract mode starts after the main menu has stood untouched for 15 seconds */
+            if (usingNegcon) {
+                if (playerControl[0].buttons != 0 || playerControl[0].thrust >= 31 || (unsigned)(playerControl[0].steering - 120) >= 47) idleFrames = 0;
+                else idleFrames++;
             } else {
-                if (playerControl[0].buttons == 0) {
-                    idleCount = (s32)((u32)idleCount + 1);
-                    goto idleCheck;
-                }
+                if (playerControl[0].buttons == 0) idleFrames++;
+                else idleFrames = 0;
             }
-idleReset:
-            idleCount = 0;
-idleCheck:
-            if (idleCount == PAL_TIME(900)) {
+            if (idleFrames == PAL_TIME(900)) {
                 if (!linked) {
                     negconCentre = 1;
-                    work.attractMode = 1;
+                    attractMode = 1;
                 }
             }
         }
     }
-    if (gameType != 2 || raceType == 1) {
+    if (gameType != GAME_SINGLE_PLAYER || raceType == RACE_TIME_TRIAL) {
         cheatWeapon = 0;
         cheatDamage = 0;
         cheatRain = 0;
@@ -764,7 +756,7 @@ idleCheck:
             quadIndex = CurrentScreen * 300;
             ClearOTagR(OT[CurrentScreen], 8192);
             ClearOTagR(OT2[CurrentScreen], 1600);
-            DisplayScreen(textureTable[5 + menuTextures], (DrBox *)work.displayScreen);
+            DisplayScreen(textureTable[5 + menuTextures], &work.displayScreen);
             CentreText(msgWaitingForOtherPlayer, 1, 120, 8, 0);
             doSerialMenu(gameData, &work.selection);
             Swap();
@@ -772,14 +764,14 @@ idleCheck:
         ownShip = work.selection.ship;
         remoteShip = menuRecvMode;
         if (ownShip == remoteShip) {
-            if (gameType == 0) remoteShip++;
+            if (gameType == GAME_LINK_MASTER) remoteShip++;
             else ownShip++;
         }
     } else {
         remoteShip = -1;
-        gameType = 2;
+        gameType = GAME_SINGLE_PLAYER;
         ownShip = work.selection.ship;
-        if (raceType == 4) {
+        if (raceType == RACE_CHALLENGE) {
             gameData->savedClass = gameData->shipClass;
             gameData->savedActTrackNum = gameData->actTrackNum;
             gameData->savedTrackNum = gameData->trackNum;
@@ -796,13 +788,13 @@ idleCheck:
     CdMusicStop();
     fastFrame = 0;
     Close2DParticle();
-    if (work.attractMode) {
+    if (attractMode) {
         menuFlag = 1;
         menuShip = ownShip;
         menuActTrack = (unsigned char)gameData->actTrackNum;
         menuNormTrack = (unsigned char)gameData->trackNum;
         menuTrackNo = trackNo;
-        savedSelection[0] = menu[1].selection;
+        savedSelection[0] = menu[MENU_RACE_TYPE].selection;
         raceType = 99;
         return 1;
     }
@@ -825,7 +817,6 @@ void DoButton(short x, short y, int requestedIcon, char *text)
     Texture *texture;
     short iconNo=requestedIcon;
     POLY_FT4 (*polys)[2];
-    int frameSpace[2];
     int labelShift;
     if(PortPcData()) {
         PcDoButton(x,y,PcKeyOfIcon(requestedIcon),text); /* Port: the PC version's (pc/pchud.c) */
@@ -1278,57 +1269,54 @@ void DrawDrBox(Texture *unused, DrBox *box)
 void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSelection, KeyConfig *keyConfig, HiScoreData *cardState)
 {
     short i;
-    int tmp942, tmpc1, tmpc2;
-    int tsx;
-    unsigned short tsy;
-    unsigned char nc;
+    unsigned char centre;
 
     switch (currMenu) {
-    case 1:
+    case MENU_RACE_TYPE:
         if (saveSelection == 0) menu[currMenu].selection = raceType;
         else switch (menu[currMenu].selection) {
-        case 0: raceType = 0; break;
-        case 1: raceType = 1; break;
-        case 2: raceType = 2; break;
-        case 3: raceType = 3; break;
+        case 0: raceType = RACE_ARCADE; break;
+        case 1: raceType = RACE_TIME_TRIAL; break;
+        case 2: raceType = RACE_ARCADE_LINK; break;
+        case 3: raceType = RACE_ONE_ON_ONE; break;
         case 4:
             if (gameData->rapierComplete) {
                 gameData->actTrackNum = 1;
                 gameData->trackNum = 0;
-                raceType = 4;
+                raceType = RACE_CHALLENGE;
                 gameData->class2Race = 0;
             } else {
                 gameData->actTrackNum = 1;
                 gameData->trackNum = 0;
-                raceType = 4;
+                raceType = RACE_CHALLENGE;
                 gameData->class1Race = 0;
             }
             break;
         }
         break;
-    case 2:
+    case MENU_RACING_CLASS:
         if (saveSelection == 0) {
             selection->shipClass = gameData->shipClass;
             selection->actTrackNum = gameData->actTrackNum;
             selection->trackNum = gameData->trackNum;
-            if (gameData->shipClass == 0) selection->trackSelection = menu[5].selection;
-            if (gameData->shipClass == 1) selection->trackSelection = menu[6].selection;
-            if (gameData->shipClass == 2) selection->trackSelection = menu[7].selection;
-            if (gameData->shipClass == 3) selection->trackSelection = menu[8].selection;
+            if (gameData->shipClass == 0) selection->trackSelection = menu[MENU_VECTOR_TRACK].selection;
+            if (gameData->shipClass == 1) selection->trackSelection = menu[MENU_VENOM_TRACK].selection;
+            if (gameData->shipClass == 2) selection->trackSelection = menu[MENU_RAPIER_TRACK].selection;
+            if (gameData->shipClass == 3) selection->trackSelection = menu[MENU_PHANTOM_TRACK].selection;
             selection->current = gameData->shipClass;
             PortOriginalMenuRestore(selection); /* Port: an original track chosen: its line */
         } else {
             gameData->shipClass = selection->shipClass;
             gameData->actTrackNum = selection->actTrackNum;
             gameData->trackNum = selection->trackNum;
-            if (gameData->shipClass == 0) menu[5].selection = selection->trackSelection;
-            if (gameData->shipClass == 1) menu[6].selection = selection->trackSelection;
-            if (gameData->shipClass == 2) menu[7].selection = selection->trackSelection;
-            if (gameData->shipClass == 3) menu[8].selection = selection->trackSelection;
-            menu[2].selection = selection->current;
+            if (gameData->shipClass == 0) menu[MENU_VECTOR_TRACK].selection = selection->trackSelection;
+            if (gameData->shipClass == 1) menu[MENU_VENOM_TRACK].selection = selection->trackSelection;
+            if (gameData->shipClass == 2) menu[MENU_RAPIER_TRACK].selection = selection->trackSelection;
+            if (gameData->shipClass == 3) menu[MENU_PHANTOM_TRACK].selection = selection->trackSelection;
+            menu[MENU_RACING_CLASS].selection = selection->current;
         }
         break;
-    case 5:
+    case MENU_VECTOR_TRACK:
         if (saveSelection == 0) {
             selection->shipClass = gameData->shipClass;
             selection->actTrackNum = gameData->actTrackNum;
@@ -1339,7 +1327,7 @@ void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSele
             menu[currMenu].selection = selection->current;
         }
         break;
-    case 6:
+    case MENU_VENOM_TRACK:
         if (saveSelection == 0) {
             selection->shipClass = gameData->shipClass;
             selection->actTrackNum = gameData->actTrackNum;
@@ -1350,7 +1338,7 @@ void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSele
             menu[currMenu].selection = selection->current;
         }
         break;
-    case 7:
+    case MENU_RAPIER_TRACK:
         if (saveSelection == 0) {
             selection->shipClass = gameData->shipClass;
             selection->actTrackNum = gameData->actTrackNum;
@@ -1361,7 +1349,7 @@ void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSele
             menu[currMenu].selection = selection->current;
         }
         break;
-    case 8:
+    case MENU_PHANTOM_TRACK:
         if (saveSelection == 0) {
             selection->shipClass = gameData->shipClass;
             selection->actTrackNum = gameData->actTrackNum;
@@ -1372,7 +1360,7 @@ void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSele
             menu[currMenu].selection = selection->current;
         }
         break;
-    case 4:
+    case MENU_TEAM:
         if (saveSelection == 0) {
             selection->ship = ownShip;
             selection->current = menu[currMenu].selection;
@@ -1381,7 +1369,7 @@ void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSele
             menu[currMenu].selection = selection->current;
         }
         break;
-    case 9:
+    case MENU_AUDIO:
         if (saveSelection == 0) {
             selection->musicVolume = gameData->musicVolume;
             selection->otherMusic = gameData->otherMusicVolume;
@@ -1417,8 +1405,8 @@ void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSele
         SetVolume(ambientVoice1, 0);
         cdFlag[0] = 1;
         break;
-    case 10:
-    case 22:
+    case MENU_DIGITAL_PAD:
+    case MENU_NEGCON_BUTTONS:
         if (saveSelection == 0) {
             selection->keys[0] = keyConfig->keys[0];
             selection->calibration[0] = keyConfig->calibration[0];
@@ -1431,7 +1419,7 @@ void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSele
             }
         }
         break;
-    case 21:
+    case MENU_NEGCON_TWIST:
         if (saveSelection == 0) {
             selection->negconMin = gameData->negconMin;
             selection->negconCenter = gameData->negconCentre;
@@ -1441,9 +1429,9 @@ void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSele
             selection->negconFlags[2] = 0;
             twist = gameData->negconMin;
             currScreen = gameData->negconType;
-            nc = gameData->negconCentre;
-            turnDivisor = nc;
-            if (nc < 128) turnDivisor = ~nc;
+            centre = gameData->negconCentre;
+            turnDivisor = centre;
+            if (centre < 128) turnDivisor = ~centre;
             menu[currMenu].selection = 0;
             for (i = 0; i < 3; i++) negconEditing[i] = 0;
             if (US_PROGRAM) { /* (the European and Japanese releases have no replay lock) */
@@ -1458,23 +1446,21 @@ void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSele
             selection->negconFlags[2] = 0;
             twist = selection->negconMin;
             currScreen = selection->negconType;
-            nc = selection->negconCenter;
-            turnDivisor = nc;
-            if (nc < 128) turnDivisor = ~nc;
+            centre = selection->negconCenter;
+            turnDivisor = centre;
+            if (centre < 128) turnDivisor = ~centre;
             menu[currMenu].selection = 0;
             for (i = 0; i < 3; i++) negconEditing[i] = 0;
         }
         break;
-    case 15:
+    case MENU_GAME_CONFIG:
         if (saveSelection == 0) {
             selection->screenX = gameData->screenX;
-            ((volatile MenuSelection *)selection)->screenY = gameData->screenY;
-            tsx = (unsigned short)selection->screenX;
-            DispEnv1.screen.x = tsx;
-            DispEnv0.screen.x = tsx;
-            tsy = *(volatile unsigned short *)&selection->screenY;
-            DispEnv1.screen.y = tsy;
-            DispEnv0.screen.y = tsy;
+            selection->screenY = gameData->screenY;
+            DispEnv1.screen.x = selection->screenX;
+            DispEnv0.screen.x = selection->screenX;
+            DispEnv1.screen.y = selection->screenY;
+            DispEnv0.screen.y = selection->screenY;
             selection->screenOffsetState = gameData->screenOffsetState;
             selection->weapons = gameData->weaponsOn;
             selection->moveScreen = 0;
@@ -1498,23 +1484,21 @@ void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSele
             InitMenuDisplay(120, 0);
         }
         break;
-    case 16:
+    case MENU_SCREEN:
         if (saveSelection == 0) {
             selection->screenX = gameData->screenX;
-            ((volatile MenuSelection *)selection)->screenY = gameData->screenY;
-            tsx = (unsigned short)selection->screenX;
-            DispEnv1.screen.x = tsx;
-            DispEnv0.screen.x = tsx;
-            tsy = *(volatile unsigned short *)&selection->screenY;
-            DispEnv1.screen.y = tsy;
-            DispEnv0.screen.y = tsy;
+            selection->screenY = gameData->screenY;
+            DispEnv1.screen.x = selection->screenX;
+            DispEnv0.screen.x = selection->screenX;
+            DispEnv1.screen.y = selection->screenY;
+            DispEnv0.screen.y = selection->screenY;
         } else {
             gameData->screenX = selection->screenX;
             gameData->screenY = selection->screenY;
             InitMenuDisplay(120, 0);
         }
         break;
-    case 12:
+    case MENU_LOAD_SAVE:
         if (saveSelection == 0) {
             myFinished = 0;
             fadescreen = 0;
@@ -1530,16 +1514,14 @@ void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSele
             selection->highScoreScratchAC = 0;
         }
         break;
-    case 23:
+    case MENU_ENTER_PASSWORD:
         if (saveSelection == 0) {
             MakePassword(gameData);
             selection->password = gameData->generated;
-            tmpc1 = gameData->generatedCheck;
-            ((volatile MenuSelection *)selection)->passwordCheck = tmpc1;
+            selection->passwordCheck = gameData->generatedCheck;
         } else {
             gameData->entered = selection->password;
-            tmpc2 = selection->passwordCheck;
-            gameData->enteredCheck = tmpc2;
+            gameData->enteredCheck = selection->passwordCheck;
         }
         menu[currMenu].selection = 0;
         menu[currMenu].mode = 0;
@@ -1548,384 +1530,186 @@ void CopyGameData(ConfigData *gameData, MenuSelection *selection, short saveSele
 }
 
 
-typedef union CardGridCell {
-    s32 w;
-    u16 h;
-    SaveSelection *volatile save;
-} CardGridCell;
-
-#define cursorSlot   (*(volatile s32 *)&grid[0].w)
-#define activeCard   (*(volatile s32 *)&grid[1].w)
-#define selection    grid[2].save
-#define highlight    grid[8].w
-#define rowCount     grid[3].h
-#define colCount     grid[4].h
-#define cardCount    grid[5].h
-#define iconYPos     grid[6].h
-#define slotIndex    grid[7].h
-#define fadeValue    grid[9].h
-
 extern u8 msgE[];
 extern s32 cardFlash;
 extern s32 prevCard;
-int DisplayCardBack(MenuPolys *polys, int cursorArg, int cardArg, SaveSelection *selectionArg)
+/* The two cards' fifteen blocks, three a row: each block's frame (red under the cursor) and its file's icon (the
+   game's own icon for a Wipeout save, the file's for another game's, an E for an empty block). The blocks of the
+   file under the cursor flash. */
+int DisplayCardBack(MenuPolys *polys, int cursor, int card, SaveSelection *saveSelection)
 {
-    CardGridCell grid[10];
-    u8 fadeByte;
-    s16 bottom;
-    s16 fadeSpriteNext;
-    s16 fadeSpriteNextB;
-    s16 plainSpriteNext;
-    s16 resetNextA;
-    s16 resetNextB;
-    s16 lastNext;
-    s16 right;
-    s16 plainSprite;
-    s16 fadeSprite;
-    s16 resetSprite;
-    s16 lastSprite;
-    s16 entryIndex;
-    s16 prevEntry;
+    s16 rowCount, colCount;
+    s16 cardCount;
     s16 iconX;
-    s16 nextEntry;
-    s16 prevNext;
-    s32 nameDiff;
-    s32 plainSpriteShifted;
-    s32 resetShiftedA;
-    s32 resetShiftedB;
-    s32 lastShifted;
-    s32 slotShifted;
-    s16 slotNow, iconY, slotRow;
-    s16 screenNow;
-    Texture *iconTexture;
-    u16 count4, count3, count5;
-    s32 page;
-    u_long *otEntry;
-    u16 clutX;
-    u16 clutY;
-    u8 typeB;
-    u8 typeA;
+    s16 iconYPos;
+    s16 slotIndex;
+    s32 highlight;
+    s16 fadeValue;
+    s16 sprite;
+    s16 entryIndex;
+    short showIcons;
+    CardEntry *entry;
     POLY_F4 *background;
     POLY_FT4 *backdrop;
-    POLY_FT4 *fadePolyA;
-    POLY_FT4 *fadePolyB;
-    POLY_F4 *plainPoly;
-    POLY_FT4 *resetPolyA;
-    POLY_FT4 *resetPolyB;
-    POLY_FT4 *lastPoly;
-    POLY_FT4 *iconPoly;
+
     iconX = 0x2D;
-    cursorSlot = cursorArg;
-    activeCard = cardArg;
-    selection = selectionArg;
     slotIndex = 0;
     iconYPos = 0x55;
     fadeValue = cardFlash % 255;
-    if (cardArg == 0) {
-        highlight = cursorSlot;
+    if (card == 0) {
+        highlight = cursor;
     } else {
-        highlight = cursorSlot + 0xF;
+        highlight = cursor + 0xF;
     }
-    cardCount = 0;
-    do {
-        rowCount = 0;
-        do {
-            colCount = 0;
-            do {
-                slotRow = (*(volatile u16 *)&slotIndex);
-                right = iconX + 0x10;
-                background = &polys->background[slotRow][CurrentScreen];
+    for (cardCount = 0; cardCount < 2; cardCount++) {
+        for (rowCount = 0; rowCount < 5; rowCount++) {
+            for (colCount = 0; colCount < 3; colCount++) {
+                background = &polys->background[slotIndex][CurrentScreen];
                 background->x0 = iconX;
-                iconY = (*(volatile u16 *)&iconYPos);
-                background->x1 = right;
+                background->y0 = iconYPos;
+                background->x1 = iconX + 16;
+                background->y1 = iconYPos;
                 background->x2 = iconX;
-                background->x3 = right;
-                bottom = iconY + 0x10;
-                background->y0 = iconY;
-                background->y1 = iconY;
-                background->y2 = bottom;
-                background->y3 = bottom;
-                backdrop = &polys->backdrop[slotRow][CurrentScreen];
+                background->y2 = iconYPos + 16;
+                background->x3 = iconX + 16;
+                background->y3 = iconYPos + 16;
+                backdrop = &polys->backdrop[slotIndex][CurrentScreen];
                 backdrop->x0 = iconX;
-                backdrop->y0 = iconY;
-                backdrop->x1 = right;
-                backdrop->y1 = iconY;
+                backdrop->y0 = iconYPos;
+                backdrop->x1 = iconX + 16;
+                backdrop->y1 = iconYPos;
                 backdrop->x2 = iconX;
-                backdrop->y2 = bottom;
-                backdrop->x3 = right;
-                backdrop->y3 = bottom;
-                if (selection->selected != 0) {
-                    plainSprite = 0;
-                    if (slotRow == highlight) {
-                        polys->background[slotRow][CurrentScreen].r0 = 0x80;
-                        polys->background[slotRow][CurrentScreen].g0 = 0;
-                        entryIndex = 0;
-                        polys->background[slotRow][CurrentScreen].b0 = 0;
-                        do {
-                            nameDiff = strncmp(cardSlots[activeCard].entry[cursorSlot].filename, cardSlots[activeCard].entry[entryIndex].filename, 0x14);
-                            nextEntry = entryIndex + 1;
+                backdrop->y2 = iconYPos + 16;
+                backdrop->x3 = iconX + 16;
+                backdrop->y3 = iconYPos + 16;
+                if (saveSelection->selected) {
+                    if (slotIndex == highlight) {
+                        polys->background[slotIndex][CurrentScreen].r0 = 0x80;
+                        polys->background[slotIndex][CurrentScreen].g0 = 0;
+                        polys->background[slotIndex][CurrentScreen].b0 = 0;
+                        /* The blocks of the file under the cursor flash */
+                        for (entryIndex = 0; entryIndex < 15; entryIndex++) {
                             /* (WipEout 2097 lights every entry of the file name: it has no multi-block entries) */
-                            if ((nameDiff == 0) && (portEuropeCard || (cardSlots[activeCard].entry[entryIndex].multi == 1) || (nextEntry = entryIndex + 1, (cursorSlot == entryIndex)))) {
-                                fadeSprite = 0;
-                                if (activeCard == 0) {
-                                    do {
-                                        fadePolyA = &polys->backdrop[entryIndex][fadeSprite];
-                                        fadeSpriteNext = fadeSprite + 1;
-                                        fadeByte = (u8)fadeValue;
-                                        fadePolyA->r0 = fadeByte;
-                                        fadeSprite = fadeSpriteNext;
-                                        fadePolyA->g0 = fadeByte;
-                                        fadePolyA->b0 = fadeByte;
-                                    }
-                                    while (fadeSpriteNext < 2);
-                                    nextEntry = entryIndex + 1;
-                                } else {
-                                    do {
-                                        fadePolyB = &polys->backdrop[entryIndex + 0xF][fadeSprite];
-                                        fadeSpriteNextB = fadeSprite + 1;
-                                        fadeByte = (u8)fadeValue;
-                                        fadePolyB->r0 = fadeByte;
-                                        fadeSprite = fadeSpriteNextB;
-                                        fadePolyB->g0 = fadeByte;
-                                        fadePolyB->b0 = fadeByte;
-                                    }
-                                    while (fadeSpriteNextB < 2);
-                                    nextEntry = entryIndex + 1;
+                            if (strncmp(cardSlots[card].entry[cursor].filename, cardSlots[card].entry[entryIndex].filename, 20) == 0 &&
+                                (portEuropeCard || cardSlots[card].entry[entryIndex].multi == 1 || cursor == entryIndex)) {
+                                for (sprite = 0; sprite < 2; sprite++) {
+                                    backdrop = &polys->backdrop[card == 0 ? entryIndex : entryIndex + 15][sprite];
+                                    backdrop->r0 = fadeValue;
+                                    backdrop->g0 = fadeValue;
+                                    backdrop->b0 = fadeValue;
                                 }
                             }
-                            entryIndex = nextEntry;
                         }
-                        while (nextEntry < 0xF);
                     } else {
-                        do {
-                            plainSpriteShifted = plainSprite << 0x10;
-                            plainSpriteNext = plainSprite + 1;
-                            plainSprite = plainSpriteNext;
-                            plainPoly = &polys->background[slotRow][plainSpriteShifted >> 0x10];
-                            plainPoly->r0 = 0x27;
-                            plainPoly->g0 = 0xC8;
-                            plainPoly->b0 = 0xDE;
+                        for (sprite = 0; sprite < 2; sprite++) {
+                            polys->background[slotIndex][sprite].r0 = 0x27;
+                            polys->background[slotIndex][sprite].g0 = 0xC8;
+                            polys->background[slotIndex][sprite].b0 = 0xDE;
                         }
-                        while (plainSpriteNext < 2);
-                        prevEntry = 0;
-                        do {
-                            if (strncmp(cardSlots[prevCard].entry[cursorSlot].filename, cardSlots[prevCard].entry[prevEntry].filename, 0x14) == 0) {
-                                if (!portEuropeCard && cardSlots[prevCard].entry[prevEntry].multi == 0) { /* (WipEout 2097 leaves every entry of the name as it is) */
-                                    prevNext = prevEntry + 1;
-                                    if (cursorSlot != prevEntry) {
-                                        goto unhighlight;
-                                    }
-                                } else {
-                                    goto unhighlightDone;
-                                }
-                            } else {
-unhighlight:
-                                resetSprite = 0;
-                                if (prevCard == 0) {
-                                    do {
-                                        resetShiftedA = resetSprite << 0x10;
-                                        resetNextA = resetSprite + 1;
-                                        resetSprite = resetNextA;
-                                        resetPolyA = &polys->backdrop[prevEntry][resetShiftedA >> 0x10];
-                                        resetPolyA->r0 = 0x80;
-                                        resetPolyA->g0 = 0x80;
-                                        resetPolyA->b0 = 0x80;
-                                    }
-                                    while (resetNextA < 2);
-                                    prevNext = prevEntry + 1;
-                                } else {
-                                    do {
-                                        resetShiftedB = resetSprite << 0x10;
-                                        resetNextB = resetSprite + 1;
-                                        resetSprite = resetNextB;
-                                        resetPolyB = &polys->backdrop[prevEntry + 0xF][resetShiftedB >> 0x10];
-                                        resetPolyB->r0 = 0x80;
-                                        resetPolyB->g0 = 0x80;
-                                        resetPolyB->b0 = 0x80;
-                                    }
-                                    while (resetNextB < 2);
-unhighlightDone:
-                                    prevNext = prevEntry + 1;
+                        /* The blocks the cursor has left stop flashing */
+                        for (entryIndex = 0; entryIndex < 15; entryIndex++) {
+                            /* (WipEout 2097 leaves every entry of the name as it is) */
+                            if (strncmp(cardSlots[prevCard].entry[cursor].filename, cardSlots[prevCard].entry[entryIndex].filename, 20) != 0 ||
+                                (!portEuropeCard && cardSlots[prevCard].entry[entryIndex].multi == 0 && cursor != entryIndex)) {
+                                for (sprite = 0; sprite < 2; sprite++) {
+                                    backdrop = &polys->backdrop[prevCard == 0 ? entryIndex : entryIndex + 15][sprite];
+                                    backdrop->r0 = 0x80;
+                                    backdrop->g0 = 0x80;
+                                    backdrop->b0 = 0x80;
                                 }
                             }
-                            prevEntry = prevNext;
                         }
-                        while (prevNext < 0xF);
-                        lastSprite = 0;
-                        if (prevCard != activeCard) {
-                            s16 lastSlot = (*(volatile u16 *)&slotIndex);
-                            do {
-                                lastShifted = lastSprite << 0x10;
-                                lastNext = lastSprite + 1;
-                                lastSprite = lastNext;
-                                lastPoly = &polys->backdrop[lastSlot][lastShifted >> 0x10];
-                                lastPoly->r0 = 0x80;
-                                lastPoly->g0 = 0x80;
-                                lastPoly->b0 = 0x80;
+                        if (prevCard != card) {
+                            for (sprite = 0; sprite < 2; sprite++) {
+                                polys->backdrop[slotIndex][sprite].r0 = 0x80;
+                                polys->backdrop[slotIndex][sprite].g0 = 0x80;
+                                polys->backdrop[slotIndex][sprite].b0 = 0x80;
                             }
-                            while (lastNext < 2);
                         }
                     }
                 } else {
-                    polys->background[slotRow][CurrentScreen].r0 = 0x27;
-                    polys->background[slotRow][CurrentScreen].g0 = 0xC8;
-                    polys->background[slotRow][CurrentScreen].b0 = 0xDE;
-                    polys->backdrop[slotRow][CurrentScreen].r0 = 0x80;
-                    polys->backdrop[slotRow][CurrentScreen].g0 = 0x80;
-                    polys->backdrop[slotRow][CurrentScreen].b0 = 0x80;
+                    polys->background[slotIndex][CurrentScreen].r0 = 0x27;
+                    polys->background[slotIndex][CurrentScreen].g0 = 0xC8;
+                    polys->background[slotIndex][CurrentScreen].b0 = 0xDE;
+                    polys->backdrop[slotIndex][CurrentScreen].r0 = 0x80;
+                    polys->backdrop[slotIndex][CurrentScreen].g0 = 0x80;
+                    polys->backdrop[slotIndex][CurrentScreen].b0 = 0x80;
                 }
-                slotNow = (*(volatile u16 *)&slotIndex);
-                if ((((s32)slotNow / 15) << 0x10) == 0) {
-                    if (card1Exists != 0) {
-                        if (selection->timer == 0) {
-                            typeA = cardSlots[0].entry[slotNow].type;
-                            if (typeA & 4) {
-                                polys->backdrop[slotNow][CurrentScreen].u0 = cardIconInfo->u0;
-                                polys->backdrop[slotNow][CurrentScreen].v0 = cardIconInfo->v0;
-                                polys->backdrop[slotNow][CurrentScreen].u1 = cardIconInfo->u1;
-                                polys->backdrop[slotNow][CurrentScreen].v1 = cardIconInfo->v1;
-                                polys->backdrop[slotNow][CurrentScreen].u2 = cardIconInfo->u2;
-                                polys->backdrop[slotNow][CurrentScreen].v2 = cardIconInfo->v2;
-                                polys->backdrop[slotNow][CurrentScreen].u3 = cardIconInfo->u3;
-                                polys->backdrop[slotNow][CurrentScreen].v3 = cardIconInfo->v3;
-                                page = GetTPage(0, 0, cardIconInfo->textureX, cardIconInfo->textureY);
-                                screenNow = CurrentScreen;
-                                iconTexture = cardIconInfo;
-                                polys->backdrop[slotNow][screenNow].tpage = page;
-                                polys->backdrop[slotNow][screenNow].clut = iconTexture->cba;
-                                otEntry = OT[screenNow];
-                                iconPoly = &polys->backdrop[slotNow][screenNow];
-                                goto drawIcon;
-                            }
-                            if (typeA & 2) {
-                                polys->backdrop[slotNow][CurrentScreen].u0 = cardSlots[0].entry[slotNow].icon[0];
-                                polys->backdrop[slotNow][CurrentScreen].v0 = cardSlots[0].entry[slotNow].icon[1];
-                                polys->backdrop[slotNow][CurrentScreen].u1 = cardSlots[0].entry[slotNow].icon[2];
-                                polys->backdrop[slotNow][CurrentScreen].v1 = cardSlots[0].entry[slotNow].icon[3];
-                                polys->backdrop[slotNow][CurrentScreen].u2 = cardSlots[0].entry[slotNow].icon[4];
-                                polys->backdrop[slotNow][CurrentScreen].v2 = cardSlots[0].entry[slotNow].icon[5];
-                                polys->backdrop[slotNow][CurrentScreen].u3 = cardSlots[0].entry[slotNow].icon[6];
-                                polys->backdrop[slotNow][CurrentScreen].v3 = cardSlots[0].entry[slotNow].icon[7];
-                                page = GetTPage(0, 0, 0x280, 0);
-                                polys->backdrop[slotNow][CurrentScreen].tpage = page;
-                                clutY = cardSlots[0].entry[slotNow].y;
-                                clutX = cardSlots[0].entry[slotNow].x;
-                                iconPoly = &polys->backdrop[slotNow][CurrentScreen];
-                                goto setClut;
-                            }
-                            goto drawError;
-                        }
-                        goto rowRefresh;
-                    }
-                    goto rowDone;
-                } else if ((cardPresent1 != 0) && (selection->timer == 0)) {
-                    typeB = cardSlots[1].entry[slotNow - 0xF].type;
-                    if (typeB & 4) {
-                        polys->backdrop[slotNow][CurrentScreen].u0 = cardIconInfo->u0;
-                        polys->backdrop[slotNow][CurrentScreen].v0 = cardIconInfo->v0;
-                        polys->backdrop[slotNow][CurrentScreen].u1 = cardIconInfo->u1;
-                        polys->backdrop[slotNow][CurrentScreen].v1 = cardIconInfo->v1;
-                        polys->backdrop[slotNow][CurrentScreen].u2 = cardIconInfo->u2;
-                        polys->backdrop[slotNow][CurrentScreen].v2 = cardIconInfo->v2;
-                        polys->backdrop[slotNow][CurrentScreen].u3 = cardIconInfo->u3;
-                        polys->backdrop[slotNow][CurrentScreen].v3 = cardIconInfo->v3;
-                        page = GetTPage(0, 0, cardIconInfo->textureX, cardIconInfo->textureY);
-                        screenNow = CurrentScreen;
-                        iconTexture = cardIconInfo;
-                        polys->backdrop[slotNow][screenNow].tpage = page;
-                        polys->backdrop[slotNow][screenNow].clut = iconTexture->cba;
-                        otEntry = OT[screenNow];
-                        iconPoly = &polys->backdrop[slotNow][screenNow];
-                        goto drawIcon;
-                    }
-                    if (typeB & 2) {
-                        polys->backdrop[slotNow][CurrentScreen].u0 = cardSlots[1].entry[slotNow - 0xF].icon[0];
-                        polys->backdrop[slotNow][CurrentScreen].v0 = cardSlots[1].entry[slotNow - 0xF].icon[1];
-                        polys->backdrop[slotNow][CurrentScreen].u1 = cardSlots[1].entry[slotNow - 0xF].icon[2];
-                        polys->backdrop[slotNow][CurrentScreen].v1 = cardSlots[1].entry[slotNow - 0xF].icon[3];
-                        polys->backdrop[slotNow][CurrentScreen].u2 = cardSlots[1].entry[slotNow - 0xF].icon[4];
-                        polys->backdrop[slotNow][CurrentScreen].v2 = cardSlots[1].entry[slotNow - 0xF].icon[5];
-                        polys->backdrop[slotNow][CurrentScreen].u3 = cardSlots[1].entry[slotNow - 0xF].icon[6];
-                        polys->backdrop[slotNow][CurrentScreen].v3 = cardSlots[1].entry[slotNow - 0xF].icon[7];
-                        page = GetTPage(0, 0, 0x280, 0);
-                        polys->backdrop[slotNow][CurrentScreen].tpage = page;
-                        clutY = cardSlots[1].entry[slotNow - 0xF].y;
-                        clutX = cardSlots[1].entry[slotNow - 0xF].x;
-                        iconPoly = &polys->backdrop[slotNow][CurrentScreen];
-setClut:
-                        iconPoly->clut = ((clutY << 6) | ((s32) ((u32)clutX << 0x10) >> 0x14));
-                        otEntry = OT[CurrentScreen];
-drawIcon:
-                        AddPrim(otEntry, iconPoly);
+                if (slotIndex < 15) {
+                    showIcons = card1Exists;
+                    entry = &cardSlots[0].entry[slotIndex];
+                } else {
+                    showIcons = cardPresent1;
+                    entry = &cardSlots[1].entry[slotIndex - 15];
+                }
+                if (showIcons && saveSelection->timer == 0) {
+                    backdrop = &polys->backdrop[slotIndex][CurrentScreen];
+                    if (entry->type & 4) {
+                        /* A Wipeout save: the game's own icon */
+                        backdrop->u0 = cardIconInfo->u0;
+                        backdrop->v0 = cardIconInfo->v0;
+                        backdrop->u1 = cardIconInfo->u1;
+                        backdrop->v1 = cardIconInfo->v1;
+                        backdrop->u2 = cardIconInfo->u2;
+                        backdrop->v2 = cardIconInfo->v2;
+                        backdrop->u3 = cardIconInfo->u3;
+                        backdrop->v3 = cardIconInfo->v3;
+                        backdrop->tpage = GetTPage(0, 0, cardIconInfo->textureX, cardIconInfo->textureY);
+                        backdrop->clut = cardIconInfo->cba;
+                        AddPrim(OT[CurrentScreen], backdrop);
+                    } else if (entry->type & 2) {
+                        /* Another game's file: its own icon, loaded into VRAM by LoadSaveIcons */
+                        backdrop->u0 = entry->icon[0];
+                        backdrop->v0 = entry->icon[1];
+                        backdrop->u1 = entry->icon[2];
+                        backdrop->v1 = entry->icon[3];
+                        backdrop->u2 = entry->icon[4];
+                        backdrop->v2 = entry->icon[5];
+                        backdrop->u3 = entry->icon[6];
+                        backdrop->v3 = entry->icon[7];
+                        backdrop->tpage = GetTPage(0, 0, 0x280, 0);
+                        backdrop->clut = (entry->y << 6) | ((s16)entry->x >> 4);
+                        AddPrim(OT[CurrentScreen], backdrop);
                     } else {
-drawError:
-                        Print(msgE, iconX, (s16) (*(volatile u16 *)&iconYPos), 8);
+                        Print(msgE, iconX, iconYPos, 8);
                     }
                 }
-rowRefresh:
-                slotNow = *(volatile s16 *)&slotIndex;
-rowDone:
-                slotShifted = slotNow << 0x10;
-                slotIndex = slotNow+1;
-                AddPrim(OT[CurrentScreen], &polys->background[slotShifted >> 0x10][CurrentScreen]); /* Port: the original passed CurrentScreen as an extra, unread third argument */
+                AddPrim(OT[CurrentScreen], &polys->background[slotIndex][CurrentScreen]); /* Port: the original passed CurrentScreen as an extra, unread third argument */
+                slotIndex++;
                 iconX += 19;
-                count4 = (*(volatile u16 *)&colCount) + 1;
-                *(volatile u16 *)&colCount = count4;
             }
-            while ((s16)count4 < 3);
             iconX = 223;
-            if ((s16)cardCount == 0) iconX = 45;
-            *(volatile u16 *)&iconYPos = (*(volatile u16 *)&iconYPos) + 19;
-            count3 = (*(volatile u16 *)&rowCount) + 1;
-            *(volatile u16 *)&rowCount = count3;
+            if (cardCount == 0) iconX = 45;
+            iconYPos += 19;
         }
-        while ((s16)count3 < 5);
         iconYPos = 85;
         iconX = 223;
-        count5 = (*(volatile u16 *)&cardCount) + 1;
-        cardCount = count5;
     }
-    while ((s16)count5 < 2);
-    prevCard = activeCard;
-    cardFlash = (s32)((u32)cardFlash+0x14U);
+    prevCard = card;
+    cardFlash = (s32)((u32)cardFlash + 0x14U);
     return 0; /* Port: the console returned whatever was left in $v0; the only caller (LoadSave) ignores the result */
 }
 
-#undef cursorSlot
-#undef activeCard
-#undef selection
-#undef highlight
-#undef rowCount
-#undef colCount
-#undef cardCount
-#undef iconYPos
-#undef slotIndex
-#undef fadeValue
 
 
 void setupBackgrndPolys(short firstCard, int endCard)
 {
     short card;
-    int status;
 
     for (card = firstCard; card < endCard; card++) {
-        status = GetCardInfo(card);
-        if (status == 1) goto statusDone;
-        if (status < 2) goto statusDone;
-        if (status == 2) goto two;
-        if (status == 3) goto three;
-        goto statusDone;
-two:
-        printf("%s", msgNoCard);
-        if (card == 0) TrackHiCount = 0;
-        if (card == 1) cardDirLoaded1 = 0;
-        goto statusDone;
-three:
-        ClearEventHW();
-        if (card == 0) _card_clear(0);
-        else _card_clear(16);
-        CheckHWCardEvents();
-statusDone:
+        switch (GetCardInfo(card)) {
+        case 2:
+            printf("%s", msgNoCard);
+            if (card == 0) TrackHiCount = 0;
+            if (card == 1) cardDirLoaded1 = 0;
+            break;
+        case 3:
+            ClearEventHW();
+            if (card == 0) _card_clear(0);
+            else _card_clear(16);
+            CheckHWCardEvents();
+            break;
+        }
         LoadCard(card);
         switch (CardContentStatus()) {
         case 0:
@@ -2119,28 +1903,28 @@ short EnterFileName(MenuPolys *polys, SaveSelection *selection)
     int screen;
     MenuPolys *box;
 
-    if (keysPressed & 0x20) {
+    if (keysPressed & PAD_RIGHT) {
         selection->nameActive += 1;
         if (selection->nameActive >= 0x1C) selection->nameActive = 0x1B;
         else Sound(8);
-    } else if (keysPressed & 0x80) {
+    } else if (keysPressed & PAD_LEFT) {
         selection->nameActive -= 1;
         if (selection->nameActive <= 0) selection->nameActive = 0;
         else Sound(8);
-    } else if (keysPressed & 0x10) {
+    } else if (keysPressed & PAD_UP) {
         if (selection->nameActive == 0x1A) selection->nameActive -= 1;
         else if (selection->nameActive == 0x1B) selection->nameActive -= 2;
         else selection->nameActive -= 0xD;
         if (selection->nameActive < 0) selection->nameActive += 0xD;
         else Sound(8);
-    } else if (keysPressed & 0x40) {
+    } else if (keysPressed & PAD_DOWN) {
         if (selection->nameActive == 0x1A) selection->nameActive += 1;
         else if (selection->nameActive == 0x19) selection->nameActive += 2;
         else if (selection->nameActive >= 0xD) selection->nameActive = 0x1B;
         else selection->nameActive += 0xD;
         if (selection->nameActive >= 0x1C) selection->nameActive = 0x1B;
         else Sound(8);
-    } else if (GetMenuKey(5)) {
+    } else if (GetMenuKey(MENU_KEY_SELECT)) {
         Sound(9);
         if ((u32)((u16)selection->nameActive - 0x1A) >= 2) {
             if (selection->nameLength < 8) {
@@ -2154,7 +1938,7 @@ short EnterFileName(MenuPolys *polys, SaveSelection *selection)
                 selection->fileName[selection->nameLength] = 0;
             }
         }
-    } else if (GetMenuKey(4)) {
+    } else if (GetMenuKey(MENU_KEY_BACK)) {
         Sound(0x31);
         selection->dupeCheck = 0;
         selection->confirmed = 0;
@@ -2278,14 +2062,14 @@ fail:
 
 void DoConfirm(SaveSelection *selection, MenuPolys *polys, short messageType)
 {
-    if (keysPressed & 0x20) {
+    if (keysPressed & PAD_RIGHT) {
         selection->confirmed--;
         if (selection->confirmed < 0) {
             selection->confirmed = 0;
         } else {
             Sound(8);
         }
-    } else if (keysPressed & 0x80) {
+    } else if (keysPressed & PAD_LEFT) {
         selection->confirmed++;
         if (selection->confirmed >= 2) {
             selection->confirmed = 1;
@@ -2509,21 +2293,21 @@ void LoadSave(ConfigData *gameData, MenuPolys *polys, SaveSelection *selection)
     currentCard = myFinished;
     if (selection->selected) {
         if (!selection->enteringName) {
-            if (keysPressed & 32) {
+            if (keysPressed & PAD_RIGHT) {
                 fadescreen++;
                 if (fadescreen >= 14) {
                     fadescreen = 14;
                 } else {
                     Sound(8);
                 }
-            } else if (keysPressed & 128) {
+            } else if (keysPressed & PAD_LEFT) {
                 fadescreen--;
                 if (fadescreen <= 0) {
                     fadescreen = 0;
                 } else {
                     Sound(8);
                 }
-            } else if (keysPressed & 16) {
+            } else if (keysPressed & PAD_UP) {
                 previous = fadescreen;
                 fadescreen -= 3;
                 if (fadescreen < 0) {
@@ -2531,7 +2315,7 @@ void LoadSave(ConfigData *gameData, MenuPolys *polys, SaveSelection *selection)
                 } else {
                     Sound(8);
                 }
-            } else if (keysPressed & 64) {
+            } else if (keysPressed & PAD_DOWN) {
                 previous = fadescreen;
                 fadescreen += 3;
                 if (fadescreen >= 15) {
@@ -2539,7 +2323,7 @@ void LoadSave(ConfigData *gameData, MenuPolys *polys, SaveSelection *selection)
                 } else {
                     Sound(8);
                 }
-            } else if ((keysPressed & 8192) && !(keysDown & 0xC01) && card1Exists && cardPresent1) {
+            } else if ((keysPressed & PAD_CIRCLE) && !(keysDown & PAD_CHEAT_MODIFIERS) && card1Exists && cardPresent1) {
                 Sound(8);
                 myFinished ^= 1;
             }
@@ -2569,7 +2353,7 @@ void LoadSave(ConfigData *gameData, MenuPolys *polys, SaveSelection *selection)
         }
         switch (selection->loadMode) {
         case 0:
-            if (GetMenuKey(5)) {
+            if (GetMenuKey(MENU_KEY_SELECT)) {
                 Sound(9);
                 selection->selected = 0;
                 if ((myFinished == 0 && cardUnformatted0 == 1) || (myFinished == 1 && cardUnformatted1 == 1)) {
@@ -2588,7 +2372,7 @@ void LoadSave(ConfigData *gameData, MenuPolys *polys, SaveSelection *selection)
             break;
         case 1:
             if (!selection->enteringName) {
-                if (GetMenuKey(5)) {
+                if (GetMenuKey(MENU_KEY_SELECT)) {
                     Sound(9);
                     selection->nameLength = 0;
                     for (i = 0; i < 10; i++) {
@@ -2605,7 +2389,7 @@ void LoadSave(ConfigData *gameData, MenuPolys *polys, SaveSelection *selection)
                 }
             } else if ((myFinished == 0 && cardUnformatted0 == 1) || (myFinished == 1 && cardUnformatted1 == 1)) {
                 DoConfirm(selection, polys, 3);
-                if (GetMenuKey(5)) {
+                if (GetMenuKey(MENU_KEY_SELECT)) {
                     Sound(9);
                     if (selection->confirmed) {
                         char *device = (char *)&cardDevice1;
@@ -2638,7 +2422,7 @@ void LoadSave(ConfigData *gameData, MenuPolys *polys, SaveSelection *selection)
                     break;
                 }
                 DoConfirm(selection, polys, 1);
-                if (GetMenuKey(5)) {
+                if (GetMenuKey(MENU_KEY_SELECT)) {
                     Sound(9);
                     if (selection->confirmed) {
                         selection->enteringName = 1;
@@ -2647,7 +2431,7 @@ void LoadSave(ConfigData *gameData, MenuPolys *polys, SaveSelection *selection)
                     } else {
                         ResetLoadMenu(selection);
                     }
-                } else if (GetMenuKey(4)) {
+                } else if (GetMenuKey(MENU_KEY_BACK)) {
                     Sound(49);
                     ResetLoadMenu(selection);
                 }
@@ -2696,7 +2480,7 @@ void LoadSave(ConfigData *gameData, MenuPolys *polys, SaveSelection *selection)
                 cardNotice.id = 3;
                 selection->selected = 0;
             } else if (!selection->dupeCheck) {
-                if (GetMenuKey(5)) {
+                if (GetMenuKey(MENU_KEY_SELECT)) {
                     Sound(9);
                     if ((SelectedCardFlags() & 4) || (SelectedCardFlags() & 2)) {
                         selection->dupeCheck = 1;
@@ -2709,7 +2493,7 @@ void LoadSave(ConfigData *gameData, MenuPolys *polys, SaveSelection *selection)
                 }
             } else {
                 DoConfirm(selection, polys, 2);
-                if (GetMenuKey(5)) {
+                if (GetMenuKey(MENU_KEY_SELECT)) {
                     Sound(9);
                     if (selection->confirmed) {
                         if ((SelectedCardFlags() & 4) || (SelectedCardFlags() & 2)) {
@@ -2719,7 +2503,7 @@ void LoadSave(ConfigData *gameData, MenuPolys *polys, SaveSelection *selection)
                     }
                     selection->dupeCheck = 0;
                     selection->enteringName = 0;
-                    *(volatile short *)&selection->selected = 0;
+                    selection->selected = 0;
                     selection->confirmed = 0;
                     goto display;
                 } else {
@@ -2730,7 +2514,7 @@ void LoadSave(ConfigData *gameData, MenuPolys *polys, SaveSelection *selection)
         }
         goto display;
 cancel:
-        if (GetMenuKey(4)) {
+        if (GetMenuKey(MENU_KEY_BACK)) {
             Sound(49);
             goto reset;
         }
@@ -2746,14 +2530,14 @@ reset:
             }
         }
         if (!cardPending.timer) {
-            if (keysPressed & 16) {
+            if (keysPressed & PAD_UP) {
                 selection->loadMode--;
                 if (selection->loadMode < 0) {
                     selection->loadMode = 0;
                 } else {
                     Sound(8);
                 }
-            } else if (keysPressed & 64) {
+            } else if (keysPressed & PAD_DOWN) {
                 selection->loadMode++;
                 if (selection->loadMode >= 3) {
                     selection->loadMode = 2;
@@ -2763,10 +2547,10 @@ reset:
             }
         }
         if (!cardNotice.timer && !cardPending.timer && !selection->timer) {
-            if (GetMenuKey(5) && (card1Exists || cardPresent1)) {
+            if (GetMenuKey(MENU_KEY_SELECT) && (card1Exists || cardPresent1)) {
                 Sound(9);
                 selection->selected = 1;
-            } else if (GetMenuKey(4)) {
+            } else if (GetMenuKey(MENU_KEY_BACK)) {
                 Sound(49);
                 {
                     int old = currMenu;
@@ -2926,7 +2710,6 @@ u_char DecodePassword(ConfigData *gameData, u_char *password)
 
 void DisplayPassword(ConfigData *gameData)
 {
-    char passwordBuffer[20];
     short digit;
 
     MakePassword(gameData);
@@ -2950,28 +2733,28 @@ void EnterPassword(ConfigData *gameData, MenuSelection *selection, MenuPolys *po
     int okFrom;
     int check;
 
-    if (GetMenuKey(1)) {
+    if (GetMenuKey(MENU_KEY_DOWN)) {
         selection->password.digits[menu[currMenu].mode]++;
         if (selection->password.digits[menu[currMenu].mode] >= 4) {
             selection->password.digits[menu[currMenu].mode] = 3;
         } else {
             Sound(8);
         }
-    } else if (GetMenuKey(0)) {
+    } else if (GetMenuKey(MENU_KEY_UP)) {
         selection->password.digits[menu[currMenu].mode]--;
         if (selection->password.digits[menu[currMenu].mode] < 0) {
             selection->password.digits[menu[currMenu].mode] = 0;
         } else {
             Sound(8);
         }
-    } else if (GetMenuKey(3)) {
+    } else if (GetMenuKey(MENU_KEY_RIGHT)) {
         menu[currMenu].mode++;
         if (menu[currMenu].mode >= 14) {
             menu[currMenu].mode = 13;
         } else {
             Sound(8);
         }
-    } else if (GetMenuKey(2)) {
+    } else if (GetMenuKey(MENU_KEY_LEFT)) {
         menu[currMenu].mode--;
         if (menu[currMenu].mode < 0) {
             menu[currMenu].mode = 0;
@@ -3005,7 +2788,7 @@ void EnterPassword(ConfigData *gameData, MenuSelection *selection, MenuPolys *po
     (polys->purple + CurrentScreen)->y2 = 157;
     (polys->purple + CurrentScreen)->x3 = menu[currMenu].mode * 18 + 54;
     (polys->purple + CurrentScreen)->y3 = 157;
-    if (passwordErrorTimer == 0 && GetMenuKey(5)) {
+    if (passwordErrorTimer == 0 && GetMenuKey(MENU_KEY_SELECT)) {
         Sound(9);
         if (DecodePassword(gameData, (u_char *)selection->password.digits)) {
             gameData->entered = selection->password;
@@ -3021,7 +2804,7 @@ void EnterPassword(ConfigData *gameData, MenuSelection *selection, MenuPolys *po
         }
         passwordErrorTimer = PAL_TIME(60);
     }
-    if (GetMenuKey(4)) {
+    if (GetMenuKey(MENU_KEY_BACK)) {
         Sound(49);
         backFrom = currMenu;
         currMenu = menu[backFrom].prevMenu;
@@ -3378,12 +3161,12 @@ void DispHiScores(UnlockData *unlock, void *unused, unsigned char raceMode)
 
     maxTracks = 6;
     if (unlock->extraTracks || (unlock->unlockedTracks & 0xffff0000)) maxTracks = 8;
-    if (GetMenuKey(3)) {
+    if (GetMenuKey(MENU_KEY_RIGHT)) {
         menu[currMenu].selection++;
         if (menu[currMenu].selection >= maxTracks) menu[currMenu].selection = maxTracks - 1;
         else PlayNote(8, 255, 15, 15, 256);
     }
-    if (GetMenuKey(2)) {
+    if (GetMenuKey(MENU_KEY_LEFT)) {
         menu[currMenu].selection--;
         if (menu[currMenu].selection < 0) menu[currMenu].selection = 0;
         else PlayNote(8, 255, 15, 15, 256);
@@ -3449,14 +3232,10 @@ void InitNewDisplay(ConfigData *gameData)
     SetDefDispEnv(&DispEnv1, 0, 0x100, 0x140, SCREEN_HEIGHT);
     DispEnv0.screen.x = *(u16 *)&gameData->screenX + DISPLAY_SHIFT_X;
     DispEnv0.screen.y = *(u16 *)&gameData->screenY + DISPLAY_SHIFT_Y;
-    if (portPal) {
-        DispEnv0.screen.h = SCREEN_HEIGHT;
-    }
+    PAL_SCREEN_HEIGHT(DispEnv0);
     DispEnv1.screen.x = *(u16 *)&gameData->screenX + DISPLAY_SHIFT_X;
     DispEnv1.screen.y = *(u16 *)&gameData->screenY + DISPLAY_SHIFT_Y;
-    if (portPal) {
-        DispEnv1.screen.h = SCREEN_HEIGHT;
-    }
+    PAL_SCREEN_HEIGHT(DispEnv1);
     SetGeomOffset(0xA0, SCREEN_HEIGHT / 2);
     SetGeomScreen(0xA0);
     PutDispEnv(doubleBuffer[CurrentScreen].disp);
@@ -3507,22 +3286,22 @@ void ScreenConfig(ConfigData *gameData, MenuPolys *polys, short *screenPosition)
 {
     u_char corner;
 
-    if (keysDown & 0x20) {
+    if (keysDown & PAD_RIGHT) {
         screenPosition[0]++;
         if (screenPosition[0] >= 25) {
             screenPosition[0] = 24;
         }
-    } else if (keysDown & 0x80) {
+    } else if (keysDown & PAD_LEFT) {
         screenPosition[0]--;
         if (screenPosition[0] < -10) {
             screenPosition[0] = -10;
         }
-    } else if (keysDown & 0x10) {
+    } else if (keysDown & PAD_UP) {
         screenPosition[1]--;
         if (screenPosition[1] < -10) {
             screenPosition[1] = -10;
         }
-    } else if (keysDown & 0x40) {
+    } else if (keysDown & PAD_DOWN) {
         screenPosition[1]++;
         if (screenPosition[1] >= 25) {
             screenPosition[1] = 24;
@@ -3541,7 +3320,7 @@ void ScreenConfig(ConfigData *gameData, MenuPolys *polys, short *screenPosition)
 void DisplayConfig(ConfigData *gameData, MenuSelection *selection, HiScoreData *score, MenuPolys *polys)
 {
     if (selection->moveScreen == 0) {
-        if (GetMenuKey(0)) {
+        if (GetMenuKey(MENU_KEY_UP)) {
             selection->current--;
             if (selection->current < 0) {
                 selection->current = 0;
@@ -3549,7 +3328,7 @@ void DisplayConfig(ConfigData *gameData, MenuSelection *selection, HiScoreData *
                 Sound(8);
             }
         }
-        if (GetMenuKey(1)) {
+        if (GetMenuKey(MENU_KEY_DOWN)) {
             selection->current++;
             if (selection->current >= 4) {
                 selection->current = 3;
@@ -3587,13 +3366,13 @@ void DisplayConfig(ConfigData *gameData, MenuSelection *selection, HiScoreData *
         AddText(msgDefaultName, 30, 150, 8, 1);
         score->userEntry = 0;
         EnterName(gameData, score);
-        if (keysPressed & 0x20) {
+        if (keysPressed & PAD_RIGHT) {
             if (selection->weapons != 0) {
                 Sound(8);
             }
             selection->weapons = 0;
         }
-        if (keysPressed & 0x80) {
+        if (keysPressed & PAD_LEFT) {
             if (selection->weapons == 0) {
                 Sound(8);
             }
@@ -3609,13 +3388,13 @@ void DisplayConfig(ConfigData *gameData, MenuSelection *selection, HiScoreData *
         AddText(msgDefaultName, 30, 150, 8, 1);
         score->userEntry = 0;
         EnterName(gameData, score);
-        if (keysPressed & 0x20) {
+        if (keysPressed & PAD_RIGHT) {
             if (selection->internalView == 1) {
                 Sound(8);
             }
             selection->internalView = 0;
         }
-        if (keysPressed & 0x80) {
+        if (keysPressed & PAD_LEFT) {
             if (selection->internalView == 0) {
                 Sound(8);
             }
@@ -3631,7 +3410,7 @@ void DisplayConfig(ConfigData *gameData, MenuSelection *selection, HiScoreData *
         AddText(msgDefaultName, 30, 150, 8, 1);
         score->userEntry = 0;
         EnterName(gameData, score);
-        if ((keysPressed & 0x2000) && !(keysDown & 0xC01)) {
+        if ((keysPressed & PAD_CIRCLE) && !(keysDown & PAD_CHEAT_MODIFIERS)) {
             Sound(9);
             selection->moveScreen ^= 1;
         }
@@ -3685,20 +3464,20 @@ void NegConConfig(ConfigData *gameData, KeyConfig *keyConfig, MenuPolys *polys, 
     cosine = 0;
     sine = 0;
     if (!negconEditing[menu[currMenu].selection]) {
-        if (keysPressed & 128) {
+        if (keysPressed & PAD_LEFT) {
             Sound(8);
             if (--menu[currMenu].selection < 0) {
                 menu[currMenu].selection = 0;
             }
-        } else if (keysPressed & 32) {
+        } else if (keysPressed & PAD_RIGHT) {
             Sound(8);
             if (++menu[currMenu].selection >= 2) {
                 menu[currMenu].selection = 2;
             }
         }
     }
-    if (keysPressed & 8192) {
-        if (!(keysDown & 3073)) {
+    if (keysPressed & PAD_CIRCLE) {
+        if (!(keysDown & PAD_CHEAT_MODIFIERS)) {
             Sound(9);
             negconEditing[menu[currMenu].selection] ^= 1;
             selection->negconFlags[menu[currMenu].selection] = 1;
@@ -3717,21 +3496,19 @@ void NegConConfig(ConfigData *gameData, KeyConfig *keyConfig, MenuPolys *polys, 
                 selection->negconMin = padBuf1[0].steering;
                 break;
             case 2:
-                if (keysPressed & 16) {
+                if (keysPressed & PAD_UP) {
                     Sound(8);
                     if (--selection->negconType <= 0) {
                         selection->negconType = 0;
                     }
-                } else if (keysPressed & 64) {
+                } else if (keysPressed & PAD_DOWN) {
                     Sound(8);
-                    if (++selection->negconType < 3) {
-                        goto showTypeUp;
+                    if (++selection->negconType >= 3) {
+                        selection->negconType = 3;
                     }
-                    selection->negconType = 3;
                 }
                 if (selection->negconType < 3) {
-showTypeUp:
-                    if ((*(volatile int *)&negconBlink) % 30 < 21) {
+                    if (negconBlink % 30 < 21) {
                         DoButton(290, 149, 11, numTex);
                     }
                 }
@@ -3752,13 +3529,10 @@ showTypeUp:
             } else {
                 degrees = (((selection->negconCenter - 128) * 3) * 15) >> 5;
             }
-            if (selection->negconCenter == 0) {
-                degrees = 180;
-                break;
-            }
-            if (selection->negconCenter == 255) {
+            if (selection->negconCenter == 0 || selection->negconCenter == 255) {
                 degrees = 180;
             }
+            sprintf(text, fmtNewAngle, degrees);
             break;
         case 1:
             cosine = rcos((selection->negconMin << 4) - 3072);
@@ -3771,17 +3545,14 @@ showTypeUp:
             if (selection->negconMin == 0) {
                 degrees = 180;
             }
+            sprintf(text, fmtNewAngle, degrees);
             break;
         case 2:
             cosine = rcos((angles.value[selection->negconType] << 4) - 1024);
             sine = rsin((angles.value[selection->negconType] << 4) - 1024);
             sprintf(text, fmtNewAngle, angles.value[selection->negconType]);
-            goto drawSelection;
-        default:
-            goto drawSelection;
+            break;
         }
-        sprintf(text, fmtNewAngle, degrees);
-drawSelection:
         PrintCX(text, x.value[i], 172);
         px = x.value[i];
         polys->arrowLine[i + 3][CurrentScreen].x0 = px;
@@ -3806,13 +3577,10 @@ drawSelection:
             } else {
                 degrees = (((gameData->negconCentre - 128) * 3) * 15) >> 5;
             }
-            if (gameData->negconCentre == 0) {
-                degrees = 180;
-                break;
-            }
-            if (gameData->negconCentre == 255) {
+            if (gameData->negconCentre == 0 || gameData->negconCentre == 255) {
                 degrees = 180;
             }
+            sprintf(text, fmtCurrent, degrees);
             break;
         case 1:
             cosine = rcos((gameData->negconMin << 4) - 3072);
@@ -3825,17 +3593,14 @@ drawSelection:
             if (gameData->negconMin == 0) {
                 degrees = 180;
             }
+            sprintf(text, fmtCurrent, degrees);
             break;
         case 2:
             cosine = rcos((angles.value[gameData->negconType] << 4) - 1024);
             sine = rsin((angles.value[gameData->negconType] << 4) - 1024);
             sprintf(text, fmtCurrent, angles.value[gameData->negconType]);
-            goto drawGame;
-        default:
-            goto drawGame;
+            break;
         }
-        sprintf(text, fmtCurrent, degrees);
-drawGame:
         PrintCX(text, x.value[i], 160);
         left = x.value[i] - 32;
         top = y.value[i] - 31;
@@ -3889,7 +3654,7 @@ void JoyPadConfig(ConfigData *gameData, KeyConfig *keyConfig, MenuPolys *polys, 
     for (i = 0; i < 6; i++) {
         Print(GetKeyFunction(i), 30, i * 16 + 88, 8);
     }
-    if (GetMenuKey(1)) {
+    if (GetMenuKey(MENU_KEY_DOWN)) {
         keyConfig->active++;
         if (keyConfig->active >= 5) {
             keyConfig->active = 5;
@@ -3897,7 +3662,7 @@ void JoyPadConfig(ConfigData *gameData, KeyConfig *keyConfig, MenuPolys *polys, 
             Sound(8);
         }
     }
-    if (GetMenuKey(0)) {
+    if (GetMenuKey(MENU_KEY_UP)) {
         keyConfig->active--;
         if (keyConfig->active < 0) {
             keyConfig->active = 0;
@@ -3960,7 +3725,7 @@ void JoyPadConfig(ConfigData *gameData, KeyConfig *keyConfig, MenuPolys *polys, 
     polys->purple[CurrentScreen].x3 = widths.value[keyConfig->active] + 28;
     polys->purple[CurrentScreen].y3 = keyConfig->active * 16 + 95;
     AddPrim(OT[CurrentScreen], &polys->purple[CurrentScreen]);
-    if (GetMenuKey(5)) {
+    if (GetMenuKey(MENU_KEY_SELECT)) {
         for (k = 0; k < 6; k++) {
             for (j = 0; j < 6; j++) {
                 if ((selection->keys + layout)->key[k] == (selection->keys + layout)->key[j]) {
@@ -3989,7 +3754,7 @@ void JoyPadConfig(ConfigData *gameData, KeyConfig *keyConfig, MenuPolys *polys, 
             Sound(9);
             return;
         }
-    } else if (GetMenuKey(4)) {
+    } else if (GetMenuKey(MENU_KEY_BACK)) {
         prevMenu = currMenu;
         currMenu = menu[currMenu].prevMenu;
         *(selection->keys + layout) = *(keyConfig->keys + layout);
@@ -3999,7 +3764,7 @@ void JoyPadConfig(ConfigData *gameData, KeyConfig *keyConfig, MenuPolys *polys, 
         Sound(49);
         return;
     }
-    if (GetMenuKey(3)) {
+    if (GetMenuKey(MENU_KEY_RIGHT)) {
         (selection->calibration + layout)->value[keyConfig->active]++;
         other = layout ^ 1;
         if ((selection->calibration + layout)->value[keyConfig->active] >= other * 2 + 5) {
@@ -4008,7 +3773,7 @@ void JoyPadConfig(ConfigData *gameData, KeyConfig *keyConfig, MenuPolys *polys, 
             Sound(8);
         }
     }
-    if (GetMenuKey(2)) {
+    if (GetMenuKey(MENU_KEY_LEFT)) {
         (selection->calibration + layout)->value[keyConfig->active]--;
         if ((selection->calibration + layout)->value[keyConfig->active] <= 0) {
             (selection->calibration + layout)->value[keyConfig->active] = 0;
@@ -4017,7 +3782,7 @@ void JoyPadConfig(ConfigData *gameData, KeyConfig *keyConfig, MenuPolys *polys, 
         }
     }
     DoButton(125, 198, 0, msgDefaultConfig);
-    if ((keysPressed & 0x2000) && !(keysDown & 0xC01)) {
+    if ((keysPressed & PAD_CIRCLE) && !(keysDown & PAD_CHEAT_MODIFIERS)) {
         ResetKeyConfig(selection);
         Sound(9);
     }
@@ -4049,7 +3814,7 @@ void AudioConfig(ConfigData *gameData, MenuPolys *polys, MenuSelection *selectio
     SetInGameCDTrack(cdPlaySeconds, cdStatus, gameData, cdFlag);
     gameData->cdTrack = savedTrack;
     texture = textureTable[2 + menuTextures];
-    if (GetMenuKey(0)) {
+    if (GetMenuKey(MENU_KEY_UP)) {
         selection->current--;
         if (selection->current < 0) {
             selection->current = 0;
@@ -4057,7 +3822,7 @@ void AudioConfig(ConfigData *gameData, MenuPolys *polys, MenuSelection *selectio
             Sound(8);
         }
     }
-    if (GetMenuKey(1)) {
+    if (GetMenuKey(MENU_KEY_DOWN)) {
         selection->current++;
         if (selection->current >= 4) {
             selection->current = 3;
@@ -4078,13 +3843,13 @@ void AudioConfig(ConfigData *gameData, MenuPolys *polys, MenuSelection *selectio
         AddText(labelSfx, 30, 123, 8, 1);
         AddText(labelCdTrackMenu, 25, 184, 8, 1);
         AddText(labelSound, 133, 150, 8, 1);
-        if (keysDown & 0x20) {
+        if (keysDown & PAD_RIGHT) {
             selection->musicVolume++;
             if (selection->musicVolume >= 100) {
                 selection->musicVolume = 100;
             }
         }
-        if (keysDown & 0x80) {
+        if (keysDown & PAD_LEFT) {
             selection->musicVolume--;
             if (selection->musicVolume < 0) {
                 selection->musicVolume = 0;
@@ -4100,13 +3865,13 @@ void AudioConfig(ConfigData *gameData, MenuPolys *polys, MenuSelection *selectio
         }
         AddText(labelCdTrackMenu, 25, 184, 8, 1);
         AddText(labelSound, 133, 150, 8, 1);
-        if (keysDown & 0x20) {
+        if (keysDown & PAD_RIGHT) {
             selection->effectVolume++;
             if (selection->effectVolume >= 100) {
                 selection->effectVolume = 100;
             }
         }
-        if (keysDown & 0x80) {
+        if (keysDown & PAD_LEFT) {
             selection->effectVolume--;
             if (selection->effectVolume < 0) {
                 selection->effectVolume = 0;
@@ -4125,7 +3890,7 @@ void AudioConfig(ConfigData *gameData, MenuPolys *polys, MenuSelection *selectio
             AddText(labelCdTrackMenu, 25, 184, 8, 0);
         }
         AddText(labelSound, 133, 150, 8, 1);
-        if (GetMenuKey(2)) {
+        if (GetMenuKey(MENU_KEY_LEFT)) {
             Sound(8);
             selection->music--;
             if (selection->music <= 0) {
@@ -4135,14 +3900,14 @@ void AudioConfig(ConfigData *gameData, MenuPolys *polys, MenuSelection *selectio
             if (track == 1) {
                 InitShufflePlay();
                 track = cdMusicTable[0];
-                *(volatile char *)&cdMusicIndex = 0;
+                cdMusicIndex = 0;
                 cdMusicTrack = track;
                 CdMusicPlay(track, 0);
             } else {
                 CdMusicPlay(track, 0);
             }
         }
-        if (GetMenuKey(3)) {
+        if (GetMenuKey(MENU_KEY_RIGHT)) {
             Sound(8);
             selection->music++;
             if (cdMusicCount < selection->music) {
@@ -4166,7 +3931,7 @@ void AudioConfig(ConfigData *gameData, MenuPolys *polys, MenuSelection *selectio
         if (audioBlink % 30 < 21) {
             AddText(labelSound, 133, 150, 8, 0);
         }
-        if (GetMenuKey(3)) {
+        if (GetMenuKey(MENU_KEY_RIGHT)) {
             selection->stereo--;
             if (selection->stereo < 0) {
                 selection->stereo = 0;
@@ -4182,7 +3947,7 @@ void AudioConfig(ConfigData *gameData, MenuPolys *polys, MenuSelection *selectio
                 StartControlledSound();
             }
         }
-        if (GetMenuKey(2)) {
+        if (GetMenuKey(MENU_KEY_LEFT)) {
             selection->stereo++;
             if (selection->stereo >= 2) {
                 selection->stereo = 1;
@@ -4405,7 +4170,6 @@ void TeamSelect(ConfigData *gameData, MenuSelection *selection, void *shipShapes
 {
     int pilotsPerTeam = 3;
     int shipNo;
-    int teamPreviewScratch[4];
     TeamOrder teamOrder = *teamShipGroup;
     char *teamDescription;
     s16 selectedTeam;
@@ -4421,7 +4185,7 @@ void TeamSelect(ConfigData *gameData, MenuSelection *selection, void *shipShapes
         teamCount = 5;
         PrintCX(msgTeamCheatActive, 160, 204);
     }
-    if (GetMenuKey(1)) {
+    if (GetMenuKey(MENU_KEY_DOWN)) {
         nextTeam = selection->current + 1;
         selection->current = nextTeam;
         if ((s16) nextTeam >= teamCount) {
@@ -4430,7 +4194,7 @@ void TeamSelect(ConfigData *gameData, MenuSelection *selection, void *shipShapes
             Sound(8);
         }
     }
-    if (GetMenuKey(0)) {
+    if (GetMenuKey(MENU_KEY_UP)) {
         previousTeam = selection->current - 1;
         selection->current = previousTeam;
         if ((short) previousTeam < 0) {
@@ -4506,7 +4270,6 @@ ship_parameters:
 void ClassSelect(ConfigData *gameData, MenuSelection *selection)
 {
     ClassOrder classOrder = *classOrderTable;
-    char *trackName;
     char *trackDescription;
     char *className;
     int optionCount;
@@ -4534,11 +4297,11 @@ void ClassSelect(ConfigData *gameData, MenuSelection *selection)
         }
     }
     optionCount = 3;
-    if (menu[2].options[3].enabled != 0) {
+    if (menu[MENU_RACING_CLASS].options[3].enabled != 0) {
         optionCount = 4;
     }
     /* Port: the lines shown, WIPEOUT after the classes (portorig.c) */
-    if (GetMenuKey(1)) {
+    if (GetMenuKey(MENU_KEY_DOWN)) {
         short moved = (short)PortClassMove(selection->current, 1, optionCount);
 
         if (moved != selection->current) {
@@ -4546,7 +4309,7 @@ void ClassSelect(ConfigData *gameData, MenuSelection *selection)
         }
         selection->current = moved;
     }
-    if (GetMenuKey(0)) {
+    if (GetMenuKey(MENU_KEY_UP)) {
         short moved = (short)PortClassMove(selection->current, -1, optionCount);
 
         if (moved != selection->current) {
@@ -4555,7 +4318,7 @@ void ClassSelect(ConfigData *gameData, MenuSelection *selection)
         selection->current = moved;
     }
     original = PortOriginalClassMenu(selection, &trackCount, 0); /* Port: the WIPEOUT line's tracks */
-    if (GetMenuKey(3)) {
+    if (GetMenuKey(MENU_KEY_RIGHT)) {
         selection->trackSelection++;
         if (selection->trackSelection < trackCount) {
             Sound(8);
@@ -4564,7 +4327,7 @@ void ClassSelect(ConfigData *gameData, MenuSelection *selection)
     if (selection->trackSelection >= trackCount - 1) {
         selection->trackSelection = trackCount - 1;
     }
-    if (GetMenuKey(2)) {
+    if (GetMenuKey(MENU_KEY_LEFT)) {
         selection->trackSelection--;
         if (selection->trackSelection < 0) {
             selection->trackSelection = 0;
@@ -4752,43 +4515,43 @@ afterClassObject:
 void MenuFunction(void *gameData, void *polys, void *keyConfig, void *selection, void *cardState, void *musicScreen)
 {
     switch (currMenu) {
-    case 5: case 6: case 7: case 8:
+    case MENU_VECTOR_TRACK: case MENU_VENOM_TRACK: case MENU_RAPIER_TRACK: case MENU_PHANTOM_TRACK:
         ClassSelect(gameData, selection);
         break;
-    case 4:
+    case MENU_TEAM:
         TeamSelect(gameData, selection, polys);
         break;
-    case 9:
+    case MENU_AUDIO:
         AudioConfig(gameData, polys, selection, musicScreen);
         break;
-    case 21:
+    case MENU_NEGCON_TWIST:
         NegConConfig(gameData, keyConfig, polys, selection);
         break;
-    case 10: case 22:
+    case MENU_DIGITAL_PAD: case MENU_NEGCON_BUTTONS:
         JoyPadConfig(gameData, keyConfig, polys, selection);
         break;
-    case 15:
+    case MENU_GAME_CONFIG:
         DisplayConfig(gameData, selection, cardState, polys);
         break;
-    case 16:
+    case MENU_SCREEN:
         ScreenConfig(gameData, polys, selection);
         break;
-    case 12:
+    case MENU_LOAD_SAVE:
         LoadSave(gameData, polys, selection);
         break;
-    case 23:
+    case MENU_ENTER_PASSWORD:
         EnterPassword(gameData, selection, polys);
         break;
-    case 14:
+    case MENU_SHOW_PASSWORD:
         DisplayPassword(gameData);
         break;
-    case 17:
+    case MENU_ARCADE_SCORES:
         DispHiScores(gameData, selection, 5);
         break;
-    case 18:
+    case MENU_TIME_TRIAL_SCORES:
         DispHiScores(gameData, selection, 6);
         break;
-    case 19:
+    case MENU_LINK:
         PortLinkScreen(gameData, selection); /* Port: the lobby (portlink.c); the console's cable link was EstablishLink() */
         break;
     }
@@ -4805,7 +4568,7 @@ void AddTextBits(ConfigData *gameData)
     }
     menuTitleBlink += 1;
     switch (currMenu) {
-    case 0:
+    case MENU_MAIN:
         if ((u32) ownShip < 3U) {
             __builtin_memcpy(menuLabel, teamNameAgSystems, 11);
         } else if ((u32) (ownShip - 3) < 3U) {
@@ -4819,19 +4582,19 @@ void AddTextBits(ConfigData *gameData)
         }
         PrintCX(menuLabel, 0xA0, 0xAC);
         switch (raceType) {
-        case 0:
+        case RACE_ARCADE:
             __builtin_memcpy(menuLabel, msgArcade, 7);
             break;
-        case 1:
+        case RACE_TIME_TRIAL:
             __builtin_memcpy(menuLabel, msgTimeTrial, 11);
             break;
-        case 3:
+        case RACE_ONE_ON_ONE:
             __builtin_memcpy(menuLabel, msgOneOnOne, 11);
             break;
-        case 2:
+        case RACE_ARCADE_LINK:
             __builtin_memcpy(menuLabel, msgArcadeLink, 12);
             break;
-        case 4:
+        case RACE_CHALLENGE:
             if (gameData->venomComplete != 0) {
                 __builtin_memcpy(menuLabel, msgChallengeI, 12);
             } else if (gameData->rapierComplete != 0) {
@@ -4844,66 +4607,66 @@ void AddTextBits(ConfigData *gameData)
         PrintCX(formattedTrack, 0x100, 0xAC);
         __builtin_memcpy(menuLabel, msgEssentialOptions, 18);
         break;
-    case 2:
+    case MENU_RACING_CLASS:
         __builtin_memcpy(menuLabel, msgRacingMode, 12);
         break;
-    case 1:
+    case MENU_RACE_TYPE:
         __builtin_memcpy(menuLabel, msgStructureMode, 15);
         break;
-    case 3:
+    case MENU_OPTIONS:
         __builtin_memcpy(menuLabel, msgOptionsMode, 13);
         break;
-    case 5:
-    case 6:
-    case 7:
-    case 8:
+    case MENU_VECTOR_TRACK:
+    case MENU_VENOM_TRACK:
+    case MENU_RAPIER_TRACK:
+    case MENU_PHANTOM_TRACK:
         __builtin_memcpy(menuLabel, msgTrackMode, 11);
         break;
-    case 4:
+    case MENU_TEAM:
         __builtin_memcpy(menuLabel, msgTeamMode, 10);
         break;
-    case 9:
+    case MENU_AUDIO:
         __builtin_memcpy(menuLabel, msgPrecisionLevels, 17);
         break;
-    case 10:
+    case MENU_DIGITAL_PAD:
         __builtin_memcpy(menuLabel, msgInteractionMode, 17);
         break;
-    case 20:
+    case MENU_NEGCON_SELECT:
         __builtin_memcpy(menuLabel, msgNegconSelectionMode, 22);
         break;
-    case 22:
+    case MENU_NEGCON_BUTTONS:
         __builtin_memcpy(menuLabel, msgNegconMode, 12);
         break;
-    case 21:
+    case MENU_NEGCON_TWIST:
         __builtin_memcpy(menuLabel, msgNegconTwistMode, 18);
         break;
-    case 14:
+    case MENU_SHOW_PASSWORD:
         __builtin_memcpy(menuLabel, msgPasswordMode, 14);
         break;
-    case 23:
+    case MENU_ENTER_PASSWORD:
         __builtin_memcpy(menuLabel, msgProgressionMode, 17);
         break;
-    case 12:
+    case MENU_LOAD_SAVE:
         __builtin_memcpy(menuLabel, msgDataMode, 10);
         break;
-    case 15:
+    case MENU_GAME_CONFIG:
         __builtin_memcpy(menuLabel, msgPreferencesMode, 17);
         break;
-    case 16:
+    case MENU_SCREEN:
         __builtin_memcpy(menuLabel, msgScreenMode, 12);
         break;
-    case 13:
+    case MENU_BEST_TIMES:
         __builtin_memcpy(menuLabel, msgTimesMode, 11);
         break;
-    case 17:
+    case MENU_ARCADE_SCORES:
         __builtin_memcpy(menuLabel, msgArcadeMode, 12);
         break;
-    case 18:
+    case MENU_TIME_TRIAL_SCORES:
         __builtin_memcpy(menuLabel, msgTimeTrialMode, 16);
         break;
-    case 19:
+    case MENU_LINK:
         /* Port: the lobby says which of the two-player races it is for (the console's link screen said LINK UP twice) */
-        if (raceType == 2) {
+        if (raceType == RACE_ARCADE_LINK) {
             __builtin_memcpy(menuLabel, msgArcadeLink, 12);
         } else {
             __builtin_memcpy(menuLabel, msgOneOnOne, 11);
@@ -4964,35 +4727,33 @@ void DisplayTexture(Texture *texture, s32 left, s32 top, POLY_FT4 *polys)
 void ShowMenu(ConfigData *gameData, MenuBars *polys, MenuSelection *selection)
 {
     ClassOrder classOrder;
-    int gap;
     RaceOrder raceOrder;
     short i,j;
     unsigned char blocked;
-    int index;
     classOrder=classOrderTable[0];
     raceOrder=raceOrderTable[0];
     blocked=0;
     for(i=0;i<menu[currMenu].numOptions;i++) {
         for(j=0;j<menu[currMenu].options[i].numText;j++) {
-            if(currMenu==0) {
-                CentreText2(menu[0].options[i].text[j].text,menu[0].options[i].x,menu[0].options[i].y+j*10,8,1);
+            if(currMenu==MENU_MAIN) {
+                CentreText2(menu[MENU_MAIN].options[i].text[j].text,menu[MENU_MAIN].options[i].x,menu[MENU_MAIN].options[i].y+j*10,8,1);
             } else if(menu[currMenu].options[i].enabled) {
-                if(currMenu==2) {
-                    MenuOption *options=menu[2].options;
+                if(currMenu==MENU_RACING_CLASS) {
+                    MenuOption *options=menu[MENU_RACING_CLASS].options;
                     int row=(i==4 && !options[3].enabled)?3:i; /* Port: WIPEOUT in the fourth class's row when that is locked */
-                    if(i==selection->current) CentreText2(options[i].text[j].text,68,menu[2].options[0].y+row*10,8,0);
-                    else CentreText2(options[i].text[j].text,68,menu[2].options[0].y+row*10,8,1);
-                } else if(currMenu==3) {
-                    MenuOption *options=menu[3].options;
-                    if(i==menu[3].selection) CentreText(options[i].text[j].text,68,menu[3].options[0].y+i*12,8,0);
-                    else CentreText(options[i].text[j].text,68,menu[3].options[0].y+i*12,8,1);
+                    if(i==selection->current) CentreText2(options[i].text[j].text,68,menu[MENU_RACING_CLASS].options[0].y+row*10,8,0);
+                    else CentreText2(options[i].text[j].text,68,menu[MENU_RACING_CLASS].options[0].y+row*10,8,1);
+                } else if(currMenu==MENU_OPTIONS) {
+                    MenuOption *options=menu[MENU_OPTIONS].options;
+                    if(i==menu[MENU_OPTIONS].selection) CentreText(options[i].text[j].text,68,menu[MENU_OPTIONS].options[0].y+i*12,8,0);
+                    else CentreText(options[i].text[j].text,68,menu[MENU_OPTIONS].options[0].y+i*12,8,1);
                 } else {
                     if(i==menu[currMenu].selection) AddText(menu[currMenu].options[i].text[j].text,menu[currMenu].options[0].x,menu[currMenu].options[0].y+i*10,8,0);
                     else AddText(menu[currMenu].options[i].text[j].text,menu[currMenu].options[0].x,menu[currMenu].options[0].y+i*10,8,1);
                 }
             }
         }
-        if(currMenu==0) {
+        if(currMenu==MENU_MAIN) {
             if(i==menu[currMenu].selection) {
                 polys->options[i][CurrentScreen].r0=85;
                 polys->options[i][CurrentScreen].g0=0;
@@ -5021,7 +4782,7 @@ void ShowMenu(ConfigData *gameData, MenuBars *polys, MenuSelection *selection)
             }
         }
     }
-    if(currMenu==9) {
+    if(currMenu==MENU_AUDIO) {
         polys->options[0][CurrentScreen].r0=85;
         polys->options[0][CurrentScreen].g0=0;
         polys->options[0][CurrentScreen].b0=40;
@@ -5033,7 +4794,7 @@ void ShowMenu(ConfigData *gameData, MenuBars *polys, MenuSelection *selection)
             }
         }
     }
-    if(currMenu==21) {
+    if(currMenu==MENU_NEGCON_TWIST) {
         polys->options[0][CurrentScreen].r0=85;
         polys->options[0][CurrentScreen].g0=0;
         polys->options[0][CurrentScreen].b0=40;
@@ -5041,12 +4802,12 @@ void ShowMenu(ConfigData *gameData, MenuBars *polys, MenuSelection *selection)
             HighlightBox(menu[currMenu].selection, 0);
         }
     }
-    if(currMenu!=19 && currMenu!=17 && currMenu!=18 && currMenu!=9 && currMenu!=10 && currMenu!=15 && currMenu!=23 && currMenu!=21 && currMenu!=22) DoButton(30,198,1,JAPAN_STR(msgSelect2, msgSelect2Japan));
-    if(currMenu==9 || currMenu==10 || currMenu==15 || currMenu==23 || currMenu==21 || currMenu==22) DoButton(30,198,1,JAPAN_STR(msgAccept, msgAcceptJapan));
-    if(currMenu!=0) DoButton(278,198,3,JAPAN_STR(msgBack, msgBackJapan));
-    if(currMenu==2) ClassSelect(gameData,selection);
-    if(currMenu==1) {
-        switch(menu[1].selection) {
+    if(currMenu!=MENU_LINK && currMenu!=MENU_ARCADE_SCORES && currMenu!=MENU_TIME_TRIAL_SCORES && currMenu!=MENU_AUDIO && currMenu!=MENU_DIGITAL_PAD && currMenu!=MENU_GAME_CONFIG && currMenu!=MENU_ENTER_PASSWORD && currMenu!=MENU_NEGCON_TWIST && currMenu!=MENU_NEGCON_BUTTONS) DoButton(30,198,1,JAPAN_STR(msgSelect2, msgSelect2Japan));
+    if(currMenu==MENU_AUDIO || currMenu==MENU_DIGITAL_PAD || currMenu==MENU_GAME_CONFIG || currMenu==MENU_ENTER_PASSWORD || currMenu==MENU_NEGCON_TWIST || currMenu==MENU_NEGCON_BUTTONS) DoButton(30,198,1,JAPAN_STR(msgAccept, msgAcceptJapan));
+    if(currMenu!=MENU_MAIN) DoButton(278,198,3,JAPAN_STR(msgBack, msgBackJapan));
+    if(currMenu==MENU_RACING_CLASS) ClassSelect(gameData,selection);
+    if(currMenu==MENU_RACE_TYPE) {
+        switch(menu[MENU_RACE_TYPE].selection) {
         case 0: Print(JAPAN_STR(msgOnePlayerSingleRaceAgainst, msgOnePlayerSingleRaceAgainstJapan),30,182,8);Print(msgGridOfCompetitors,30,189,8);break;
         case 1: Print(JAPAN_STR(msgOnePlayerSingleRaceTimeTrial, msgOnePlayerSingleRaceTimeTrialJapan),30,182,8);Print(msgNoCompetitors,30,189,8);break;
         case 2: Print(JAPAN_STR(msgTwoPlayerSingleRaceAgainst, msgTwoPlayerSingleRaceAgainstJapan),30,182,8);Print(msgGridOfCompetitors,30,189,8);break;
@@ -5085,55 +4846,55 @@ void ShowMenu(ConfigData *gameData, MenuBars *polys, MenuSelection *selection)
             }
         }
     }
-    if(currMenu==3) DrawTeamShips(0,-55,600,heading,0,menuModels[7]);
-    if(currMenu==0) {
+    if(currMenu==MENU_OPTIONS) DrawTeamShips(0,-55,600,heading,0,menuModels[7]);
+    if(currMenu==MENU_MAIN) {
         DrawTeamShips(0,-120,1800,cardNum,173,shipShapeTable[highResTable[ownShip]]);
         switch(raceType) {
-        case 1: DrawTeamShips(-670,-90,1200,cardNum,0,menuModels[raceOrder.order[1]]);break;
-        case 3: DrawTeamShips(-670,-60,1200,cardNum,0,menuModels[raceOrder.order[3]]);break;
-        case 2: DrawTeamShips(-550,-40,1000,cardNum,0,menuModels[raceOrder.order[2]]);break;
-        case 4:
+        case RACE_TIME_TRIAL: DrawTeamShips(-670,-90,1200,cardNum,0,menuModels[raceOrder.order[1]]);break;
+        case RACE_ONE_ON_ONE: DrawTeamShips(-670,-60,1200,cardNum,0,menuModels[raceOrder.order[3]]);break;
+        case RACE_ARCADE_LINK: DrawTeamShips(-550,-40,1000,cardNum,0,menuModels[raceOrder.order[2]]);break;
+        case RACE_CHALLENGE:
             if(gameData->venomComplete) DrawTeamShips(-670,-60,1200,cardNum,0,menuModels[raceOrder.order[4]]);
             else DrawTeamShips(-720,-60,1300,cardNum,0,menuModels[raceOrder.order[5]]);
             break;
         default: DrawTeamShips(-570,-40,1000,cardNum,0,menuModels[raceOrder.order[raceType]]);break;
         }
         DrawTeamShips(730,-60,1200,cardNum,0,menuModels[classOrder.order[gameData->shipClass]]);
-    } else if(currMenu==1) {
+    } else if(currMenu==MENU_RACE_TYPE) {
         MenuEntry *menus=menu;
-        if(menus[1].selection==4 && !gameData->venomComplete) {
-            DrawTeamShips(440,-100,1000,cardNum,0,menuModels[raceOrder.order[menus[1].selection+1]]);
+        if(menus[MENU_RACE_TYPE].selection==4 && !gameData->venomComplete) {
+            DrawTeamShips(440,-100,1000,cardNum,0,menuModels[raceOrder.order[menus[MENU_RACE_TYPE].selection+1]]);
         } else {
-            DrawTeamShips(440,-100,1000,cardNum,0,menuModels[raceOrder.order[menus[1].selection]]);
+            DrawTeamShips(440,-100,1000,cardNum,0,menuModels[raceOrder.order[menus[MENU_RACE_TYPE].selection]]);
         }
     }
-    if(currMenu==0) DisplayTexture(textureTable[6 + menuTextures],25,38,polys->title);
+    if(currMenu==MENU_MAIN) DisplayTexture(textureTable[6 + menuTextures],25,38,polys->title);
     else AddText(menu[currMenu].title.text,menu[currMenu].title.size,menu[currMenu].title.colour,12,1);
     AddTextBits(gameData);
     if(menuEditor) return;
-    if(currMenu==0 && menu[currMenu].numOptions>0) {
-        if(GetMenuKey(3)) {
+    if(currMenu==MENU_MAIN && menu[currMenu].numOptions>0) {
+        if(GetMenuKey(MENU_KEY_RIGHT)) {
             menu[currMenu].selection++;
             if(menu[currMenu].options[menu[currMenu].selection].enabled==0) menu[currMenu].selection++;
             if(menu[currMenu].selection>=menu[currMenu].numOptions) menu[currMenu].selection=menu[currMenu].numOptions-1;
             else PlayNote(8,255,15,15,256);
         }
-        if(GetMenuKey(2)) {
+        if(GetMenuKey(MENU_KEY_LEFT)) {
             menu[currMenu].selection--;
             if(menu[currMenu].selection<0) {
                 menu[currMenu].selection=0;
                 if(!menu[currMenu].options[0].enabled) menu[currMenu].selection=-1;
             } else PlayNote(8,255,15,15,256);
         }
-        if(currMenu!=0) return;
-        if(GetMenuKey(0)) {
+        if(currMenu!=MENU_MAIN) return;
+        if(GetMenuKey(MENU_KEY_UP)) {
             if(menu[currMenu].selection>=menu[currMenu].numOptions-2) {
                 menu[currMenu].selection--;
                 if(menu[currMenu].selection==2) menu[currMenu].selection=lastTopOption;
                 PlayNote(8,255,15,15,256);
             }
         }
-        if(GetMenuKey(1)) {
+        if(GetMenuKey(MENU_KEY_DOWN)) {
             if((unsigned short)menu[currMenu].selection<3) {
                 lastTopOption=menu[currMenu].selection;
                 menu[currMenu].selection=3;
@@ -5145,7 +4906,7 @@ void ShowMenu(ConfigData *gameData, MenuBars *polys, MenuSelection *selection)
             }
         }
     } else if(menu[currMenu].numOptions>0) {
-        if(GetMenuKey(1)) {
+        if(GetMenuKey(MENU_KEY_DOWN)) {
             short oldSelection=menu[currMenu].selection;
             menu[currMenu].selection++;
             if(!menu[currMenu].options[menu[currMenu].selection].enabled) {
@@ -5155,7 +4916,7 @@ void ShowMenu(ConfigData *gameData, MenuBars *polys, MenuSelection *selection)
             if(menu[currMenu].selection>=menu[currMenu].numOptions) menu[currMenu].selection=menu[currMenu].numOptions-1;
             else if(!blocked) PlayNote(8,255,15,15,256);
         }
-        if(GetMenuKey(0)) {
+        if(GetMenuKey(MENU_KEY_UP)) {
             menu[currMenu].selection--;
             if(menu[currMenu].selection<0) menu[currMenu].selection=0;
             else PlayNote(8,255,15,15,256);
@@ -5168,7 +4929,6 @@ void ShowMenu(ConfigData *gameData, MenuBars *polys, MenuSelection *selection)
 
 void LoadMenuLineData(void)
 {
-    char filePath[264];
     int fileLength;
     void *fileBuffer;
 
@@ -5245,495 +5005,495 @@ extern Chars8 msgWipeout;
 
 void InitMenus(void)
 {
-    __builtin_memcpy(menu[0].options[0].text[0].text, hiScoreLabelTime, 5);
-    menu[0].options[0].text[0].size = 8;
-    menu[0].options[0].text[0].colour = 1;
-    __builtin_memcpy(menu[0].options[0].text[1].text, &msgType, 5);
-    menu[0].options[0].text[1].size = 8;
-    menu[0].options[0].text[1].colour = 1;
-    menu[0].options[0].x = 63;
-    menu[0].options[0].y = 87;
-    menu[0].options[0].numText = 2;
-    menu[0].options[0].font = 9;
-    menu[0].options[0].nextMenu = 1;
-    menu[0].options[0].selection = 0;
-    menu[0].options[0].enabled = 1;
-    menu[0].options[0].flags = 0;
-    __builtin_memcpy(menu[0].options[2].text[0].text, &msgClass, 6);
-    menu[0].options[2].text[0].size = 8;
-    menu[0].options[2].text[0].colour = 1;
-    __builtin_memcpy(menu[0].options[2].text[1].text, &msgAnd, 4);
-    menu[0].options[2].text[1].size = 8;
-    menu[0].options[2].text[1].colour = 1;
-    __builtin_memcpy(menu[0].options[2].text[2].text, &msgTrack, 6);
-    menu[0].options[2].text[2].size = 8;
-    menu[0].options[2].text[2].colour = 1;
-    menu[0].options[2].x = 255;
-    menu[0].options[2].y = 87;
-    menu[0].options[2].numText = 3;
-    menu[0].options[2].font = 9;
-    menu[0].options[2].nextMenu = 2;
-    menu[0].options[2].selection = 0;
-    menu[0].options[2].enabled = 1;
-    menu[0].options[2].flags = 0;
-    __builtin_memcpy(menu[0].options[1].text[0].text, &msgTeam, 5);
-    menu[0].options[1].text[0].size = 8;
-    menu[0].options[1].text[0].colour = 1;
-    menu[0].options[1].x = 161;
-    menu[0].options[1].y = 87;
-    menu[0].options[1].numText = 1;
-    menu[0].options[1].font = 9;
-    menu[0].options[1].nextMenu = 4;
-    menu[0].options[1].selection = 0;
-    menu[0].options[1].enabled = 1;
-    menu[0].options[1].flags = 0;
-    __builtin_memcpy(menu[0].options[4].text[0].text, &msgOptions, 8);
-    menu[0].options[4].text[0].size = 8;
-    menu[0].options[4].text[0].colour = 1;
-    menu[0].options[4].x = 162;
-    menu[0].options[4].y = 203;
-    menu[0].options[4].numText = 1;
-    menu[0].options[4].font = 9;
-    menu[0].options[4].nextMenu = 3;
-    menu[0].options[4].selection = 0;
-    menu[0].options[4].enabled = 1;
-    menu[0].options[4].flags = 0;
-    __builtin_memcpy(menu[0].options[3].text[0].text, &msgStart, 6);
-    menu[0].options[3].text[0].size = 8;
-    menu[0].options[3].text[0].colour = 1;
-    menu[0].options[3].x = 162;
-    menu[0].options[3].y = 185;
-    menu[0].options[3].numText = 1;
-    menu[0].options[3].font = 9;
-    menu[0].options[3].nextMenu = 1;
-    menu[0].options[3].selection = 0;
-    menu[0].options[3].enabled = 1;
-    menu[0].options[3].flags = 0;
-    __builtin_memcpy(menu[0].title.text, &msgWipeout, 8);
-    menu[0].title.size = 40;
-    menu[0].title.colour = 50;
-    menu[0].numOptions = 5;
-    menu[0].id = 0;
-    menu[0].flags = 1;
-    menu[0].prevMenu = 999;
-    menu[0].selection = 0;
-    menu[0].mode = 0;
-    menu[0].updateCount = 0;
-    __builtin_memcpy(menu[2].options[0].text[0].text, hiScoreRank0, 7);
-    menu[2].options[0].text[0].size = 8;
-    menu[2].options[0].text[0].colour = 1;
-    menu[2].options[0].x = 30;
-    menu[2].options[0].y = 90;
-    menu[2].options[0].numText = 1;
-    menu[2].options[0].font = 9;
-    menu[2].options[0].nextMenu = 0;
-    menu[2].options[0].selection = 0;
-    menu[2].options[0].enabled = 1;
-    menu[2].options[0].flags = 0;
-    __builtin_memcpy(menu[2].options[1].text[0].text, hiScoreRank1, 6);
-    menu[2].options[1].text[0].size = 8;
-    menu[2].options[1].text[0].colour = 1;
-    menu[2].options[1].x = 128;
-    menu[2].options[1].y = 64;
-    menu[2].options[1].numText = 1;
-    menu[2].options[1].font = 9;
-    menu[2].options[1].nextMenu = 0;
-    menu[2].options[1].selection = 0;
-    menu[2].options[1].enabled = 1;
-    menu[2].options[1].flags = 0;
-    __builtin_memcpy(menu[2].options[2].text[0].text, hiScoreRank2, 7);
-    menu[2].options[2].text[0].size = 8;
-    menu[2].options[2].text[0].colour = 1;
-    menu[2].options[2].x = 205;
-    menu[2].options[2].y = 64;
-    menu[2].options[2].numText = 1;
-    menu[2].options[2].font = 9;
-    menu[2].options[2].nextMenu = 0;
-    menu[2].options[2].selection = 0;
-    menu[2].options[2].enabled = 1;
-    menu[2].options[2].flags = 0;
-    __builtin_memcpy(menu[2].options[3].text[0].text, hiScoreRank3, 8);
-    menu[2].options[3].text[0].size = 8;
-    menu[2].options[3].text[0].colour = 1;
-    menu[2].options[3].x = 281;
-    menu[2].options[3].y = 64;
-    menu[2].options[3].numText = 1;
-    menu[2].options[3].font = 9;
-    menu[2].options[3].nextMenu = 0;
-    menu[2].options[3].selection = 0;
-    menu[2].options[3].enabled = 0;
-    menu[2].options[3].flags = 0;
+    __builtin_memcpy(menu[MENU_MAIN].options[0].text[0].text, hiScoreLabelTime, 5);
+    menu[MENU_MAIN].options[0].text[0].size = 8;
+    menu[MENU_MAIN].options[0].text[0].colour = 1;
+    __builtin_memcpy(menu[MENU_MAIN].options[0].text[1].text, &msgType, 5);
+    menu[MENU_MAIN].options[0].text[1].size = 8;
+    menu[MENU_MAIN].options[0].text[1].colour = 1;
+    menu[MENU_MAIN].options[0].x = 63;
+    menu[MENU_MAIN].options[0].y = 87;
+    menu[MENU_MAIN].options[0].numText = 2;
+    menu[MENU_MAIN].options[0].font = 9;
+    menu[MENU_MAIN].options[0].nextMenu = MENU_RACE_TYPE;
+    menu[MENU_MAIN].options[0].selection = 0;
+    menu[MENU_MAIN].options[0].enabled = 1;
+    menu[MENU_MAIN].options[0].flags = 0;
+    __builtin_memcpy(menu[MENU_MAIN].options[2].text[0].text, &msgClass, 6);
+    menu[MENU_MAIN].options[2].text[0].size = 8;
+    menu[MENU_MAIN].options[2].text[0].colour = 1;
+    __builtin_memcpy(menu[MENU_MAIN].options[2].text[1].text, &msgAnd, 4);
+    menu[MENU_MAIN].options[2].text[1].size = 8;
+    menu[MENU_MAIN].options[2].text[1].colour = 1;
+    __builtin_memcpy(menu[MENU_MAIN].options[2].text[2].text, &msgTrack, 6);
+    menu[MENU_MAIN].options[2].text[2].size = 8;
+    menu[MENU_MAIN].options[2].text[2].colour = 1;
+    menu[MENU_MAIN].options[2].x = 255;
+    menu[MENU_MAIN].options[2].y = 87;
+    menu[MENU_MAIN].options[2].numText = 3;
+    menu[MENU_MAIN].options[2].font = 9;
+    menu[MENU_MAIN].options[2].nextMenu = MENU_RACING_CLASS;
+    menu[MENU_MAIN].options[2].selection = 0;
+    menu[MENU_MAIN].options[2].enabled = 1;
+    menu[MENU_MAIN].options[2].flags = 0;
+    __builtin_memcpy(menu[MENU_MAIN].options[1].text[0].text, &msgTeam, 5);
+    menu[MENU_MAIN].options[1].text[0].size = 8;
+    menu[MENU_MAIN].options[1].text[0].colour = 1;
+    menu[MENU_MAIN].options[1].x = 161;
+    menu[MENU_MAIN].options[1].y = 87;
+    menu[MENU_MAIN].options[1].numText = 1;
+    menu[MENU_MAIN].options[1].font = 9;
+    menu[MENU_MAIN].options[1].nextMenu = MENU_TEAM;
+    menu[MENU_MAIN].options[1].selection = 0;
+    menu[MENU_MAIN].options[1].enabled = 1;
+    menu[MENU_MAIN].options[1].flags = 0;
+    __builtin_memcpy(menu[MENU_MAIN].options[4].text[0].text, &msgOptions, 8);
+    menu[MENU_MAIN].options[4].text[0].size = 8;
+    menu[MENU_MAIN].options[4].text[0].colour = 1;
+    menu[MENU_MAIN].options[4].x = 162;
+    menu[MENU_MAIN].options[4].y = 203;
+    menu[MENU_MAIN].options[4].numText = 1;
+    menu[MENU_MAIN].options[4].font = 9;
+    menu[MENU_MAIN].options[4].nextMenu = MENU_OPTIONS;
+    menu[MENU_MAIN].options[4].selection = 0;
+    menu[MENU_MAIN].options[4].enabled = 1;
+    menu[MENU_MAIN].options[4].flags = 0;
+    __builtin_memcpy(menu[MENU_MAIN].options[3].text[0].text, &msgStart, 6);
+    menu[MENU_MAIN].options[3].text[0].size = 8;
+    menu[MENU_MAIN].options[3].text[0].colour = 1;
+    menu[MENU_MAIN].options[3].x = 162;
+    menu[MENU_MAIN].options[3].y = 185;
+    menu[MENU_MAIN].options[3].numText = 1;
+    menu[MENU_MAIN].options[3].font = 9;
+    menu[MENU_MAIN].options[3].nextMenu = MENU_RACE_TYPE;
+    menu[MENU_MAIN].options[3].selection = 0;
+    menu[MENU_MAIN].options[3].enabled = 1;
+    menu[MENU_MAIN].options[3].flags = 0;
+    __builtin_memcpy(menu[MENU_MAIN].title.text, &msgWipeout, 8);
+    menu[MENU_MAIN].title.size = 40;
+    menu[MENU_MAIN].title.colour = 50;
+    menu[MENU_MAIN].numOptions = 5;
+    menu[MENU_MAIN].id = 0;
+    menu[MENU_MAIN].flags = 1;
+    menu[MENU_MAIN].prevMenu = 999;
+    menu[MENU_MAIN].selection = 0;
+    menu[MENU_MAIN].mode = 0;
+    menu[MENU_MAIN].updateCount = 0;
+    __builtin_memcpy(menu[MENU_RACING_CLASS].options[0].text[0].text, hiScoreRank0, 7);
+    menu[MENU_RACING_CLASS].options[0].text[0].size = 8;
+    menu[MENU_RACING_CLASS].options[0].text[0].colour = 1;
+    menu[MENU_RACING_CLASS].options[0].x = 30;
+    menu[MENU_RACING_CLASS].options[0].y = 90;
+    menu[MENU_RACING_CLASS].options[0].numText = 1;
+    menu[MENU_RACING_CLASS].options[0].font = 9;
+    menu[MENU_RACING_CLASS].options[0].nextMenu = MENU_MAIN;
+    menu[MENU_RACING_CLASS].options[0].selection = 0;
+    menu[MENU_RACING_CLASS].options[0].enabled = 1;
+    menu[MENU_RACING_CLASS].options[0].flags = 0;
+    __builtin_memcpy(menu[MENU_RACING_CLASS].options[1].text[0].text, hiScoreRank1, 6);
+    menu[MENU_RACING_CLASS].options[1].text[0].size = 8;
+    menu[MENU_RACING_CLASS].options[1].text[0].colour = 1;
+    menu[MENU_RACING_CLASS].options[1].x = 128;
+    menu[MENU_RACING_CLASS].options[1].y = 64;
+    menu[MENU_RACING_CLASS].options[1].numText = 1;
+    menu[MENU_RACING_CLASS].options[1].font = 9;
+    menu[MENU_RACING_CLASS].options[1].nextMenu = MENU_MAIN;
+    menu[MENU_RACING_CLASS].options[1].selection = 0;
+    menu[MENU_RACING_CLASS].options[1].enabled = 1;
+    menu[MENU_RACING_CLASS].options[1].flags = 0;
+    __builtin_memcpy(menu[MENU_RACING_CLASS].options[2].text[0].text, hiScoreRank2, 7);
+    menu[MENU_RACING_CLASS].options[2].text[0].size = 8;
+    menu[MENU_RACING_CLASS].options[2].text[0].colour = 1;
+    menu[MENU_RACING_CLASS].options[2].x = 205;
+    menu[MENU_RACING_CLASS].options[2].y = 64;
+    menu[MENU_RACING_CLASS].options[2].numText = 1;
+    menu[MENU_RACING_CLASS].options[2].font = 9;
+    menu[MENU_RACING_CLASS].options[2].nextMenu = MENU_MAIN;
+    menu[MENU_RACING_CLASS].options[2].selection = 0;
+    menu[MENU_RACING_CLASS].options[2].enabled = 1;
+    menu[MENU_RACING_CLASS].options[2].flags = 0;
+    __builtin_memcpy(menu[MENU_RACING_CLASS].options[3].text[0].text, hiScoreRank3, 8);
+    menu[MENU_RACING_CLASS].options[3].text[0].size = 8;
+    menu[MENU_RACING_CLASS].options[3].text[0].colour = 1;
+    menu[MENU_RACING_CLASS].options[3].x = 281;
+    menu[MENU_RACING_CLASS].options[3].y = 64;
+    menu[MENU_RACING_CLASS].options[3].numText = 1;
+    menu[MENU_RACING_CLASS].options[3].font = 9;
+    menu[MENU_RACING_CLASS].options[3].nextMenu = MENU_MAIN;
+    menu[MENU_RACING_CLASS].options[3].selection = 0;
+    menu[MENU_RACING_CLASS].options[3].enabled = 0;
+    menu[MENU_RACING_CLASS].options[3].flags = 0;
     /* Port: the original Wipeout's tracks (portorig.c), shown when the player's copy has been found */
-    __builtin_memcpy(menu[2].options[4].text[0].text, "WIPEOUT", 8);
-    menu[2].options[4].text[0].size = 8;
-    menu[2].options[4].text[0].colour = 1;
-    menu[2].options[4].x = menu[2].options[3].x;
-    menu[2].options[4].y = 64;
-    menu[2].options[4].numText = 1;
-    menu[2].options[4].font = 9;
-    menu[2].options[4].nextMenu = 0;
-    menu[2].options[4].selection = 0;
-    menu[2].options[4].enabled = 0;
-    menu[2].options[4].flags = 0;
-    __builtin_memcpy(menu[2].title.text, &msgRacingClass, 13);
-    menu[2].title.size = 40;
-    menu[2].title.colour = 50;
-    menu[2].id = 0;
-    menu[2].flags = 0;
-    menu[2].numOptions = 5; /* Port: and WIPEOUT */
-    menu[2].prevMenu = 0;
-    menu[2].selection = 0;
-    menu[2].mode = 0;
-    menu[2].updateCount = 0;
-    __builtin_memcpy(menu[1].options[0].text[0].text, msgArcade, 7);
-    menu[1].options[0].text[0].size = 8;
-    menu[1].options[0].text[0].colour = 1;
-    menu[1].options[0].x = 30;
-    menu[1].options[0].y = 90;
-    menu[1].options[0].numText = 1;
-    menu[1].options[0].font = 9;
-    menu[1].options[0].nextMenu = 0;
-    menu[1].options[0].selection = 0;
-    menu[1].options[0].enabled = 1;
-    menu[1].options[0].flags = 0;
-    __builtin_memcpy(menu[1].options[1].text[0].text, (Chars11A *)msgTimeTrial, 11);
-    menu[1].options[1].text[0].size = 8;
-    menu[1].options[1].text[0].colour = 1;
-    menu[1].options[1].x = 128;
-    menu[1].options[1].y = 64;
-    menu[1].options[1].numText = 1;
-    menu[1].options[1].font = 9;
-    menu[1].options[1].nextMenu = 0;
-    menu[1].options[1].selection = 0;
-    menu[1].options[1].enabled = 1;
-    menu[1].options[1].flags = 0;
-    __builtin_memcpy(menu[1].options[2].text[0].text, (Chars12 *)msgArcadeLink, 12);
-    menu[1].options[2].text[0].size = 8;
-    menu[1].options[2].text[0].colour = 1;
-    menu[1].options[2].x = 205;
-    menu[1].options[2].y = 64;
-    menu[1].options[2].numText = 1;
-    menu[1].options[2].font = 9;
-    menu[1].options[2].nextMenu = 19;
-    menu[1].options[2].selection = 0;
-    menu[1].options[2].enabled = 1;
-    menu[1].options[2].flags = 0;
-    __builtin_memcpy(menu[1].options[3].text[0].text, (Chars11A *)msgOneOnOne, 11);
-    menu[1].options[3].text[0].size = 8;
-    menu[1].options[3].text[0].colour = 1;
-    menu[1].options[3].x = 281;
-    menu[1].options[3].y = 64;
-    menu[1].options[3].numText = 1;
-    menu[1].options[3].font = 9;
-    menu[1].options[3].nextMenu = 19;
-    menu[1].options[3].selection = 0;
-    menu[1].options[3].enabled = 1;
-    menu[1].options[3].flags = 0;
-    __builtin_memcpy(menu[1].options[4].text[0].text, (Chars12 *)msgChallengeI, 12);
-    menu[1].options[4].text[0].size = 8;
-    menu[1].options[4].text[0].colour = 1;
-    menu[1].options[4].x = 167;
-    menu[1].options[4].y = 144;
-    menu[1].options[4].numText = 1;
-    menu[1].options[4].font = 9;
-    menu[1].options[4].nextMenu = 0;
-    menu[1].options[4].selection = 0;
-    menu[1].options[4].enabled = 1;
-    menu[1].options[4].flags = 0;
-    __builtin_memcpy(menu[1].title.text, &msgRaceType, 10);
-    menu[1].title.size = 40;
-    menu[1].title.colour = 50;
-    menu[1].id = 0;
-    menu[1].flags = 0;
-    menu[1].numOptions = 4;
-    menu[1].prevMenu = 0;
-    menu[1].selection = 0;
-    menu[1].mode = 0;
-    menu[1].updateCount = 0;
-    *(Chars13 *)(menu[3].options[0].text[0].text)=msgAudioConfig;
+    __builtin_memcpy(menu[MENU_RACING_CLASS].options[4].text[0].text, "WIPEOUT", 8);
+    menu[MENU_RACING_CLASS].options[4].text[0].size = 8;
+    menu[MENU_RACING_CLASS].options[4].text[0].colour = 1;
+    menu[MENU_RACING_CLASS].options[4].x = menu[MENU_RACING_CLASS].options[3].x;
+    menu[MENU_RACING_CLASS].options[4].y = 64;
+    menu[MENU_RACING_CLASS].options[4].numText = 1;
+    menu[MENU_RACING_CLASS].options[4].font = 9;
+    menu[MENU_RACING_CLASS].options[4].nextMenu = MENU_MAIN;
+    menu[MENU_RACING_CLASS].options[4].selection = 0;
+    menu[MENU_RACING_CLASS].options[4].enabled = 0;
+    menu[MENU_RACING_CLASS].options[4].flags = 0;
+    __builtin_memcpy(menu[MENU_RACING_CLASS].title.text, &msgRacingClass, 13);
+    menu[MENU_RACING_CLASS].title.size = 40;
+    menu[MENU_RACING_CLASS].title.colour = 50;
+    menu[MENU_RACING_CLASS].id = 0;
+    menu[MENU_RACING_CLASS].flags = 0;
+    menu[MENU_RACING_CLASS].numOptions = 5; /* Port: and WIPEOUT */
+    menu[MENU_RACING_CLASS].prevMenu = MENU_MAIN;
+    menu[MENU_RACING_CLASS].selection = 0;
+    menu[MENU_RACING_CLASS].mode = 0;
+    menu[MENU_RACING_CLASS].updateCount = 0;
+    __builtin_memcpy(menu[MENU_RACE_TYPE].options[0].text[0].text, msgArcade, 7);
+    menu[MENU_RACE_TYPE].options[0].text[0].size = 8;
+    menu[MENU_RACE_TYPE].options[0].text[0].colour = 1;
+    menu[MENU_RACE_TYPE].options[0].x = 30;
+    menu[MENU_RACE_TYPE].options[0].y = 90;
+    menu[MENU_RACE_TYPE].options[0].numText = 1;
+    menu[MENU_RACE_TYPE].options[0].font = 9;
+    menu[MENU_RACE_TYPE].options[0].nextMenu = MENU_MAIN;
+    menu[MENU_RACE_TYPE].options[0].selection = 0;
+    menu[MENU_RACE_TYPE].options[0].enabled = 1;
+    menu[MENU_RACE_TYPE].options[0].flags = 0;
+    __builtin_memcpy(menu[MENU_RACE_TYPE].options[1].text[0].text, (Chars11A *)msgTimeTrial, 11);
+    menu[MENU_RACE_TYPE].options[1].text[0].size = 8;
+    menu[MENU_RACE_TYPE].options[1].text[0].colour = 1;
+    menu[MENU_RACE_TYPE].options[1].x = 128;
+    menu[MENU_RACE_TYPE].options[1].y = 64;
+    menu[MENU_RACE_TYPE].options[1].numText = 1;
+    menu[MENU_RACE_TYPE].options[1].font = 9;
+    menu[MENU_RACE_TYPE].options[1].nextMenu = MENU_MAIN;
+    menu[MENU_RACE_TYPE].options[1].selection = 0;
+    menu[MENU_RACE_TYPE].options[1].enabled = 1;
+    menu[MENU_RACE_TYPE].options[1].flags = 0;
+    __builtin_memcpy(menu[MENU_RACE_TYPE].options[2].text[0].text, (Chars12 *)msgArcadeLink, 12);
+    menu[MENU_RACE_TYPE].options[2].text[0].size = 8;
+    menu[MENU_RACE_TYPE].options[2].text[0].colour = 1;
+    menu[MENU_RACE_TYPE].options[2].x = 205;
+    menu[MENU_RACE_TYPE].options[2].y = 64;
+    menu[MENU_RACE_TYPE].options[2].numText = 1;
+    menu[MENU_RACE_TYPE].options[2].font = 9;
+    menu[MENU_RACE_TYPE].options[2].nextMenu = MENU_LINK;
+    menu[MENU_RACE_TYPE].options[2].selection = 0;
+    menu[MENU_RACE_TYPE].options[2].enabled = 1;
+    menu[MENU_RACE_TYPE].options[2].flags = 0;
+    __builtin_memcpy(menu[MENU_RACE_TYPE].options[3].text[0].text, (Chars11A *)msgOneOnOne, 11);
+    menu[MENU_RACE_TYPE].options[3].text[0].size = 8;
+    menu[MENU_RACE_TYPE].options[3].text[0].colour = 1;
+    menu[MENU_RACE_TYPE].options[3].x = 281;
+    menu[MENU_RACE_TYPE].options[3].y = 64;
+    menu[MENU_RACE_TYPE].options[3].numText = 1;
+    menu[MENU_RACE_TYPE].options[3].font = 9;
+    menu[MENU_RACE_TYPE].options[3].nextMenu = MENU_LINK;
+    menu[MENU_RACE_TYPE].options[3].selection = 0;
+    menu[MENU_RACE_TYPE].options[3].enabled = 1;
+    menu[MENU_RACE_TYPE].options[3].flags = 0;
+    __builtin_memcpy(menu[MENU_RACE_TYPE].options[4].text[0].text, (Chars12 *)msgChallengeI, 12);
+    menu[MENU_RACE_TYPE].options[4].text[0].size = 8;
+    menu[MENU_RACE_TYPE].options[4].text[0].colour = 1;
+    menu[MENU_RACE_TYPE].options[4].x = 167;
+    menu[MENU_RACE_TYPE].options[4].y = 144;
+    menu[MENU_RACE_TYPE].options[4].numText = 1;
+    menu[MENU_RACE_TYPE].options[4].font = 9;
+    menu[MENU_RACE_TYPE].options[4].nextMenu = MENU_MAIN;
+    menu[MENU_RACE_TYPE].options[4].selection = 0;
+    menu[MENU_RACE_TYPE].options[4].enabled = 1;
+    menu[MENU_RACE_TYPE].options[4].flags = 0;
+    __builtin_memcpy(menu[MENU_RACE_TYPE].title.text, &msgRaceType, 10);
+    menu[MENU_RACE_TYPE].title.size = 40;
+    menu[MENU_RACE_TYPE].title.colour = 50;
+    menu[MENU_RACE_TYPE].id = 0;
+    menu[MENU_RACE_TYPE].flags = 0;
+    menu[MENU_RACE_TYPE].numOptions = 4;
+    menu[MENU_RACE_TYPE].prevMenu = MENU_MAIN;
+    menu[MENU_RACE_TYPE].selection = 0;
+    menu[MENU_RACE_TYPE].mode = 0;
+    menu[MENU_RACE_TYPE].updateCount = 0;
+    *(Chars13 *)(menu[MENU_OPTIONS].options[0].text[0].text)=msgAudioConfig;
 
-    menu[3].options[0].text[0].size = 8;
-    menu[3].options[0].text[0].colour = 1;
-    menu[3].options[0].x = 30;
-    menu[3].options[0].y = 90;
-    menu[3].options[0].numText = 1;
-    menu[3].options[0].font = 9;
-    menu[3].options[0].nextMenu = 9;
-    menu[3].options[0].selection = 0;
-    menu[3].options[0].enabled = 1;
-    menu[3].options[0].flags = 0;
-    __builtin_memcpy(menu[3].options[1].text[0].text, &msgControllerConfig, 18);
-    menu[3].options[1].text[0].size = 8;
-    menu[3].options[1].text[0].colour = 1;
-    menu[3].options[1].x = 128;
-    menu[3].options[1].y = 64;
-    menu[3].options[1].numText = 1;
-    menu[3].options[1].font = 9;
-    menu[3].options[1].nextMenu = 10;
-    menu[3].options[1].selection = 0;
-    menu[3].options[1].enabled = 1;
-    menu[3].options[1].flags = 0;
-    __builtin_memcpy(menu[3].options[2].text[0].text, &msgPreferences, 12);
-    menu[3].options[2].text[0].size = 8;
-    menu[3].options[2].text[0].colour = 1;
-    menu[3].options[2].x = 205;
-    menu[3].options[2].y = 64;
-    menu[3].options[2].numText = 1;
-    menu[3].options[2].font = 9;
-    menu[3].options[2].nextMenu = 15;
-    menu[3].options[2].selection = 0;
-    menu[3].options[2].enabled = 1;
-    menu[3].options[2].flags = 0;
-    __builtin_memcpy(menu[3].options[3].text[0].text, &msgLoadAndSave, 14);
-    menu[3].options[3].text[0].size = 8;
-    menu[3].options[3].text[0].colour = 1;
-    menu[3].options[3].x = 281;
-    menu[3].options[3].y = 64;
-    menu[3].options[3].numText = 1;
-    menu[3].options[3].font = 9;
-    menu[3].options[3].nextMenu = 12;
-    menu[3].options[3].selection = 0;
-    menu[3].options[3].enabled = 1;
-    menu[3].options[3].flags = 0;
-    __builtin_memcpy(menu[3].options[4].text[0].text, &msgPassword, 9);
-    menu[3].options[4].text[0].size = 8;
-    menu[3].options[4].text[0].colour = 1;
-    menu[3].options[4].x = 205;
-    menu[3].options[4].y = 144;
-    menu[3].options[4].numText = 1;
-    menu[3].options[4].font = 9;
-    menu[3].options[4].nextMenu = 23;
-    menu[3].options[4].selection = 0;
-    menu[3].options[4].enabled = 1;
-    menu[3].options[4].flags = 0;
-    __builtin_memcpy(menu[3].options[5].text[0].text, &msgBestArcadeTimes, 18);
-    menu[3].options[5].text[0].size = 8;
-    menu[3].options[5].text[0].colour = 1;
-    menu[3].options[5].x = 129;
-    menu[3].options[5].y = 144;
-    menu[3].options[5].numText = 1;
-    menu[3].options[5].font = 9;
-    menu[3].options[5].nextMenu = 17;
-    menu[3].options[5].selection = 0;
-    menu[3].options[5].enabled = 1;
-    menu[3].options[5].flags = 0;
-    __builtin_memcpy(menu[3].options[6].text[0].text, &msgBestTimeTrialTimes, 22);
-    menu[3].options[6].text[0].size = 8;
-    menu[3].options[6].text[0].colour = 1;
-    menu[3].options[6].x = 129;
-    menu[3].options[6].y = 144;
-    menu[3].options[6].numText = 1;
-    menu[3].options[6].font = 9;
-    menu[3].options[6].nextMenu = 18;
-    menu[3].options[6].selection = 0;
-    menu[3].options[6].enabled = 1;
-    menu[3].options[6].flags = 0;
-    __builtin_memcpy(menu[3].title.text, &msgOptionsMenu, 13);
-    menu[3].title.size = 40;
-    menu[3].title.colour = 50;
-    menu[3].id = 0;
-    menu[3].flags = 0;
-    menu[3].numOptions = 7;
-    menu[3].prevMenu = 0;
-    menu[3].selection = 0;
-    menu[3].mode = 0;
-    menu[3].updateCount = 0;
-    __builtin_memcpy(menu[5].title.text, &msgVectorClass, 13);
-    menu[5].title.size = 40;
-    menu[5].title.colour = 50;
-    menu[5].id = 0;
-    menu[5].flags = 0;
-    menu[5].numOptions = 0;
-    menu[5].prevMenu = 2;
-    menu[5].nextMenu = 0;
-    menu[5].selection = 0;
-    menu[5].mode = 0;
-    menu[5].updateCount = 0;
-    __builtin_memcpy(menu[6].title.text, &msgVenomClass, 12);
-    menu[6].title.size = 40;
-    menu[6].title.colour = 50;
-    menu[6].id = 0;
-    menu[6].flags = 0;
-    menu[6].numOptions = 0;
-    menu[6].prevMenu = 2;
-    menu[6].nextMenu = 0;
-    menu[6].selection = 0;
-    menu[6].mode = 0;
-    menu[6].updateCount = 0;
-    __builtin_memcpy(menu[7].title.text, &msgRapierClass, 13);
-    menu[7].title.size = 40;
-    menu[7].title.colour = 50;
-    menu[7].id = 0;
-    menu[7].flags = 0;
-    menu[7].numOptions = 0;
-    menu[7].prevMenu = 2;
-    menu[7].nextMenu = 0;
-    menu[7].selection = 0;
-    menu[7].mode = 0;
-    menu[7].updateCount = 0;
-    __builtin_memcpy(menu[8].title.text, &msgPhantomClass, 14);
-    menu[8].title.size = 40;
-    menu[8].title.colour = 50;
-    menu[8].id = 0;
-    menu[8].flags = 0;
-    menu[8].numOptions = 0;
-    menu[8].prevMenu = 2;
-    menu[8].nextMenu = 0;
-    menu[8].selection = 0;
-    menu[8].mode = 0;
-    menu[8].updateCount = 0;
-    __builtin_memcpy(menu[4].title.text, &msgTeamMenu, 10);
-    menu[4].title.size = 40;
-    menu[4].title.colour = 50;
-    menu[4].id = 0;
-    menu[4].flags = 0;
-    menu[4].numOptions = 0;
-    menu[4].prevMenu = 0;
-    menu[4].nextMenu = 0;
-    menu[4].selection = 0;
-    menu[4].mode = 0;
-    menu[4].updateCount = 0;
-    *(Chars13 *)(menu[9].title.text)=msgAudioConfig;
-    menu[9].title.size = 40;
-    menu[9].title.colour = 50;
-    menu[9].id = 0;
-    menu[9].flags = 0;
-    menu[9].numOptions = 0;
-    menu[9].prevMenu = 3;
-    menu[9].nextMenu = 3;
-    menu[9].selection = 0;
-    menu[9].mode = 0;
-    menu[9].updateCount = 0;
-    __builtin_memcpy(menu[10].title.text, &msgController, 11);
-    menu[10].title.size = 40;
-    menu[10].title.colour = 50;
-    menu[10].id = 0;
-    menu[10].flags = 0;
-    menu[10].numOptions = 0;
-    menu[10].prevMenu = 3;
-    menu[10].nextMenu = 3;
-    menu[10].selection = 0;
-    menu[10].mode = 0;
-    menu[10].updateCount = 0;
-    *(Chars14 *)(menu[12].title.text) = *(Chars14 *)&msgLoadAndSave;
-    menu[12].title.size = 40;
-    menu[12].title.colour = 50;
-    menu[12].id = 0;
-    menu[12].flags = 0;
-    menu[12].numOptions = 0;
-    menu[12].prevMenu = 3;
-    menu[12].nextMenu = 3;
-    menu[12].selection = 0;
-    menu[12].mode = 0;
-    menu[12].updateCount = 0;
-    __builtin_memcpy(menu[15].title.text, &msgGameConfig, 12);
-    menu[15].title.size = 40;
-    menu[15].title.colour = 50;
-    menu[15].id = 0;
-    menu[15].flags = 0;
-    menu[15].numOptions = 0;
-    menu[15].prevMenu = 3;
-    menu[15].nextMenu = 3;
-    menu[15].selection = 0;
-    menu[15].mode = 0;
-    menu[15].updateCount = 0;
-    __builtin_memcpy(menu[17].title.text, &msgBestTimes, 11);
-    menu[17].title.size = 40;
-    menu[17].title.colour = 50;
-    menu[17].id = 0;
-    menu[17].flags = 0;
-    menu[17].numOptions = 0;
-    menu[17].prevMenu = 3;
-    menu[17].nextMenu = 3;
-    menu[17].selection = 0;
-    menu[17].mode = 0;
-    menu[17].updateCount = 0;
-    __builtin_memcpy(menu[18].title.text, &msgBestTimes, 11);
-    menu[18].title.size = 40;
-    menu[18].title.colour = 50;
-    menu[18].id = 0;
-    menu[18].flags = 0;
-    menu[18].numOptions = 0;
-    menu[18].prevMenu = 3;
-    menu[18].nextMenu = 3;
-    menu[18].selection = 0;
-    menu[18].mode = 0;
-    menu[18].updateCount = 0;
-    __builtin_memcpy(menu[19].title.text, msgLink, 8);
-    menu[19].title.size = 40;
-    menu[19].title.colour = 50;
-    menu[19].id = 0;
-    menu[19].flags = 0;
-    menu[19].numOptions = 0;
-    menu[19].prevMenu = 0;
-    menu[19].nextMenu = 0;
-    menu[19].selection = 0;
-    menu[19].updateCount = 0;
-    __builtin_memcpy(menu[20].options[0].text[0].text, &msgButtonConfig, 14);
-    menu[20].options[0].text[0].size = 8;
-    menu[20].options[0].text[0].colour = 1;
-    menu[20].options[0].x = 30;
-    menu[20].options[0].y = 90;
-    menu[20].options[0].numText = 1;
-    menu[20].options[0].font = 9;
-    menu[20].options[0].nextMenu = 22;
-    menu[20].options[0].selection = 0;
-    menu[20].options[0].enabled = 1;
-    menu[20].options[0].flags = 0;
-    __builtin_memcpy(menu[20].options[1].text[0].text, &msgTwistConfig, 13);
-    menu[20].options[1].text[0].size = 8;
-    menu[20].options[1].text[0].colour = 1;
-    menu[20].options[1].x = 205;
-    menu[20].options[1].y = 64;
-    menu[20].options[1].numText = 1;
-    menu[20].options[1].font = 9;
-    menu[20].options[1].nextMenu = 21;
-    menu[20].options[1].selection = 0;
-    menu[20].options[1].enabled = 1;
-    menu[20].options[1].flags = 0;
-    __builtin_memcpy(menu[20].title.text, &msgNegconConfig, 14);
-    menu[20].title.size = 40;
-    menu[20].title.colour = 50;
-    menu[20].id = 0;
-    menu[20].flags = 0;
-    menu[20].numOptions = 2;
-    menu[20].prevMenu = 3;
-    menu[20].selection = 0;
-    menu[20].mode = 0;
-    menu[20].updateCount = 0;
-    __builtin_memcpy(menu[21].title.text, &msgTwistConfig, 13);
-    menu[21].title.size = 40;
-    menu[21].title.colour = 50;
-    menu[21].id = 0;
-    menu[21].flags = 0;
-    menu[21].numOptions = 0;
-    menu[21].prevMenu = 20;
-    menu[21].nextMenu = 20;
-    menu[21].selection = 0;
-    menu[21].mode = 0;
-    menu[21].updateCount = 0;
-    __builtin_memcpy(menu[22].title.text, &msgController, 11);
-    menu[22].title.size = 40;
-    menu[22].title.colour = 50;
-    menu[22].id = 0;
-    menu[22].flags = 0;
-    menu[22].numOptions = 0;
-    menu[22].prevMenu = 20;
-    menu[22].nextMenu = 20;
-    menu[22].selection = 0;
-    menu[22].mode = 0;
-    menu[22].updateCount = 0;
-    __builtin_memcpy(menu[23].title.text, &msgPassword, 9);
-    menu[23].title.size = 40;
-    menu[23].title.colour = 50;
-    menu[23].id = 0;
-    menu[23].flags = 0;
-    menu[23].numOptions = 0;
-    menu[23].prevMenu = 3;
-    menu[23].nextMenu = 3;
-    menu[23].selection = 0;
-    menu[23].mode = 0;
-    menu[23].updateCount = 0;
+    menu[MENU_OPTIONS].options[0].text[0].size = 8;
+    menu[MENU_OPTIONS].options[0].text[0].colour = 1;
+    menu[MENU_OPTIONS].options[0].x = 30;
+    menu[MENU_OPTIONS].options[0].y = 90;
+    menu[MENU_OPTIONS].options[0].numText = 1;
+    menu[MENU_OPTIONS].options[0].font = 9;
+    menu[MENU_OPTIONS].options[0].nextMenu = MENU_AUDIO;
+    menu[MENU_OPTIONS].options[0].selection = 0;
+    menu[MENU_OPTIONS].options[0].enabled = 1;
+    menu[MENU_OPTIONS].options[0].flags = 0;
+    __builtin_memcpy(menu[MENU_OPTIONS].options[1].text[0].text, &msgControllerConfig, 18);
+    menu[MENU_OPTIONS].options[1].text[0].size = 8;
+    menu[MENU_OPTIONS].options[1].text[0].colour = 1;
+    menu[MENU_OPTIONS].options[1].x = 128;
+    menu[MENU_OPTIONS].options[1].y = 64;
+    menu[MENU_OPTIONS].options[1].numText = 1;
+    menu[MENU_OPTIONS].options[1].font = 9;
+    menu[MENU_OPTIONS].options[1].nextMenu = MENU_DIGITAL_PAD;
+    menu[MENU_OPTIONS].options[1].selection = 0;
+    menu[MENU_OPTIONS].options[1].enabled = 1;
+    menu[MENU_OPTIONS].options[1].flags = 0;
+    __builtin_memcpy(menu[MENU_OPTIONS].options[2].text[0].text, &msgPreferences, 12);
+    menu[MENU_OPTIONS].options[2].text[0].size = 8;
+    menu[MENU_OPTIONS].options[2].text[0].colour = 1;
+    menu[MENU_OPTIONS].options[2].x = 205;
+    menu[MENU_OPTIONS].options[2].y = 64;
+    menu[MENU_OPTIONS].options[2].numText = 1;
+    menu[MENU_OPTIONS].options[2].font = 9;
+    menu[MENU_OPTIONS].options[2].nextMenu = MENU_GAME_CONFIG;
+    menu[MENU_OPTIONS].options[2].selection = 0;
+    menu[MENU_OPTIONS].options[2].enabled = 1;
+    menu[MENU_OPTIONS].options[2].flags = 0;
+    __builtin_memcpy(menu[MENU_OPTIONS].options[3].text[0].text, &msgLoadAndSave, 14);
+    menu[MENU_OPTIONS].options[3].text[0].size = 8;
+    menu[MENU_OPTIONS].options[3].text[0].colour = 1;
+    menu[MENU_OPTIONS].options[3].x = 281;
+    menu[MENU_OPTIONS].options[3].y = 64;
+    menu[MENU_OPTIONS].options[3].numText = 1;
+    menu[MENU_OPTIONS].options[3].font = 9;
+    menu[MENU_OPTIONS].options[3].nextMenu = MENU_LOAD_SAVE;
+    menu[MENU_OPTIONS].options[3].selection = 0;
+    menu[MENU_OPTIONS].options[3].enabled = 1;
+    menu[MENU_OPTIONS].options[3].flags = 0;
+    __builtin_memcpy(menu[MENU_OPTIONS].options[4].text[0].text, &msgPassword, 9);
+    menu[MENU_OPTIONS].options[4].text[0].size = 8;
+    menu[MENU_OPTIONS].options[4].text[0].colour = 1;
+    menu[MENU_OPTIONS].options[4].x = 205;
+    menu[MENU_OPTIONS].options[4].y = 144;
+    menu[MENU_OPTIONS].options[4].numText = 1;
+    menu[MENU_OPTIONS].options[4].font = 9;
+    menu[MENU_OPTIONS].options[4].nextMenu = MENU_ENTER_PASSWORD;
+    menu[MENU_OPTIONS].options[4].selection = 0;
+    menu[MENU_OPTIONS].options[4].enabled = 1;
+    menu[MENU_OPTIONS].options[4].flags = 0;
+    __builtin_memcpy(menu[MENU_OPTIONS].options[5].text[0].text, &msgBestArcadeTimes, 18);
+    menu[MENU_OPTIONS].options[5].text[0].size = 8;
+    menu[MENU_OPTIONS].options[5].text[0].colour = 1;
+    menu[MENU_OPTIONS].options[5].x = 129;
+    menu[MENU_OPTIONS].options[5].y = 144;
+    menu[MENU_OPTIONS].options[5].numText = 1;
+    menu[MENU_OPTIONS].options[5].font = 9;
+    menu[MENU_OPTIONS].options[5].nextMenu = MENU_ARCADE_SCORES;
+    menu[MENU_OPTIONS].options[5].selection = 0;
+    menu[MENU_OPTIONS].options[5].enabled = 1;
+    menu[MENU_OPTIONS].options[5].flags = 0;
+    __builtin_memcpy(menu[MENU_OPTIONS].options[6].text[0].text, &msgBestTimeTrialTimes, 22);
+    menu[MENU_OPTIONS].options[6].text[0].size = 8;
+    menu[MENU_OPTIONS].options[6].text[0].colour = 1;
+    menu[MENU_OPTIONS].options[6].x = 129;
+    menu[MENU_OPTIONS].options[6].y = 144;
+    menu[MENU_OPTIONS].options[6].numText = 1;
+    menu[MENU_OPTIONS].options[6].font = 9;
+    menu[MENU_OPTIONS].options[6].nextMenu = MENU_TIME_TRIAL_SCORES;
+    menu[MENU_OPTIONS].options[6].selection = 0;
+    menu[MENU_OPTIONS].options[6].enabled = 1;
+    menu[MENU_OPTIONS].options[6].flags = 0;
+    __builtin_memcpy(menu[MENU_OPTIONS].title.text, &msgOptionsMenu, 13);
+    menu[MENU_OPTIONS].title.size = 40;
+    menu[MENU_OPTIONS].title.colour = 50;
+    menu[MENU_OPTIONS].id = 0;
+    menu[MENU_OPTIONS].flags = 0;
+    menu[MENU_OPTIONS].numOptions = 7;
+    menu[MENU_OPTIONS].prevMenu = MENU_MAIN;
+    menu[MENU_OPTIONS].selection = 0;
+    menu[MENU_OPTIONS].mode = 0;
+    menu[MENU_OPTIONS].updateCount = 0;
+    __builtin_memcpy(menu[MENU_VECTOR_TRACK].title.text, &msgVectorClass, 13);
+    menu[MENU_VECTOR_TRACK].title.size = 40;
+    menu[MENU_VECTOR_TRACK].title.colour = 50;
+    menu[MENU_VECTOR_TRACK].id = 0;
+    menu[MENU_VECTOR_TRACK].flags = 0;
+    menu[MENU_VECTOR_TRACK].numOptions = 0;
+    menu[MENU_VECTOR_TRACK].prevMenu = MENU_RACING_CLASS;
+    menu[MENU_VECTOR_TRACK].nextMenu = MENU_MAIN;
+    menu[MENU_VECTOR_TRACK].selection = 0;
+    menu[MENU_VECTOR_TRACK].mode = 0;
+    menu[MENU_VECTOR_TRACK].updateCount = 0;
+    __builtin_memcpy(menu[MENU_VENOM_TRACK].title.text, &msgVenomClass, 12);
+    menu[MENU_VENOM_TRACK].title.size = 40;
+    menu[MENU_VENOM_TRACK].title.colour = 50;
+    menu[MENU_VENOM_TRACK].id = 0;
+    menu[MENU_VENOM_TRACK].flags = 0;
+    menu[MENU_VENOM_TRACK].numOptions = 0;
+    menu[MENU_VENOM_TRACK].prevMenu = MENU_RACING_CLASS;
+    menu[MENU_VENOM_TRACK].nextMenu = MENU_MAIN;
+    menu[MENU_VENOM_TRACK].selection = 0;
+    menu[MENU_VENOM_TRACK].mode = 0;
+    menu[MENU_VENOM_TRACK].updateCount = 0;
+    __builtin_memcpy(menu[MENU_RAPIER_TRACK].title.text, &msgRapierClass, 13);
+    menu[MENU_RAPIER_TRACK].title.size = 40;
+    menu[MENU_RAPIER_TRACK].title.colour = 50;
+    menu[MENU_RAPIER_TRACK].id = 0;
+    menu[MENU_RAPIER_TRACK].flags = 0;
+    menu[MENU_RAPIER_TRACK].numOptions = 0;
+    menu[MENU_RAPIER_TRACK].prevMenu = MENU_RACING_CLASS;
+    menu[MENU_RAPIER_TRACK].nextMenu = MENU_MAIN;
+    menu[MENU_RAPIER_TRACK].selection = 0;
+    menu[MENU_RAPIER_TRACK].mode = 0;
+    menu[MENU_RAPIER_TRACK].updateCount = 0;
+    __builtin_memcpy(menu[MENU_PHANTOM_TRACK].title.text, &msgPhantomClass, 14);
+    menu[MENU_PHANTOM_TRACK].title.size = 40;
+    menu[MENU_PHANTOM_TRACK].title.colour = 50;
+    menu[MENU_PHANTOM_TRACK].id = 0;
+    menu[MENU_PHANTOM_TRACK].flags = 0;
+    menu[MENU_PHANTOM_TRACK].numOptions = 0;
+    menu[MENU_PHANTOM_TRACK].prevMenu = MENU_RACING_CLASS;
+    menu[MENU_PHANTOM_TRACK].nextMenu = MENU_MAIN;
+    menu[MENU_PHANTOM_TRACK].selection = 0;
+    menu[MENU_PHANTOM_TRACK].mode = 0;
+    menu[MENU_PHANTOM_TRACK].updateCount = 0;
+    __builtin_memcpy(menu[MENU_TEAM].title.text, &msgTeamMenu, 10);
+    menu[MENU_TEAM].title.size = 40;
+    menu[MENU_TEAM].title.colour = 50;
+    menu[MENU_TEAM].id = 0;
+    menu[MENU_TEAM].flags = 0;
+    menu[MENU_TEAM].numOptions = 0;
+    menu[MENU_TEAM].prevMenu = MENU_MAIN;
+    menu[MENU_TEAM].nextMenu = MENU_MAIN;
+    menu[MENU_TEAM].selection = 0;
+    menu[MENU_TEAM].mode = 0;
+    menu[MENU_TEAM].updateCount = 0;
+    *(Chars13 *)(menu[MENU_AUDIO].title.text)=msgAudioConfig;
+    menu[MENU_AUDIO].title.size = 40;
+    menu[MENU_AUDIO].title.colour = 50;
+    menu[MENU_AUDIO].id = 0;
+    menu[MENU_AUDIO].flags = 0;
+    menu[MENU_AUDIO].numOptions = 0;
+    menu[MENU_AUDIO].prevMenu = MENU_OPTIONS;
+    menu[MENU_AUDIO].nextMenu = MENU_OPTIONS;
+    menu[MENU_AUDIO].selection = 0;
+    menu[MENU_AUDIO].mode = 0;
+    menu[MENU_AUDIO].updateCount = 0;
+    __builtin_memcpy(menu[MENU_DIGITAL_PAD].title.text, &msgController, 11);
+    menu[MENU_DIGITAL_PAD].title.size = 40;
+    menu[MENU_DIGITAL_PAD].title.colour = 50;
+    menu[MENU_DIGITAL_PAD].id = 0;
+    menu[MENU_DIGITAL_PAD].flags = 0;
+    menu[MENU_DIGITAL_PAD].numOptions = 0;
+    menu[MENU_DIGITAL_PAD].prevMenu = MENU_OPTIONS;
+    menu[MENU_DIGITAL_PAD].nextMenu = MENU_OPTIONS;
+    menu[MENU_DIGITAL_PAD].selection = 0;
+    menu[MENU_DIGITAL_PAD].mode = 0;
+    menu[MENU_DIGITAL_PAD].updateCount = 0;
+    *(Chars14 *)(menu[MENU_LOAD_SAVE].title.text) = *(Chars14 *)&msgLoadAndSave;
+    menu[MENU_LOAD_SAVE].title.size = 40;
+    menu[MENU_LOAD_SAVE].title.colour = 50;
+    menu[MENU_LOAD_SAVE].id = 0;
+    menu[MENU_LOAD_SAVE].flags = 0;
+    menu[MENU_LOAD_SAVE].numOptions = 0;
+    menu[MENU_LOAD_SAVE].prevMenu = MENU_OPTIONS;
+    menu[MENU_LOAD_SAVE].nextMenu = MENU_OPTIONS;
+    menu[MENU_LOAD_SAVE].selection = 0;
+    menu[MENU_LOAD_SAVE].mode = 0;
+    menu[MENU_LOAD_SAVE].updateCount = 0;
+    __builtin_memcpy(menu[MENU_GAME_CONFIG].title.text, &msgGameConfig, 12);
+    menu[MENU_GAME_CONFIG].title.size = 40;
+    menu[MENU_GAME_CONFIG].title.colour = 50;
+    menu[MENU_GAME_CONFIG].id = 0;
+    menu[MENU_GAME_CONFIG].flags = 0;
+    menu[MENU_GAME_CONFIG].numOptions = 0;
+    menu[MENU_GAME_CONFIG].prevMenu = MENU_OPTIONS;
+    menu[MENU_GAME_CONFIG].nextMenu = MENU_OPTIONS;
+    menu[MENU_GAME_CONFIG].selection = 0;
+    menu[MENU_GAME_CONFIG].mode = 0;
+    menu[MENU_GAME_CONFIG].updateCount = 0;
+    __builtin_memcpy(menu[MENU_ARCADE_SCORES].title.text, &msgBestTimes, 11);
+    menu[MENU_ARCADE_SCORES].title.size = 40;
+    menu[MENU_ARCADE_SCORES].title.colour = 50;
+    menu[MENU_ARCADE_SCORES].id = 0;
+    menu[MENU_ARCADE_SCORES].flags = 0;
+    menu[MENU_ARCADE_SCORES].numOptions = 0;
+    menu[MENU_ARCADE_SCORES].prevMenu = MENU_OPTIONS;
+    menu[MENU_ARCADE_SCORES].nextMenu = MENU_OPTIONS;
+    menu[MENU_ARCADE_SCORES].selection = 0;
+    menu[MENU_ARCADE_SCORES].mode = 0;
+    menu[MENU_ARCADE_SCORES].updateCount = 0;
+    __builtin_memcpy(menu[MENU_TIME_TRIAL_SCORES].title.text, &msgBestTimes, 11);
+    menu[MENU_TIME_TRIAL_SCORES].title.size = 40;
+    menu[MENU_TIME_TRIAL_SCORES].title.colour = 50;
+    menu[MENU_TIME_TRIAL_SCORES].id = 0;
+    menu[MENU_TIME_TRIAL_SCORES].flags = 0;
+    menu[MENU_TIME_TRIAL_SCORES].numOptions = 0;
+    menu[MENU_TIME_TRIAL_SCORES].prevMenu = MENU_OPTIONS;
+    menu[MENU_TIME_TRIAL_SCORES].nextMenu = MENU_OPTIONS;
+    menu[MENU_TIME_TRIAL_SCORES].selection = 0;
+    menu[MENU_TIME_TRIAL_SCORES].mode = 0;
+    menu[MENU_TIME_TRIAL_SCORES].updateCount = 0;
+    __builtin_memcpy(menu[MENU_LINK].title.text, msgLink, 8);
+    menu[MENU_LINK].title.size = 40;
+    menu[MENU_LINK].title.colour = 50;
+    menu[MENU_LINK].id = 0;
+    menu[MENU_LINK].flags = 0;
+    menu[MENU_LINK].numOptions = 0;
+    menu[MENU_LINK].prevMenu = MENU_MAIN;
+    menu[MENU_LINK].nextMenu = MENU_MAIN;
+    menu[MENU_LINK].selection = 0;
+    menu[MENU_LINK].updateCount = 0;
+    __builtin_memcpy(menu[MENU_NEGCON_SELECT].options[0].text[0].text, &msgButtonConfig, 14);
+    menu[MENU_NEGCON_SELECT].options[0].text[0].size = 8;
+    menu[MENU_NEGCON_SELECT].options[0].text[0].colour = 1;
+    menu[MENU_NEGCON_SELECT].options[0].x = 30;
+    menu[MENU_NEGCON_SELECT].options[0].y = 90;
+    menu[MENU_NEGCON_SELECT].options[0].numText = 1;
+    menu[MENU_NEGCON_SELECT].options[0].font = 9;
+    menu[MENU_NEGCON_SELECT].options[0].nextMenu = MENU_NEGCON_BUTTONS;
+    menu[MENU_NEGCON_SELECT].options[0].selection = 0;
+    menu[MENU_NEGCON_SELECT].options[0].enabled = 1;
+    menu[MENU_NEGCON_SELECT].options[0].flags = 0;
+    __builtin_memcpy(menu[MENU_NEGCON_SELECT].options[1].text[0].text, &msgTwistConfig, 13);
+    menu[MENU_NEGCON_SELECT].options[1].text[0].size = 8;
+    menu[MENU_NEGCON_SELECT].options[1].text[0].colour = 1;
+    menu[MENU_NEGCON_SELECT].options[1].x = 205;
+    menu[MENU_NEGCON_SELECT].options[1].y = 64;
+    menu[MENU_NEGCON_SELECT].options[1].numText = 1;
+    menu[MENU_NEGCON_SELECT].options[1].font = 9;
+    menu[MENU_NEGCON_SELECT].options[1].nextMenu = MENU_NEGCON_TWIST;
+    menu[MENU_NEGCON_SELECT].options[1].selection = 0;
+    menu[MENU_NEGCON_SELECT].options[1].enabled = 1;
+    menu[MENU_NEGCON_SELECT].options[1].flags = 0;
+    __builtin_memcpy(menu[MENU_NEGCON_SELECT].title.text, &msgNegconConfig, 14);
+    menu[MENU_NEGCON_SELECT].title.size = 40;
+    menu[MENU_NEGCON_SELECT].title.colour = 50;
+    menu[MENU_NEGCON_SELECT].id = 0;
+    menu[MENU_NEGCON_SELECT].flags = 0;
+    menu[MENU_NEGCON_SELECT].numOptions = 2;
+    menu[MENU_NEGCON_SELECT].prevMenu = MENU_OPTIONS;
+    menu[MENU_NEGCON_SELECT].selection = 0;
+    menu[MENU_NEGCON_SELECT].mode = 0;
+    menu[MENU_NEGCON_SELECT].updateCount = 0;
+    __builtin_memcpy(menu[MENU_NEGCON_TWIST].title.text, &msgTwistConfig, 13);
+    menu[MENU_NEGCON_TWIST].title.size = 40;
+    menu[MENU_NEGCON_TWIST].title.colour = 50;
+    menu[MENU_NEGCON_TWIST].id = 0;
+    menu[MENU_NEGCON_TWIST].flags = 0;
+    menu[MENU_NEGCON_TWIST].numOptions = 0;
+    menu[MENU_NEGCON_TWIST].prevMenu = MENU_NEGCON_SELECT;
+    menu[MENU_NEGCON_TWIST].nextMenu = MENU_NEGCON_SELECT;
+    menu[MENU_NEGCON_TWIST].selection = 0;
+    menu[MENU_NEGCON_TWIST].mode = 0;
+    menu[MENU_NEGCON_TWIST].updateCount = 0;
+    __builtin_memcpy(menu[MENU_NEGCON_BUTTONS].title.text, &msgController, 11);
+    menu[MENU_NEGCON_BUTTONS].title.size = 40;
+    menu[MENU_NEGCON_BUTTONS].title.colour = 50;
+    menu[MENU_NEGCON_BUTTONS].id = 0;
+    menu[MENU_NEGCON_BUTTONS].flags = 0;
+    menu[MENU_NEGCON_BUTTONS].numOptions = 0;
+    menu[MENU_NEGCON_BUTTONS].prevMenu = MENU_NEGCON_SELECT;
+    menu[MENU_NEGCON_BUTTONS].nextMenu = MENU_NEGCON_SELECT;
+    menu[MENU_NEGCON_BUTTONS].selection = 0;
+    menu[MENU_NEGCON_BUTTONS].mode = 0;
+    menu[MENU_NEGCON_BUTTONS].updateCount = 0;
+    __builtin_memcpy(menu[MENU_ENTER_PASSWORD].title.text, &msgPassword, 9);
+    menu[MENU_ENTER_PASSWORD].title.size = 40;
+    menu[MENU_ENTER_PASSWORD].title.colour = 50;
+    menu[MENU_ENTER_PASSWORD].id = 0;
+    menu[MENU_ENTER_PASSWORD].flags = 0;
+    menu[MENU_ENTER_PASSWORD].numOptions = 0;
+    menu[MENU_ENTER_PASSWORD].prevMenu = MENU_OPTIONS;
+    menu[MENU_ENTER_PASSWORD].nextMenu = MENU_OPTIONS;
+    menu[MENU_ENTER_PASSWORD].selection = 0;
+    menu[MENU_ENTER_PASSWORD].mode = 0;
+    menu[MENU_ENTER_PASSWORD].updateCount = 0;
 }
 
 
@@ -5826,7 +5586,7 @@ void EnterName(ConfigData *gameData, HiScoreData *data)
                 }
             }
         }
-        if (keysDown & 0x80) {
+        if (keysDown & PAD_LEFT) {
             if (data->padDelay == 0) {
                 data->padDelay = 5;
                 data->charVal--;
@@ -5845,11 +5605,11 @@ void EnterName(ConfigData *gameData, HiScoreData *data)
             data->padDelay--;
         }
         select = 0;
-        if (!(keysDown & 0xC01)) {
-            select = keysPressed & 0x2000;
+        if (!(keysDown & PAD_CHEAT_MODIFIERS)) {
+            select = keysPressed & PAD_CIRCLE;
         }
         {
-            int typed = PortNameTyped(data->numChars, (keysDown & 0xA0) != 0, data->charVal);
+            int typed = PortNameTyped(data->numChars, (keysDown & (PAD_RIGHT | PAD_LEFT)) != 0, data->charVal);
 
             if (typed >= 0) {
                 data->charVal = typed; /* Port: typed on the keyboard */
@@ -6109,7 +5869,7 @@ LoadedImage *Load16BitTexture(char *fileName, int loadBothBuffers)
     s32 fileLength;
     LoadedImage *imageInfo;
     u8 *imageData;
-    TimImageBlock *timHeader;
+    TimDirect16 *timHeader;
 
     imageInfo = DAlloc(reserveHeap, 0x34);
     fileLength = FileLength(fileName);
@@ -6127,12 +5887,12 @@ LoadedImage *Load16BitTexture(char *fileName, int loadBothBuffers)
         sprintf(errorString, "%s", errLoadTextureFailedToLoadFile);
         Error(errorString, 2);
     }
-    timHeader = (TimImageBlock *)imageData;
-    imageInfo->x = timHeader->x;
-    imageInfo->y = timHeader->y;
-    imageInfo->width = timHeader->width;
-    imageInfo->height = timHeader->height;
-    imageData = imageData + 0x14;
+    timHeader = (TimDirect16 *)imageData;
+    imageInfo->x = timHeader->textureX;
+    imageInfo->y = timHeader->textureY;
+    imageInfo->width = timHeader->textureW;
+    imageInfo->height = timHeader->textureH;
+    imageData = imageData + sizeof(TimDirect16);
     if (!(loadBothBuffers & 0xFF)) {
         rect.x = imageInfo->x;
         rect.y = imageInfo->y;
@@ -6157,7 +5917,7 @@ LoadedImage *Load16BitTexture(char *fileName, int loadBothBuffers)
 void ShowMenuBackground(POLY_FT4 *menuPrim, POLY_FT4 *menu1Prim, LoadedImage *image)
 {
     SetPolyFT4(&menuPrim[CurrentScreen]);
-    menuPrim[CurrentScreen].code = 0x2D;
+    menuPrim[CurrentScreen].code = GPU_FT4_RAW_TEXTURE;
     menuPrim[CurrentScreen].x0 = 0;
     menuPrim[CurrentScreen].y0 = 0;
     menuPrim[CurrentScreen].x1 = (short)image->width >> 1;
@@ -6177,7 +5937,7 @@ void ShowMenuBackground(POLY_FT4 *menuPrim, POLY_FT4 *menu1Prim, LoadedImage *im
     menuPrim[CurrentScreen].tpage = GetTPage(2, 0, image->x, image->y);
     AddPrim(OT[CurrentScreen] + 4095, &menuPrim[CurrentScreen]);
     SetPolyFT4(&menu1Prim[CurrentScreen]);
-    menu1Prim[CurrentScreen].code = 0x2D;
+    menu1Prim[CurrentScreen].code = GPU_FT4_RAW_TEXTURE;
     menu1Prim[CurrentScreen].x0 = (short)image->width >> 1;
     menu1Prim[CurrentScreen].y0 = 0;
     menu1Prim[CurrentScreen].x1 = image->width;
@@ -6206,7 +5966,7 @@ void ShowScreen(POLY_FT4 *menuPrim, POLY_FT4 *menu1Prim, LoadedImage *image, int
     short left, top;
 
     SetPolyFT4(&menuPrim[CurrentScreen]);
-    menuPrim[CurrentScreen].code = 0x2D;
+    menuPrim[CurrentScreen].code = GPU_FT4_RAW_TEXTURE;
     left = x;
     top = y;
     menuPrim[CurrentScreen].x0 = left;
@@ -6228,7 +5988,7 @@ void ShowScreen(POLY_FT4 *menuPrim, POLY_FT4 *menu1Prim, LoadedImage *image, int
     menuPrim[CurrentScreen].tpage = GetTPage(2, 0, image->x, image->y);
     AddPrim(OT[CurrentScreen], &menuPrim[CurrentScreen]);
     SetPolyFT4(&menu1Prim[CurrentScreen]);
-    menu1Prim[CurrentScreen].code = 0x2D;
+    menu1Prim[CurrentScreen].code = GPU_FT4_RAW_TEXTURE;
     menu1Prim[CurrentScreen].x0 = x + (short)image->width / 2;
     menu1Prim[CurrentScreen].y0 = top;
     menu1Prim[CurrentScreen].x1 = image->width + x;
@@ -6412,20 +6172,20 @@ void EstablishLink(void)
         if (linkRetries < 4) {
             linkRetries++;
             if (changedA) {
-                gameType = 1;
+                gameType = GAME_LINK_SLAVE;
                 linkState = 2;
             }
         } else {
-            gameType = 0;
+            gameType = GAME_LINK_MASTER;
             linkState = 2;
         }
         break;
     case 2:
         if (linkWaitCount < 300) {
             linkWaitCount++;
-            if (gameType == 0) {
+            if (gameType == GAME_LINK_MASTER) {
                 if (changedA) {
-                    gameType = 1;
+                    gameType = GAME_LINK_SLAVE;
                 } else {
                     if (linkToggleA == 0) {
                         _comb_control(1, 1, 2);
@@ -6454,9 +6214,9 @@ void EstablishLink(void)
     case 3:
         linkBlinkCount++;
         if (linkBlinkCount % 40 >= 20) {
-            if (gameType == 0) {
+            if (gameType == GAME_LINK_MASTER) {
                 CentreText(msgMasterLinkEstablished, 1, 150, 8, 0);
-            } else if (gameType == 1) {
+            } else if (gameType == GAME_LINK_SLAVE) {
                 CentreText(msgSlaveLinkEstablished, 1, 150, 8, 0);
             }
         }
@@ -6483,7 +6243,7 @@ void killLink(void)
     menuRecvKey = 0;
     linked = 0;
     linkState = 0;
-    gameType = 2;
+    gameType = GAME_SINGLE_PLAYER;
 }
 
 
@@ -6499,7 +6259,7 @@ void ShowLoadMessage(void)
         ClearOTagR(OT[CurrentScreen], 0x2000);
         ClearOTagR(OT2[CurrentScreen], 0x640);
         quadIndex = CurrentScreen * 0x12C;
-        CentreText(loadMessage, 0, REGION(0x80, 0x78), 0x10, 0);
+        CentreText(loadMessage, 0, PAL_TEXT_Y(0x80), 0x10, 0);
         AddPrim(OT[CurrentScreen], fills[CurrentScreen]);
         PortWideLoadScreen(); /* Port: widescreen shows the loading screen wide */
         Swap();
@@ -6539,18 +6299,18 @@ void InitChallenges(void)
 
     table = shipGroupTeam;
     if (gameData->venomComplete != 0) {
-        menu[1].numOptions = 5;
-        __builtin_memcpy(menu[1].options[4].text[0].text, msgChallengeI, 12);
-        menu[1].options[4].text[0].size = 8;
-        menu[1].options[4].text[0].colour = 1;
+        menu[MENU_RACE_TYPE].numOptions = 5;
+        __builtin_memcpy(menu[MENU_RACE_TYPE].options[4].text[0].text, msgChallengeI, 12);
+        menu[MENU_RACE_TYPE].options[4].text[0].size = 8;
+        menu[MENU_RACE_TYPE].options[4].text[0].colour = 1;
     } else if (gameData->rapierComplete != 0) {
-        menu[1].numOptions = 5;
-        __builtin_memcpy(menu[1].options[4].text[0].text, msgChallengeII, 13);
-        menu[1].options[4].text[0].size = 8;
-        menu[1].options[4].text[0].colour = 1;
+        menu[MENU_RACE_TYPE].numOptions = 5;
+        __builtin_memcpy(menu[MENU_RACE_TYPE].options[4].text[0].text, msgChallengeII, 13);
+        menu[MENU_RACE_TYPE].options[4].text[0].size = 8;
+        menu[MENU_RACE_TYPE].options[4].text[0].colour = 1;
     }
     if (gameData->class1Unlocked != 0 || (gameData->trackCheatActive != 0 || gameData->phantomTrackCheatActive != 0)) {
-        menu[2].options[3].enabled = 1;
+        menu[MENU_RACING_CLASS].options[3].enabled = 1;
     } else {
         if (gameData->trackCheatActive == 0 && gameData->shipClass >= 3) {
             gameData->shipClass = 0;
@@ -6561,39 +6321,39 @@ void InitChallenges(void)
         }
     }
     if (gameData->rapierComplete != 0 || gameData->trackCheatActive != 0) {
-        menu[2].options[3].enabled = 1;
+        menu[MENU_RACING_CLASS].options[3].enabled = 1;
     }
     if ((u8)gameData->trackNum >= 6U && gameData->class1Unlocked == 0 && gameData->trackCheatActive == 0) {
         gameData->trackNum = 0U;
         gameData->actTrackNum = 1U;
-        menu[2].selection = 0;
-        menu[2].mode = 0;
+        menu[MENU_RACING_CLASS].selection = 0;
+        menu[MENU_RACING_CLASS].mode = 0;
     }
     mode = (u8)gameData->shipClass;
-    menu[2].selection = (s8)mode;
+    menu[MENU_RACING_CLASS].selection = (s8)mode;
     selected = gameData->trackNum;
     less = ownShip < 0xC;
-    menu[2].mode = selected;
+    menu[MENU_RACING_CLASS].mode = selected;
     if (!less && !(*(s32 *)&tempGameData->rapierChallengeDone & 0xFF00FF00)) {
         ownShip = 9;
     }
-    menu[4].selection = (u16)table.h[ownShip / 3];
+    menu[MENU_TEAM].selection = (u16)table.h[ownShip / 3];
 }
 
 
 void ReInitGameProgress(void)
 {
-    if (raceType == 4 && tempGameData->venomComplete != 0) {
-        raceType = 0;
+    if (raceType == RACE_CHALLENGE && tempGameData->venomComplete != 0) {
+        raceType = RACE_ARCADE;
     }
-    if (raceType == 4 && tempGameData->rapierComplete != 0) {
-        raceType = 0;
+    if (raceType == RACE_CHALLENGE && tempGameData->rapierComplete != 0) {
+        raceType = RACE_ARCADE;
     }
-    menu[1].numOptions = 4;
-    menu[2].options[3].enabled = 0;
-    menu[2].selection = 0;
-    menu[2].mode = 0;
-    menu[1].selection = 0;
+    menu[MENU_RACE_TYPE].numOptions = 4;
+    menu[MENU_RACING_CLASS].options[3].enabled = 0;
+    menu[MENU_RACING_CLASS].selection = 0;
+    menu[MENU_RACING_CLASS].mode = 0;
+    menu[MENU_RACE_TYPE].selection = 0;
     tempGameData->phantomTrackCheatActive = 0;
     tempGameData->trackCheatActive = 0;
     tempGameData->teamCheatActive = 0;
@@ -6652,7 +6412,7 @@ void SlideScreen(void *menu)
     s32 x, right, distance;
 
     box = menu;
-    if (gameType != 1) count = menuSendFlags;
+    if (gameType != GAME_LINK_SLAVE) count = menuSendFlags;
     else count = menuRecvFlags;
     count++;
     step = 8;

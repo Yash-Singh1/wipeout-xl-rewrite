@@ -1,4 +1,7 @@
 #include "functions.h"
+#include "sfx.h"
+#include "pad.h"
+#include "racectrl.h"
 #include "ayrace.h"
 #include "weapon.h"
 #include "hud.h"
@@ -7,7 +10,6 @@
 #include "options.h"
 #include "raceinit.h"
 #include "trails.h" /* Port: Restart clears the trails */
-#include "include_asm_g8.h"
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
 extern short continueAnimFrame;
@@ -106,7 +108,7 @@ void CheckShipDestroyed(ShipData *ships, ConfigData *game, int *attract, int idl
     ShipData *own;
 
     if ((short)idleTimer >= idleLimit) {
-        if (linkSendFlag != 0 && raceEndState == 2 && raceType != 4) {
+        if (linkSendFlag != 0 && raceEndState == 2 && raceType != RACE_CHALLENGE) {
             linkSendFlag = 0;
             game->complete = 0;
             goto check;
@@ -115,7 +117,7 @@ void CheckShipDestroyed(ShipData *ships, ConfigData *game, int *attract, int idl
         if (ships[ownShip].combatAttr & DESTROYED) goto destroyed;
         ships[ownShip].update = UpdateDroneShip;
         CameraUpdate = UpdateCameraAttractMode;
-        ships[ownShip].attr &= ~4;
+        ships[ownShip].attr &= ~VIEW_IN;
         ships[ownShip].attr &= ~RACING;
         humanToDroneSpeed(ships, ownShip);
         attractDelayFrames = PAL_TIME(900);
@@ -127,7 +129,7 @@ check:
 destroyed:
         if (ships[ownShip].attr & RACING) {
             ships[ownShip].attr &= ~RACING;
-            ships[ownShip].attr &= ~4;
+            ships[ownShip].attr &= ~VIEW_IN;
             if (!(ships[ownShip].combatAttr & 4)) {
                 CameraUpdate = UpdateCameraAttractDestroyed;
             }
@@ -154,7 +156,7 @@ destroyed:
             own->update = UpdateDroneShip;
         }
         CameraUpdate = UpdateCameraAttractMode;
-        ships[ownShip].attr &= ~4;
+        ships[ownShip].attr &= ~VIEW_IN;
         ships[ownShip].attr &= ~RACING;
         humanToDroneSpeed(ships, ownShip);
     }
@@ -166,7 +168,7 @@ void CheckForButtonPress(void)
     UpdateNotes(1);
     if (raceContext != 1) {
         if (padType != 2) {
-            if (gameType == 2) {
+            if (gameType == GAME_SINGLE_PLAYER) {
                 if (keysDown != 0) {
                     idleTimer = 0;
                     return;
@@ -222,7 +224,7 @@ void Restart(ResetData *reset)
         }
     }
     InitRescueDroid(reset->rescue, reset->shipShapes, &reset->ships[ownShip]);
-    if (raceType == 1) {
+    if (raceType == RACE_TIME_TRIAL) {
         InitGhostShip(reset->config, reset->ships);
     }
     cameraPtr->section = reset->ships[ownShip].nearTrkSect;
@@ -256,7 +258,7 @@ void Restart(ResetData *reset)
     raceEndTimer = 0;
     raceEndState = 0;
     medalDisplay = 0;
-    scoreTabData.highScore = 0;
+    scoreTabData.nameEntryActive = 0;
     plasmaShotBusy = 0;
     perfectLapCount = 0;
     perfectLap = 0;
@@ -271,8 +273,8 @@ void Restart(ResetData *reset)
 
 void QuitGame(void)
 {
-    gameType = 2;
-    if (raceType != 4) {
+    gameType = GAME_SINGLE_PLAYER;
+    if (raceType != RACE_CHALLENGE) {
         raceType = 0x63;
     }
     if (attractModeFlag != 1) {
@@ -303,13 +305,13 @@ int CheckAttractOver(ConfigData *config)
 }
 
 
-void RaceComplete(void *screen, void *unused, ConfigData *gameData, short *choice, HiScoreData *scoreData, ShipData *flags)
+void RaceComplete(void *screen, void *unused, ConfigData *gameData, short *choice, HiScoreData *scoreData, ShipData *ships)
 {
     char text[32];
     int  race;
 
     if (gameData->complete) {
-        if (raceType == 4 && (gameData->venomComplete || gameData->rapierComplete)) {
+        if (raceType == RACE_CHALLENGE && (gameData->venomComplete || gameData->rapierComplete)) {
             if (finishPosition == 1 || finishPosition >= 4) {
                 if (finishPosition == 1) {
                     if (gameData->venomComplete == 1 && gameData->class1Race == 5) {
@@ -339,12 +341,12 @@ void RaceComplete(void *screen, void *unused, ConfigData *gameData, short *choic
                     if (race == 0) strcat(text, " CIRCUIT COMPLETE");
                     else strcat(text, " CIRCUITS COMPLETED");
                     CentreText(text, 60, 50, 8, 1);
-                    if (GetMenuKey(0)) {
+                    if (GetMenuKey(MENU_KEY_UP)) {
                         PlayNote(8, 255, 15, 15, 256);
                         (*choice)--;
                         if (*choice<0) *choice = 0;
                     }
-                    if (GetMenuKey(1)) {
+                    if (GetMenuKey(MENU_KEY_DOWN)) {
                         PlayNote(8, 255, 15, 15, 256);
                         (*choice)++;
                         if (*choice >= 2) *choice = 1;
@@ -358,7 +360,7 @@ void RaceComplete(void *screen, void *unused, ConfigData *gameData, short *choic
                     }
                     DoButton(133, RESULT_BUTTON_Y, 1, selectLabel);
                     DeSelectScreen(screen);
-                    if (GetMenuKey(5)) {
+                    if (GetMenuKey(MENU_KEY_SELECT)) {
                         PlayNote(9, 255, 15, 15, 256);
                         gameData->complete = 0;
                         linkSendFlag = 0;
@@ -380,12 +382,12 @@ void RaceComplete(void *screen, void *unused, ConfigData *gameData, short *choic
                     if (continuesLeft) {
                         DisplayContinues(continuesTexture, 176, 168);
                         if (continueAnimFrame == 0) {
-                            if (GetMenuKey(0)) {
+                            if (GetMenuKey(MENU_KEY_UP)) {
                                 PlayNote(8, 255, 15, 15, 256);
                                 (*choice)--;
                                 if (*choice<0) *choice = 0;
                             }
-                            if (GetMenuKey(1)) {
+                            if (GetMenuKey(MENU_KEY_DOWN)) {
                                 PlayNote(8, 255, 15, 15, 256);
                                 (*choice)++;
                                 if (*choice >= 2) *choice = 1;
@@ -401,11 +403,11 @@ void RaceComplete(void *screen, void *unused, ConfigData *gameData, short *choic
                     } else CentreText("GO TO MENU", 60, 124, 8, 0);
                     DeSelectScreen(screen);
                     if (continueAnimFrame == 0) {
-                        if (GetMenuKey(5)) {
+                        if (GetMenuKey(MENU_KEY_SELECT)) {
                             PlayNote(9, 255, 15, 15, 256);
                             if (*choice == 0 && continuesLeft) {
                                 continueAnimFrame = 1;
-                                PlayNote(36, 480, 15, 15, 320);
+                                PlayNote(SFX_START_STALL, 480, 15, 15, 320);
                             } else if (*choice == 1 || !continuesLeft) {
                                 linkMyState = 3;
                                 gameData->complete = 0;
@@ -424,23 +426,23 @@ void RaceComplete(void *screen, void *unused, ConfigData *gameData, short *choic
                 }
             }
         }
-        if (gameType == 2 || linkSyncB) {
-            if (gameType != 1) {
+        if (gameType == GAME_SINGLE_PLAYER || linkSyncB) {
+            if (gameType != GAME_LINK_SLAVE) {
                 if ((sixTracks == 1 && sixXPlayed == 0) || (eightTracks == 1 && eightXPlayed == 0)) {
                     raceEndTimer = 1;
                     linkSendFlag = 0;
                     goto done;
                 }
-                if (raceType == 4) {
+                if (raceType == RACE_CHALLENGE) {
                     CentreText("MEDAL ACHIEVED", 60, 36, 8, 1);
                     CentreText("FREE CONTINUE AWARDED", 60, 50, 8, 1);
                 }
-                if (GetMenuKey(0)) {
+                if (GetMenuKey(MENU_KEY_UP)) {
                     PlayNote(8, 255, 15, 15, 256);
                     (*choice)--;
                     if (*choice<0) *choice = 0;
                 }
-                if (GetMenuKey(1)) {
+                if (GetMenuKey(MENU_KEY_DOWN)) {
                     PlayNote(8, 255, 15, 15, 256);
                     (*choice)++;
                     if (*choice >= 2) *choice = 1;
@@ -454,7 +456,7 @@ void RaceComplete(void *screen, void *unused, ConfigData *gameData, short *choic
                 }
                 DoButton(133, RESULT_BUTTON_Y, 1, selectLabel);
                 DeSelectScreen(screen);
-                if (GetMenuKey(5)) {
+                if (GetMenuKey(MENU_KEY_SELECT)) {
                     PlayNote(9, 255, 15, 15, 256);
                     gameData->complete = 0;
                     linkSendFlag = 0;
@@ -471,13 +473,13 @@ void RaceComplete(void *screen, void *unused, ConfigData *gameData, short *choic
             }
         }
     } else if (gameData->raceInfo) {
-        if (gameType != 2 && !linkRaceEnd) {
+        if (gameType != GAME_SINGLE_PLAYER && !linkRaceEnd) {
             CentreText("WAITING FOR OTHER PLAYER", 25, 100, 8, 0);
-            if (gameType == 1) VSync(0);
+            if (gameType == GAME_LINK_SLAVE) VSync(0);
         } else {
-            DisplayRaceInfo(gameData, scoreData, flags);
+            DisplayRaceInfo(gameData, scoreData, ships);
             if (raceEndState != 2 || shipTargetIndex[ownShip]<5) DeSelectScreen(screen);
-            if (GetMenuKey(5)) {
+            if (GetMenuKey(MENU_KEY_SELECT)) {
                 PlayNote(9, 255, 15, 15, 256);
                 gameData->raceInfo = 0;
                 if (raceEndState == 2) {
@@ -488,17 +490,17 @@ void RaceComplete(void *screen, void *unused, ConfigData *gameData, short *choic
         }
     } else {
         if (gameData->highScore) {
-            CheckForHiScore(gameData, scoreData, flags, ownShip, 0);
-            if (raceType == 1) storeGhostTrail(gameData, scoreData);
+            CheckForHiScore(gameData, scoreData, ships, ownShip, 0);
+            if (raceType == RACE_TIME_TRIAL) storeGhostTrail(gameData, scoreData);
             gameData->highScore = 0;
             InitDefaultName(gameData, scoreData, 0);
-            if (!scoreData->flag) {
+            if (!scoreData->pendingRecords) {
                 raceCompleteFlag = 1;
                 gameData->complete = 1;
             }
         }
-        if (scoreData->flag) scoreData->highScore = 1;
-        if (scoreData->highScore) {
+        if (scoreData->pendingRecords) scoreData->nameEntryActive = 1;
+        if (scoreData->nameEntryActive) {
             DisplayScoreTab(gameData, scoreData);
             DeSelectScreen(screen);
             gameData->highScore = 0;
@@ -511,12 +513,13 @@ void RaceComplete(void *screen, void *unused, ConfigData *gameData, short *choic
 void CheckGamePause(ShipData *ships, int *pauseFlag, ConfigData *config, u_short *pauseChoice, int *pauseCounter)
 {
     if ((ships[ownShip].attr & RACING) &&
-        (((GetMenuKey(6) << 0x10) != 0) || (padType == 0) || (gameType == 2 && PortFocusPause())) && /* Port: and when the window loses the focus (one player) */
+        (((GetMenuKey(MENU_KEY_START) << 0x10) != 0) || (padType == 0) ||
+         (gameType == GAME_SINGLE_PLAYER && PortFocusPause())) && /* Port: and when the window loses the focus (one player) */
         (*pauseFlag == -1)) {
         *pauseCounter = 0;
         CdMusicStop();
         PlayNote(9, 0xFF, 0xF, 0xF, 0x100);
-        if (raceType == 1) {
+        if (raceType == RACE_TIME_TRIAL) {
             recordBuffer->disabled = 1;
         }
         *pauseFlag = 0;
@@ -549,8 +552,8 @@ void SelectPauseOption(int *selection, int canMove, ConfigData *config, struct P
     int up;
     int down;
 
-    if (config->paused == 0 && (gameType == 2 || pause->stage == 0) && padType != 0) {
-        if (GetMenuKey(0) && canMove) {
+    if (config->paused == 0 && (gameType == GAME_SINGLE_PLAYER || pause->stage == 0) && padType != 0) {
+        if (GetMenuKey(MENU_KEY_UP) && canMove) {
             up = *selection - 1;
             *selection = up;
             if (up < 0) {
@@ -558,7 +561,7 @@ void SelectPauseOption(int *selection, int canMove, ConfigData *config, struct P
             }
             goto played;
         }
-        if (GetMenuKey(1) && canMove) {
+        if (GetMenuKey(MENU_KEY_DOWN) && canMove) {
             down = *selection + 1;
             *selection = down;
             if (down >= 4) {
@@ -600,7 +603,7 @@ int PerformPauseOperations(struct PauseMenu *pause, struct SelectBox *box, Confi
                 keysPressed = 0;
             }
             if (padType != 0) {
-                if ((GetMenuKey(5) || GetMenuKey(6)) && !pause->showOptions && pause->confirmed == 1 && pause->stage != 1) {
+                if ((GetMenuKey(MENU_KEY_SELECT) || GetMenuKey(MENU_KEY_START)) && !pause->showOptions && pause->confirmed == 1 && pause->stage != 1) {
                     selection = pause->selection;
                     pause->showOptions = 1;
                     pause->confirmed = 2;
@@ -612,7 +615,7 @@ int PerformPauseOperations(struct PauseMenu *pause, struct SelectBox *box, Confi
                     case 1:
                         pause->selection = -1;
                         pause->command = selection;
-                        if (raceType == 4) {
+                        if (raceType == RACE_CHALLENGE) {
                             droneSwitchStep = 1;
                             masterWait = selection;
                         } else {
@@ -634,7 +637,7 @@ int PerformPauseOperations(struct PauseMenu *pause, struct SelectBox *box, Confi
                         break;
                     }
                 }
-                if (padType != 0 && (GetMenuKey(5) || GetMenuKey(6)) && pause->showOptions) {
+                if (padType != 0 && (GetMenuKey(MENU_KEY_SELECT) || GetMenuKey(MENU_KEY_START)) && pause->showOptions) {
                     if (pause->stage != 1) {
                         PlayNote(9, 255, 15, 15, 256);
                         if ((u_int)(pause->selection - 1) < 2) {
@@ -662,7 +665,7 @@ void InitiateTwoPlayerPause(struct PauseMenu *pause)
 {
     int command;
 
-    if (gameType != 2 && pause->selection >= 0) {
+    if (gameType != GAME_SINGLE_PLAYER && pause->selection >= 0) {
         if (pause->active == 0) {
             pause->active = 1;
             pause->stage = 0;
