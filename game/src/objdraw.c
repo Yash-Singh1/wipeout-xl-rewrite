@@ -510,7 +510,8 @@ static int PackScreen(int x, int y)
 static void BindSpriteCorner(short *corner, const GtePrecise *centre, int x, int y, int k)
 {
     double scale = centre->view[2] / (double)(u_short)GteReadControl(26);
-    int    dx = corner[0] - x, dy = corner[1] - y;
+    /* (x and y are the packet's 16 bits, unsigned: a centre left of the screen or above it is 65536 off) */
+    int    dx = (short)(corner[0] - x), dy = (short)(corner[1] - y);
     uint32_t handle;
 
     GteKeyNext(0, GteKeyMix(centre->key, (uint64_t)k + 1));
