@@ -613,6 +613,10 @@ static void open_gamepad(SDL_JoystickID id)
             joysticks[port] = SDL_OpenJoystick(id);
             if (joysticks[port]) {
                 PortLog("pad: %s (joystick %d)\n", SDL_GetJoystickName(joysticks[port]), port + 1);
+                if (SDL_GetNumJoystickAxes(joysticks[port]) >= 4) {
+                    PortLog("pad: it has analogue controls; if it is a neGcon, say so (the debug console's "
+                            "\"NeGcon plugged in\")\n");
+                }
                 update_joystick(port);
             }
         }
