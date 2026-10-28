@@ -78,6 +78,8 @@ static bool keyDown[KEY_COUNT];
 static bool keyHeldOver[KEY_COUNT];
 static PadContext keyContext = PAD_CONTEXT_MENU;
 static SDL_Gamepad *gamepads[GAMEPADS];
+static SDL_Joystick *joysticks[GAMEPADS]; /* a pad the adapter reports only as a joystick (a PSX adapter
+                                             with a neGcon, which SDL has no gamepad mapping for) */
 static uint16_t padHeldOver[GAMEPADS]; /* buttons held when the window regained the focus */
 static bool padRegained[GAMEPADS];     /* the focus came back: note the buttons held now */
 
@@ -105,6 +107,7 @@ static int typedFirst, typedCount;
 
 static void Route(void);
 static PadDevice gamepad_device(SDL_Gamepad *g);
+static void update_joystick(int port);
 static void SendSecondPlayer(void);
 static void ReceiveSecondPlayer(void);
 static void rumble_tick(void);
@@ -314,12 +317,131 @@ static void update_gamepad(int port)
     Route();
 }
 
+/* The device in a port: a gamepad, or a pad the adapter reports only as a joystick. */
+static SDL_JoystickID device_id(int port)
+{
+    if (gamepads[port]) {
+        return SDL_GetGamepadID(gamepads[port]);
+    }
+    if (joysticks[port]) {
+        return SDL_GetJoystickID(joysticks[port]);
+    }
+    return 0;
+}
+
+/* The family of the device in a port, for the button glyphs. */
+static PadDevice device_kind(int port)
+{
+    return gamepads[port] ? gamepad_device(gamepads[port]) : PAD_DEVICE_PLAYSTATION;
+}
+
+/* An analogue button's press, from its axis: 0 let go to 0xFF pressed. */
+static uint8_t analogue_button(Sint16 value)
+{
+    if (value < 0) {
+        value = 0;
+    }
+    return (uint8_t)(value >> 7);
+}
+
+/* The twist's turn, from its axis: 0x00 left to 0xFF right, 0x80 straight ahead. */
+static uint8_t analogue_twist(Sint16 value)
+{
+    return (uint8_t)((value + 32768) >> 8);
+}
+
+/* A pad the adapter reports only as a joystick, by the console's own packet: the twist and the three
+   analogue buttons are its axes, and the buttons are the packet's bit order (bit 3 Start, 4-7 the d-pad,
+   11 R, 12 A, 13 B) - or, on a neGcon, the eight the adapter numbers in its own way (measured). So a
+   neGcon twists and presses its analogue I, II and L, and a digital pad presses its buttons, whatever
+   the adapter's own numbering. */
+static void update_joystick(int port)
+{
+    SDL_Joystick *j = joysticks[port];
+    PadState st;
+    Sint16 turned = 0, buttonI = 0, buttonII = 0, buttonL = 0;
+    int i, axes, buttons;
+
+    memset(&st, 0, sizeof(st));
+    st.twist = 0x80;
+    if (!j) {
+        gamepadState[port] = st;
+        PsxPadSetSource(port, PAD_SRC_GAMEPAD, &st, false);
+        return;
+    }
+    if (!PortWindowFocused()) {
+        gamepadState[port] = st;
+        Route();
+        return;
+    }
+    axes = SDL_GetNumJoystickAxes(j);
+    /* the raphnet's report (measured, tools' negcon-map): the twist is axis 0 and the analogue buttons
+       I, II and L are axes 3, 4 and 2 (axis 1 is nothing), each 0 let go to 0x7FFF pressed */
+    if (axes > 0) turned = SDL_GetJoystickAxis(j, 0);
+    if (axes > 3) buttonI = SDL_GetJoystickAxis(j, 3);
+    if (axes > 4) buttonII = SDL_GetJoystickAxis(j, 4);
+    if (axes > 2) buttonL = SDL_GetJoystickAxis(j, 2);
+    if (PsxPadGetType(port) == PAD_NEGCON) {
+        st.twist = analogue_twist(turned);
+        if (st.twist > 0x70 && st.twist < 0x90) st.twist = 0x80; /* dead zone */
+        st.analogI = analogue_button(buttonI);
+        st.analogII = analogue_button(buttonII);
+        st.analogL = analogue_button(buttonL);
+    } else {
+        /* a digital pad: the twist steers and the analogue buttons press its buttons, so a neGcon is
+           playable before anyone says it is one */
+        if (turned < -16384) st.buttons |= PAD_LEFT;
+        if (turned > 16384) st.buttons |= PAD_RIGHT;
+        if (buttonI > 8192) st.buttons |= PAD_CROSS;
+        if (buttonII > 8192) st.buttons |= PAD_CIRCLE;
+        if (buttonL > 8192) st.buttons |= PAD_L2;
+    }
+    buttons = SDL_GetNumJoystickButtons(j);
+    if (PsxPadGetType(port) == PAD_NEGCON) {
+        /* the neGcon's own eight, as this adapter numbers them (measured, tools' negcon-map) */
+        static const struct { int button; uint16_t bit; } negcon[] = {
+            {2, PAD_TRIANGLE}, {3, PAD_CIRCLE}, {4, PAD_START}, {7, PAD_R1},
+            {12, PAD_UP}, {13, PAD_DOWN}, {14, PAD_LEFT}, {15, PAD_RIGHT}};
+
+        for (i = 0; i < (int)SDL_arraysize(negcon); i++) {
+            if (negcon[i].button < buttons && SDL_GetJoystickButton(j, negcon[i].button)) {
+                st.buttons |= negcon[i].bit;
+            }
+        }
+    } else {
+        /* a digital pad or a DualShock: the buttons are the console's packet's own bit order */
+        for (i = 0; i < 16 && i < buttons; i++) {
+            if (SDL_GetJoystickButton(j, i)) {
+                st.buttons |= (uint16_t)(1u << i);
+            }
+        }
+    }
+    if (padRegained[port]) {
+        padRegained[port] = false;
+        padHeldOver[port] = st.buttons;
+    }
+    padHeldOver[port] &= st.buttons;
+    st.buttons &= (uint16_t)~padHeldOver[port];
+    gamepadState[port] = st;
+    Route();
+}
+
+/* A port's device changed state: whichever kind of device is in it. */
+static void update_port(int port)
+{
+    if (joysticks[port] && !gamepads[port]) {
+        update_joystick(port);
+    } else {
+        update_gamepad(port);
+    }
+}
+
 static int GamepadPort(int id)
 {
     int port;
 
     for (port = 0; port < GAMEPADS; port++) {
-        if (gamepads[port] && (int)SDL_GetGamepadID(gamepads[port]) == id) {
+        if (device_id(port) == (SDL_JoystickID)id) {
             return port;
         }
     }
@@ -340,12 +462,12 @@ static void Route(void)
         int any = 0;
 
         for (port = 0; port < GAMEPADS; port++) {
-            if (gamepads[port]) {
+            if (device_id(port)) {
                 merged.buttons |= gamepadState[port].buttons;
                 any = 1;
             }
         }
-        if (lastSlot >= 0 && lastSlot < GAMEPADS && gamepads[lastSlot]) {
+        if (lastSlot >= 0 && lastSlot < GAMEPADS && device_id(lastSlot)) {
             merged.twist = gamepadState[lastSlot].twist;
             merged.analogI = gamepadState[lastSlot].analogI;
             merged.analogII = gamepadState[lastSlot].analogII;
@@ -380,7 +502,7 @@ static void SendSecondPlayer(void)
             }
         }
     } else if ((port = GamepadPort(secondDevice)) >= 0) {
-        input.device = gamepad_device(gamepads[port]);
+        input.device = device_kind(port);
         input.pad = gamepadState[port];
     }
     PortLinkSetInput(&input);
@@ -453,9 +575,9 @@ int PortInputDevices(PortInputDevice *out, int max)
         n++;
     }
     for (port = 0; port < GAMEPADS && n < max; port++) {
-        if (gamepads[port]) {
-            out[n].id = (int)SDL_GetGamepadID(gamepads[port]);
-            out[n].kind = gamepad_device(gamepads[port]);
+        if (device_id(port)) {
+            out[n].id = (int)device_id(port);
+            out[n].kind = device_kind(port);
             out[n].buttons = gamepadState[port].buttons;
             n++;
         }
@@ -472,19 +594,29 @@ static void open_gamepad(SDL_JoystickID id)
     }
 
     for (port = 0; port < GAMEPADS; port++) {
-        if (gamepads[port] && SDL_GetGamepadID(gamepads[port]) == id) {
+        if (device_id(port) == id) {
             return;
         }
     }
     for (port = 0; port < GAMEPADS; port++) {
-        if (!gamepads[port]) {
+        if (device_id(port) != 0) {
+            continue;
+        }
+        if (SDL_IsGamepad(id)) {
             gamepads[port] = SDL_OpenGamepad(id);
             if (gamepads[port]) {
                 PortLog("pad: %s (gamepad %d)\n", SDL_GetGamepadName(gamepads[port]), port + 1);
                 update_gamepad(port);
             }
-            return;
+        } else {
+            /* a pad the adapter reports only as a joystick, which SDL has no gamepad mapping for */
+            joysticks[port] = SDL_OpenJoystick(id);
+            if (joysticks[port]) {
+                PortLog("pad: %s (joystick %d)\n", SDL_GetJoystickName(joysticks[port]), port + 1);
+                update_joystick(port);
+            }
         }
+        return;
     }
 }
 
@@ -493,12 +625,19 @@ static void close_gamepad(SDL_JoystickID id)
     int port;
 
     for (port = 0; port < GAMEPADS; port++) {
-        if (gamepads[port] && SDL_GetGamepadID(gamepads[port]) == id) {
+        if (device_id(port) != id) {
+            continue;
+        }
+        if (gamepads[port]) {
             SDL_CloseGamepad(gamepads[port]);
             gamepads[port] = NULL;
-            update_gamepad(port);
-            PortLog("pad: port %d unplugged\n", port + 1);
         }
+        if (joysticks[port]) {
+            SDL_CloseJoystick(joysticks[port]);
+            joysticks[port] = NULL;
+        }
+        update_port(port);
+        PortLog("pad: port %d unplugged\n", port + 1);
     }
 }
 
@@ -518,7 +657,7 @@ void PsxPadSdlInit(void)
         PortLog("pad: gamepads unavailable (%s)\n", SDL_GetError());
         return;
     }
-    ids = SDL_GetGamepads(&count);
+    ids = SDL_GetJoysticks(&count); /* every pad, gamepads included; open_gamepad tells them apart */
     for (i = 0; ids && i < count; i++) {
         open_gamepad(ids[i]);
     }
@@ -534,6 +673,10 @@ void PsxPadSdlShutdown(void)
         if (gamepads[port]) {
             SDL_CloseGamepad(gamepads[port]);
             gamepads[port] = NULL;
+        }
+        if (joysticks[port]) {
+            SDL_CloseJoystick(joysticks[port]);
+            joysticks[port] = NULL;
         }
     }
     opened = !SDL_getenv("WIPEOUT_NO_GAMEPAD");
@@ -607,8 +750,8 @@ static void note_gamepad(SDL_JoystickID id)
         return; /* the second player's: not the glyphs of this game */
     }
     for (port = 0; port < GAMEPADS; port++) {
-        if (gamepads[port] && SDL_GetGamepadID(gamepads[port]) == id) {
-            PsxPadNoteDevice(gamepad_device(gamepads[port]));
+        if (device_id(port) == id) {
+            PsxPadNoteDevice(device_kind(port));
             lastDevice = (int)id;
             lastSlot = port;
             return;
@@ -670,20 +813,53 @@ void PsxInputEvent(const SDL_Event *event)
         note_gamepad(event->gbutton.which);
         /* fall through */
     case SDL_EVENT_GAMEPAD_BUTTON_UP:
-        for (port = 0; port < GAMEPADS; port++) {
-            if (gamepads[port] && SDL_GetGamepadID(gamepads[port]) == event->gbutton.which) {
-                update_gamepad(port);
-            }
+        port = GamepadPort((int)event->gbutton.which);
+        if (port >= 0) {
+            update_port(port);
         }
         break;
     case SDL_EVENT_GAMEPAD_AXIS_MOTION:
         if (event->gaxis.value > 16384 || event->gaxis.value < -16384) {
             note_gamepad(event->gaxis.which);
         }
-        for (port = 0; port < GAMEPADS; port++) {
-            if (gamepads[port] && SDL_GetGamepadID(gamepads[port]) == event->gaxis.which) {
-                update_gamepad(port);
+        port = GamepadPort((int)event->gaxis.which);
+        if (port >= 0) {
+            update_port(port);
+        }
+        break;
+    case SDL_EVENT_JOYSTICK_ADDED:
+        if (!SDL_IsGamepad(event->jdevice.which)) {
+            open_gamepad(event->jdevice.which); /* a pad the adapter reports only as a joystick */
+        }
+        break;
+    case SDL_EVENT_JOYSTICK_REMOVED:
+        if (!SDL_IsGamepad(event->jdevice.which)) {
+            close_gamepad(event->jdevice.which);
+        }
+        break;
+    case SDL_EVENT_JOYSTICK_BUTTON_DOWN:
+        if (!SDL_IsGamepad(event->jbutton.which)) {
+            note_gamepad(event->jbutton.which);
+        }
+        /* fall through */
+    case SDL_EVENT_JOYSTICK_BUTTON_UP:
+        if (!SDL_IsGamepad(event->jbutton.which)) {
+            port = GamepadPort((int)event->jbutton.which);
+            if (port >= 0) {
+                update_port(port);
             }
+        }
+        break;
+    case SDL_EVENT_JOYSTICK_AXIS_MOTION:
+        if (SDL_IsGamepad(event->jaxis.which)) {
+            break; /* a gamepad reports its own events above */
+        }
+        if (event->jaxis.value > 16384 || event->jaxis.value < -16384) {
+            note_gamepad(event->jaxis.which);
+        }
+        port = GamepadPort((int)event->jaxis.which);
+        if (port >= 0) {
+            update_port(port);
         }
         break;
     default:
@@ -722,10 +898,24 @@ static int rumble_port(int player)
     if (routed) {
         return GamepadPort(player ? secondDevice : firstDevice);
     }
-    if (player || lastDevice == DEVICE_KEYBOARD || lastSlot < 0 || lastSlot >= GAMEPADS || !gamepads[lastSlot]) {
+    if (player || lastDevice == DEVICE_KEYBOARD || lastSlot < 0 || lastSlot >= GAMEPADS || !device_id(lastSlot)) {
         return -1;
     }
     return lastSlot;
+}
+
+/* The motors of the device in a port: a gamepad's, or a pad the adapter reports only as a joystick's (a
+   DualShock on a PSX adapter has them too; a neGcon has none). */
+static void rumble_device(int port, uint16_t low, uint16_t high, uint32_t duration)
+{
+    if (port < 0) {
+        return;
+    }
+    if (gamepads[port]) {
+        SDL_RumbleGamepad(gamepads[port], low, high, duration);
+    } else if (joysticks[port]) {
+        SDL_RumbleJoystick(joysticks[port], low, high, duration);
+    }
 }
 
 static void rumble_apply(int player)
@@ -768,13 +958,11 @@ static void rumble_apply(int player)
         duration = 0;
     }
     port = rumble_port(player);
-    if (r->port != port && r->port >= 0 && gamepads[r->port]) {
-        SDL_RumbleGamepad(gamepads[r->port], 0, 0, 0); /* the player has put that one down */
+    if (r->port != port && r->port >= 0) {
+        rumble_device(r->port, 0, 0, 0); /* the player has put that one down */
     }
     r->port = port;
-    if (port >= 0) {
-        SDL_RumbleGamepad(gamepads[port], low, high, duration);
-    }
+    rumble_device(port, low, high, duration);
 }
 
 /* Once a field: a held level stops by itself when the game stops holding it, and the second player's game

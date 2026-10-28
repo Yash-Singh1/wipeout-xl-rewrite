@@ -25,6 +25,7 @@ extern "C" {
 #include "saves.h"
 #include "original.h"
 #include "platform.h"
+#include "psx/pad.h"
 #include "settings.h"
 #include "trace.h"
 #include "psx/framecap.h"
@@ -1898,6 +1899,17 @@ static void Console(void)
         }
         if (ImGui::BeginTabItem("Game", nullptr, FirstTab("game"))) {
             TouchControls();
+            ImGui::Separator();
+            bool negcon = portSettings.negconPad != 0;
+            if (ImGui::Checkbox("NeGcon plugged in", &negcon)) {
+                portSettings.negconPad = negcon;
+                PsxPadSetType(0, negcon ? PAD_NEGCON : PAD_DIGITAL); /* the game notices at once */
+                Changed();
+            }
+            DisabledWrapped("Says a neGcon is in the first port instead of a digital pad: the twist steers and its "
+                            "analogue I, II and L are the throttle, the fire and the left brake. The game notices at "
+                            "once and offers its own neGcon configuration (WIPEOUT_PAD_TYPE=negcon says the same for "
+                            "one run).");
             ImGui::Separator();
             bool vibration = !portSettings.noRumble;
             if (ImGui::Checkbox("Controller vibration", &vibration)) {

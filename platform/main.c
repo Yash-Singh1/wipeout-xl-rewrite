@@ -433,6 +433,10 @@ int main(int argc, char **argv)
             return 1;
         }
         atexit(PsxIoShutdown);
+        /* the pad the player has plugged in (WIPEOUT_PAD_TYPE says so too, for the tests) */
+        if (!SDL_getenv("WIPEOUT_PAD_TYPE")) {
+            PsxPadSetType(0, portSettings.negconPad ? PAD_NEGCON : PAD_DIGITAL);
+        }
     }
     PortRegionStart(); /* the disc's region and the video standard (version.h) */
     PortTraceInit();
