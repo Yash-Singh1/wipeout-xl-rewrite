@@ -1910,10 +1910,10 @@ static void Console(void)
                 }
                 Changed();
             }
-            DisabledWrapped("Automatic reads a neGcon from its own analogue controls - the twist and its I, II and L. "
-                            "A neGcon twists to steer, with the throttle, the fire and the left brake on those, and the "
-                            "game offers its own configuration for them (WIPEOUT_PAD_TYPE=negcon says the same for one "
-                            "run).");
+            DisabledWrapped("Automatic reads a neGcon from the adapter it is on - the raphnet PSX-to-USB one - "
+                            "where the twist and its I, II and L are analogue. A neGcon twists to steer, with the "
+                            "throttle, the fire and the left brake on those, and the game offers its own "
+                            "configuration for them (WIPEOUT_PAD_TYPE=negcon says the same for one run).");
             ImGui::Separator();
             bool vibration = !portSettings.noRumble;
             if (ImGui::Checkbox("Controller vibration", &vibration)) {

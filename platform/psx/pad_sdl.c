@@ -350,17 +350,53 @@ static uint8_t analogue_twist(Sint16 value)
     return (uint8_t)((value + 32768) >> 8);
 }
 
+/* The adapters whose pads SDL has no gamepad mapping for, and how their axes and buttons are numbered.
+   The raphnet PSX-to-USB adapter's numbers were measured with a script that asks for one control at a
+   time; it is the one that presents a neGcon. Any other adapter (a generic PSX/PS2 one, say) is read as
+   the console's own packet: the buttons' bit order and the sticks steering, so a digital pad or a
+   DualShock on one is a digital pad with the right glyphs. */
+static const struct {
+    uint16_t vendor, product;
+    int neGcon; /* it presents a neGcon, numbered as below */
+    int axisTwist, axisI, axisII, axisL;
+    const struct { int button; uint16_t bit; } buttons[8];
+} adapters[] = {
+    {0x289B, 0x0044, 1, 0, 3, 4, 2, {{2, PAD_CIRCLE},   {3, PAD_TRIANGLE}, {4, PAD_START}, {7, PAD_R1},
+                                     {12, PAD_UP},     {13, PAD_DOWN},    {14, PAD_LEFT}, {15, PAD_RIGHT}}},
+};
+
+/* The adapter a joystick is, or -1 for one nobody has written down. */
+static int adapter_index(SDL_Joystick *j)
+{
+    uint16_t vendor = SDL_GetJoystickVendor(j), product = SDL_GetJoystickProduct(j);
+    int i;
+
+    for (i = 0; i < (int)SDL_arraysize(adapters); i++) {
+        if (adapters[i].vendor == vendor && adapters[i].product == product) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/* Whether the pad this adapter presents can be a neGcon (its twist and its analogue I, II and L). */
+static bool adapter_negcon(SDL_Joystick *j)
+{
+    int a = adapter_index(j);
+
+    return a >= 0 && adapters[a].neGcon;
+}
+
 /* A pad the adapter reports only as a joystick, by the console's own packet: the twist and the three
-   analogue buttons are its axes, and the buttons are the packet's bit order (bit 3 Start, 4-7 the d-pad,
-   11 R, 12 A, 13 B) - or, on a neGcon, the eight the adapter numbers in its own way (measured). So a
-   neGcon twists and presses its analogue I, II and L, and a digital pad presses its buttons, whatever
-   the adapter's own numbering. */
+   analogue buttons become the packet's four analogue bytes and the buttons its bits. So a neGcon twists
+   and presses its analogue I, II and L, and a digital pad presses its buttons, whatever the adapter's
+   own numbering. */
 static void update_joystick(int port)
 {
     SDL_Joystick *j = joysticks[port];
     PadState st;
     Sint16 turned = 0, buttonI = 0, buttonII = 0, buttonL = 0;
-    int i, axes, buttons;
+    int i, axes, buttons, a;
 
     memset(&st, 0, sizeof(st));
     st.twist = 0x80;
@@ -374,13 +410,18 @@ static void update_joystick(int port)
         Route();
         return;
     }
+    a = adapter_index(j);
     axes = SDL_GetNumJoystickAxes(j);
-    /* the raphnet's report (measured, tools' negcon-map): the twist is axis 0 and the analogue buttons
-       I, II and L are axes 3, 4 and 2 (axis 1 is nothing), each 0 let go to 0x7FFF pressed */
-    if (axes > 0) turned = SDL_GetJoystickAxis(j, 0);
-    if (axes > 3) buttonI = SDL_GetJoystickAxis(j, 3);
-    if (axes > 4) buttonII = SDL_GetJoystickAxis(j, 4);
-    if (axes > 2) buttonL = SDL_GetJoystickAxis(j, 2);
+    if (a >= 0) {
+        /* the adapter's own numbering (measured for the raphnet: twist 0, I 3, II 4, L 2) */
+        if (axes > adapters[a].axisTwist) turned = SDL_GetJoystickAxis(j, adapters[a].axisTwist);
+        if (axes > adapters[a].axisI) buttonI = SDL_GetJoystickAxis(j, adapters[a].axisI);
+        if (axes > adapters[a].axisII) buttonII = SDL_GetJoystickAxis(j, adapters[a].axisII);
+        if (axes > adapters[a].axisL) buttonL = SDL_GetJoystickAxis(j, adapters[a].axisL);
+    } else {
+        /* an adapter nobody has written down: the console's own, where the left stick is the twist */
+        if (axes > 0) turned = SDL_GetJoystickAxis(j, 0);
+    }
     if (PsxPadGetType(port) == PAD_NEGCON) {
         st.twist = analogue_twist(turned);
         if (st.twist > 0x70 && st.twist < 0x90) st.twist = 0x80; /* dead zone */
@@ -392,20 +433,24 @@ static void update_joystick(int port)
            playable before anyone says it is one */
         if (turned < -16384) st.buttons |= PAD_LEFT;
         if (turned > 16384) st.buttons |= PAD_RIGHT;
+        if (a < 0 && axes > 1) {
+            Sint16 updown = SDL_GetJoystickAxis(j, 1);
+
+            if (updown < -16384) st.buttons |= PAD_UP;
+            if (updown > 16384) st.buttons |= PAD_DOWN;
+        }
         if (buttonI > 8192) st.buttons |= PAD_CROSS;
         if (buttonII > 8192) st.buttons |= PAD_CIRCLE;
         if (buttonL > 8192) st.buttons |= PAD_L2;
     }
     buttons = SDL_GetNumJoystickButtons(j);
-    if (PsxPadGetType(port) == PAD_NEGCON) {
-        /* the neGcon's own eight, as this adapter numbers them (measured, tools' negcon-map) */
-        static const struct { int button; uint16_t bit; } negcon[] = {
-            {2, PAD_CIRCLE}, {3, PAD_TRIANGLE}, {4, PAD_START}, {7, PAD_R1},
-            {12, PAD_UP}, {13, PAD_DOWN}, {14, PAD_LEFT}, {15, PAD_RIGHT}};
-
-        for (i = 0; i < (int)SDL_arraysize(negcon); i++) {
-            if (negcon[i].button < buttons && SDL_GetJoystickButton(j, negcon[i].button)) {
-                st.buttons |= negcon[i].bit;
+    if (a >= 0) {
+        /* the adapter's own numbering (the neGcon's eight on the raphnet) */
+        for (i = 0; i < (int)SDL_arraysize(adapters[a].buttons); i++) {
+            if (adapters[a].buttons[i].button < buttons) {
+                if (SDL_GetJoystickButton(j, adapters[a].buttons[i].button)) {
+                    st.buttons |= adapters[a].buttons[i].bit;
+                }
             }
         }
     } else {
@@ -613,12 +658,11 @@ static void open_gamepad(SDL_JoystickID id)
             joysticks[port] = SDL_OpenJoystick(id);
             if (joysticks[port]) {
                 PortLog("pad: %s (joystick %d)\n", SDL_GetJoystickName(joysticks[port]), port + 1);
-                if (SDL_GetNumJoystickAxes(joysticks[port]) >= 4 && SDL_GetNumJoystickButtons(joysticks[port]) >= 8 &&
-                    !PsxPadTypeChosen(port)) {
-                    /* its own analogue controls say what it is (a neGcon's twist and its I, II and L);
-                       the debug console's "Controller" says otherwise */
+                if (adapter_negcon(joysticks[port]) && !PsxPadTypeChosen(port)) {
+                    /* the adapter is one that presents a neGcon (its twist and its analogue I, II and
+                       L); the debug console's "Controller" says otherwise */
                     PsxPadSetType(port, PAD_NEGCON);
-                    PortLog("pad: it has analogue controls: read as a neGcon\n");
+                    PortLog("pad: it is a neGcon\n");
                 }
                 update_joystick(port);
             }

@@ -138,9 +138,9 @@ and L = axes 3, 4 and 2; the buttons 2 A, 3 B, 4 Start, 7 R and 12-15 the d-pad)
 packet bit order (bit 3 Start, 4-7 the d-pad, 11 R, 12 A, 13 B) for a digital pad or a DualShock on the
 same adapter.
 `WIPEOUT_PAD_TYPE=negcon`, or the debug console's "Controller" (`pad_type` of wipeoutxl.ini), says what is
-plugged in; "Automatic", the default, reads a neGcon from its own analogue controls (four or more axes and
-eight or more buttons). A neGcon takes the twist for steering and I, II and L for the throttle, the fire and
-the left brake, and the game offers its own configuration for them (its `head` is 2, which is what turns the
+plugged in; "Automatic", the default, reads a neGcon from the adapter it is on (the raphnet PSX-to-USB one,
+which is the one that presents one). A neGcon takes the twist for steering and I, II and L for the throttle, the
+fire and the left brake, and the game offers its own configuration for them (its `head` is 2, which is what turns the
 controller screen to the neGcon's). Its A and B are the game's Circle and Triangle: A discards the weapon and
 B changes the view, as the game's own bindings and glyphs have them. Without that the pad is a digital pad,
 where the twist steers and I, II and L press Cross, Circle and L2 instead.
