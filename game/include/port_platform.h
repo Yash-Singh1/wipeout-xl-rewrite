@@ -59,7 +59,8 @@ int PortLogoFields(int fields); /* how long a start-up logo is shown: the consol
    draws one, PortWideScene); a menu is too, its backdrop enlarged to fill the sides (PortWideBackdrop, each
    frame, for each of the backdrop's packets) while the rest stays in the console's 4:3. A loading screen is
    shown wide as well (PortWideLoadScreen, each picture it draws): its fills across the screen reach the sides,
-   what is drawn on them stays in the middle. The other pictures keep the console's shape. */
+   what is drawn on them stays in the middle. The other pictures keep the console's shape, beside them their edges'
+   colour when an edge is one colour (the Red Bull screen's white). */
 int PortScreenMargin(void);
 void PortWideScene(void);
 void PortWideBackdrop(const void *packet);

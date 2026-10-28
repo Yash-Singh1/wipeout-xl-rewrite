@@ -1496,6 +1496,33 @@ void GpuPresentInterpolated(int x, int y, int w, int h)
     Present(x, y, w, h, 1);
 }
 
+/* Widescreen's bars beside a picture shown 4:3 (the start-up screens): the colour of the picture's column at x when it
+   is one colour from top to bottom (the Red Bull screen's white), as if the picture went on; else black. */
+static void BarColour(int x, int y, int h, float colour[3])
+{
+    static uint8_t *pixels;
+    static size_t size;
+    size_t need = (size_t)h * scale * 4;
+    size_t i;
+
+    colour[0] = colour[1] = colour[2] = 0;
+    if (need > size) {
+        pixels = realloc(pixels, need);
+        size = need;
+    }
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
+    glPixelStorei(GL_PACK_ALIGNMENT, 4);
+    glReadPixels(x * scale, y * scale, 1, h * scale, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    for (i = 4; i < need; i += 4) {
+        if (memcmp(pixels + i, pixels, 3) != 0) {
+            return;
+        }
+    }
+    for (i = 0; i < 3; i++) {
+        colour[i] = pixels[i] / 255.0f;
+    }
+}
+
 static void Present(int x, int y, int w, int h, int interpolated)
 {
     int width, height, outW, outH, outX, outY;
@@ -1540,6 +1567,20 @@ static void Present(int x, int y, int w, int h, int interpolated)
         glBindFramebuffer(GL_READ_FRAMEBUFFER, wide ? wideFramebuffer : framebuffer);
         glBlitFramebuffer(left, y * scale, right, (y + h) * scale, outX, outY + outH, outX + outW, outY,
                           GL_COLOR_BUFFER_BIT, GL_LINEAR);
+        if (!wide && portSettings.widescreen && outX > 0) {
+            float colour[3];
+
+            BarColour(x, y, h, colour);
+            glEnable(GL_SCISSOR_TEST);
+            glScissor(0, 0, outX, height);
+            glClearColor(colour[0], colour[1], colour[2], 1);
+            glClear(GL_COLOR_BUFFER_BIT);
+            BarColour(x + w - 1, y, h, colour);
+            glScissor(outX + outW, 0, width - outX - outW, height);
+            glClearColor(colour[0], colour[1], colour[2], 1);
+            glClear(GL_COLOR_BUFFER_BIT);
+            glDisable(GL_SCISSOR_TEST);
+        }
     }
     glBindFramebuffer(GL_FRAMEBUFFER, windowFramebuffer);
     PortVideoPresent();
