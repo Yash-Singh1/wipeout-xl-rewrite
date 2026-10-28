@@ -883,6 +883,41 @@ static uint32_t RecordPrecise(uint32_t sxy, float x, float y, float z)
     return (uint32_t)recordCount | (preciseFrame << HANDLE_INDEX_BITS);
 }
 
+/* A projection this frame made at the same place, within a quarter of a pixel and a thousandth of the depth: a
+   model's corner its polygons do not share (a copy of it a unit or two off), which the console drew at one pixel
+   or two side by side. Drawn from two projections, the polygons met a hundredth or a tenth of a pixel apart and what
+   is behind them showed through the hairline (the grass through Valparaiso's cave, between the cave and the track);
+   drawn as the one, they meet exactly. What moves with a ship keeps its own (between frames it goes as the ship
+   goes). The record, or -1. */
+static int32_t SameCorner(uint32_t sxy, float x, float y, float z, uint64_t key)
+{
+    int dx, dy;
+
+    if (clearPending) {
+        return -1;
+    }
+    for (dy = -1; dy <= 1; dy++) {
+        for (dx = -1; dx <= 1; dx++) {
+            uint32_t near = (uint32_t)(uint16_t)((int16_t)sxy + dx) |
+                            (uint32_t)(uint16_t)((int16_t)(sxy >> 16) + dy) << 16;
+            PreciseSlot *slot = FindSlot(near + 1, 0);
+            int32_t index;
+            int n;
+
+            for (index = slot ? slot->latest : -1, n = 0; index >= 0 && n < 8; index = records[index].previous, n++) {
+                const GtePrecise *p = &records[index].value;
+
+                if (p->background == backgroundOn && p->exact == exactOn && fabsf(p->x - x) <= 0.25f &&
+                    fabsf(p->y - y) <= 0.25f && fabsf(p->z - z) <= z / 1024.0f &&
+                    (p->key & GTE_KEY_MOVING) == (key & GTE_KEY_MOVING)) {
+                    return index;
+                }
+            }
+        }
+    }
+    return -1;
+}
+
 /* The record of a handle of this frame, or -1. */
 static int32_t HandleRecord(uint32_t handle)
 {
@@ -1241,13 +1276,18 @@ static void Rtp(int v, int last, int sf)
             float px = (float)(c[OFX] / 65536.0 + x * h / z);
             float py = (float)(c[OFY] / 65536.0 + y * h / z);
             if (px > -1024.0f && px < 1024.0f && py > -1024.0f && py < 1024.0f) {
+                int32_t same = SameCorner((uint32_t)gte.data[SXY2], px, py, (float)z, pendingKey[v]);
+
                 sxyHandle[2] = RecordPrecise((uint32_t)gte.data[SXY2], px, py, (float)z);
-                if (fadeOn && sxyHandle[2]) {
-                    records[(sxyHandle[2] & HANDLE_INDEX_MASK) - 1].value.fade = GteFade(sqrt(x * x + y * y + z * z));
-                }
-                if (sxyHandle[2]) {
+                if (sxyHandle[2] && same >= 0) {
+                    /* (kept under its own pixel, which the packet holds) */
+                    records[(sxyHandle[2] & HANDLE_INDEX_MASK) - 1].value = records[same].value;
+                } else if (sxyHandle[2]) {
                     PreciseRecord *record = &records[(sxyHandle[2] & HANDLE_INDEX_MASK) - 1];
 
+                    if (fadeOn) {
+                        record->value.fade = GteFade(sqrt(x * x + y * y + z * z));
+                    }
                     record->value.key = pendingKey[v];
                     record->value.view[0] = (float)x;
                     record->value.view[1] = (float)y;
