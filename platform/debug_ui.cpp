@@ -1900,16 +1900,20 @@ static void Console(void)
         if (ImGui::BeginTabItem("Game", nullptr, FirstTab("game"))) {
             TouchControls();
             ImGui::Separator();
-            bool negcon = portSettings.negconPad != 0;
-            if (ImGui::Checkbox("NeGcon plugged in", &negcon)) {
-                portSettings.negconPad = negcon;
-                PsxPadSetType(0, negcon ? PAD_NEGCON : PAD_DIGITAL); /* the game notices at once */
+            static const char *const padTypes[] = {"Automatic", "Digital pad", "NeGcon"};
+            int padType = SDL_clamp(portSettings.negconPad, 0, 2);
+            ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10);
+            if (ImGui::Combo("Controller##pad", &padType, padTypes, IM_ARRAYSIZE(padTypes))) {
+                portSettings.negconPad = padType;
+                if (padType) {
+                    PsxPadSetType(0, padType == 2 ? PAD_NEGCON : PAD_DIGITAL); /* the game notices at once */
+                }
                 Changed();
             }
-            DisabledWrapped("Says a neGcon is in the first port instead of a digital pad: the twist steers and its "
-                            "analogue I, II and L are the throttle, the fire and the left brake. The game notices at "
-                            "once and offers its own neGcon configuration (WIPEOUT_PAD_TYPE=negcon says the same for "
-                            "one run).");
+            DisabledWrapped("Automatic reads a neGcon from its own analogue controls - the twist and its I, II and L. "
+                            "A neGcon twists to steer, with the throttle, the fire and the left brake on those, and the "
+                            "game offers its own configuration for them (WIPEOUT_PAD_TYPE=negcon says the same for one "
+                            "run).");
             ImGui::Separator();
             bool vibration = !portSettings.noRumble;
             if (ImGui::Checkbox("Controller vibration", &vibration)) {

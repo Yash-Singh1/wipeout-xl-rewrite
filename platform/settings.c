@@ -99,7 +99,9 @@ static void Set(const char *key, const char *value)
     } else if (!strcmp(key, "vibration_strength") && number > 0) {
         portSettings.rumbleStrength = SDL_clamp(number, 50, 300);
     } else if (!strcmp(key, "negcon")) {
-        portSettings.negconPad = number != 0;
+        portSettings.negconPad = number != 0 ? 2 : 1;
+    } else if (!strcmp(key, "pad_type")) {
+        portSettings.negconPad = SDL_clamp(number, 0, 2);
     }
 }
 
@@ -235,7 +237,7 @@ int PortSettingsSave(void)
             "custom_music = %d\nmusic_shuffle = %d\nmusic_folder = %s\nsave_slot = %s\nautosave = %d\n"
             "touch_controls = %d\ntouch_size = %d\ntouch_opacity = %d\ndepth_buffer = %d\nskip_logos = %d\nrecord_rate = %d\n"
             "video_standard = %d\nvibration = %d\nvibration_strength = %d\nfar_flares = %d\npause_unfocused = %d\n"
-            "surround = %d\nfullscreen = %d\nnegcon = %d\n",
+            "surround = %d\nfullscreen = %d\npad_type = %d\n",
             portSettings.showFps, portSettings.farView, portSettings.fade, portSettings.fadeNear, portSettings.fadeFar,
             portSettings.widescreen, portSettings.frameRate,
             portSettings.frameCap, portSettings.skipIntro,

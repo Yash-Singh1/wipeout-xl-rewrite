@@ -400,7 +400,7 @@ static void update_joystick(int port)
     if (PsxPadGetType(port) == PAD_NEGCON) {
         /* the neGcon's own eight, as this adapter numbers them (measured, tools' negcon-map) */
         static const struct { int button; uint16_t bit; } negcon[] = {
-            {2, PAD_TRIANGLE}, {3, PAD_CIRCLE}, {4, PAD_START}, {7, PAD_R1},
+            {2, PAD_CIRCLE}, {3, PAD_TRIANGLE}, {4, PAD_START}, {7, PAD_R1},
             {12, PAD_UP}, {13, PAD_DOWN}, {14, PAD_LEFT}, {15, PAD_RIGHT}};
 
         for (i = 0; i < (int)SDL_arraysize(negcon); i++) {
@@ -613,9 +613,12 @@ static void open_gamepad(SDL_JoystickID id)
             joysticks[port] = SDL_OpenJoystick(id);
             if (joysticks[port]) {
                 PortLog("pad: %s (joystick %d)\n", SDL_GetJoystickName(joysticks[port]), port + 1);
-                if (SDL_GetNumJoystickAxes(joysticks[port]) >= 4) {
-                    PortLog("pad: it has analogue controls; if it is a neGcon, say so (the debug console's "
-                            "\"NeGcon plugged in\")\n");
+                if (SDL_GetNumJoystickAxes(joysticks[port]) >= 4 && SDL_GetNumJoystickButtons(joysticks[port]) >= 8 &&
+                    !PsxPadTypeChosen(port)) {
+                    /* its own analogue controls say what it is (a neGcon's twist and its I, II and L);
+                       the debug console's "Controller" says otherwise */
+                    PsxPadSetType(port, PAD_NEGCON);
+                    PortLog("pad: it has analogue controls: read as a neGcon\n");
                 }
                 update_joystick(port);
             }
