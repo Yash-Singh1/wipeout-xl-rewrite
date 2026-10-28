@@ -135,8 +135,10 @@ A pad the adapter reports only as a joystick (a PSX adapter with a neGcon, which
 mapping for) is opened too. What its axes and buttons mean is the adapter's own numbering, so it is
 written down for the raphnet PSX-to-USB adapter this was measured on (twist = axis 0; the analogue I, II
 and L = axes 3, 4 and 2; the buttons 2 A, 3 B, 4 Start, 7 R and 12-15 the d-pad), with the console's
-packet bit order (bit 3 Start, 4-7 the d-pad, 11 R, 12 A, 13 B) for a digital pad or a DualShock on the
-same adapter.
+packet bit order (bit 3 Start, 4-7 the d-pad, 11 R, 12 A, 13 B) for everything else: a digital pad or a
+DualShock on a generic adapter stays a digital pad. An adapter nobody has written down is read that way
+too; to have one added, say which of its controls is which - its VID and PID, and what the twist, I, II,
+L and the buttons are - and it is one row of `adapters[]` in pad_sdl.c.
 `WIPEOUT_PAD_TYPE=negcon`, or the debug console's "Controller" (`pad_type` of wipeoutxl.ini), says what is
 plugged in; "Automatic", the default, reads a neGcon from the adapter it is on (the raphnet PSX-to-USB one,
 which is the one that presents one). A neGcon takes the twist for steering and I, II and L for the throttle, the
