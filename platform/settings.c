@@ -98,8 +98,6 @@ static void Set(const char *key, const char *value)
         portSettings.fullscreen = number != 0;
     } else if (!strcmp(key, "vibration_strength") && number > 0) {
         portSettings.rumbleStrength = SDL_clamp(number, 50, 300);
-    } else if (!strcmp(key, "negcon")) {
-        portSettings.negconPad = number != 0 ? 2 : 1;
     } else if (!strcmp(key, "pad_type")) {
         portSettings.negconPad = SDL_clamp(number, 0, 2);
     }
