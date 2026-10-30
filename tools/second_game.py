@@ -3,6 +3,7 @@
 
     second_game.py names NM PREFIX OUT.h FIRST...
     second_game.py check NM PREFIX STAMP FIRST... -- SECOND...
+    second_game.py ranges NM PREFIX EXECUTABLE
 
 names: every global the first game's libraries and objects (FIRST) define, functions and variables, is renamed
 NAME__p2 in the second's sources, which are compiled again with this header in front: the program then holds two
@@ -73,9 +74,34 @@ def check(nm, prefix, stamp, paths):
         f.write('ok\n')
 
 
+def check_ranges(nm, prefix, executable):
+    """Every mutable second-game global must be covered by the reset boundaries."""
+    output = subprocess.run([nm, '-n', executable], check=True, capture_output=True, text=True).stdout
+    entries = {}
+    for line in output.splitlines():
+        parts = line.split()
+        if len(parts) == 3 and parts[1] in ('B', 'D', 'S') and parts[2].startswith(prefix):
+            entries[parts[2][len(prefix):]] = (int(parts[0], 16), parts[1])
+    ranges = []
+    for kind in ('Data', 'Bss'):
+        start = entries['second%sStart' % kind][0]
+        end = entries['second%sEnd' % kind][0]
+        if end <= start:
+            sys.exit('second game: invalid %s reset range' % kind)
+        ranges.append((start, end))
+    outside = [name for name, (address, kind) in entries.items()
+               if name.endswith('__p2') and not any(start <= address < end for start, end in ranges)]
+    if outside:
+        sys.exit('second game: globals outside reset ranges: ' + ', '.join(sorted(outside)[:20]))
+    print('second game reset ranges: OK')
+
+
 def main():
     command, nm, prefix, out, inputs = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5:]
     prefix = '' if prefix == '-' else prefix
+    if command == 'ranges':
+        check_ranges(nm, prefix, out)
+        return
     if command == 'check':
         check(nm, prefix, out, inputs)
         return

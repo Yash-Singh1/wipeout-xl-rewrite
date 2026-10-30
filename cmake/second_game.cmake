@@ -101,3 +101,12 @@ add_custom_command(OUTPUT ${secondChecked}
     VERBATIM)
 add_custom_target(second_checked ALL DEPENDS ${secondChecked})
 add_dependencies(wipeoutxl second_checked)
+
+# Windows' section suffixes must bracket the variables in the final PE file, too.
+# In particular, initialized boundary markers cannot bracket an uninitialized BSS section.
+if(WIN32)
+    add_custom_command(TARGET wipeoutxl POST_BUILD
+        COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/second_game.py ranges ${CMAKE_NM} - $<TARGET_FILE:wipeoutxl>
+        COMMENT "Checking the second game's reset ranges"
+        VERBATIM)
+endif()

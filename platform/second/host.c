@@ -14,8 +14,14 @@ extern char secondBssEnd[] __asm("section$end$__DATA$__p2bss");
 /* (the linker joins p2data$a, $b and $c in that order: the second game's are $b) */
 __attribute__((section("p2data$a"))) char secondDataStart[1] = {1};
 __attribute__((section("p2data$c"))) char secondDataEnd[1] = {1};
-__attribute__((section("p2bss$a"))) char secondBssStart[1];
-__attribute__((section("p2bss$c"))) char secondBssEnd[1];
+/* A section attribute makes Clang emit initialized data, even for a zero variable.
+   Keep these in BSS, like p2bss$b: PE linkers otherwise put both markers in a
+   separate section and a restart leaves the entire second game uncleared. */
+#pragma clang section bss = "p2bss$a"
+char secondBssStart[1];
+#pragma clang section bss = "p2bss$c"
+char secondBssEnd[1];
+#pragma clang section bss = ""
 #elif defined(__clang__)
 /* (the linker's for sections named as C names) */
 extern char __start_p2data[], __stop_p2data[], __start_p2bss[], __stop_p2bss[];

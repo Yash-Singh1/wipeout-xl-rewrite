@@ -271,6 +271,9 @@ short PortOriginalLibraryPlaced(TexTemplate *tiles, short tileCount, short loade
 
 static Object *beacons[MAX_BEACONS], *pumps[MAX_PUMPS];
 static int     beaconCount, pumpCount, sceneryFrame;
+static Object *guestScene;
+static TrackSection *boardSections[8];
+static int boardHeights[8], boardTops[8], boardCount;
 
 int PortOriginalLooks(void)
 {
@@ -320,6 +323,8 @@ void PortOriginalSceneInit(Object **prm, short prmCount)
 {
     int looks = PortOriginalLooks();
 
+    guestScene = prmCount ? prm[0] : NULL;
+    boardCount = 0;
     InitStartBoom(prm, looks ? prmCount : 0);
     ResetStartBoom();
     Collect(prm, looks ? prmCount : 0, "redl", beacons, &beaconCount, MAX_BEACONS);
@@ -377,4 +382,81 @@ void PortOriginalSceneUpdate(int paused)
     for (i = 0; i < pumpCount; i++) {
         SetSkeletonDirection(pumps[i]->skeleton, (short)angle, 0, 0);
     }
+}
+
+/* Height below an overhead polygon. The winding test rejects walls and roofs beside the
+   checkpoint; y grows downward, so the board's top must have a larger y than the roof. */
+static int BoardBelowRoof(int y, int top, TrackSection *section, VECTOR *points, int count)
+{
+    int ceiling = (-0x7fffffff - 1), positive = 0, negative = 0, j;
+    int64_t area = 0;
+
+    for (j = 0; j < count; j++) {
+        VECTOR *v = &points[j], *next = &points[(j + 1) % count];
+        int64_t side = (int64_t)(next->vx - v->vx) * (section->centre.vz - v->vz) -
+                       (int64_t)(next->vz - v->vz) * (section->centre.vx - v->vx);
+
+        positive |= side > 0;
+        negative |= side < 0;
+        area += (int64_t)v->vx * next->vz - (int64_t)next->vx * v->vz;
+        if (v->vy > ceiling) ceiling = v->vy;
+    }
+    if (area && !(positive && negative) && ceiling < section->centre.vy - 512 && y + top < ceiling + 128) {
+        y = ceiling + 128 - top;
+    }
+    return y;
+}
+
+/* XL's board height can intersect a guest's tunnel. Wipeout 64's roofs are scenery,
+   rather than track faces. Test their polygons once per board and keep its height for the race. */
+int PortOriginalDroidY(Object *shape, TrackSection *section)
+{
+    Object *object;
+    int y = section->centre.vy - 3000, top = 0, i, j;
+
+    if (!PortOriginalTrackIs64()) return y;
+    for (i = 0; i < (u_short)shape->vertexCount; i++) {
+        if (shape->vertices[i].vy < top) top = shape->vertices[i].vy;
+    }
+    for (i = 0; i < boardCount; i++) {
+        if (boardSections[i] == section && boardTops[i] == top) return boardHeights[i];
+    }
+    for (object = guestScene; object; object = object->next) {
+        Poly poly;
+        poly.prim = object->primitives;
+        for (i = 0; i < (u_short)object->primitiveCount; i++) {
+            const short *coords;
+            int count, size;
+            VECTOR points[4];
+            MATRIX *m = &object->skeleton->relative;
+
+            switch (poly.prim->type) {
+            case TypeF3: coords = poly.f3->coords; count = 3; size = sizeof(F3); break;
+            case TypeFT3: coords = poly.ft3->coords; count = 3; size = sizeof(FT3); break;
+            case TypeG3: coords = poly.g3->coords; count = 3; size = sizeof(G3); break;
+            case TypeGT3: coords = poly.gt3->coords; count = 3; size = sizeof(GT3); break;
+            case TypeF4: coords = poly.f4->coords; count = 4; size = sizeof(F4); break;
+            case TypeFT4: coords = poly.ft4->coords; count = 4; size = sizeof(FT4); break;
+            case TypeG4: coords = poly.g4->coords; count = 4; size = sizeof(G4); break;
+            case TypeGT4: coords = poly.gt4->coords; count = 4; size = sizeof(GT4); break;
+            case TypeTSPR: case TypeBSPR: poly.ptr += sizeof(SPR); continue;
+            default: size = count = 0; coords = NULL; break;
+            }
+            if (!size) break;
+            for (j = 0; j < count; j++) {
+                const SVECTOR *v = &object->vertices[coords[j]];
+                points[j].vx = ((m->m[0][0]*v->vx + m->m[0][1]*v->vy + m->m[0][2]*v->vz) >> 12) + m->t[0];
+                points[j].vy = ((m->m[1][0]*v->vx + m->m[1][1]*v->vy + m->m[1][2]*v->vz) >> 12) + m->t[1];
+                points[j].vz = ((m->m[2][0]*v->vx + m->m[2][1]*v->vy + m->m[2][2]*v->vz) >> 12) + m->t[2];
+            }
+            y = BoardBelowRoof(y, top, section, points, count);
+            poly.ptr += size;
+        }
+    }
+    if (boardCount < 8) {
+        boardSections[boardCount] = section;
+        boardTops[boardCount] = top;
+        boardHeights[boardCount++] = y;
+    }
+    return y;
 }

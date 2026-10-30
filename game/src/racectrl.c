@@ -252,7 +252,8 @@ void race(ConfigData *gameData, int attractMode, int idleLimit)
     locals.crowdCount=InitCrowdSound(prmObjects,prmCount,locals.crowdObjects,locals.crowdCount);
     if(gameData->actTrackNum==1) {
         InitObject(prmObjects,prmCount,cameraDroids,cameraDroidNames,6,&cameraCount);
-        InitObject(prmObjects,prmCount,fans,fanNames,3,&fanCount);
+        /* Port: guest scenery has its own animation; Wipeout 64 fans use texture frames. */
+        if(PortOriginalTrack()<0) InitObject(prmObjects,prmCount,fans,fanNames,3,&fanCount);
         InitObject(prmObjects,prmCount,smokeSlowObjects,smokeSlowNames,6,&smokeSlowCount);
         InitObject(prmObjects,prmCount,smokeFastObjects,smokeFastNames,6,&smokeFastCount);
         smokeNumber=TextureTableCount;LoadCmpFiles(LoadCompressedTextureSequence(track1SmokeTextureSequence));

@@ -411,10 +411,28 @@ static bool ShowFrame(const Disc *disc, const Frame *frame, uint8_t *data, uint8
     return true;
 }
 
+/* The player executable name differs between the US and European discs. */
+static int MovieIndex(const char *program)
+{
+    const char *name = strrchr(program, '\\');
+    int movie = -1, i;
+
+    name = name ? name + 1 : program;
+    for (i = 0; i < (int)SDL_arraysize(movies); i++) {
+        if (!SDL_strcasecmp(name, movies[i].program)) {
+            movie = i;
+        }
+    }
+    /* Both regions use the intro entry; only the player executable has a different name. */
+    if (!SDL_strcasecmp(name, "palanim.exe")) {
+        movie = 0;
+    }
+    return movie;
+}
+
 void PsxPlayMovie(const char *program)
 {
     const Disc *disc = PsxIoDisc();
-    const char *name = strrchr(program, '\\');
     Sound sound = {0};
     SDL_AudioStream *audio = NULL;
     Frame *frames;
@@ -423,7 +441,7 @@ void PsxPlayMovie(const char *program)
     uint16_t previous;
     int32_t lba;
     uint32_t size;
-    int movie = -1, frameCount, soundStart, shown = 0, i;
+    int movie, frameCount, soundStart, shown = 0;
 
     if (portConfig.secondPlayer) {
         return; /* the second player's game shows no movies */
@@ -431,12 +449,7 @@ void PsxPlayMovie(const char *program)
     if (portConfig.fixedStep && !SDL_getenv("WIPEOUT_MOVIES")) {
         return; /* tests: the shown frames' count (the captures' numbers) stays the game's */
     }
-    name = name ? name + 1 : program;
-    for (i = 0; i < (int)SDL_arraysize(movies); i++) {
-        if (!SDL_strcasecmp(name, movies[i].program)) {
-            movie = i;
-        }
-    }
+    movie = MovieIndex(program);
     if (movie < 0 || (movie == 0 && portSettings.skipIntro)) {
         return; /* not a movie program, or the settings: no intro */
     }

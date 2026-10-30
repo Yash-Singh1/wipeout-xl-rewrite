@@ -53,6 +53,7 @@ extern int shakeAmount;
 extern int droidBlinkTick;
 extern TrackSection *startDroidSection;
 #include "functions.h"
+#include "portorig.h"
 #include "portfar.h" /* Port: the far view's shadows */
 #include "portinterp.h" /* Port: frame interpolation of the missiles' and rockets' flares */
 #include "../../platform/trace.h" /* Port: lockstep test hooks */
@@ -977,7 +978,8 @@ static void DrawDroid(Object *shape, TrackSection *section, int texture, int mir
     angle=ratan2(direction.vx,direction.vz);
     angle=4096-angle;
     SetSkeletonDirectionHPR(shape->skeleton,(short)angle,0,0);
-    SetSkeletonPosition(shape->skeleton,section->centre.vx,section->centre.vy-3000,section->centre.vz);
+    /* Port: guest tunnel clearance for the checkpoint board (portorig.c). */
+    SetSkeletonPosition(shape->skeleton,section->centre.vx,PortOriginalDroidY(shape,section),section->centre.vz);
     poly=(GT4 *)shape->primitives;
     tex=textureTable[texture+textureBase];
     switch(poly->type) {
