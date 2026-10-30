@@ -47,7 +47,7 @@
 static const struct {
     const char *program, *file;
     int frames, europeFrames;
-} movies[] = {{"ntscanim.exe", "\\MAKE.AV", 2044, 1709}, {"xtro1.exe", "\\XTRO1.AV", 630, 540},
+} movies[] = {{"ntscanim.exe", "\\MAKE.AV", 2044, 1703}, {"xtro1.exe", "\\XTRO1.AV", 630, 525},
               {"xtro2.exe", "\\XTRO2.AV", 600, 500},      {"xtro3.exe", "\\XTRO3.AV", 780, 650},
               {"xtro4.exe", "\\XTRO4.AV", 960, 800}};
 
@@ -441,7 +441,7 @@ void PsxPlayMovie(const char *program)
     uint16_t previous;
     int32_t lba;
     uint32_t size;
-    int movie, frameCount, soundStart, shown = 0;
+    int movie, frameCount, soundStart, shown = 0, decoded = 0, failed = 0, lastFrame = 0;
 
     if (portConfig.secondPlayer) {
         return; /* the second player's game shows no movies */
@@ -500,6 +500,7 @@ void PsxPlayMovie(const char *program)
             SDL_FlushAudioStream(audio);
             SDL_free(silence);
             SDL_ResumeAudioStreamDevice(audio);
+            PortLog("movie %s: audio %d Hz, %d channels\n", movies[movie].file, sound.rate, sound.channels);
         }
     }
 
@@ -536,12 +537,16 @@ void PsxPlayMovie(const char *program)
         if (next > 0 && frames[next].number < frames[next - 1].number) {
             break; /* the numbers start again: the end */
         }
-        ShowFrame(disc, &frames[next], data, rgb);
+        if (ShowFrame(disc, &frames[next], data, rgb)) decoded++;
+        else failed++;
+        lastFrame = frames[next].number;
         shown = next + 1;
         if (frames[next].number >= (PortRegionEurope() ? movies[movie].europeFrames : movies[movie].frames) - 2) {
             break; /* as the console's player, two frames before its count */
         }
     }
+    PortLog("movie %s: displayed %d frames, last frame %d, %d decode failures\n",
+            movies[movie].file, decoded, lastFrame, failed);
     if (audio) {
         SDL_DestroyAudioStream(audio);
     }
