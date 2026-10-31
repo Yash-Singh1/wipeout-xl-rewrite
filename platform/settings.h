@@ -32,6 +32,8 @@ typedef struct PortSettings {
     int noRumble;         /* the pads' motors stay still (port_platform.h's PortPadRumble) */
     int noFocusPause;     /* a race goes on when the window loses the focus (port_platform.h's PortFocusPause) */
     int rumbleStrength;   /* ... how hard they shake, in percent (0: 100) */
+    int negconPad;        /* which pad is in the first port: 0 whatever its controls look like, 1 a digital
+                             pad, 2 a neGcon (psx/pad.h's PsxPadSetType) */
     int renderScale;      /* the framebuffer's pixels per console pixel; 0: as many as the window shows (gpu_gl.c) */
     int hdTextures;       /* the HD texture pack is drawn (hdtex.c) */
     char hdPackPath[1024]; /* ... the player's pack: its .zip or folder */

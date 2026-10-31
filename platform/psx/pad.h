@@ -36,6 +36,9 @@ bool PsxPadGet(int port, PadState *state);
 /* Selects what the port reports to the game: a digital pad or a NeGcon. */
 void PsxPadSetType(int port, PadType type);
 PadType PsxPadGetType(int port);
+/* Whether the player (or WIPEOUT_PAD_TYPE) said which pad it is, rather than leaving it to whatever
+   the adapter's controls look like. */
+bool PsxPadTypeChosen(int port);
 
 /* What the keyboard's keys mean. In the menus (and the pause menu, the results and the name entry)
    the keys press the menu buttons; in a race that is being steered they press the race controls.

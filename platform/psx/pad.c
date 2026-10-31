@@ -33,6 +33,7 @@ typedef struct Port {
     PadState state[PAD_SRC_COUNT];
     bool connected[PAD_SRC_COUNT];
     PadType type;
+    bool typeChosen; /* the player (or WIPEOUT_PAD_TYPE) said which pad it is */
 } Port;
 
 typedef struct ScriptEntry {
@@ -117,7 +118,15 @@ void PsxPadSetType(int port, PadType type)
 {
     if (port >= 0 && port < PORTS) {
         ports[port].type = type;
+        ports[port].typeChosen = true;
     }
+}
+
+/* Whether the player (or WIPEOUT_PAD_TYPE) said which pad it is, rather than leaving it to whatever
+   the adapter's controls look like. */
+bool PsxPadTypeChosen(int port)
+{
+    return port >= 0 && port < PORTS && ports[port].typeChosen;
 }
 
 PadType PsxPadGetType(int port)
@@ -417,8 +426,11 @@ void PsxPadInit(const char *scriptPath)
     {
         const char *type = getenv("WIPEOUT_PAD_TYPE");
 
-        if (type && !strcmp(type, "negcon")) {
-            ports[0].type = PAD_NEGCON;
+        if (type) {
+            ports[0].typeChosen = true;
+            if (!strcmp(type, "negcon")) {
+                ports[0].type = PAD_NEGCON;
+            }
         }
     }
     if (scriptPath) {
