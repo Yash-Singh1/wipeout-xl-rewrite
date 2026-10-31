@@ -133,7 +133,5 @@ void PortLinkMenusStart(void)
 /* A race starts (1) or ends (0): a linked race splits the window between the two players. */
 void PortLinkRaceView(int racing)
 {
-    if (PortLinkRole() == PORT_LINK_MASTER) {
-        PortLinkSetSplit(racing && linked);
-    }
+    PortLinkSetSplit(racing && linked);
 }

@@ -81,7 +81,8 @@ static PadContext keyContext = PAD_CONTEXT_MENU;
 static SDL_Gamepad *gamepads[GAMEPADS];
 static SDL_Joystick *joysticks[GAMEPADS]; /* a pad the adapter reports only as a joystick (a PSX adapter
                                              with a neGcon, which SDL has no gamepad mapping for) */
-static uint16_t padHeldOver[GAMEPADS]; /* buttons held when the window regained the focus */
+static uint16_t padHeldOver[GAMEPADS]; /* held buttons suppressed until release after focus or setup changes */
+static PadContext padContext[GAMEPADS]; /* suppress a held menu pause button until it is released in the race */
 static bool padRegained[GAMEPADS];     /* the focus came back: note the buttons held now */
 
 /* Two players on one machine (link.c): the devices of the first player (the only one this game reads)
@@ -310,6 +311,10 @@ static void update_gamepad(int port)
         if (y < -16384) st.buttons |= PAD_UP;
         if (y > 16384) st.buttons |= PAD_DOWN;
     }
+    if (padContext[port] != PsxPadContext()) {
+        if (PsxPadContext() == PAD_CONTEXT_RACE) padHeldOver[port] |= st.buttons & (PAD_START | PAD_SELECT);
+        padContext[port] = PsxPadContext();
+    }
     if (padRegained[port]) {
         padRegained[port] = false;
         padHeldOver[port] = st.buttons;
@@ -479,6 +484,10 @@ static void update_joystick(int port)
             }
         }
     }
+    if (padContext[port] != PsxPadContext()) {
+        if (PsxPadContext() == PAD_CONTEXT_RACE) padHeldOver[port] |= st.buttons & (PAD_START | PAD_SELECT);
+        padContext[port] = PsxPadContext();
+    }
     if (padRegained[port]) {
         padRegained[port] = false;
         padHeldOver[port] = st.buttons;
@@ -496,6 +505,19 @@ static void update_port(int port)
         update_joystick(port);
     } else {
         update_gamepad(port);
+    }
+}
+
+/* Setup can finish between two fields. Consume pause buttons held there before the first race pad read. */
+void PortInputRaceStart(void)
+{
+    for (size_t i = 0; i < KEY_COUNT; i++) {
+        if (keyDown[i] && key_buttons(i, PAD_CONTEXT_RACE) == PAD_START) keyHeldOver[i] = true;
+    }
+    update_keyboard();
+    for (int port = 0; port < GAMEPADS; port++) {
+        padHeldOver[port] |= gamepadState[port].buttons & (PAD_START | PAD_SELECT);
+        if (device_id(port)) update_port(port);
     }
 }
 
@@ -576,9 +598,12 @@ static void SendSecondPlayer(void)
 static void ReceiveSecondPlayer(void)
 {
     static PadDevice shown = PAD_DEVICE_NONE;
+    static uint32_t setupKeys;
+    static uint16_t setupButtons;
     static const PadState idle = {0, 0x80, 0, 0, 0};
     LinkInput input;
     size_t i;
+    int racing = PortLinkRaceActive();
 
     if (!PortLinkGetInput(&input)) {
         return;
@@ -587,14 +612,24 @@ static void ReceiveSecondPlayer(void)
         shown = (PadDevice)input.device;
         PsxPadNoteDevice(shown);
     }
+    /* The first game's lobby owns setup input. The hidden game's menus are driven by portlink.c. */
+    if (!racing) {
+        setupKeys = input.keys;
+        setupButtons = input.pad.buttons;
+    } else {
+        setupKeys &= input.keys;
+        setupButtons &= input.pad.buttons;
+    }
     for (i = 0; i < KEY_COUNT && i < 32; i++) {
-        keyDown[i] = input.keyboard && ((input.keys >> i) & 1);
+        keyDown[i] = racing && input.keyboard && ((input.keys >> i) & 1) &&
+                     !((setupKeys & (1u << i)) && key_buttons(i, PAD_CONTEXT_RACE) == PAD_START);
         if (!keyDown[i]) {
             keyHeldOver[i] = false;
         }
     }
     update_keyboard();
-    PsxPadSetSource(0, PAD_SRC_GAMEPAD, input.keyboard ? &idle : &input.pad, !input.keyboard);
+    input.pad.buttons &= (uint16_t)~(setupButtons & (PAD_START | PAD_SELECT));
+    PsxPadSetSource(0, PAD_SRC_GAMEPAD, !racing || input.keyboard ? &idle : &input.pad, racing && !input.keyboard);
 }
 
 void PsxPadSetTouchSource(uint16_t (*buttons)(PadContext context))

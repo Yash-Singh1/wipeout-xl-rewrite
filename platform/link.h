@@ -41,6 +41,7 @@ int PortInputLastDevice(void);
 /* The lobby's assignment: the first player's device drives this game, the second player's goes over the
    link (-1: none; both -1: every device drives this game, as without a link). */
 void PortInputAssign(int first, int second);
+void PortInputRaceStart(void); /* release a held setup pause button before it can pause the race */
 
 int PortLinkRole(void);
 int PortLinkField(void);                    /* each field: alive; 1 while the second player's game starts up */
@@ -51,7 +52,6 @@ void PortLinkStopSlave(void);
 int PortLinkSlaveState(void);
 void PortLinkGo(int secondShip);
 void PortLinkSetInput(const LinkInput *input);
-void PortLinkSetSplit(int split);
 const uint8_t *PortLinkGetFrame(int *width, int *height, unsigned *sequence);
 /* The split window's lower half, for the slave's band: the widescreen margin and its size in pixels. */
 void PortLinkSetBand(int margin, int width, int height);
@@ -79,7 +79,9 @@ unsigned PortLinkPresentPeriod(void); /* how often the master shows the window (
 void PortLinkPutRumble(int kind, int level);
 
 /* Both */
+void PortLinkSetSplit(int split); /* this game entered/exited its race; the master also changes the split window */
 int PortLinkSplit(void);
+int PortLinkRaceActive(void); /* this game has entered its race, including the countdown and pause */
 int PortLinkTransfer(const uint8_t *send, uint8_t *recv, int count);
 void PortLinkShutdown(void);
 

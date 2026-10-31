@@ -40,6 +40,7 @@ typedef struct LinkShared {
     atomic_int split;               /* master: both are racing, the window is split */
     atomic_int bandMargin, bandWidth, bandHeight; /* master: the lower half (widescreen margin, pixels) */
     atomic_int interpolate;         /* master: pictures between the game's frames (the slave draws its own too) */
+    SDL_Mutex *inputLock;
     LinkInput input;                /* the second player's controller, written by the master */
     atomic_uint inputSequence;
     atomic_int rumble[PAD_RUMBLE_KINDS]; /* slave: what its game asks of the second player's motors, level + 1
@@ -52,6 +53,7 @@ typedef struct LinkShared {
 
 static LinkShared *shared;
 static int role = LINK_NONE;
+static int raceActive; /* this copy of the game has finished setup and entered its race */
 static int slave; /* the master: the slave was started (and has not been waited for since) */
 
 /* ---- shared memory ---- */
@@ -70,6 +72,11 @@ static LinkShared *MapShared(int create)
     }
     memory = SDL_calloc(1, sizeof(LinkShared));
     if (memory) {
+        memory->inputLock = SDL_CreateMutex();
+        if (!memory->inputLock) {
+            SDL_free(memory);
+            return NULL;
+        }
         memory->magic = LINK_MAGIC;
     }
     return memory;
@@ -78,6 +85,7 @@ static LinkShared *MapShared(int create)
 static void UnmapShared(void)
 {
     if (shared && role == LINK_MASTER && !slave) {
+        SDL_DestroyMutex(shared->inputLock);
         SDL_free(shared);
     }
     shared = NULL;
@@ -152,9 +160,11 @@ int PortLinkStartSlave(int windowWidth, int windowHeight)
         }
         KeepAwake();
     }
+    raceActive = 0;
     atomic_store(&shared->quit, 0);
     atomic_store(&shared->go, 0);
     atomic_store(&shared->split, 0);
+    atomic_store(&shared->frameSequence, 0);
     atomic_store(&shared->slaveState, LINK_SLAVE_BOOTING);
     atomic_store(&shared->sequence[0], 0);
     atomic_store(&shared->sequence[1], 0);
@@ -346,8 +356,10 @@ int PortLinkTransfer(const uint8_t *send, uint8_t *recv, int count)
 void PortLinkSetInput(const LinkInput *input)
 {
     if (shared) {
+        SDL_LockMutex(shared->inputLock);
         shared->input = *input;
         atomic_fetch_add(&shared->inputSequence, 1);
+        SDL_UnlockMutex(shared->inputLock);
     }
 }
 
@@ -356,7 +368,9 @@ int PortLinkGetInput(LinkInput *input)
     if (!shared) {
         return 0;
     }
+    SDL_LockMutex(shared->inputLock);
     *input = shared->input;
+    SDL_UnlockMutex(shared->inputLock);
     return 1;
 }
 
@@ -393,9 +407,16 @@ int PortLinkTakeRumble(int kind, int *level)
 
 /* ---- the split window ---- */
 
+int PortLinkRaceActive(void)
+{
+    return raceActive;
+}
+
 void PortLinkSetSplit(int split)
 {
-    if (shared) {
+    if (split && !raceActive) PortInputRaceStart();
+    raceActive = split;
+    if (shared && role == LINK_MASTER) {
         atomic_store(&shared->split, split);
     }
 }

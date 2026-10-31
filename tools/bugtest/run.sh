@@ -29,6 +29,16 @@ ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -iquote game/include 
     $(pkg-config --libs sdl3) -o "$test_build/steering_recording"
 "$test_build/steering_recording"
 
+${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -iquote game/include \
+    -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) tools/bugtest/test_link_timing.c \
+    $(pkg-config --libs sdl3) -o "$test_build/link_timing"
+"$test_build/link_timing"
+
+${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Iplatform -Iplatform/psx \
+    $(pkg-config --cflags sdl3) tools/bugtest/test_link_lifecycle.c $(pkg-config --libs sdl3) \
+    -o "$test_build/link_lifecycle"
+"$test_build/link_lifecycle"
+
 # Optional disc images exercise full intro decoding and compare all five frame limits
 # with the constants in the disc's player executables, then test skipping playback.
 if [ "$#" -gt 0 ]; then

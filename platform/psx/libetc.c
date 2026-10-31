@@ -110,7 +110,12 @@ static void Field(void)
     if (vblankCallback) {
         vblankCallback();
     }
-    PsxShowDisplay();
+    /* A split-screen picture can take longer than a field. Do not present it again while the
+       race clock is behind: both consoles still need their fields and simulation updates. */
+    if (!startTicks || portConfig.fixedStep || PortLinkRole() != LINK_MASTER || !PortLinkSplit() ||
+        SDL_GetTicksNS() <= startTicks + (uint64_t)((fields - paceField + 0.5) * FIELD_SECONDS * 1e9)) {
+        PsxShowDisplay();
+    }
     if (!PortPumpEvents()) {
         exit(0);
     }

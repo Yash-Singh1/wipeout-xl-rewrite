@@ -635,7 +635,7 @@ int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMem
             PortAutoSave(gameData, 1); /* Port: the game saves itself (portsave.c) */
         }
         if (!menuEditor) {
-            if (((GetMenuKey(MENU_KEY_SELECT) || PortLinkMenuSelect(screenCount)) && !screenCount && currMenu != MENU_LINK) || (currMenu == MENU_LINK && ((linked && linkState == 5) || linkTimedOut == 1))) { /* Port: the linked players' way through the menus (portlink.c) */
+            if (((PortLinkMenuSelect(screenCount) || GetMenuKey(MENU_KEY_SELECT)) && !screenCount && currMenu != MENU_LINK) || (currMenu == MENU_LINK && ((linked && linkState == 5) || linkTimedOut == 1))) { /* Port: the linked players' way through the menus (portlink.c) */
                 if (linkTimedOut) {
                     raceType = RACE_ARCADE;
                     linkTimedOut = 0;
@@ -700,7 +700,7 @@ int MenuControl(ConfigData *gameData, void *menuTexture, int *state, int raceMem
                     }
                 }
             }
-            if (GetMenuKey(MENU_KEY_BACK) && !(currMenu == MENU_LINK && (linkState == 3 || linkState == 4))) {
+            if (!negconCentre && (!PortLinkActive() || !screenCount) && GetMenuKey(MENU_KEY_BACK) && !(currMenu == MENU_LINK && (linkState == 3 || linkState == 4))) {
                 if (currMenu == MENU_LINK) {
                     raceType = RACE_ARCADE;
                     killLink();

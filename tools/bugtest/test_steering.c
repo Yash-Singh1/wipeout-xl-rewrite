@@ -8,6 +8,8 @@ PortConfig portConfig;
 static int focused = 1;
 static LinkInput linkedInput;
 static int linkRole = LINK_NONE;
+static int linkSplit = 1;
+int PortLinkRaceActive(void) { return linkSplit; }
 int PortWindowFocused(void) { return focused; }
 int PortLinkRole(void) { return linkRole; }
 void PortLinkSetInput(const LinkInput *input) { linkedInput = *input; }
@@ -88,6 +90,13 @@ int main(void)
     Axis(10000); assert(!(control.buttons & (CONTROL_RIGHT | CONTROL_LEFT | CONTROL_ANALOG_STEERING)));
     Axis(20000); assert((control.buttons & CONTROL_RIGHT) && !(control.buttons & CONTROL_ANALOG_STEERING));
     Set("digital_steering", "0");
+    assert(SDL_SetJoystickVirtualButton(stick, SDL_GAMEPAD_BUTTON_START, true));
+    Read(); assert(PsxPadButtons(0) & PAD_START);
+    PortInputRaceStart(); Read(); assert(!(PsxPadButtons(0) & PAD_START));
+    assert(SDL_SetJoystickVirtualButton(stick, SDL_GAMEPAD_BUTTON_START, false)); Read();
+    assert(SDL_SetJoystickVirtualButton(stick, SDL_GAMEPAD_BUTTON_START, true)); Read();
+    assert(PsxPadButtons(0) & PAD_START);
+    assert(SDL_SetJoystickVirtualButton(stick, SDL_GAMEPAD_BUTTON_START, false)); Read();
     /* A keyboard action must not turn a held stick into digital steering. */
     lastDevice = DEVICE_KEYBOARD;
     Axis(10000); assert(control.buttons & CONTROL_ANALOG_STEERING);
@@ -100,11 +109,39 @@ int main(void)
     SendSecondPlayer();
     assert(linkedInput.pad.analogSteering && linkedInput.pad.twist > 128);
     linkRole = LINK_SLAVE;
+    linkSplit = 0;
+    linkedInput.pad.buttons |= PAD_START;
+    ReceiveSecondPlayer();
+    assert(PsxPadButtons(0) == 0 && PsxPadSteering(0) == -1); /* no input in hidden setup menus */
+    linkSplit = 1;
+    ReceiveSecondPlayer();
+    assert(!(PsxPadButtons(0) & PAD_START)); /* held setup Start must not pause the race */
+    linkedInput.pad.buttons &= ~PAD_START;
+    ReceiveSecondPlayer();
+    linkedInput.pad.buttons |= PAD_START;
+    ReceiveSecondPlayer();
+    assert(PsxPadButtons(0) & PAD_START); /* a fresh in-race press still pauses */
+    linkedInput.pad.buttons &= ~PAD_START;
     ReceiveSecondPlayer();
     PadPacket linkedPacket;
     PsxPadFillBuffer(0, (uint8_t *)&linkedPacket, sizeof(linkedPacket));
     buildGameKeyPad(&linkedPacket, &control);
     assert((control.buttons & CONTROL_ANALOG_STEERING) && control.steering == linkedInput.pad.twist);
+    linkedInput.keyboard = 1;
+    keyContext = PAD_CONTEXT_RACE; /* PsxPadSdlField updates this before receiving input in the game */
+    size_t enterKey = 0, thrustKey = 0;
+    for (size_t i = 0; i < KEY_COUNT; i++) {
+        if (keyBindings[i].key == SDL_SCANCODE_RETURN) enterKey = i;
+        if (keyBindings[i].key == SDL_SCANCODE_S) thrustKey = i;
+    }
+    linkedInput.keys = (1u << enterKey) | (1u << thrustKey);
+    linkSplit = 0; ReceiveSecondPlayer(); assert(PsxPadButtons(0) == 0);
+    linkSplit = 1; ReceiveSecondPlayer();
+    assert(!(PsxPadButtons(0) & PAD_START) && (PsxPadButtons(0) & PAD_CROSS));
+    linkedInput.keys &= ~(1u << enterKey); ReceiveSecondPlayer();
+    linkedInput.keys |= 1u << enterKey; ReceiveSecondPlayer();
+    assert(PsxPadButtons(0) & PAD_START);
+    linkedInput.keys = 0; ReceiveSecondPlayer(); linkedInput.keyboard = 0;
     linkRole = LINK_NONE;
     PortInputAssign(DEVICE_NONE, DEVICE_NONE);
     focused = 0;

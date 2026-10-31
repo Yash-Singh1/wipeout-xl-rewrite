@@ -257,6 +257,7 @@ int PortLobby(ConfigData *gameData, MenuSelection *selection)
 
     if (frame - lastFrame > 8) {
         Start(gameData, selection);
+        state = PortLinkSlaveState(); /* Start may have launched it; do not restart the new game again below. */
     }
     lastFrame = frame;
     blink++;
