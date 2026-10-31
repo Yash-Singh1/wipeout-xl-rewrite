@@ -16,7 +16,7 @@ typedef struct GhostReplay {
     s32      attractSeed;   /* seed of the attract-mode random numbers when the race started */
     s32      keyCount;      /* keypress halfwords recorded (or played back) so far */
     s32      keyTotal;      /* keypress halfwords in the take */
-    s16      control;       /* pad type the take was recorded with: 1 digital, 2 analogue */
+    s16      control;       /* pad type the take was recorded with: 1 digital, 2 NeGcon, 3 modern stick with digital buttons */
     s16      disabled;      /* set when the take is not usable (recording was interrupted) */
     s16      magic;         /* GHOST_MAGIC when a take has been recorded */
     u8       trackNum;

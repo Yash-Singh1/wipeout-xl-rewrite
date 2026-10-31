@@ -19,8 +19,21 @@
 #include "controls.h"
 #include "platform.h"
 #include "psx/pad.h"
+#include "trace.h"
+#include "settings.h"
 
 /* ---- the game's calls ---- */
+
+int PortAnalogSteeringEnabled(void)
+{
+    return !portSettings.digitalSteering && !PortTracing();
+}
+
+int PortGamepadSteering(void)
+{
+    if (PortTracing()) return -1;
+    return PortPadScripted() ? PortScriptSteering() : PsxPadSteering(0);
+}
 
 void PortNameEntry(int keys)
 {

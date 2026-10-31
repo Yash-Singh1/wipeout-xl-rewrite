@@ -5,6 +5,7 @@
 #include "../../platform/trace.h" /* Port: lockstep test hooks */
 #include "ships.h"
 #include "pad.h"
+#include "../../platform/controls.h"
 #include "menus.h"
 #include "include_asm_g8.h"
 
@@ -209,6 +210,14 @@ void buildGameKeyPad(struct PadPacket *pad, ControlInput *control)
             if (held & keyDef[4]) control->buttons |= CONTROL_RIGHT_BRAKE;
             if (held & keyDef[5]) control->buttons |= CONTROL_THRUST;
             control->head = 1;
+            /* Port: a modern gamepad keeps these button bindings and adds proportional stick steering. */
+            if (!(held & (PAD_LEFT | PAD_RIGHT))) {
+                int steering = PortGamepadSteering();
+                if (steering >= 0) {
+                    control->steering = (u_char)steering;
+                    control->buttons |= CONTROL_ANALOG_STEERING;
+                }
+            }
         }
     } else {
         control->head = 0;

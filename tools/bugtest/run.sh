@@ -14,6 +14,21 @@ ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard \
     tools/bugtest/test_movie.c $(pkg-config --libs sdl3) -o "$test_build/movie"
 "$test_build/movie"
 
+# The input tests drive a real SDL virtual controller and the game's button decoder.
+${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Wno-deprecated-declarations -Wno-pointer-sign \
+    -include platform/include/port.h -iquote game/include -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) \
+    tools/bugtest/test_steering.c platform/psx/pad.c game/src/pad.c $(pkg-config --libs sdl3) -o "$test_build/steering"
+"$test_build/steering"
+for test in steering_target steering_ghost; do
+    ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Wno-deprecated-declarations -Wno-pointer-sign \
+        -include platform/include/port.h -iquote game/include "tools/bugtest/test_$test.c" -o "$test_build/$test"
+    "$test_build/$test"
+done
+${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -iquote game/include \
+    -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) tools/bugtest/test_steering_recording.c \
+    $(pkg-config --libs sdl3) -o "$test_build/steering_recording"
+"$test_build/steering_recording"
+
 # Optional disc images exercise full intro decoding and compare all five frame limits
 # with the constants in the disc's player executables, then test skipping playback.
 if [ "$#" -gt 0 ]; then

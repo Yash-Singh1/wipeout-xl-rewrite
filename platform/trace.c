@@ -19,6 +19,7 @@
 
 #include "platform.h"
 #include "trace.h"
+#include "psx/pad.h"
 
 /* The game's globals by name, for the write scripts: the program's own symbol table (on Windows
    the executable exports its symbols for this; the web has no such table and runs no traces). */
@@ -120,6 +121,7 @@ int PortTracing(void)
 typedef struct PadStep {
     uint32_t count;
     uint16_t buttons;
+    int steering; /* optional proportional stick byte, -1 for a digital-only entry */
 } PadStep;
 
 static PadStep *padSteps;
@@ -131,19 +133,28 @@ static void LoadPads(const char *path)
     FILE *f = fopen(path, "r");
     unsigned long count;
     unsigned buttons;
-    int capacity = 0;
+    char line[128];
+    int steering, fields, capacity = 0;
 
     if (!f) {
         fprintf(stderr, "trace: cannot read the pad script %s\n", path);
         exit(1);
     }
-    while (fscanf(f, "%lu %x", &count, &buttons) == 2) {
+    while (fgets(line, sizeof(line), f)) {
+        steering = -1;
+        fields = sscanf(line, "%lu %x %d", &count, &buttons, &steering);
+        if (fields < 2) continue;
+        if (steering < -1 || steering > 255) {
+            fprintf(stderr, "trace: invalid steering value in %s\n", path);
+            exit(1);
+        }
         if (padStepCount == capacity) {
             capacity = capacity ? capacity * 2 : 64;
             padSteps = SDL_realloc(padSteps, (size_t)capacity * sizeof(*padSteps));
         }
         padSteps[padStepCount].count = (uint32_t)count;
         padSteps[padStepCount].buttons = (uint16_t)buttons;
+        padSteps[padStepCount].steering = steering;
         padStepCount++;
     }
     fclose(f);
@@ -171,6 +182,14 @@ int PortPadScripted(void)
     return padSteps != NULL;
 }
 
+/* Optional steering values in recordings made with a modern gamepad. */
+int PortScriptSteering(void)
+{
+    int steering = -1, i;
+    for (i = 0; i < padStepCount && padSteps[i].count <= padReads; i++) steering = padSteps[i].steering;
+    return steering;
+}
+
 /* The script's buttons for the current read count, written into the packet. */
 static void ApplyScript(unsigned char *packet)
 {
@@ -193,6 +212,7 @@ static void ApplyScript(unsigned char *packet)
    read: the frame timing and the random seeds), loads.txt (the loading screens' lengths), and copies of
    the memory card and the settings at the start. tools/replay.sh plays the folder back. */
 static FILE *recordPads, *recordVcounts, *recordLoads;
+static int recordedSteering = -2;
 static int recordedButtons = -1;
 static char recordDir[1024];
 
@@ -253,7 +273,7 @@ void PortRecordVcount(int value)
 
 static void RecordPad(const unsigned char *packet)
 {
-    int buttons;
+    int buttons, steering;
 
     if (!recordPads) {
         return;
@@ -262,8 +282,11 @@ static void RecordPad(const unsigned char *packet)
     if (packet[1] != 0x41 && packet[1] != 0x23) {
         buttons = 0; /* nothing connected */
     }
-    if (buttons != recordedButtons) {
-        fprintf(recordPads, "%u %04x\n", padReads, buttons);
+    steering = packet[1] == 0x41 ? (padSteps ? PortScriptSteering() : PsxPadSteering(0)) : -1;
+    if (buttons != recordedButtons || steering != recordedSteering) {
+        if (steering >= 0) fprintf(recordPads, "%u %04x %d\n", padReads, buttons, steering);
+        else fprintf(recordPads, "%u %04x\n", padReads, buttons);
+        recordedSteering = steering;
         recordedButtons = buttons;
     }
 }

@@ -179,6 +179,17 @@ uint16_t PsxPadButtons(int port)
     return PsxPadGet(port, &st) ? st.buttons : 0;
 }
 
+int PsxPadSteering(int port)
+{
+    const Port *p;
+    const PadState *st;
+
+    if (port < 0 || port >= PORTS || scriptActive) return -1;
+    p = &ports[port];
+    st = &p->state[PAD_SRC_GAMEPAD];
+    return p->type == PAD_DIGITAL && p->connected[PAD_SRC_GAMEPAD] && st->analogSteering ? st->twist : -1;
+}
+
 void PsxPadFillBuffer(int port, uint8_t *buffer, int length)
 {
     PadState st;

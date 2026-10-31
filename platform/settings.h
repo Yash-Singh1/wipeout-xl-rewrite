@@ -48,6 +48,7 @@ typedef struct PortSettings {
     int farFlares;        /* the engine flares of the ships the whole track's view draws beyond the console's distance
                              (portfar.c; the console drew none there) */
     int surround;         /* the game's Stereo mode, a Dolby Surround encoding of its sound effects: SURROUND_* */
+    int digitalSteering; /* 0: proportional gamepad stick; 1: stick acts as the directional pad */
     int fullscreen;       /* the window was full screen when last left: the next start is too (video.c) */
 } PortSettings;
 

@@ -65,6 +65,8 @@ void PortPadSecondRumble(int kind, int level)
     (void)level;
 }
 
+int PortAnalogSteeringEnabled(void) { return 0; } /* these tests exercise the console pad protocol */
+
 int PortWindowFocused(void)
 {
     return 1;

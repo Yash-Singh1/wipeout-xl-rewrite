@@ -17,7 +17,8 @@
 
    Gamepads use the PlayStation layout on the standard gamepad buttons: south/east/west/north
    are Cross/Circle/Square/Triangle, the shoulders L1/R1, the triggers L2/R2, Start and Back
-   Start and Select, the left stick and the d-pad the directional pad. Every gamepad plugged in
+   Start and Select. The left stick steers proportionally in a race and navigates menus; the
+   d-pad stays digital. Every gamepad plugged in
    drives the console's first port, with the keyboard (the game reads no other); in the two-player
    lobby each player's own controller is assigned (see Route).
 
@@ -106,6 +107,7 @@ static char typed[NAME_KEYS];
 static int typedFirst, typedCount;
 
 static void Route(void);
+static void update_gamepad(int port);
 static PadDevice gamepad_device(SDL_Gamepad *g);
 static void update_joystick(int port);
 static void SendSecondPlayer(void);
@@ -241,9 +243,21 @@ void PsxPadSdlField(void)
         return;
     }
     update_keyboard();
+    /* Refresh even without an axis event: race/menu context and the steering option can change. */
+    for (int port = 0; port < GAMEPADS; port++) {
+        if (gamepads[port]) update_gamepad(port);
+    }
     if (routed && secondDevice != DEVICE_NONE) {
         SendSecondPlayer();
     }
+}
+
+/* Remove a small centre dead zone and spread the rest across the steering byte. */
+#define STICK_DEAD_ZONE 2600
+static uint8_t StickSteering(int x)
+{
+    int beyond = x > STICK_DEAD_ZONE ? x - STICK_DEAD_ZONE : x < -STICK_DEAD_ZONE ? x + STICK_DEAD_ZONE : 0;
+    return (uint8_t)SDL_clamp(128 + beyond * 128 / (32768 - STICK_DEAD_ZONE), 0, 255);
 }
 
 static void update_gamepad(int port)
@@ -287,8 +301,12 @@ static void update_gamepad(int port)
     if (lt > 8192) st.buttons |= PAD_L2;
     if (rt > 8192) st.buttons |= PAD_R2;
     if (PsxPadGetType(port) != PAD_NEGCON) {
-        if (x < -16384) st.buttons |= PAD_LEFT;
-        if (x > 16384) st.buttons |= PAD_RIGHT;
+        st.analogSteering = PortAnalogSteeringEnabled() && PsxPadContext() == PAD_CONTEXT_RACE;
+        st.twist = StickSteering(x);
+        if (!st.analogSteering) {
+            if (x < -16384) st.buttons |= PAD_LEFT;
+            if (x > 16384) st.buttons |= PAD_RIGHT;
+        }
         if (y < -16384) st.buttons |= PAD_UP;
         if (y > 16384) st.buttons |= PAD_DOWN;
     }
@@ -514,6 +532,7 @@ static void Route(void)
         }
         if (lastSlot >= 0 && lastSlot < GAMEPADS && device_id(lastSlot)) {
             merged.twist = gamepadState[lastSlot].twist;
+            merged.analogSteering = gamepadState[lastSlot].analogSteering;
             merged.analogI = gamepadState[lastSlot].analogI;
             merged.analogII = gamepadState[lastSlot].analogII;
             merged.analogL = gamepadState[lastSlot].analogL;
@@ -870,7 +889,8 @@ void PsxInputEvent(const SDL_Event *event)
         }
         break;
     case SDL_EVENT_GAMEPAD_AXIS_MOTION:
-        if (event->gaxis.value > 16384 || event->gaxis.value < -16384) {
+        if (event->gaxis.value > (event->gaxis.axis == SDL_GAMEPAD_AXIS_LEFTX ? STICK_DEAD_ZONE : 16384) ||
+            event->gaxis.value < -(event->gaxis.axis == SDL_GAMEPAD_AXIS_LEFTX ? STICK_DEAD_ZONE : 16384)) {
             note_gamepad(event->gaxis.which);
         }
         port = GamepadPort((int)event->gaxis.which);

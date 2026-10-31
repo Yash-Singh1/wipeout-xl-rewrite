@@ -58,15 +58,31 @@ void RecordKeypresses(ShipData *ships)
 {
     GhostReplay *take;
     s32          count;
+    int          i;
 
     take = recordBuffer;
     count = take->keyCount;
-    if (playerControl[0].head == 1) {
+    /* Port: a modern stick keeps digital button bindings but needs the steering byte in its ghost.
+       Promote any earlier digital frames to the two-word format when the stick is first used. */
+    if (take->control == 1 && playerControl[0].head == 1 &&
+        (playerControl[0].buttons & CONTROL_ANALOG_STEERING)) {
+        if (count > (GHOST_KEYS - 8) / 2) {
+            take->disabled = 1;
+            return;
+        }
+        for (i = count - 1; i >= 0; i--) {
+            take->keys[i * 2] = take->keys[i];
+            take->keys[i * 2 + 1] = 128;
+        }
+        take->control = 3;
+        take->keyCount = count *= 2;
+    }
+    if (playerControl[0].head == 1 && take->control != 3) {
         if (count < GHOST_KEYS - 4 && ships[ownShip].lap <= classLaps[shipClassIndex]) {
             take->keys[count] = playerControl[0].buttons & 0xEFF6;
             take->keyCount = take->keyCount + 1;
         }
-    } else if (playerControl[0].head == 2) {
+    } else if (playerControl[0].head == 2 || (playerControl[0].head == 1 && take->control == 3)) {
         if (count < GHOST_KEYS - 8 && ships[ownShip].lap <= classLaps[shipClassIndex]) {
             take->keys[count] = playerControl[0].buttons & 0xEFF6;
             take->keys[count + 1] = playerControl[0].steering | (playerControl[0].thrust << 8);

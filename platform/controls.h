@@ -10,6 +10,8 @@
    buttons the digital pad's six actions are bound to (the game's keyDef[]). The keyboard follows:
    its race keys press those buttons, and outside a steered race its keys drive the menus. */
 void PortRaceControls(int steering, const unsigned short *bindings);
+/* The modern gamepad stick, 0..255, or -1 when the game should use its digital inputs. */
+int PortGamepadSteering(void);
 
 /* Button glyphs. DoButton (menus.c) asks for the glyph of the player's device in place of the
    console's icon: `icon` is the console icon it was going to draw (0 circle, 1 cross, 2 square,

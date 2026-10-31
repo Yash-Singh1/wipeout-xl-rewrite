@@ -1898,6 +1898,12 @@ static void Console(void)
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Game", nullptr, FirstTab("game"))) {
+            static const char *const steeringModes[] = {"Analog", "Digital"};
+            if (ImGui::Combo("Stick steering", &portSettings.digitalSteering, steeringModes, IM_ARRAYSIZE(steeringModes))) {
+                Changed();
+            }
+            DisabledWrapped("Analog steering follows how far you move the left stick. The D-pad and keyboard keep digital steering.");
+            ImGui::Separator();
             TouchControls();
             ImGui::Separator();
             static const char *const padTypes[] = {"Automatic", "Digital pad", "NeGcon"};

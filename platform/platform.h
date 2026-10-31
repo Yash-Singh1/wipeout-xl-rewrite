@@ -49,6 +49,7 @@ int PortWindowFullscreen(void);
 int PortRestart(const char *discPath);
 /* Whether the window has the input focus (always, for the hidden test window). */
 int PortWindowFocused(void);
+int PortAnalogSteeringEnabled(void); /* ordinary gamepad sticks steer proportionally in races */
 /* Pumps window and input events; returns 0 when the user closed the window. */
 int PortPumpEvents(void);
 

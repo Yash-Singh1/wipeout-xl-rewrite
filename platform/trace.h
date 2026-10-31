@@ -62,6 +62,7 @@ int PortPadScripted(void);
    ship and the game's configuration. */
 void PortScriptWrites(void *ship, void *config, int owner);
 void PortScriptFixedPad(unsigned char *packet);
+int PortScriptSteering(void); /* a recorded modern stick value, or -1 */
 /* ... and so does buildGameKeyPad, without advancing the count. */
 void PortScriptGamePad(unsigned char *packet);
 

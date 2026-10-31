@@ -26,6 +26,7 @@ typedef struct PadState {
     uint8_t analogI;         /* NeGcon buttons I, II and the left shoulder, 0 .. 0xFF */
     uint8_t analogII;
     uint8_t analogL;
+    bool analogSteering;     /* a modern gamepad supplies proportional steering with digital button bindings */
 } PadState;
 
 /* Sets what a source holds on a port. `connected` says whether a pad is plugged into the port
@@ -59,6 +60,8 @@ PadContext PsxPadContext(void);
 /* The button each race action presses now (the game's binding, or the default layout's when the
    game has none yet or binds an analogue axis, and on the NeGcon the keyboard's own layout). */
 uint16_t PsxPadActionButton(int action);
+/* Proportional steering from the live gamepad on this port, or -1 for digital/scripted input. */
+int PsxPadSteering(int port);
 
 /* The device the player used last, which decides the button glyphs and names the game shows. */
 typedef enum {

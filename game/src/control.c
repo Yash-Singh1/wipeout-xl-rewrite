@@ -187,6 +187,35 @@ void SortAllShips(ShipData *shipIndex)
 }
 
 
+/* Port: ordinary gamepads use a centred, full-range stick independently of NeGcon calibration. */
+static short SteeringTarget(ShipData *ship, ControlInput *control)
+{
+    BrakeModes modes = brakeModes[0];
+
+    if (control->head == 1 || control->head == 3) {
+        return (short)(((128 - control->steering) * (ship->maxHeading + 400) * 2) / 255);
+    }
+    if (control->steering - twist + modes.value[currScreen] >= 127) {
+        control->steering = 127 - modes.value[currScreen];
+    } else if (control->steering - twist - modes.value[currScreen] < -126) {
+        control->steering = modes.value[currScreen] - 127;
+    } else {
+        control->steering = control->steering - twist;
+    }
+    control->steering += 128;
+    if (control->steering < 128 + modes.value[currScreen] && control->steering > 128 - modes.value[currScreen]) {
+        control->steering = 128;
+    } else if (control->steering >= 128 + modes.value[currScreen]) {
+        control->steering -= modes.value[currScreen];
+    } else {
+        control->steering += modes.value[currScreen];
+    }
+    if (turnDivisor == 0) {
+        turnDivisor = 1;
+    }
+    return ((128 - control->steering) * (ship->maxHeading + 400) << 1) / turnDivisor;
+}
+
 void UpdatePlayerShipStart(ShipData *shipIndex, Object **shipShapes, int shipNo, WeaponData *weaponIndex, ControlInput *controller)
 {
     ShipData *playerShip;
@@ -296,7 +325,6 @@ void SetUpFirstCheckPoint(void)
 void UpdatePlayerShip(ShipData *ships, Object **shapes, int shipNo, WeaponData *weapons, ControlInput *control)
 {
     int        pad[4];
-    BrakeModes  modes;
     ShipData *ship;
     short       targetTurn, maxThrust, thrustVal, launchThrust;
     int         thrust, targetThrust;
@@ -312,7 +340,6 @@ void UpdatePlayerShip(ShipData *ships, Object **shapes, int shipNo, WeaponData *
         return;
     }
     destroyed = 0;
-    modes = brakeModes[0];
     ship = &ships[shipNo];
     if (shipTargetIndex[shipNo] != -1) {
         ShipTrkReaction(ship, shapes);
@@ -327,25 +354,7 @@ void UpdatePlayerShip(ShipData *ships, Object **shapes, int shipNo, WeaponData *
         ship->attr &= ~ELECTROED;
     }
     if (control->buttons & CONTROL_ANALOG_STEERING) {
-        if (control->steering - twist + modes.value[currScreen] >= 127) {
-            control->steering = 127 - modes.value[currScreen];
-        } else if (control->steering - twist - modes.value[currScreen] < -126) {
-            control->steering = modes.value[currScreen] - 127;
-        } else {
-            control->steering = control->steering - twist;
-        }
-        control->steering += 128;
-        if (control->steering < 128 + modes.value[currScreen] && control->steering > 128 - modes.value[currScreen]) {
-            control->steering = 128;
-        } else if (control->steering >= 128 + modes.value[currScreen]) {
-            control->steering -= modes.value[currScreen];
-        } else {
-            control->steering += modes.value[currScreen];
-        }
-        if (turnDivisor == 0) {
-            turnDivisor = 1;
-        }
-        targetTurn = ((128 - control->steering) * (ship->maxHeading + 400) << 1) / turnDivisor;
+        targetTurn = SteeringTarget(ship, control);
         if (targetTurn > ship->vhdg) {
             if (targetTurn - ship->vhdg <= ship->headingInc) {
                 ship->vhdg += targetTurn - ship->vhdg;
