@@ -8,9 +8,9 @@ Local investigation of the open issue reports, October 29, 2026.
   playback of externally supplied videos.
 - #11: keep XL's geometry rotation off guest fan objects. Wipeout 64 animates the fan's
   texture; rotating its plane as well made it tumble.
-- #12: draw the thrust fill without additive blending during normal play. The fill
-  stays red over bright track surfaces. A scripted Gare d'Europa race capture confirms
-  the filled red meter. Trace runs retain the console's blending for comparisons.
+- #12: retain the console's additive thrust fill. DuckStation software-rendered captures
+  confirm that it washes out over the bright Gare d'Europa starting grid too. The
+  opaque workaround changed the design and exposed black texels; it has been reverted.
 - #13: lower checkpoint boards beneath overhead scenery polygons on Wipeout 64 tracks.
   The board's highest vertex and the roof's lowest vertex determine clearance, with
   128 units of space. Heights are cached per section and board height for the race.

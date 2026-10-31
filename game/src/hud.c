@@ -223,8 +223,7 @@ void InitSpeedo(Speedo *speedo)
         speedo->marker[screen].u3 = (u_char) speedoMarkerTex->u3;
         speedo->marker[screen].v3 = (u_char) (speedoMarkerTex->v3 + 1);
         speedo->marker[screen].tpage = GetTPage(0, 1, speedoMarkerTex->textureX, speedoMarkerTex->textureY);
-        /* Port: additive red washes out over bright track faces. Keep the fill visible. */
-        SetSemiTrans(&speedo->marker[screen], PortTracing() ? 1 : 0);
+        SetSemiTrans(&speedo->marker[screen], 1);
         speedo->marker[screen].clut = (u_short) speedoMarkerTex->cba;
         screen++;
     } while (screen < 2);
