@@ -1876,8 +1876,8 @@ static void Console(void)
             }
             if (portSettings.frameRate == FRAME_RATE_CAPPED) {
                 int cap = portSettings.frameCap;
-                if (ImGui::DragInt("Frames per second", &cap, 1.0f, 30, 1000)) {
-                    portSettings.frameCap = SDL_clamp(cap, 30, 1000);
+                if (ImGui::DragInt("Frames per second", &cap, 1.0f, 15, 1000)) {
+                    portSettings.frameCap = SDL_clamp(cap, 15, 1000);
                     Changed();
                 }
             }

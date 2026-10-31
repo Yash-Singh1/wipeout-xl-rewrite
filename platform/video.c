@@ -76,7 +76,8 @@ int PortVideoInit(void)
         return GpuInit();
     }
 #endif
-    if (portConfig.hidden) {
+    /* Visible benchmarks still use test isolation for settings and saves. */
+    if (portConfig.hidden && !SDL_getenv("WIPEOUT_SHOW_TEST_WINDOW")) {
         flags |= SDL_WINDOW_HIDDEN;
     } else if (portConfig.fullscreen) {
         flags |= SDL_WINDOW_FULLSCREEN;
@@ -253,6 +254,38 @@ void PortDumpVram(void)
     fclose(file);
 }
 
+/* Optional local benchmark output: measured presentations and game updates, independent of each other. */
+static void TimingLog(void)
+{
+    static int opened, wasRacing;
+    static FILE *file;
+    static uint64_t last, frames, fieldCount;
+    static int pictures;
+    uint64_t now;
+    int racing;
+
+    if (!opened) {
+        const char *path = SDL_getenv("WIPEOUT_TIMING_LOG");
+        opened = 1;
+        if (path && !portConfig.secondPlayer) file = fopen(path, "w");
+        if (file) fprintf(file, "seconds,display_fps,game_fps,field_hz,racing,cap\n");
+    }
+    if (!file) return;
+    now = SDL_GetTicksNS();
+    racing = PortLinkRaceActive() && PortLinkSplit();
+    if (!last || racing != wasRacing) {
+        last = now; frames = PortGameFrames(); fieldCount = PsxFieldCount(); pictures = shown;
+        wasRacing = racing;
+    } else if (now - last >= 1000000000ull) {
+        double seconds = (now - last) / 1e9;
+        fprintf(file, "%.3f,%.3f,%.3f,%.3f,%d,%d\n", now/1e9, (shown-pictures)/seconds,
+                (PortGameFrames()-frames)/seconds, (PsxFieldCount()-fieldCount)/seconds, racing,
+                portSettings.frameRate == FRAME_RATE_CAPPED ? portSettings.frameCap : 0);
+        fflush(file);
+        last = now; frames = PortGameFrames(); fieldCount = PsxFieldCount(); pictures = shown;
+    }
+}
+
 void PortVideoPresent(void)
 {
     /* The picture is opaque: blending (the subtractive modes, the fade) also changes the alpha the
@@ -267,6 +300,8 @@ void PortVideoPresent(void)
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     Capture();
     SDL_GL_SwapWindow(window);
+    PsxEndPresentation();
+    TimingLog();
 #ifdef __EMSCRIPTEN__
     ShowPicture();
 #endif

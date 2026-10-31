@@ -47,6 +47,51 @@ uint64_t PsxScanlines(void)
 static int hurry; /* the second player's game starts up unseen: no waiting for the fields (link.c) */
 static uint64_t paceField; /* the field the real-time pacing counts from (after such a start-up) */
 
+/* The field scanout and extra interpolated pictures share one cap. Reserve the start time before
+   rendering, so a slow picture consumes its budget rather than adding another full wait afterward. */
+static uint64_t nextPresentation, presentationStarted;
+static int presentationPending, presentationCap;
+
+static uint64_t PresentationPeriod(void)
+{
+    int cap = !portConfig.fixedStep && PortLinkRole() != LINK_SLAVE && portSettings.frameRate == FRAME_RATE_CAPPED
+                  ? SDL_max(portSettings.frameCap, 1) : 0;
+    if (cap != presentationCap) {
+        presentationCap = cap;
+        nextPresentation = 0;
+        presentationPending = 0;
+    }
+    return cap ? 1000000000ull / (uint64_t)cap : 0;
+}
+
+uint64_t PsxNextPresentation(void)
+{
+    return PresentationPeriod() ? nextPresentation : 0;
+}
+
+int PsxBeginPresentation(void)
+{
+    uint64_t now;
+    if (!PresentationPeriod() || presentationPending) return 1;
+    now = SDL_GetTicksNS();
+    if (now < nextPresentation) return 0;
+    presentationStarted = now;
+    presentationPending = 1;
+    return 1;
+}
+
+void PsxEndPresentation(void)
+{
+    uint64_t period = PresentationPeriod();
+    if (period && presentationPending) {
+        /* Keep the cadence when a picture starts a little late; restarting the interval there
+           accumulates render/scheduler jitter and turns a 60 cap into a much lower rate. */
+        nextPresentation = nextPresentation && presentationStarted < nextPresentation + period
+                               ? nextPresentation + period : presentationStarted + period;
+        presentationPending = 0;
+    }
+}
+
 static void Pace(void)
 {
     uint64_t now, due;
@@ -74,12 +119,10 @@ static void Pace(void)
     if (due > now && PsxCanInterpolate()) {
         /* frame interpolation: pictures between the game's frames until the field is due, as many as the
            settings allow (each waits for the display's refresh with VSync) */
-        static uint64_t lastPicture, pictureCost = 2000000;
+        static uint64_t pictureCost = 2000000;
 
         while ((now = SDL_GetTicksNS()) < due) {
-            uint64_t next = portSettings.frameRate == FRAME_RATE_CAPPED
-                                ? lastPicture + 1000000000ull / (uint64_t)SDL_max(portSettings.frameCap, 1)
-                                : now;
+            uint64_t next = PsxNextPresentation();
 
             if (next > now || now + pictureCost / 2 > due) {
                 /* not yet (the cap), or no time for one before the field: the game's time comes first (half a picture
@@ -87,7 +130,6 @@ static void Pace(void)
                 SDL_DelayPrecise(((next > now && next < due) ? next : due) - now);
                 continue;
             }
-            lastPicture = now;
             PsxDrawInterpolated();
             /* what a picture takes, drawing and showing it (with VSync, the wait for the display's refresh) */
             pictureCost = (pictureCost * 7 + (SDL_GetTicksNS() - now)) / 8;

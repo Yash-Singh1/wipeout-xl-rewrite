@@ -60,6 +60,10 @@ void PsxVBlank(void);
 /* The fields that have passed by the wall clock, without waiting: while the second player's game waits
    for the first's over the link (link.c), as the console's vertical blanks go on during a transfer. */
 void PsxPassFields(void);
+/* One presentation budget for field scanout and interpolation. Beginning is nonblocking; ending follows swap. */
+uint64_t PsxNextPresentation(void);
+int PsxBeginPresentation(void);
+void PsxEndPresentation(void);
 uint64_t PsxFieldCount(void);
 uint64_t PsxScanlines(void);  /* since power-on */
 

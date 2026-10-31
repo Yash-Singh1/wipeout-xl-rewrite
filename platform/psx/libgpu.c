@@ -682,6 +682,7 @@ static void ShowSplit(int x, int y)
 
 void PsxShowDisplay(void)
 {
+    if (!PsxBeginPresentation()) return;
     GpuFlush();
     if (PortLinkRole() == LINK_SLAVE && PortLinkSplit()) {
         PsxLinkWaiting(); /* (its pictures go to the first player's game) */
@@ -2144,6 +2145,7 @@ static void DrawInterpolated(float along)
 
 void PsxDrawInterpolatedAt(float along)
 {
+    if (!PsxBeginPresentation()) return;
     recordingBetween = FrameCapBetween(along < 0.0f ? 0.0f : along > 1.0f ? 1.0f : along, upcoming.offsetX,
                                        upcoming.offsetY, upcoming.left, upcoming.top, upcoming.width, upcoming.height);
     DrawInterpolated(along);

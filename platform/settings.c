@@ -45,7 +45,7 @@ static void Set(const char *key, const char *value)
     } else if (!strcmp(key, "frame_rate")) {
         portSettings.frameRate = SDL_clamp(number, FRAME_RATE_UNCAPPED, FRAME_RATE_CONSOLE);
     } else if (!strcmp(key, "frame_cap") && number > 0) {
-        portSettings.frameCap = SDL_clamp(number, 30, 1000);
+        portSettings.frameCap = SDL_clamp(number, 15, 1000);
     } else if (!strcmp(key, "skip_intro")) {
         portSettings.skipIntro = number != 0;
     } else if (!strcmp(key, "record_rate")) {
@@ -147,6 +147,9 @@ void PortSettingsLoad(void)
         SDL_free(text);
     }
     /* the environment overrides the file for this run */
+    if ((value = SDL_getenv("WIPEOUT_SKIP_INTRO"))) {
+        portSettings.skipIntro = SDL_atoi(value) != 0;
+    }
     if ((value = SDL_getenv("WIPEOUT_DIGITAL_STEERING"))) {
         portSettings.digitalSteering = SDL_atoi(value) != 0;
     }
@@ -203,7 +206,7 @@ void PortSettingsLoad(void)
             portSettings.frameRate = FRAME_RATE_CONSOLE;
         } else if (SDL_atoi(value) > 0) {
             portSettings.frameRate = FRAME_RATE_CAPPED;
-            portSettings.frameCap = SDL_clamp(SDL_atoi(value), 30, 1000);
+            portSettings.frameCap = SDL_clamp(SDL_atoi(value), 15, 1000);
         }
     }
     if ((value = SDL_getenv("WIPEOUT_FADE"))) {

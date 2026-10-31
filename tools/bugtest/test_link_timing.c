@@ -9,16 +9,17 @@ PortSettings portSettings;
 int portPal;
 static uint64_t now = 1000000000ull;
 static uint64_t presentationCost = 40000000ull;
-static int presentations;
+static int presentations, servicedFields, pumpedEvents, jitter;
+static uint64_t simulationCost;
 static int linkRole = LINK_MASTER, split = 1, interpolate;
 uint64_t TestTicksNS(void) { return now; }
 void TestDelayPrecise(uint64_t delay) { now += delay; }
 int PortLinkRole(void) { return linkRole; }
 int PortLinkSplit(void) { return split; }
 int PortLinkField(void) { return 0; }
-void PsxIoField(uint64_t field) {}
-void PsxShowDisplay(void) { presentations++; now += presentationCost; }
-int PortPumpEvents(void) { return 1; }
+void PsxIoField(uint64_t field) { servicedFields++; }
+void PsxShowDisplay(void) { if (!PsxBeginPresentation()) return; presentations++; now += presentationCost + (jitter && !(presentations % 10) ? 80000000ull : 0); PsxEndPresentation(); }
+int PortPumpEvents(void) { pumpedEvents++; return 1; }
 void PortSwapInterval(int vsync) {}
 int PsxInterpolationTest(void) { return 0; }
 int PsxCanInterpolate(void) { return interpolate; }
@@ -38,9 +39,11 @@ static double Run(int updates)
 {
     uint64_t began;
     fields = lines = counterBase = startTicks = paceField = 0;
-    presentations = 0;
+    presentations = servicedFields = pumpedEvents = 0;
+    presentationPending = presentationCap = 0; nextPresentation = 0;
     began = now;
-    for (int tick = 0; tick < updates; tick++) VSync(2);
+    for (int tick = 0; tick < updates; tick++) { now += simulationCost; VSync(2); }
+    assert(servicedFields == updates * 2 && pumpedEvents == updates * 2);
     return (now - began) / 1e9;
 }
 
@@ -52,6 +55,50 @@ int main(void)
     assert(presentations > 30 && presentations < 60);
     interpolate = 1;
     elapsed = Run(60); assert(elapsed > 1.9 && elapsed < 2.15);
+    presentationCost = 2000000ull;
+    const int caps[] = {15, 20, 30, 45, 60, 75, 90};
+    for (int i = 0; i < 7; i++) {
+        int cap = caps[i];
+        portSettings.frameRate = FRAME_RATE_CAPPED;
+        portSettings.frameCap = cap;
+        elapsed = Run(300);
+        double fps = presentations / elapsed;
+        printf("cap %d: %.2f displayed FPS, %.2f race updates/sec\n", cap, fps, 300 / elapsed);
+        assert(fps <= cap + 0.2 && fps > cap - 1.0);
+        assert(elapsed > 9.95 && elapsed < 10.15);
+    }
+    portSettings.frameCap = 60;
+    PsxNextPresentation();
+    nextPresentation = now + 1000000000ull / 60;
+    assert(!PsxBeginPresentation());
+    now = nextPresentation;
+    assert(PsxBeginPresentation() && PsxBeginPresentation()); /* nested interpolation shares the field's slot */
+    now += 2000000ull;
+    PsxEndPresentation(); assert(!PsxBeginPresentation());
+    now += 1000000000ull; /* a stall drops old deadlines, rather than presenting a burst to catch up */
+    assert(PsxBeginPresentation()); PsxEndPresentation(); assert(!PsxBeginPresentation());
+    for (int i = 0; i < 5; i++) {
+        portSettings.frameCap = caps[i];
+        for (int cost = 8; cost <= 80; cost *= 2) {
+            presentationCost = (uint64_t)cost * 1000000ull;
+            simulationCost = 5000000ull;
+            elapsed = Run(300);
+            assert(elapsed > 9.9 && elapsed < 10.25);
+        }
+    }
+    jitter = 1; presentationCost = 2000000ull;
+    elapsed = Run(300); assert(elapsed > 9.9 && elapsed < 10.25);
+    jitter = 0; simulationCost = 0;
+    portPal = 1;
+    for (int i = 0; i < 5; i++) {
+        portSettings.frameCap = caps[i];
+        elapsed = Run(250);
+        assert(elapsed > 9.9 && elapsed < 10.25);
+        assert(presentations / elapsed <= caps[i] + 0.2);
+    }
+    portPal = 0;
+    portSettings.frameRate = FRAME_RATE_UNCAPPED;
+    presentationCost = 40000000ull;
     interpolate = 0;
     portPal = 1;
     elapsed = Run(50);

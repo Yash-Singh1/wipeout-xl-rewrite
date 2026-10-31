@@ -196,6 +196,9 @@ int main(void)
     PsxPadSetType(0, PAD_DIGITAL);
     Set("pad_type", "2"); Set("digital_steering", "0");
     assert(portSettings.negconPad == 2 && !portSettings.digitalSteering);
+    Set("frame_cap", "15"); assert(portSettings.frameCap == 15);
+    Set("frame_cap", "1"); assert(portSettings.frameCap == 15);
+    Set("frame_cap", "1001"); assert(portSettings.frameCap == 1000);
     SDL_CloseGamepad(gamepads[0]);
     gamepads[0] = NULL;
     SDL_CloseJoystick(stick);
