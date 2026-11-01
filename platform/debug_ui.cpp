@@ -1969,9 +1969,7 @@ static void Console(void)
             ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10);
             if (ImGui::Combo("Controller##pad", &padType, padTypes, IM_ARRAYSIZE(padTypes))) {
                 portSettings.negconPad = padType;
-                if (padType) {
-                    PsxPadSetType(0, padType == 2 ? PAD_NEGCON : PAD_DIGITAL); /* the game notices at once */
-                }
+                PsxPadSetType(0, padType == 0 ? PAD_AUTO : padType == 2 ? PAD_NEGCON : PAD_DIGITAL);
                 Changed();
             }
             DisabledWrapped("Automatic reads a neGcon from the adapter it is on - the raphnet PSX-to-USB one - "

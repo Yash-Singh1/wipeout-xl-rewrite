@@ -15,7 +15,7 @@ enum {
     PAD_TRIANGLE = 0x1000, PAD_CIRCLE = 0x2000, PAD_CROSS = 0x4000, PAD_SQUARE = 0x8000
 };
 
-typedef enum { PAD_DIGITAL = 0x41, PAD_NEGCON = 0x23 } PadType;
+typedef enum { PAD_AUTO = 0, PAD_DIGITAL = 0x41, PAD_NEGCON = 0x23 } PadType;
 
 /* Input sources. Each keeps its own state for a port. */
 typedef enum { PAD_SRC_KEYBOARD, PAD_SRC_GAMEPAD, PAD_SRC_SCRIPT, PAD_SRC_COUNT } PadSource;
@@ -34,8 +34,10 @@ typedef struct PadState {
 void PsxPadSetSource(int port, PadSource source, const PadState *state, bool connected);
 /* The port's merged state; false if nothing is connected. */
 bool PsxPadGet(int port, PadState *state);
-/* Selects what the port reports to the game: a digital pad or a NeGcon. */
+/* Selects a digital pad or NeGcon, or clears the override with PAD_AUTO. */
 void PsxPadSetType(int port, PadType type);
+/* Adapter detection updates the automatic type without overriding a manual choice. */
+void PsxPadDetectType(int port, PadType type);
 PadType PsxPadGetType(int port);
 /* Whether the player (or WIPEOUT_PAD_TYPE) said which pad it is, rather than leaving it to whatever
    the adapter's controls look like. */

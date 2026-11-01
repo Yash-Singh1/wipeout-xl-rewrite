@@ -32,7 +32,7 @@
 typedef struct Port {
     PadState state[PAD_SRC_COUNT];
     bool connected[PAD_SRC_COUNT];
-    PadType type;
+    PadType type, detectedType;
     bool typeChosen; /* the player (or WIPEOUT_PAD_TYPE) said which pad it is */
 } Port;
 
@@ -117,8 +117,17 @@ void PsxPadSetSource(int port, PadSource source, const PadState *state, bool con
 void PsxPadSetType(int port, PadType type)
 {
     if (port >= 0 && port < PORTS) {
-        ports[port].type = type;
-        ports[port].typeChosen = true;
+        ports[port].typeChosen = type != PAD_AUTO;
+        ports[port].type = type != PAD_AUTO ? type :
+            ports[port].detectedType ? ports[port].detectedType : PAD_DIGITAL;
+    }
+}
+
+void PsxPadDetectType(int port, PadType type)
+{
+    if (port >= 0 && port < PORTS) {
+        ports[port].detectedType = type;
+        if (!ports[port].typeChosen) ports[port].type = type;
     }
 }
 

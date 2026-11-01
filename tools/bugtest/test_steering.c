@@ -176,6 +176,14 @@ int main(void)
     assert(PsxPadGet(0, &state) && (state.buttons & PAD_RIGHT)); /* menu navigation */
     assert(StickSteering(2600) == 128 && StickSteering(2601) == 128);
     assert(StickSteering(-2600) == 128 && StickSteering(-2601) == 128);
+    /* Switching back to Automatic changes the packet and mapping without a restart. */
+    PsxPadSetType(0, PAD_NEGCON); Read();
+    assert(control.head == 2 && PsxPadTypeChosen(0));
+    PsxPadSetType(0, PAD_AUTO); Read();
+    assert(control.head == 1 && PsxPadGetType(0) == PAD_DIGITAL && !PsxPadTypeChosen(0));
+    PsxPadSetType(0, PAD_DIGITAL);
+    PsxPadSetType(0, PAD_AUTO); Read();
+    assert(control.head == 1 && !PsxPadTypeChosen(0));
     /* PR #7's raw raphnet joystick still auto-detects as NeGcon, with independent analogue buttons. */
     SDL_VirtualJoystickDesc adapter;
     SDL_INIT_INTERFACE(&adapter);
@@ -203,12 +211,43 @@ int main(void)
     assert(gamepadState[1].analogL == 10000 / 128);
     assert((gamepadState[1].buttons & (PAD_CIRCLE | PAD_TRIANGLE)) == (PAD_CIRCLE | PAD_TRIANGLE));
     PortInputAssign((int)adapterId, DEVICE_NONE);
-    PsxPadSetType(0, PAD_NEGCON);
+    assert(PsxPadGetType(0) == PAD_NEGCON && !PsxPadTypeChosen(0));
+    assert(!PsxPadTypeChosen(1)); /* detection must never become a manual override */
     PsxPadFillBuffer(0, (uint8_t *)&linkedPacket, sizeof(linkedPacket));
     buildGameKeyPad(&linkedPacket, &control);
     assert(control.head == 2 && (control.buttons & CONTROL_ANALOG_STEERING));
+    PsxPadSetType(0, PAD_DIGITAL);
+    PsxPadSdlField(); /* no new physical input events */
+    PsxPadFillBuffer(0, (uint8_t *)&linkedPacket, sizeof(linkedPacket));
+    buildGameKeyPad(&linkedPacket, &control);
+    assert(control.head == 1 && PsxPadTypeChosen(0));
+    PsxPadSetType(0, PAD_AUTO);
+    PsxPadSdlField();
+    PsxPadFillBuffer(0, (uint8_t *)&linkedPacket, sizeof(linkedPacket));
+    buildGameKeyPad(&linkedPacket, &control);
+    assert(control.head == 2 && !PsxPadTypeChosen(0));
+    assert(gamepadState[1].analogI == 20000 / 128 && gamepadState[1].analogL == 10000 / 128);
+    PsxPadSetType(0, PAD_NEGCON);
+    PsxPadSetType(0, PAD_AUTO);
+    assert(PsxPadGetType(0) == PAD_NEGCON && !PsxPadTypeChosen(0));
     close_gamepad(adapterId);
     assert(SDL_DetachVirtualJoystick(adapterId));
+    assert(PsxPadGetType(0) == PAD_DIGITAL && !PsxPadTypeChosen(0));
+    adapterId = SDL_AttachVirtualJoystick(&adapter);
+    assert(adapterId); open_gamepad(adapterId);
+    PortInputAssign((int)adapterId, DEVICE_NONE);
+    assert(PsxPadGetType(0) == PAD_NEGCON && !PsxPadTypeChosen(0));
+    close_gamepad(adapterId); assert(SDL_DetachVirtualJoystick(adapterId));
+    /* Reusing that slot for an unknown adapter must not retain NeGcon detection. */
+    adapter.vendor_id = 0x1234; adapter.product_id = 0x5678;
+    PsxPadSetType(0, PAD_NEGCON);
+    adapterId = SDL_AttachVirtualJoystick(&adapter);
+    assert(adapterId); open_gamepad(adapterId);
+    PortInputAssign((int)adapterId, DEVICE_NONE);
+    assert(PsxPadGetType(0) == PAD_NEGCON && PsxPadTypeChosen(0)); /* preserve an explicit choice */
+    PsxPadSetType(0, PAD_AUTO);
+    assert(PsxPadGetType(0) == PAD_DIGITAL && !PsxPadTypeChosen(0));
+    close_gamepad(adapterId); assert(SDL_DetachVirtualJoystick(adapterId));
     PortInputAssign(DEVICE_NONE, DEVICE_NONE);
     PsxPadSetType(0, PAD_DIGITAL);
     Set("pad_type", "2"); Set("digital_steering", "0");
@@ -221,6 +260,6 @@ int main(void)
     SDL_CloseJoystick(stick);
     SDL_DetachVirtualJoystick(id);
     SDL_Quit();
-    puts("analog steering, digital option, button bindings, D-pad, menus, focus and NeGcon adapter mapping: OK");
+    puts("analog steering, bindings, menus, focus, live Automatic selection and NeGcon hotplug: OK");
     return 0;
 }

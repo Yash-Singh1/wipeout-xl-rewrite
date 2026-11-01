@@ -112,6 +112,7 @@ static void Route(void);
 static void update_gamepad(int port);
 static PadDevice gamepad_device(SDL_Gamepad *g);
 static void update_joystick(int port);
+static PadType device_type(int port);
 static void SendSecondPlayer(void);
 static void ReceiveSecondPlayer(void);
 static void rumble_tick(void);
@@ -251,6 +252,7 @@ void PsxPadSdlField(void)
     /* Refresh even without an axis event: race/menu context and the steering option can change. */
     for (int port = 0; port < GAMEPADS; port++) {
         if (gamepads[port]) update_gamepad(port);
+        else if (joysticks[port]) update_joystick(port);
     }
     if (routed && secondDevice != DEVICE_NONE) {
         SendSecondPlayer();
@@ -305,7 +307,7 @@ static void update_gamepad(int port)
     rt = SDL_GetGamepadAxis(g, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER);
     if (lt > 8192) st.buttons |= PAD_L2;
     if (rt > 8192) st.buttons |= PAD_R2;
-    if (PsxPadGetType(port) != PAD_NEGCON) {
+    if (device_type(port) != PAD_NEGCON) {
         st.analogSteering = PortAnalogSteeringEnabled() && PsxPadContext() == PAD_CONTEXT_RACE;
         st.twist = StickSteering(x);
         if (!st.analogSteering) {
@@ -326,7 +328,7 @@ static void update_gamepad(int port)
     }
     padHeldOver[port] &= st.buttons;
     st.buttons &= (uint16_t)~padHeldOver[port];
-    if (PsxPadGetType(port) == PAD_NEGCON) {
+    if (device_type(port) == PAD_NEGCON) {
         /* the stick twists; the right trigger and south button are button I, west button II,
            the left trigger the analogue left shoulder, east button B, north button A */
         uint16_t held = st.buttons;
@@ -415,6 +417,14 @@ static bool adapter_negcon(SDL_Joystick *j)
     return a >= 0 && adapters[a].neGcon;
 }
 
+/* Raw device slots may differ from the game ports after assigning two players. */
+static PadType device_type(int port)
+{
+    int player = routed && (int)device_id(port) == secondDevice ? 1 : 0;
+    if (PsxPadTypeChosen(player)) return PsxPadGetType(player);
+    return joysticks[port] && adapter_negcon(joysticks[port]) ? PAD_NEGCON : PAD_DIGITAL;
+}
+
 /* A pad the adapter reports only as a joystick, by the console's own packet: the twist and the three
    analogue buttons become the packet's four analogue bytes and the buttons its bits. So a neGcon twists
    and presses its analogue I, II and L, and a digital pad presses its buttons, whatever the adapter's
@@ -450,7 +460,7 @@ static void update_joystick(int port)
         /* an adapter nobody has written down: the console's own, where the left stick is the twist */
         if (axes > 0) turned = SDL_GetJoystickAxis(j, 0);
     }
-    if (PsxPadGetType(port) == PAD_NEGCON) {
+    if (device_type(port) == PAD_NEGCON) {
         st.twist = analogue_twist(turned);
         if (st.twist > 0x70 && st.twist < 0x90) st.twist = 0x80; /* dead zone */
         st.analogI = analogue_button(buttonI);
@@ -546,6 +556,15 @@ static void Route(void)
     static const PadState idle = {0, 0x80, 0, 0, 0};
     int port;
 
+    /* Keep the automatic game-port type in step with the selected physical device. */
+    port = routed ? GamepadPort(firstDevice) : lastSlot;
+    if (!routed && (port < 0 || !device_id(port))) {
+        port = -1;
+        for (int slot = 0; slot < GAMEPADS; slot++) {
+            if (device_id(slot)) { port = slot; break; }
+        }
+    }
+    PsxPadDetectType(0, port >= 0 && joysticks[port] && adapter_negcon(joysticks[port]) ? PAD_NEGCON : PAD_DIGITAL);
     if (PortUpdateAvailable()) {
         // The alert owns input; keep both game ports neutral until it closes.
         PsxPadSetSource(0, PAD_SRC_KEYBOARD, &idle, true);
@@ -722,6 +741,7 @@ static void open_gamepad(SDL_JoystickID id)
             gamepads[port] = SDL_OpenGamepad(id);
             if (gamepads[port]) {
                 PortLog("pad: %s (gamepad %d)\n", SDL_GetGamepadName(gamepads[port]), port + 1);
+                PsxPadDetectType(port, PAD_DIGITAL);
                 update_gamepad(port);
             }
         } else {
@@ -729,12 +749,8 @@ static void open_gamepad(SDL_JoystickID id)
             joysticks[port] = SDL_OpenJoystick(id);
             if (joysticks[port]) {
                 PortLog("pad: %s (joystick %d)\n", SDL_GetJoystickName(joysticks[port]), port + 1);
-                if (adapter_negcon(joysticks[port]) && !PsxPadTypeChosen(port)) {
-                    /* the adapter is one that presents a neGcon (its twist and its analogue I, II and
-                       L); the debug console's "Controller" says otherwise */
-                    PsxPadSetType(port, PAD_NEGCON);
-                    PortLog("pad: it is a neGcon\n");
-                }
+                PsxPadDetectType(port, adapter_negcon(joysticks[port]) ? PAD_NEGCON : PAD_DIGITAL);
+                if (device_type(port) == PAD_NEGCON) PortLog("pad: it is a neGcon\n");
                 update_joystick(port);
             }
         }
@@ -758,7 +774,9 @@ static void close_gamepad(SDL_JoystickID id)
             SDL_CloseJoystick(joysticks[port]);
             joysticks[port] = NULL;
         }
+        PsxPadDetectType(port, PAD_DIGITAL);
         update_port(port);
+        Route();
         PortLog("pad: port %d unplugged\n", port + 1);
     }
 }
