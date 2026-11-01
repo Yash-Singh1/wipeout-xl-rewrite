@@ -15,12 +15,13 @@
                          sprites (types 10 and 11) are scaled by distance and rotated by `roll`.
      AsmDrawObjectLit    the same, except that gouraud polygons keep their colours, flat textured polygons are
                          tinted by `colour`, and everything is linked 0x78 slots nearer.
-     AsmDrawObjectFixed  for the sky: every polygon is drawn flat and linked into one fixed slot, with
-                         the facing test always applied and no sprites. */
+     AsmDrawObjectFixed  for the sky: XL draws it flat, while the original Wipeout's guest skies keep
+                         their corner colours. All use one fixed slot, facing tests and no sprites. */
 #include "functions.h"
 #include "drawasm.h"
 #include "../../platform/psx/gte.h"
 #include "portfar.h"
+#include "portorig.h"
 
 extern short   CurrentScreen;
 extern u_long *OT[2];
@@ -358,8 +359,13 @@ static char *DrawTexturedQuad(DrawKind kind, char *out, u_long *ordering, int fi
     return out + sizeof(POLY_FT4);
 }
 
-/* Gouraud textured polygons keep their colours (the lit renderer). */
-static char *DrawGouraudTexturedTriangle(DrawKind kind, char *out, u_long *ordering, const GT3 *prim)
+/* The original Wipeout's sky renderer emits GT3/GT4 packets, unlike XL's flat sky. */
+static int GouraudColours(DrawKind kind)
+{
+    return kind == DRAW_LIT || (kind == DRAW_FIXED && PortOriginalLooks());
+}
+
+static char *DrawGouraudTexturedTriangle(DrawKind kind, char *out, u_long *ordering, int fixedSlot, const GT3 *prim)
 {
     ProjectedVertex *v0 = &projected[prim->coords[0]], *v1 = &projected[prim->coords[1]], *v2 = &projected[prim->coords[2]];
     POLY_GT3        *poly = (POLY_GT3 *)out;
@@ -380,11 +386,11 @@ static char *DrawGouraudTexturedTriangle(DrawKind kind, char *out, u_long *order
     SetRgb(&poly->r0, &poly->g0, &poly->b0, &prim->colour[0]);
     poly->r1 = prim->colour[1].r; poly->g1 = prim->colour[1].g; poly->b1 = prim->colour[1].b; poly->p1 = prim->colour[1].cd;
     poly->r2 = prim->colour[2].r; poly->g2 = prim->colour[2].g; poly->b2 = prim->colour[2].b; poly->p2 = prim->colour[2].cd;
-    AddPrim(DepthSlot(kind, ordering, 0, v0, v1, v2, 0), poly);
+    AddPrim(DepthSlot(kind, ordering, fixedSlot, v0, v1, v2, 0), poly);
     return out + sizeof(POLY_GT3);
 }
 
-static char *DrawGouraudTexturedQuad(DrawKind kind, char *out, u_long *ordering, const GT4 *prim)
+static char *DrawGouraudTexturedQuad(DrawKind kind, char *out, u_long *ordering, int fixedSlot, const GT4 *prim)
 {
     ProjectedVertex *v0 = &projected[prim->coords[0]], *v1 = &projected[prim->coords[1]];
     ProjectedVertex *v2 = &projected[prim->coords[2]], *v3 = &projected[prim->coords[3]];
@@ -409,7 +415,7 @@ static char *DrawGouraudTexturedQuad(DrawKind kind, char *out, u_long *ordering,
     poly->r1 = prim->colour[1].r; poly->g1 = prim->colour[1].g; poly->b1 = prim->colour[1].b; poly->p1 = prim->colour[1].cd;
     poly->r2 = prim->colour[2].r; poly->g2 = prim->colour[2].g; poly->b2 = prim->colour[2].b; poly->p2 = prim->colour[2].cd;
     poly->r3 = prim->colour[3].r; poly->g3 = prim->colour[3].g; poly->b3 = prim->colour[3].b; poly->p3 = prim->colour[3].cd;
-    AddPrim(DepthSlot(kind, ordering, 0, v0, v1, v2, v3), poly);
+    AddPrim(DepthSlot(kind, ordering, fixedSlot, v0, v1, v2, v3), poly);
     return out + sizeof(POLY_GT4);
 }
 
@@ -778,6 +784,7 @@ static void DrawObject(Object *object, DrawKind kind, int roll, const CVECTOR *c
     char   *out;
     char   *primitive;
     int     count, index = 0;
+    int     gouraud = GouraudColours(kind);
     unsigned char *drawnFlags = NULL;
     const unsigned char *skip = NULL;
 
@@ -814,16 +821,16 @@ static void DrawObject(Object *object, DrawKind kind, int roll, const CVECTOR *c
         culled = 0;
         switch ((u_short)prim.prim->type) {
         case TypeGT3:
-            if (kind == DRAW_LIT) {
-                out = DrawGouraudTexturedTriangle(kind, out, ordering, prim.gt3);
+            if (gouraud) {
+                out = DrawGouraudTexturedTriangle(kind, out, ordering, fixedSlot, prim.gt3);
             } else {
                 out = DrawTexturedTriangle(kind, out, ordering, fixedSlot, (const FT3 *)prim.gt3, &prim.gt3->colour[0]);
             }
             primitive += sizeof(GT3);
             break;
         case TypeGT4:
-            if (kind == DRAW_LIT) {
-                out = DrawGouraudTexturedQuad(kind, out, ordering, prim.gt4);
+            if (gouraud) {
+                out = DrawGouraudTexturedQuad(kind, out, ordering, fixedSlot, prim.gt4);
             } else {
                 out = DrawTexturedQuad(kind, out, ordering, fixedSlot, (const FT4 *)prim.gt4, &prim.gt4->colour[0]);
             }

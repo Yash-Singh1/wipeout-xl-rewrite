@@ -8,6 +8,9 @@ static u_long ordering[8192];
 static int linked;
 static void *packet;
 static u_long *packetSlot;
+static int originalLook;
+int PortOriginalLooks(void) { return originalLook; }
+int PortTracing(void) { return 0; }
 int PortScreenMargin(void) { return 0; }
 char *PortNearAlloc(int bytes) { assert(bytes <= sizeof(arena)); return arena.bytes; }
 u_long *PortFarSlot(int entry, double depth) { (void)depth; return ordering + entry; }
@@ -94,6 +97,37 @@ int main(void)
     assert(!DrawNearPrimitive(&object, 0, ordering, prim) && linked == 0);
     face.coords[3] = 4;
     assert(!DrawNearPrimitive(&object, 0, ordering, prim));
+    /* The 1995 sky keeps four independent colours at the fixed background slot.
+       Flattening these to colour[0] turns the aurora into solid bands. */
+    {
+        GT4 sky = {0}; GT3 triangle = {0};
+        originalLook = 1;
+        assert(GouraudColours(DRAW_FIXED) && GouraudColours(DRAW_LIT));
+        assert(!GouraudColours(DRAW_PLAIN));
+        originalLook = 0;
+        assert(!GouraudColours(DRAW_FIXED) && GouraudColours(DRAW_LIT));
+        for (int i = 0; i < 4; i++) {
+            sky.coords[i] = (short)i;
+            sky.colour[i] = (CVECTOR){30 + i * 40, 50 + i * 30, 70 + i * 20, 0};
+            projected[i] = (ProjectedVertex){(i % 2 * 100) | (i / 2 * 100 << 16), 100, 0};
+        }
+        linked = 0;
+        assert(DrawGouraudTexturedQuad(DRAW_FIXED, arena.bytes, ordering, 8191, &sky) ==
+               arena.bytes + sizeof(POLY_GT4));
+        assert(linked == 1 && packetSlot == ordering + 8191 && arena.gt.code == 0x3c);
+        assert(arena.gt.r0 == 30 && arena.gt.g0 == 50 && arena.gt.b0 == 70);
+        assert(arena.gt.r1 == 70 && arena.gt.g1 == 80 && arena.gt.b1 == 90);
+        assert(arena.gt.r2 == 110 && arena.gt.g2 == 110 && arena.gt.b2 == 110);
+        assert(arena.gt.r3 == 150 && arena.gt.g3 == 140 && arena.gt.b3 == 130);
+        for (int i = 0; i < 3; i++) {
+            triangle.coords[i] = sky.coords[i]; triangle.colour[i] = sky.colour[i];
+        }
+        linked = 0;
+        assert(DrawGouraudTexturedTriangle(DRAW_FIXED, arena.bytes, ordering, 8191, &triangle) ==
+               arena.bytes + sizeof(POLY_GT3));
+        assert(linked == 1 && packetSlot == ordering + 8191 && ((POLY_GT3 *)arena.bytes)->code == 0x34);
+    }
     puts("near scenery keeps PS1 quad geometry and original vertex positions: OK");
+    puts("1995 sky keeps Gouraud corner colours in the fixed background slot: OK");
     return 0;
 }

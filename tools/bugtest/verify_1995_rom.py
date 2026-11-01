@@ -12,6 +12,7 @@ from unicorn import Uc, UC_ARCH_MIPS, UC_MODE_MIPS32, UC_MODE_LITTLE_ENDIAN
 from unicorn.mips_const import (
     UC_MIPS_REG_A0, UC_MIPS_REG_A1, UC_MIPS_REG_A2, UC_MIPS_REG_A3,
     UC_MIPS_REG_GP, UC_MIPS_REG_SP, UC_MIPS_REG_RA,
+    UC_MIPS_REG_S2, UC_MIPS_REG_S4,
 )
 
 parser = argparse.ArgumentParser(description=__doc__)
@@ -85,4 +86,14 @@ for offset in range(0, len(values), 47):
         colours = [v for k in range(4) for v in read(polygons + 36 + i * 44 + 28 + k * 4, "3B")]
         assert colours == expected[10 + i % 3 * 12:22 + i % 3 * 12]
     assert read(polygons + 36 + 80 * 44 + 28, "3B") == (10, 20, 30)
-print("USA PS1: beacon, pump matrices and all 80 aurora quads verified at all 15 fixture updates")
+    # The retail sky renderer preserves all four colours in a Gouraud GPU packet.
+    # Execute its packet-emission block after projection and facing tests.
+    for i in range(3):
+        face, packet = polygons + 36 + i * 44, 0x80180000
+        cpu.reg_write(UC_MIPS_REG_S2, packet)
+        cpu.reg_write(UC_MIPS_REG_S4, face)
+        cpu.emu_start(0x80014518, 0x80014578, count=1000)
+        assert read(packet + 3, "B")[0] == 12 and read(packet + 7, "B")[0] == 0x3c
+        for k in range(4):
+            assert read(packet + 4 + k * 12, "3B") == read(face + 28 + k * 4, "3B")
+print("USA PS1: scenery, all 80 aurora quads and Gouraud sky GPU packets verified at all 15 fixture updates")
