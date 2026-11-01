@@ -20,6 +20,7 @@
 #include "mobile.h"
 #include "music.h"
 #include "settings.h"
+#include "updates.h"
 #include "trace.h"
 
 PortConfig portConfig;
@@ -324,6 +325,8 @@ int main(int argc, char **argv)
         return 1;
     }
 #endif
+    PortUpdatesStart();
+    atexit(PortUpdatesShutdown);
 #ifndef PORT_MOBILE
     discFromSettings = !portConfig.discPath;
     if (!portConfig.discPath && !(portConfig.discPath = ChooseDisc())) {
@@ -461,6 +464,7 @@ int main(int argc, char **argv)
     }
     atexit(PortLinkShutdown);
     PsxMain();
+    PortUpdatesShutdown();
     PortVideoShutdown();
 #ifndef PORT_SECOND_GAME
     SDL_Quit();

@@ -33,6 +33,11 @@ for test in electric near_object; do
     "$test_build/$test"
 done
 
+${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -DPORT_VERSION='"0.0.6"' \
+    -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) \
+    tools/bugtest/test_updates.c $(pkg-config --libs sdl3) -o "$test_build/updates"
+"$test_build/updates"
+
 # The input tests drive a real SDL virtual controller and the game's button decoder.
 ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Wno-deprecated-declarations -Wno-pointer-sign \
     -include platform/include/port.h -iquote game/include -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) \

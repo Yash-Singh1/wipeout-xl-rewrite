@@ -51,7 +51,7 @@ real game.
   its tracks, scenery, ships, HUD, menus' art, font, sounds, music (Cold
   Storage's Saturn soundtrack) and movies. What the Saturn has nothing for is
   drawn here (the PlayStation pad's button icons, a few small textures).
-- To build: CMake, Ninja, a C compiler (Clang or GCC), and SDL3 3.2 or later
+- To build: CMake, Ninja, a C compiler (Clang or GCC), libcurl on Linux, and SDL3 3.2 or later
   (zlib for the test traces is optional). Where CMake does not find SDL3 it
   downloads and builds it (`-DWIPEOUT_BUILD_SDL=ON` always does). The same
   goes for libarchive (`libarchive-dev` on Linux, Homebrew's `libarchive` on

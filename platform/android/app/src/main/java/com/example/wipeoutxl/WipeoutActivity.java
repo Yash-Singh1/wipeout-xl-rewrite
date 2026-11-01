@@ -14,6 +14,27 @@ public class WipeoutActivity extends SDLActivity {
         return new String[] { "main" };
     }
 
+    public String latestReleaseUrl() {
+        javax.net.ssl.HttpsURLConnection connection = null;
+        try {
+            connection = (javax.net.ssl.HttpsURLConnection) new java.net.URL(
+                "https://github.com/Yash-Singh1/wipeout-xl-rewrite/releases/latest").openConnection();
+            connection.setRequestMethod("HEAD");
+            connection.setInstanceFollowRedirects(false);
+            connection.setConnectTimeout(3000);
+            connection.setReadTimeout(5000);
+            connection.setRequestProperty("User-Agent", "WipeoutXL release check");
+            int status = connection.getResponseCode();
+            if (status == 301 || status == 302 || status == 307 || status == 308)
+                return connection.getHeaderField("Location");
+        } catch (Exception ignored) {
+            // Offline checks are silent.
+        } finally {
+            if (connection != null) connection.disconnect();
+        }
+        return null;
+    }
+
     public String displayName(String uri) {
         try (Cursor cursor = getContentResolver().query(Uri.parse(uri),
                 new String[] { OpenableColumns.DISPLAY_NAME }, null, null, null)) {

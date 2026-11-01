@@ -12,6 +12,7 @@
 #include "psx/gpu.h"
 #include "psx/psx_io.h"
 #include "settings.h"
+#include "updates.h"
 #include "touch.h"
 #include "trace.h"
 #ifdef PORT_SECOND_GAME
@@ -360,6 +361,7 @@ int PortPumpEvents(void)
         /* the second player's game: the window and its events are the first's */
         return !PortLinkQuitRequested();
     }
+    PortUpdatesPoll();
     {
         static int headphones = -1;
         int now = portSettings.surround == SURROUND_HEADPHONES && !PortTracing();

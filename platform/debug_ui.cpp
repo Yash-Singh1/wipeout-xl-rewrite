@@ -1898,6 +1898,13 @@ static void Console(void)
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Game", nullptr, FirstTab("game"))) {
+            bool updates = !portSettings.noUpdateCheck;
+            if (ImGui::Checkbox("Check for updates at launch", &updates)) {
+                portSettings.noUpdateCheck = !updates;
+                Changed();
+            }
+            DisabledWrapped("Checks GitHub once when the game starts and alerts you if a newer release is available.");
+            ImGui::Separator();
             static const char *const steeringModes[] = {"Analog", "Digital"};
             if (ImGui::Combo("Stick steering", &portSettings.digitalSteering, steeringModes, IM_ARRAYSIZE(steeringModes))) {
                 Changed();

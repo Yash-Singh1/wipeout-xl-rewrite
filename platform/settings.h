@@ -50,6 +50,7 @@ typedef struct PortSettings {
     int surround;         /* the game's Stereo mode, a Dolby Surround encoding of its sound effects: SURROUND_* */
     int digitalSteering; /* 0: proportional gamepad stick; 1: stick acts as the directional pad */
     int fullscreen;       /* the window was full screen when last left: the next start is too (video.c) */
+    int noUpdateCheck;    /* 0: check GitHub once at launch, 1: stay offline */
 } PortSettings;
 
 /* PortSettings.surround */

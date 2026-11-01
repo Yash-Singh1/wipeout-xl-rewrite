@@ -56,7 +56,7 @@ list(TRANSFORM psxioSources PREPEND ${CMAKE_SOURCE_DIR}/platform/psx/ REGEX "^[^
 second_game_copy(psxio_second psxio ${psxioSources})
 # (the debug console and the touch controls: the first game's alone, inert.c in the second's place)
 set(secondPlatformSources ${PLATFORM_OWN_SOURCES})
-list(FILTER secondPlatformSources EXCLUDE REGEX "\\.cpp$")
+list(FILTER secondPlatformSources EXCLUDE REGEX "\\.(cpp|m)$")
 second_game_copy(platform_second platform ${secondPlatformSources} ${CMAKE_SOURCE_DIR}/platform/second/inert.c)
 set(secondObjects $<TARGET_OBJECTS:game_second> $<TARGET_OBJECTS:psxio_second> $<TARGET_OBJECTS:platform_second>)
 set(secondTargets game_second psxio_second platform_second)

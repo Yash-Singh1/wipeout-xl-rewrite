@@ -49,7 +49,7 @@ LIBRARIES = [
 ]
 
 # Windows' own libraries a program may load; anything else beside it would be missing on the player's PC
-WINDOWS_DLL = re.compile(r"(api-ms-win-.*|kernel32|user32|gdi32|shell32|ole32|oleaut32|advapi32|imm32|winmm|"
+WINDOWS_DLL = re.compile(r"(api-ms-win-.*|kernel32|user32|gdi32|shell32|ole32|oleaut32|advapi32|imm32|winmm|winhttp|"
                          r"version|setupapi|cfgmgr32|opengl32|dinput8|dxgi|d3d11|d3d12|xinput.*|hid|ws2_32|"
                          r"comdlg32|uuid|msvcrt|ucrtbase|bcrypt|crypt32|shlwapi|dwmapi|uxtheme)\.dll", re.I)
 

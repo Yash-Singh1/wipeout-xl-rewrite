@@ -4,6 +4,7 @@
 
 #include "debug_ui.h"
 #include "touch.h"
+#include "updates.h"
 
 void DebugUiInit(SDL_Window *window, void *context)
 {
@@ -62,3 +63,8 @@ void TouchUpdate(void) {}
 void TouchRelease(void) {}
 
 void TouchDraw(void) {}
+
+/* Only the first game checks for releases. */
+#ifdef __APPLE__
+int PortUpdateFetch(char *url, size_t size) { (void)url; (void)size; return 0; }
+#endif

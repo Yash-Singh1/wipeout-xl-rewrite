@@ -46,6 +46,8 @@ static void Set(const char *key, const char *value)
         portSettings.frameRate = SDL_clamp(number, FRAME_RATE_UNCAPPED, FRAME_RATE_CONSOLE);
     } else if (!strcmp(key, "frame_cap") && number > 0) {
         portSettings.frameCap = SDL_clamp(number, 15, 1000);
+    } else if (!strcmp(key, "check_updates")) {
+        portSettings.noUpdateCheck = number == 0;
     } else if (!strcmp(key, "skip_intro")) {
         portSettings.skipIntro = number != 0;
     } else if (!strcmp(key, "record_rate")) {
@@ -243,7 +245,7 @@ int PortSettingsSave(void)
             "custom_music = %d\nmusic_shuffle = %d\nmusic_folder = %s\nsave_slot = %s\nautosave = %d\n"
             "touch_controls = %d\ntouch_size = %d\ntouch_opacity = %d\ndepth_buffer = %d\nskip_logos = %d\nrecord_rate = %d\n"
             "video_standard = %d\nvibration = %d\nvibration_strength = %d\nfar_flares = %d\npause_unfocused = %d\n"
-            "surround = %d\nfullscreen = %d\ndigital_steering = %d\npad_type = %d\n",
+            "surround = %d\nfullscreen = %d\ndigital_steering = %d\npad_type = %d\ncheck_updates = %d\n",
             portSettings.showFps, portSettings.farView, portSettings.fade, portSettings.fadeNear, portSettings.fadeFar,
             portSettings.widescreen, portSettings.frameRate,
             portSettings.frameCap, portSettings.skipIntro,
@@ -257,7 +259,7 @@ int PortSettingsSave(void)
             portSettings.recordRate ? portSettings.recordRate : 60, portSettings.videoStandard, !portSettings.noRumble,
             portSettings.rumbleStrength ? portSettings.rumbleStrength : 100, portSettings.farFlares,
             !portSettings.noFocusPause, portSettings.surround, portSettings.fullscreen, portSettings.digitalSteering,
-            portSettings.negconPad);
+            portSettings.negconPad, !portSettings.noUpdateCheck);
     fclose(file);
     return 1;
 }
