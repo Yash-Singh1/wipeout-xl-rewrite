@@ -19,6 +19,18 @@ ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard \
     tools/bugtest/test_guest_sky.c $(pkg-config --libs sdl3) -o "$test_build/guest_sky"
 "$test_build/guest_sky"
 
+# Port rendering changes must preserve the original effect segments and quad geometry.
+for test in electric near_object; do
+    gte_sources=
+    if [ "$test" = near_object ]; then
+        gte_sources="platform/psx/gte.c platform/psx/gte_tables.c"
+    fi
+    ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Wno-deprecated-declarations \
+        -include platform/include/port.h -iquote game/include \
+        "tools/bugtest/test_$test.c" $gte_sources -lm -o "$test_build/$test"
+    "$test_build/$test"
+done
+
 # The input tests drive a real SDL virtual controller and the game's button decoder.
 ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Wno-deprecated-declarations -Wno-pointer-sign \
     -include platform/include/port.h -iquote game/include -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) \
