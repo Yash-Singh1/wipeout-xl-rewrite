@@ -28,6 +28,13 @@ ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard \
     $(pkg-config --libs sdl3) -o "$test_build/ordering_cycle"
 "$test_build/ordering_cycle"
 
+${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Wno-deprecated-declarations \
+    -include platform/include/port.h -Iplatform -Iplatform/psx -iquote game/include $(pkg-config --cflags sdl3) \
+    tools/bugtest/test_far_lifetime.c platform/psx/gte.c platform/psx/gte_tables.c \
+    game/src/skeleton.c platform/psx/libgte.c game/src/utils.c $(pkg-config --libs sdl3) \
+    -lm -o "$test_build/far_lifetime"
+"$test_build/far_lifetime"
+
 for test in guest_sky guest_animation; do
     ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard \
         -Iplatform -Iplatform/psx -iquote game/include $(pkg-config --cflags sdl3) \
