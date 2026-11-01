@@ -1942,6 +1942,16 @@ static void Console(void)
                 SDL_SetWindowFullscreen(window, fullscreen);
             }
             ImGui::Separator();
+            bool opaque = !portSettings.hudTranslucent;
+            if (ImGui::Checkbox("Opaque thrust and energy bars", &opaque)) {
+                portSettings.hudTranslucent = !opaque;
+                Changed();
+            }
+            DisabledWrapped("Removes transparency for the thrust and energy bars.\n"
+                            "Off renders as the console did (semi-transparent), at the expense of visibility.\n"
+                            "Meant for Gare d'Europa - white of the start line makes the thrust bar "
+                            "impossible to see, so you mess up the boost.");
+            ImGui::Separator();
             HdTextures();
             Browser(); /* (a picker's, where the system has no file dialog) */
             ImGui::EndTabItem();

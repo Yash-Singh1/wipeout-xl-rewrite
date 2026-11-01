@@ -200,7 +200,7 @@ void InitSpeedo(Speedo *speedo)
         speedo->shield[screen].u3 = (u_char) speedoShieldTex->u3;
         speedo->shield[screen].v3 = (u_char) (speedoShieldTex->v3 + 1);
         speedo->shield[screen].tpage = GetTPage(1, 1, speedoShieldTex->textureX, speedoShieldTex->textureY);
-        SetSemiTrans(&speedo->shield[screen], 1);
+        SetSemiTrans(&speedo->shield[screen], PortHudTranslucent()); /* Port: the console's, or opaque where it washed out */
         speedo->shield[screen].clut = (u_short) speedoShieldTex->cba;
         SetPolyFT4(&speedo->marker[screen]);
         speedo->marker[screen].r0 = 0xFF;
@@ -223,7 +223,7 @@ void InitSpeedo(Speedo *speedo)
         speedo->marker[screen].u3 = (u_char) speedoMarkerTex->u3;
         speedo->marker[screen].v3 = (u_char) (speedoMarkerTex->v3 + 1);
         speedo->marker[screen].tpage = GetTPage(0, 1, speedoMarkerTex->textureX, speedoMarkerTex->textureY);
-        SetSemiTrans(&speedo->marker[screen], 1);
+        SetSemiTrans(&speedo->marker[screen], PortHudTranslucent()); /* Port: the console's, or opaque where it washed out */
         speedo->marker[screen].clut = (u_short) speedoMarkerTex->cba;
         screen++;
     } while (screen < 2);

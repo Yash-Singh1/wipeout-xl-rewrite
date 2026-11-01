@@ -588,6 +588,11 @@ void PortPadRumbleLevel(int level)
     Rumble(PAD_RUMBLE_LEVEL, "level", level);
 }
 
+int PortHudTranslucent(void)
+{
+    return portSettings.hudTranslucent;
+}
+
 void PortPadRumbleScrape(int level)
 {
     Rumble(PAD_RUMBLE_SCRAPE, "scrape", level);

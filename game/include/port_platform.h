@@ -99,6 +99,10 @@ void PortPadRumble(int amount);
    (0 stops them), and they stop by themselves a few fields after it stops saying. The launch thrust's
    growl is this: it rises and falls with the throttle. */
 void PortPadRumbleLevel(int level);
+/* Whether the speedometer's thrust and energy bars are drawn as the console drew them, semi-transparent.
+   They wash out against anything bright behind them - the white of a track's start line, say - which on a
+   wide screen is exactly where the HUD is, and the launch boost wants the thrust meter readable. */
+int PortHudTranslucent(void);
 /* A wall's scrape, held as PortPadRumbleLevel's level is (said every frame the wing touches the wall), on
    the pads' small motor alone: a rattle under the hits, which keep the big one. */
 void PortPadRumbleScrape(int level);

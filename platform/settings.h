@@ -1,7 +1,7 @@
 /* The player's settings (settings.c): a small INI file in the user's data folder, changed from the
    debug console (debug_ui.cpp, the ~ key). Environment variables still override them for a
    run (WIPEOUT_FAR_VIEW, WIPEOUT_FAR_FLARES, WIPEOUT_FADE, WIPEOUT_WIDESCREEN, WIPEOUT_FRAME_RATE, WIPEOUT_SAVE_DIR, WIPEOUT_RENDER_SCALE,
-   WIPEOUT_HD_PACK, WIPEOUT_MUSIC, WIPEOUT_TOUCH, WIPEOUT_SURROUND); the tests' hidden runs ignore the file. */
+   WIPEOUT_HD_PACK, WIPEOUT_MUSIC, WIPEOUT_TOUCH, WIPEOUT_SURROUND, WIPEOUT_HUD_TRANSLUCENT); the tests' hidden runs ignore the file. */
 #ifndef PORT_SETTINGS_H
 #define PORT_SETTINGS_H
 
@@ -34,6 +34,8 @@ typedef struct PortSettings {
     int rumbleStrength;   /* ... how hard they shake, in percent (0: 100) */
     int negconPad;        /* which pad is in the first port: 0 whatever its controls look like, 1 a digital
                              pad, 2 a neGcon (psx/pad.h's PsxPadSetType) */
+    int hudTranslucent;   /* the console's semi-transparent thrust and energy bars, which wash out against
+                             anything bright behind them (port_platform.h's PortHudTranslucent) */
     int renderScale;      /* the framebuffer's pixels per console pixel; 0: as many as the window shows (gpu_gl.c) */
     int hdTextures;       /* the HD texture pack is drawn (hdtex.c) */
     char hdPackPath[1024]; /* ... the player's pack: its .zip or folder */

@@ -104,6 +104,8 @@ static void Set(const char *key, const char *value)
         portSettings.rumbleStrength = SDL_clamp(number, 50, 300);
     } else if (!strcmp(key, "pad_type")) {
         portSettings.negconPad = SDL_clamp(number, 0, 2);
+    } else if (!strcmp(key, "hud_translucent")) {
+        portSettings.hudTranslucent = number != 0;
     }
 }
 
@@ -192,6 +194,9 @@ void PortSettingsLoad(void)
         portSettings.surround = !strcmp(value, "receiver")     ? SURROUND_RECEIVER
                                 : !strcmp(value, "headphones") ? SURROUND_HEADPHONES : SURROUND_OFF;
     }
+    if ((value = SDL_getenv("WIPEOUT_HUD_TRANSLUCENT"))) {
+        portSettings.hudTranslucent = SDL_atoi(value) != 0;
+    }
     if ((value = SDL_getenv("WIPEOUT_DEPTH_BUFFER"))) {
         portSettings.consoleDepth = SDL_atoi(value) == 0;
     }
@@ -245,7 +250,7 @@ int PortSettingsSave(void)
             "custom_music = %d\nmusic_shuffle = %d\nmusic_folder = %s\nsave_slot = %s\nautosave = %d\n"
             "touch_controls = %d\ntouch_size = %d\ntouch_opacity = %d\ndepth_buffer = %d\nskip_logos = %d\nrecord_rate = %d\n"
             "video_standard = %d\nvibration = %d\nvibration_strength = %d\nfar_flares = %d\npause_unfocused = %d\n"
-            "surround = %d\nfullscreen = %d\ndigital_steering = %d\npad_type = %d\ncheck_updates = %d\n",
+            "surround = %d\nfullscreen = %d\ndigital_steering = %d\npad_type = %d\ncheck_updates = %d\nhud_translucent = %d\n",
             portSettings.showFps, portSettings.farView, portSettings.fade, portSettings.fadeNear, portSettings.fadeFar,
             portSettings.widescreen, portSettings.frameRate,
             portSettings.frameCap, portSettings.skipIntro,
@@ -259,7 +264,7 @@ int PortSettingsSave(void)
             portSettings.recordRate ? portSettings.recordRate : 60, portSettings.videoStandard, !portSettings.noRumble,
             portSettings.rumbleStrength ? portSettings.rumbleStrength : 100, portSettings.farFlares,
             !portSettings.noFocusPause, portSettings.surround, portSettings.fullscreen, portSettings.digitalSteering,
-            portSettings.negconPad, !portSettings.noUpdateCheck);
+            portSettings.negconPad, !portSettings.noUpdateCheck, portSettings.hudTranslucent);
     fclose(file);
     return 1;
 }
