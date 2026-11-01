@@ -15,14 +15,6 @@ int PortUpdateFetch(char *url, size_t size)
     SDL_strlcpy(url, reply, size);
     return 1;
 }
-bool SDL_ShowMessageBox(const SDL_MessageBoxData *box, int *button)
-{
-    assert(strstr(box->message, "0.0.7"));
-    assert(box->buttons[0].flags & SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT);
-    alerts++;
-    *button = answer;
-    return true;
-}
 bool SDL_OpenURL(const char *url)
 {
     assert(!strcmp(url, PORT_RELEASES "/tag/v0.0.7"));
@@ -34,6 +26,12 @@ static void Complete(void)
     /* Test waits for the worker; the actual event pump only polls its completion flag. */
     if (worker) { SDL_WaitThread(worker, NULL); worker = NULL; }
     PortUpdatesPoll();
+    if (PortUpdateAvailable()) {
+        assert(!strcmp(PortUpdateAvailable(), "v0.0.7"));
+        alerts++;
+        if (answer) PortUpdateOpenRelease();
+        PortUpdateDismiss();
+    }
 }
 static void Relaunch(void)
 {
@@ -81,6 +79,12 @@ int main(void)
     Relaunch(); reply = PORT_RELEASES "/tag/v0.0.7";
     PortUpdatesStart(); Set("check_updates", "0"); Complete();
     assert(checks == 5 && alerts == 2); /* disabled while the request was in flight */
+    Relaunch(); Set("check_updates", "1");
+    PortUpdatesStart(); SDL_WaitThread(worker, NULL); worker = NULL; PortUpdatesPoll();
+    assert(checks == 6 && PortUpdateAvailable());
+    Set("check_updates", "0");
+    assert(PortUpdateAvailable()); /* opting out in the alert keeps it open until dismissed */
+    PortUpdateDismiss(); assert(!PortUpdateAvailable());
 
     assert(mkdtemp(temp));
     SDL_snprintf(path, sizeof(path), "%s/settings.ini", temp);

@@ -27,6 +27,7 @@ extern "C" {
 #include "platform.h"
 #include "psx/pad.h"
 #include "settings.h"
+#include "updates.h"
 #include "trace.h"
 #include "psx/framecap.h"
 #include "psx/disc.h"
@@ -132,7 +133,7 @@ extern "C" void DebugUiTab(void)
 
 extern "C" int DebugUiOpen(void)
 {
-    return ready && consoleOpen;
+    return ready && (consoleOpen || PortUpdateAvailable());
 }
 
 extern "C" void DebugUiSetOpen(int on)
@@ -145,15 +146,15 @@ extern "C" int DebugUiEvent(const SDL_Event *event)
     if (!ready) {
         return 0;
     }
-    if (event->type == SDL_EVENT_KEY_DOWN && event->key.scancode == SDL_SCANCODE_GRAVE && !event->key.repeat) {
+    if (event->type == SDL_EVENT_KEY_DOWN && event->key.scancode == SDL_SCANCODE_GRAVE && !event->key.repeat && !PortUpdateAvailable()) {
         consoleOpen = !consoleOpen;
         return 1;
     }
-    if (event->type == SDL_EVENT_KEY_DOWN && event->key.scancode == SDL_SCANCODE_TAB && !event->key.repeat) {
+    if (event->type == SDL_EVENT_KEY_DOWN && event->key.scancode == SDL_SCANCODE_TAB && !event->key.repeat && !PortUpdateAvailable()) {
         DebugUiTab();
         return 1;
     }
-    if (!consoleOpen) {
+    if (!consoleOpen && !PortUpdateAvailable()) {
         return 0;
     }
     ImGui_ImplSDL3_ProcessEvent(event);
@@ -1800,6 +1801,44 @@ static void HdTextures(void)
     }
 }
 
+#ifndef __EMSCRIPTEN__
+static void UpdateNotice(void)
+{
+    const char *version = PortUpdateAvailable();
+    if (!version) return;
+    const ImGuiViewport *view = ImGui::GetMainViewport();
+    if (!ImGui::IsPopupOpen("Update available")) ImGui::OpenPopup("Update available");
+    ImGui::SetNextWindowPos(ImVec2(view->WorkPos.x + view->WorkSize.x / 2,
+                                  view->WorkPos.y + view->WorkSize.y / 2), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(SDL_min(view->WorkSize.x - 24.0f, 520.0f * ImGui::GetIO().FontGlobalScale), 0));
+    if (ImGui::BeginPopupModal("Update available", nullptr,
+                              ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
+        ImGui::TextWrapped("An update for Wipeout XL Rewrite is available.");
+        ImGui::TextWrapped("Latest version: %s", version);
+        ImGui::TextWrapped("You are running %s.", PORT_VERSION);
+        ImGui::Spacing();
+        bool automatic = !portSettings.noUpdateCheck;
+        if (ImGui::Checkbox("Check for updates automatically", &automatic)) {
+            portSettings.noUpdateCheck = !automatic;
+            Changed();
+        }
+        ImGui::Spacing();
+        if (ImGui::Button("Later") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+            PortUpdateDismiss();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SetItemDefaultFocus();
+        ImGui::SameLine();
+        if (ImGui::Button("View release")) {
+            PortUpdateOpenRelease();
+            PortUpdateDismiss();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+}
+#endif
+
 static void Console(void)
 {
     const ImGuiViewport *view = ImGui::GetMainViewport();
@@ -1898,13 +1937,15 @@ static void Console(void)
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Game", nullptr, FirstTab("game"))) {
+#ifndef __EMSCRIPTEN__
             bool updates = !portSettings.noUpdateCheck;
-            if (ImGui::Checkbox("Check for updates at launch", &updates)) {
+            if (ImGui::Checkbox("Check for updates automatically", &updates)) {
                 portSettings.noUpdateCheck = !updates;
                 Changed();
             }
             DisabledWrapped("Checks GitHub once when the game starts and alerts you if a newer release is available.");
             ImGui::Separator();
+#endif
             static const char *const steeringModes[] = {"Analog", "Digital"};
             if (ImGui::Combo("Stick steering", &portSettings.digitalSteering, steeringModes, IM_ARRAYSIZE(steeringModes))) {
                 Changed();
@@ -2091,7 +2132,7 @@ extern "C" void DebugUiRender(void)
         return;
     }
     Rates();
-    if (!consoleOpen && !portSettings.showFps && !RecorderNoteWanted() && !TouchShown()) {
+    if (!consoleOpen && !portSettings.showFps && !RecorderNoteWanted() && !TouchShown() && !PortUpdateAvailable()) {
         return;
     }
     int width, height;
@@ -2110,6 +2151,9 @@ extern "C" void DebugUiRender(void)
         Console();
     }
     TouchDraw();
+#ifndef __EMSCRIPTEN__
+    UpdateNotice();
+#endif
     ImGui::Render();
     glViewport(0, 0, width, height);
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

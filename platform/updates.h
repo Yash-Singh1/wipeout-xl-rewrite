@@ -9,6 +9,9 @@ extern "C" {
 void PortUpdatesStart(void);
 void PortUpdatesPoll(void);
 void PortUpdatesShutdown(void);
+const char *PortUpdateAvailable(void); /* pending notification, NULL after dismissal */
+void PortUpdateDismiss(void);
+void PortUpdateOpenRelease(void);
 int PortUpdateNewer(const char *current, const char *available);
 int PortUpdateTagFromUrl(const char *url, char *tag, size_t size);
 /* Platform HTTPS transport. Returns the latest release's URL, or zero on failure. */

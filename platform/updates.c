@@ -5,6 +5,15 @@
 #include "settings.h"
 #include "updates.h"
 
+#ifdef __EMSCRIPTEN__
+/* Web deployments update when the page is reloaded. No release requests or alerts. */
+void PortUpdatesStart(void) {}
+void PortUpdatesPoll(void) {}
+void PortUpdatesShutdown(void) {}
+const char *PortUpdateAvailable(void) { return NULL; }
+void PortUpdateDismiss(void) {}
+void PortUpdateOpenRelease(void) {}
+#else
 static SDL_Thread *worker;
 static SDL_AtomicInt finished;
 static int started, pending;
@@ -52,33 +61,6 @@ int PortUpdateTagFromUrl(const char *url, char *tag, size_t size)
     return 1;
 }
 
-#ifdef __EMSCRIPTEN__
-#include <emscripten.h>
-EMSCRIPTEN_KEEPALIVE void PortUpdateReceived(const char *tag)
-{
-    if (strlen(tag) < sizeof(available) && PortUpdateNewer(PORT_VERSION, tag))
-        SDL_strlcpy(available, tag, sizeof(available));
-    SDL_SetAtomicInt(&finished, 1);
-}
-EM_JS(int, UpdateAlert, (const char *latest, const char *current), {
-    return confirm('Wipeout XL ' + UTF8ToString(latest) + ' is available.\nYou are running ' +
-                   UTF8ToString(current) + '.\n\nOpen the GitHub release page?') ? 1 : 0;
-});
-EM_JS(void, CheckRelease, (void), {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
-    fetch('https://api.github.com/repos/Yash-Singh1/wipeout-xl-rewrite/releases/latest',
-          {signal: controller.signal, credentials: 'omit'})
-      .then(response => response.ok ? response.json() : null)
-      .then(release => {
-          if (release && !release.draft && !release.prerelease && typeof release.tag_name === 'string') {
-              const tag = stringToNewUTF8(release.tag_name);
-              _PortUpdateReceived(tag);
-              _free(tag);
-          }
-      }).catch(() => {}).finally(() => clearTimeout(timeout));
-});
-#else
 static int CheckRelease(void *unused)
 {
     char url[256];
@@ -91,18 +73,13 @@ static int CheckRelease(void *unused)
     SDL_SetAtomicInt(&finished, 1);
     return 0;
 }
-#endif
 
 void PortUpdatesStart(void)
 {
     if (started) return;
     started = 1;
     if (portConfig.hidden || portConfig.secondPlayer || portSettings.noUpdateCheck) return;
-#ifdef __EMSCRIPTEN__
-    CheckRelease();
-#else
     worker = SDL_CreateThread(CheckRelease, "Release check", NULL);
-#endif
 }
 
 void PortUpdatesPoll(void)
@@ -111,38 +88,31 @@ void PortUpdatesPoll(void)
     if (SDL_GetAtomicInt(&finished)) {
         SDL_SetAtomicInt(&finished, 0);
         if (worker) { SDL_WaitThread(worker, NULL); worker = NULL; }
-        pending = available[0] != 0;
+        pending = available[0] != 0 && !portSettings.noUpdateCheck;
     }
-    if (pending) {
-        char message[192], url[256];
-        int button = 0;
-        const SDL_MessageBoxButtonData buttons[] = {
-            {SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT | SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 0, "Later"},
-            {0, 1, "View release"}
-        };
-        SDL_MessageBoxData box = {0};
-        pending = 0;
-        if (portSettings.noUpdateCheck) return;
-        SDL_snprintf(message, sizeof(message), "Wipeout XL %s is available.\nYou are running %s.", available, PORT_VERSION);
-        box.flags = SDL_MESSAGEBOX_INFORMATION;
-        box.window = PortWindow();
-        box.title = "Wipeout XL update available";
-        box.message = message;
-        box.numbuttons = SDL_arraysize(buttons);
-        box.buttons = buttons;
-#ifdef __EMSCRIPTEN__
-        button = UpdateAlert(available, PORT_VERSION);
-        if (button == 1) {
-#else
-        if (SDL_ShowMessageBox(&box, &button) && button == 1) {
-#endif
-            SDL_snprintf(url, sizeof(url), PORT_RELEASES "/tag/%s", available);
-            SDL_OpenURL(url);
-        }
-    }
+}
+
+const char *PortUpdateAvailable(void)
+{
+    return pending ? available : NULL;
+}
+
+void PortUpdateDismiss(void)
+{
+    pending = 0;
+}
+
+void PortUpdateOpenRelease(void)
+{
+    char url[256];
+    if (!pending) return;
+    SDL_snprintf(url, sizeof(url), PORT_RELEASES "/tag/%s", available);
+    SDL_OpenURL(url);
 }
 
 void PortUpdatesShutdown(void)
 {
     if (worker) { SDL_WaitThread(worker, NULL); worker = NULL; }
 }
+
+#endif
