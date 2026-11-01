@@ -1867,6 +1867,62 @@ void PortOriginalAnimate(int tick)
     }
 }
 
+/* The ROM keeps the old cube model with texture 0 and 128-pixel UVs. Its sky
+   pictures are 56x36 tiles, in lower/upper pairs. Rebind the cube's twelve
+   horizontal segments to the six panorama columns, splitting each tile in half.
+   The remaining pictures are not part of that panorama. */
+static int Wipeout64Sky(uint8_t *model, size_t size, const TimList *sky)
+{
+    int vertices, primitives, radius = 0, i, j;
+    size_t start;
+    uint8_t *image;
+    int width, height;
+
+    if (size < 144 || sky->count < 12 || !TimBlocks(sky->tims[0], sky->sizes[0], &image)) return 0;
+    vertices = Be16(model + 16);
+    primitives = Be16(model + 32);
+    start = 144 + (size_t)vertices * 8;
+    if (vertices != 36 || primitives != 24 || start + (size_t)primitives * 44 > size) return 0;
+    width = Le16(image + 8) * 2;
+    height = Le16(image + 10);
+    for (i = 0; i < vertices; i++) {
+        int x = (int16_t)Be16(model + 144 + i * 8);
+        if (SDL_abs(x) > radius) radius = SDL_abs(x);
+    }
+    if (!radius || width < 2 || width > 256 || height > 256) return 0;
+    for (i = 0; i < primitives; i++) {
+        uint8_t *poly = model + start + i * 44;
+        int x[4], y[4], z[4], along[4], sumX = 0, sumY = 0, sumZ = 0;
+        int face, column, segment, middle, minY = 32767, sum = 0;
+        if (Be16(poly) != 8) return 0; /* GT4 */
+        for (j = 0; j < 4; j++) {
+            int v = Be16(poly + 4 + j * 2);
+            const uint8_t *point;
+            if (v >= vertices) return 0;
+            point = model + 144 + v * 8;
+            x[j] = (int16_t)Be16(point);
+            y[j] = (int16_t)Be16(point + 2);
+            z[j] = (int16_t)Be16(point + 4);
+            sumX += x[j]; sumY += y[j]; sumZ += z[j];
+            if (y[j] < minY) minY = y[j];
+        }
+        face = sumX == radius * 4 ? 0 : sumZ == radius * 4 ? 1 : sumX == -radius * 4 ? 2 : 3;
+        for (j = 0; j < 4; j++) {
+            along[j] = face == 0 ? z[j] : face == 1 ? -x[j] : face == 2 ? -z[j] : x[j];
+            sum += along[j];
+        }
+        column = (sum + radius * 4) * 3 / (radius * 8);
+        segment = face * 3 + column;
+        middle = sum / 4;
+        PutBe16(poly + 12, (segment / 2) * 2 + (sumY < 0));
+        for (j = 0; j < 4; j++) {
+            poly[18 + j * 2] = (uint8_t)((segment % 2) * (width / 2) + (along[j] > middle ? width / 2 - 1 : 0));
+            poly[19 + j * 2] = (uint8_t)(y[j] == minY ? 0 : height - 1);
+        }
+    }
+    return 1;
+}
+
 /* XL's ten files of a Wipeout 64 track. */
 static int Wipeout64Parts(int index, uint8_t **parts, size_t *sizes)
 {
@@ -1916,6 +1972,7 @@ static int Wipeout64Parts(int index, uint8_t **parts, size_t *sizes)
         parts[9] = SDL_malloc(size + 1);
         memcpy(parts[9], data, size);
         sizes[9] = size;
+        ok = ok && Wipeout64Sky(parts[9], sizes[9], &sky);
     }
     if (!ok) {
         fprintf(stderr, "Wipeout 64: %s's textures or scenery could not be made XL's\n", guests[chosen].name);

@@ -979,7 +979,7 @@ static void DrawDroid(Object *shape, TrackSection *section, int texture, int mir
     angle=4096-angle;
     SetSkeletonDirectionHPR(shape->skeleton,(short)angle,0,0);
     /* Port: guest tunnel clearance for the checkpoint board (portorig.c). */
-    SetSkeletonPosition(shape->skeleton,section->centre.vx,PortOriginalDroidY(shape,section),section->centre.vz);
+    SetSkeletonPosition(shape->skeleton,section->centre.vx,PortOriginalFitDroid(shape,section),section->centre.vz);
     poly=(GT4 *)shape->primitives;
     tex=textureTable[texture+textureBase];
     switch(poly->type) {

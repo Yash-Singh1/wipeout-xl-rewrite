@@ -14,6 +14,11 @@ ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard \
     tools/bugtest/test_movie.c $(pkg-config --libs sdl3) -o "$test_build/movie"
 "$test_build/movie"
 
+${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard \
+    -Iplatform -Iplatform/psx -iquote game/include $(pkg-config --cflags sdl3) \
+    tools/bugtest/test_guest_sky.c $(pkg-config --libs sdl3) -o "$test_build/guest_sky"
+"$test_build/guest_sky"
+
 # The input tests drive a real SDL virtual controller and the game's button decoder.
 ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Wno-deprecated-declarations -Wno-pointer-sign \
     -include platform/include/port.h -iquote game/include -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) \

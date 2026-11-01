@@ -638,6 +638,7 @@ void initShipData(TrackSection *section, ShipData *shipIndex, ConfigData *option
         case 2: shipIndex[i].headingInc = SHIP_RATE(shipHeadingIncClass2[i]); shipIndex[i].maxHeading = SHIP_RATE(shipMaxHeadingClass2[i]); break;
         case 3: shipIndex[i].headingInc = SHIP_RATE(shipHeadingIncClass3[i]); shipIndex[i].maxHeading = SHIP_RATE(shipMaxHeadingClass3[i]); break;
         }
+        PortOriginalShipPhysics(&shipIndex[i], i, options->shipClass);
         if (i == ownShip || i == remoteShip || (i == ghostShip && raceType == RACE_TIME_TRIAL)) {
             shipIndex[i].update = UpdatePlayerShipStart;
         } else {

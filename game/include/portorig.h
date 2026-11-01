@@ -18,7 +18,8 @@ short PortOriginalLibraryBase(short loaded);
 short PortOriginalLibraryPlaced(TexTemplate *tiles, short tileCount, short loaded);
 int   PortOriginalLooks(void);         /* the race is on a track of the original Wipeout (its scenery's look) */
 int   PortOriginalEightShips(void);    /* ... an arcade race there: eight ships race, as in the original */
-int   PortOriginalDroidY(Object *shape, TrackSection *section);
+void  PortOriginalShipPhysics(ShipData *ship, int number, int shipClass);
+int   PortOriginalFitDroid(Object *shape, TrackSection *section);
 void  PortOriginalPlaceSky(Object *sky);   /* ... a Wipeout 64 track's sky, as it is loaded */
 void  PortOriginalSceneInit(Object **prm, short prmCount);
 void  PortOriginalCount(int updateCount);

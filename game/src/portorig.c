@@ -273,7 +273,7 @@ static Object *beacons[MAX_BEACONS], *pumps[MAX_PUMPS];
 static int     beaconCount, pumpCount, sceneryFrame;
 static Object *guestScene;
 static TrackSection *boardSections[8];
-static int boardHeights[8], boardTops[8], boardCount;
+static int boardHeights[8], boardTops[8], boardBottoms[8], boardScales[8], boardCount;
 
 int PortOriginalLooks(void)
 {
@@ -409,17 +409,33 @@ static int BoardBelowRoof(int y, int top, TrackSection *section, VECTOR *points,
 
 /* XL's board height can intersect a guest's tunnel. Wipeout 64's roofs are scenery,
    rather than track faces. Test their polygons once per board and keep its height for the race. */
-int PortOriginalDroidY(Object *shape, TrackSection *section)
+static void ScaleBoard(Object *shape, int scale)
+{
+    int row, col;
+    /* DrawDroid resets the rotation before each call, so the scale cannot accumulate. */
+    for (row = 0; row < 3; row++) {
+        for (col = 0; col < 3; col++) {
+            shape->skeleton->relative.m[row][col] =
+                (short)((shape->skeleton->relative.m[row][col] * scale) / 4096);
+        }
+    }
+}
+
+int PortOriginalFitDroid(Object *shape, TrackSection *section)
 {
     Object *object;
-    int y = section->centre.vy - 3000, top = 0, i, j;
+    int y = section->centre.vy - 3000, top = 0, bottom = 0, scale = 4096, i, j;
 
     if (!PortOriginalTrackIs64()) return y;
     for (i = 0; i < (u_short)shape->vertexCount; i++) {
         if (shape->vertices[i].vy < top) top = shape->vertices[i].vy;
+        if (shape->vertices[i].vy > bottom) bottom = shape->vertices[i].vy;
     }
     for (i = 0; i < boardCount; i++) {
-        if (boardSections[i] == section && boardTops[i] == top) return boardHeights[i];
+        if (boardSections[i] == section && boardTops[i] == top && boardBottoms[i] == bottom) {
+            ScaleBoard(shape, boardScales[i]);
+            return boardHeights[i];
+        }
     }
     for (object = guestScene; object; object = object->next) {
         Poly poly;
@@ -444,7 +460,9 @@ int PortOriginalDroidY(Object *shape, TrackSection *section)
             }
             if (!size) break;
             for (j = 0; j < count; j++) {
-                const SVECTOR *v = &object->vertices[coords[j]];
+                /* The quad's file order is a triangle strip, not a perimeter. */
+                int corner = count == 4 && j >= 2 ? 5 - j : j;
+                const SVECTOR *v = &object->vertices[coords[corner]];
                 points[j].vx = ((m->m[0][0]*v->vx + m->m[0][1]*v->vy + m->m[0][2]*v->vz) >> 12) + m->t[0];
                 points[j].vy = ((m->m[1][0]*v->vx + m->m[1][1]*v->vy + m->m[1][2]*v->vz) >> 12) + m->t[1];
                 points[j].vz = ((m->m[2][0]*v->vx + m->m[2][1]*v->vy + m->m[2][2]*v->vz) >> 12) + m->t[2];
@@ -453,10 +471,36 @@ int PortOriginalDroidY(Object *shape, TrackSection *section)
             poly.ptr += size;
         }
     }
+    /* An XL board can be taller than a guest tunnel. Keep its proportions while
+       fitting both edges between the roof clearance and the racing surface. */
+    if (y + bottom > section->centre.vy - 512 && bottom > top) {
+        int roof = y + top, floor = section->centre.vy - 512;
+        if (floor > roof) {
+            scale = (floor - roof) * 4096 / (bottom - top);
+            y = roof - top * scale / 4096;
+        }
+    }
+    ScaleBoard(shape, scale);
     if (boardCount < 8) {
         boardSections[boardCount] = section;
         boardTops[boardCount] = top;
+        boardBottoms[boardCount] = bottom;
+        boardScales[boardCount] = scale;
         boardHeights[boardCount++] = y;
     }
     return y;
+}
+
+/* Qirex's XL Rapier profile outruns the original circuits' ramps. Use its
+   original Rapier profile when racing those circuits with the original model. */
+void PortOriginalShipPhysics(ShipData *ship, int number, int shipClass)
+{
+    if (PortOriginalLooks() && number >= 6 && number < 9 && shipClass == 2) {
+        ship->mass = 150;
+        ship->maxThrust = 1400;
+        ship->resistance = 130;
+        ship->skid = 16;
+        ship->headingInc = PAL_SPEED(140);
+        ship->maxHeading = PAL_SPEED(1920);
+    }
 }

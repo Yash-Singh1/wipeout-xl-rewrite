@@ -11,11 +11,10 @@ Local investigation of the open issue reports, October 29, 2026.
 - #12: retain the console's additive thrust fill. DuckStation software-rendered captures
   confirm that it washes out over the bright Gare d'Europa starting grid too. The
   opaque workaround changed the design and exposed black texels; it has been reverted.
-- #13: lower checkpoint boards beneath overhead scenery polygons on Wipeout 64 tracks.
-  The board's highest vertex and the roof's lowest vertex determine clearance, with
-  128 units of space. Heights are cached per section and board height for the race.
-  Synthetic tests cover a translated roof, an uncovered section and different board
-  heights. The reported Qoron IV location still needs a gameplay check.
+- #13: fit the guest checkpoint board between the tunnel roof and the racing surface.
+  Read quad corners in perimeter order instead of triangle-strip order. In low tunnels,
+  scale the board uniformly so lowering it cannot bury its lower edge in the road.
+  Matched Qoron IV replays verify the clearance; synthetic tests cover both boundaries.
 - #6: fix the Windows Clang build's second-game BSS boundaries. Its initialized markers
   previously occupied a separate PE section, leaving the second game's state unchanged
   on restart. The final Windows executable now checks that its mutable second-game
@@ -23,11 +22,17 @@ Local investigation of the open issue reports, October 29, 2026.
   the rebuilt Arm and x64 binaries pass. A Windows x64 Wine startup run started player
   two without reproducing the reported crash. This does not establish that all desktop
   multiplayer crashes are resolved or verify a complete two-player race.
-- #10 remains unverified. Main already contains a Wipeout 64 sky-height correction
-  in 9149a84. The issue's Windows screenshot also shows scenery texture problems;
-  the height correction alone does not establish that this report is resolved.
-- #14 remains unresolved. No ship speeds, jump flags or physics constants were changed.
-  The Altima VII Rapier jump needs a reproducible Qirex run before choosing a correction.
+- #10: rebind Wipeout 64's placeholder sky model to its panorama tiles and their actual
+  UV dimensions. Its original texture-zero bindings sampled outside the first 56x36
+  image and produced black-and-white panels. Matched captures reproduce and verify
+  this in the native Mac executable and the Windows x64 executable under Wine.
+- #14: use Qirex's original Rapier profile on the original Wipeout guest circuits.
+  The XL profile's greater thrust and different mass, resistance and skid overshot
+  Altima VII's descent. Steering-assisted, full-throttle player-physics runs reproduce
+  the launch with the XL profile and verify landing with the guest profile. XL and
+  Wipeout 64 keep their existing profiles; Venom and other teams are unchanged.
+- #2 was fixed in 0.0.4 and the reporter confirmed it. A rebuilt 0.0.3 and the current
+  port provide the interpolated race captures used for the motion comparison.
 
 Run the focused tests with `tools/bugtest/run.sh`. They require a C compiler,
 SDL3 and pkg-config, and no game data. Windows builds also run the reset-range check.
