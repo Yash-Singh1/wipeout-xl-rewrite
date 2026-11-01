@@ -23,6 +23,11 @@ ${CC:-cc} -O2 -Iplatform $(pkg-config --cflags sdl3) tools/bugtest/test_second_e
     $(pkg-config --libs sdl3) -o "$test_build/second_exit"
 "$test_build/second_exit"
 
+${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard \
+    -Iplatform -Iplatform/psx -iquote game/include $(pkg-config --cflags sdl3) tools/bugtest/test_ordering_cycle.c \
+    $(pkg-config --libs sdl3) -o "$test_build/ordering_cycle"
+"$test_build/ordering_cycle"
+
 for test in guest_sky guest_animation; do
     ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard \
         -Iplatform -Iplatform/psx -iquote game/include $(pkg-config --cflags sdl3) \

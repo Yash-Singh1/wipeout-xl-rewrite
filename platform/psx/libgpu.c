@@ -1573,6 +1573,33 @@ static u_long *NodeAfter(u_long *node)
     return link == LINK_END ? NULL : LinkPointer(link);
 }
 
+/* A reused packet can link back into the same table. Interpolation would then
+   draw forever without returning to the event pump, while audio keeps playing.
+   Preserve every distinct node, cutting only the edge that repeats the cycle. */
+static void EndTableCycle(u_long *head)
+{
+    u_long *slow = head, *fast = head, *tail;
+
+    while (fast && (fast = NodeAfter(fast)) != NULL) {
+        slow = NodeAfter(slow);
+        fast = NodeAfter(fast);
+        if (slow == fast) {
+            slow = head;
+            while (slow != fast) {
+                slow = NodeAfter(slow);
+                fast = NodeAfter(fast);
+            }
+            tail = slow;
+            while (NodeAfter(tail) != slow) {
+                tail = NodeAfter(tail);
+            }
+            fprintf(stderr, "libgpu: cyclic ordering table at packet %p; closing repeated link\n", (void *)slow);
+            *tail = (*tail & 0xFF000000u) | LINK_END;
+            return;
+        }
+    }
+}
+
 /* The first node from node on that carries a packet, or NULL. */
 static u_long *PacketFrom(u_long *node)
 {
@@ -1677,6 +1704,7 @@ static void ReadPendingTables(void)
     }
     memset(seen, 0, sizeof(seen));
     for (i = 0; i < pendingCount; i++) {
+        EndTableCycle(pending[i].table);
         u_long *head = PacketFrom(pending[i].table);
         uint32_t first = head ? LinkId(head) : LINK_END;
 
@@ -2016,6 +2044,8 @@ static int TableDraws(u_long *table)
 
 void PsxUpcomingTables(u_long *table, u_long *second, u_long *hudFirst, DRAWENV *env)
 {
+    EndTableCycle(table);
+    EndTableCycle(second);
     memcpy(centred[1], centred[0], sizeof(centred[0])); /* (PortHudCentred: the frame's, for its tables) */
     centredCount[1] = centredCount[0];
     centredCount[0] = 0;
@@ -2083,6 +2113,7 @@ static void DrawTableAgain(u_long *p)
     u_long *node;
     int inHud = p == hudTable;
 
+    EndTableCycle(p);
     WalkTable(p, 0);
     if (PortLinkSplit()) {
         DrawAnchored(p, PortScreenMargin(), 1);
@@ -2205,6 +2236,7 @@ void DrawOTag(u_long *p)
     u_long *node;
     int tracing = PortTracing() && pendingCount < PENDING_TABLES, inHud = p == hudTable;
 
+    EndTableCycle(p);
     WalkTable(p, 1);
     tablesDrawn++;
     if (p == upcoming.table) {
