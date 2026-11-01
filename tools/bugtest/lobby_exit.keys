@@ -1,0 +1,35 @@
+# With WIPEOUT_FIXED_STEP=1 and WIPEOUT_FRAMES=4100: enter One on One, exit with Y,
+# enter Arcade Link, exit with Y. Both second-game sessions must end cleanly.
+0 pad attach xbox
+100 focus gained
+200 down Return
+205 up Return
+350 down Up
+355 up Up
+450 down Return
+455 up Return
+650 down Down
+655 up Down
+750 down Down
+755 up Down
+850 down Down
+855 up Down
+950 pad down a
+955 pad up a
+1100 focus gained
+1180 focus gained
+1800 focus gained
+1900 pad down y
+1905 pad up y
+2100 focus gained
+2200 pad down a
+2205 pad up a
+2400 pad down dpdown
+2405 pad up dpdown
+2500 pad down dpdown
+2505 pad up dpdown
+2700 pad down a
+2705 pad up a
+3200 focus gained
+3700 pad down y
+3705 pad up y

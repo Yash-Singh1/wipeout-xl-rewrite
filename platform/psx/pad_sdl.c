@@ -809,6 +809,9 @@ void PsxPadSdlShutdown(void)
     int port;
     bool opened = false;
 
+    if (PortLinkRole() == LINK_SLAVE) {
+        return; /* Its input belongs to the first game, as in PsxPadSdlInit. */
+    }
     for (port = 0; port < GAMEPADS; port++) {
         if (gamepads[port]) {
             SDL_CloseGamepad(gamepads[port]);

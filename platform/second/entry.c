@@ -4,6 +4,11 @@
    (as a program's memory is at its exit), and the test settings in the environment are the first game's, not its
    own. (Compiled once, with the C library's own names: the second game's sources call these in
    their place.) */
+/* This C-only thread runs its cleanup callbacks below. Do not ask Windows to
+   unwind the combined second-game object when returning to its entry point. */
+#ifdef _WIN32
+#define __USE_MINGW_SETJMP_NON_SEH
+#endif
 #include <SDL3/SDL.h>
 #include <setjmp.h>
 #include <stdint.h>

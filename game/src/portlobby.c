@@ -61,10 +61,10 @@ static int TeamShip(int team)
 static char *TeamName(int team)
 {
     switch (teamShipGroup[0].order[team]) {
-    case 0: return teamNameFeisar;
-    case 1: return teamNameAgSystems;
-    case 2: return teamNameAuricom;
-    case 3: return teamNameQirex;
+    case 0: return teamNameAgSystems;
+    case 1: return teamNameAuricom;
+    case 2: return teamNameQirex;
+    case 3: return teamNameFeisar;
     default: return teamNamePiranha;
     }
 }
@@ -108,10 +108,10 @@ static const char *BackName(int kind)
 {
     switch (kind) {
     case 1: return "ESC";
-    case 3: return "B";
-    case 4: return "A";
+    case 3: return "Y";
+    case 4: return "X";
     case 2: return "TRIANGLE";
-    default: return "B";
+    default: return "Y";
     }
 }
 

@@ -14,6 +14,15 @@ ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard \
     tools/bugtest/test_movie.c $(pkg-config --libs sdl3) -o "$test_build/movie"
 "$test_build/movie"
 
+${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Wno-deprecated-declarations \
+    -include platform/include/port.h -iquote game/include tools/bugtest/test_lobby.c \
+    game/data/menus_data.c -o "$test_build/lobby"
+"$test_build/lobby"
+
+${CC:-cc} -O2 -Iplatform $(pkg-config --cflags sdl3) tools/bugtest/test_second_exit.c \
+    $(pkg-config --libs sdl3) -o "$test_build/second_exit"
+"$test_build/second_exit"
+
 for test in guest_sky guest_animation; do
     ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard \
         -Iplatform -Iplatform/psx -iquote game/include $(pkg-config --cflags sdl3) \

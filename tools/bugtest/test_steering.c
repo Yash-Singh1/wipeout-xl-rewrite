@@ -259,6 +259,11 @@ int main(void)
     gamepads[0] = NULL;
     SDL_CloseJoystick(stick);
     SDL_DetachVirtualJoystick(id);
+    /* The hidden game never initialized the controller subsystem and must not quit it. */
+    linkRole = LINK_SLAVE;
+    assert(SDL_WasInit(SDL_INIT_GAMEPAD));
+    PsxPadSdlShutdown();
+    assert(SDL_WasInit(SDL_INIT_GAMEPAD));
     SDL_Quit();
     puts("analog steering, bindings, menus, focus, live Automatic selection and NeGcon hotplug: OK");
     return 0;
