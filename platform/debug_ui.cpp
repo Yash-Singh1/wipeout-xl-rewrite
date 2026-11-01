@@ -80,6 +80,7 @@ extern "C" void DebugUiInit(SDL_Window *w, void *context)
     style.Colors[ImGuiCol_WindowBg].w = 0.92f;
     baseStyle = style;
     ImGui_ImplSDL3_InitForOpenGL(w, context);
+    ImGui_ImplSDL3_SetGamepadMode(ImGui_ImplSDL3_GamepadMode_AutoAll);
     ImGui_ImplOpenGL3_Init(PORT_GLSL_VERSION);
     SDL_strlcpy(saveDirEdit, portSettings.saveDir, sizeof(saveDirEdit));
     SDL_strlcpy(originalEdit, portSettings.originalPath, sizeof(originalEdit));
@@ -1802,6 +1803,14 @@ static void HdTextures(void)
 }
 
 #ifndef __EMSCRIPTEN__
+static void UpdateNoticeNavigation(void)
+{
+    // The alert owns controller navigation while it is visible.
+    ImGuiIO &io = ImGui::GetIO();
+    if (PortUpdateAvailable()) io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+    else io.ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
+}
+
 static void UpdateNotice(void)
 {
     const char *version = PortUpdateAvailable();
@@ -1823,7 +1832,8 @@ static void UpdateNotice(void)
             Changed();
         }
         ImGui::Spacing();
-        if (ImGui::Button("Later") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+        if (ImGui::Button("Later") || ImGui::IsKeyPressed(ImGuiKey_Escape) ||
+            ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false)) {
             PortUpdateDismiss();
             ImGui::CloseCurrentPopup();
         }
@@ -2138,6 +2148,9 @@ extern "C" void DebugUiRender(void)
     int width, height;
     SDL_GetWindowSizeInPixels(window, &width, &height);
     FitToWindow();
+#ifndef __EMSCRIPTEN__
+    UpdateNoticeNavigation();
+#endif
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();

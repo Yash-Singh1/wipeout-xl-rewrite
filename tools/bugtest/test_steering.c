@@ -5,7 +5,8 @@
 #include <assert.h>
 
 PortConfig portConfig;
-static int focused = 1;
+static int focused = 1, updateAlert;
+const char *PortUpdateAvailable(void) { return updateAlert ? "v0.0.7" : NULL; }
 static LinkInput linkedInput;
 static int linkRole = LINK_NONE;
 static int linkSplit = 1;
@@ -152,6 +153,22 @@ int main(void)
     PsxInputEvent(&focusEvent);
     Axis(0);
     assert(!(control.buttons & (CONTROL_THRUST | CONTROL_FIRE))); /* held buttons don't resume on focus */
+    /* Alert navigation must not steer, fire, or accept a game menu underneath it. */
+    updateAlert = 1;
+    Axis(10000);
+    assert(PsxPadButtons(0) == 0 && PsxPadSteering(0) == -1);
+    assert(SDL_SetJoystickVirtualButton(stick, SDL_GAMEPAD_BUTTON_SOUTH, true));
+    Read(); assert(PsxPadButtons(0) == 0);
+    PortInputAssign(DEVICE_KEYBOARD, (int)id);
+    SendSecondPlayer();
+    assert(linkedInput.pad.buttons == 0 && !linkedInput.pad.analogSteering);
+    PortInputAssign(DEVICE_NONE, DEVICE_NONE);
+    updateAlert = 0;
+    Read(); assert(!(control.buttons & CONTROL_THRUST)); /* dismissal press stays consumed */
+    assert(SDL_SetJoystickVirtualButton(stick, SDL_GAMEPAD_BUTTON_SOUTH, false)); Read();
+    assert(SDL_SetJoystickVirtualButton(stick, SDL_GAMEPAD_BUTTON_SOUTH, true)); Read();
+    assert(control.buttons & CONTROL_THRUST); /* a fresh press works normally */
+    assert(SDL_SetJoystickVirtualButton(stick, SDL_GAMEPAD_BUTTON_SOUTH, false)); Read();
     PsxPadRaceFrame(false, bindings);
     Axis(20000);
     assert(PsxPadSteering(0) == -1);

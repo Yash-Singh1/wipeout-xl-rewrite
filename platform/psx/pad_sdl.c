@@ -36,6 +36,7 @@
 
 #include "../link.h"
 #include "../platform.h"
+#include "../updates.h"
 #include "internal.h"
 #include "pad.h"
 
@@ -183,6 +184,9 @@ static void update_keyboard(void)
 
     memset(&st, 0, sizeof(st));
     st.twist = 0x80;
+    if (PortUpdateAvailable()) {
+        for (i = 0; i < KEY_COUNT; i++) keyHeldOver[i] |= keyDown[i];
+    }
     for (i = 0; i < KEY_COUNT; i++) {
         if (keyDown[i] && !keyHeldOver[i] && !NameKey(keyBindings[i].key, NameKeys())) {
             st.buttons |= key_buttons(i, keyContext);
@@ -315,6 +319,7 @@ static void update_gamepad(int port)
         if (PsxPadContext() == PAD_CONTEXT_RACE) padHeldOver[port] |= st.buttons & (PAD_START | PAD_SELECT);
         padContext[port] = PsxPadContext();
     }
+    if (PortUpdateAvailable()) padRegained[port] = true;
     if (padRegained[port]) {
         padRegained[port] = false;
         padHeldOver[port] = st.buttons;
@@ -488,6 +493,7 @@ static void update_joystick(int port)
         if (PsxPadContext() == PAD_CONTEXT_RACE) padHeldOver[port] |= st.buttons & (PAD_START | PAD_SELECT);
         padContext[port] = PsxPadContext();
     }
+    if (PortUpdateAvailable()) padRegained[port] = true;
     if (padRegained[port]) {
         padRegained[port] = false;
         padHeldOver[port] = st.buttons;
@@ -540,6 +546,13 @@ static void Route(void)
     static const PadState idle = {0, 0x80, 0, 0, 0};
     int port;
 
+    if (PortUpdateAvailable()) {
+        // The alert owns input; keep both game ports neutral until it closes.
+        PsxPadSetSource(0, PAD_SRC_KEYBOARD, &idle, true);
+        PsxPadSetSource(0, PAD_SRC_GAMEPAD, &idle, false);
+        PsxPadSetSource(1, PAD_SRC_GAMEPAD, &idle, false);
+        return;
+    }
     if (!routed) {
         /* one player: every gamepad is theirs (the buttons of all; the sticks and triggers of the one used
            last), as the keyboard is; the console's second port is not read by a one-console game */
@@ -579,11 +592,15 @@ static void SendSecondPlayer(void)
 
     memset(&input, 0, sizeof(input));
     input.pad.twist = 0x80;
+    if (PortUpdateAvailable()) {
+        PortLinkSetInput(&input);
+        return;
+    }
     if (secondDevice == DEVICE_KEYBOARD) {
         input.keyboard = 1;
         input.device = PAD_DEVICE_KEYBOARD;
         for (i = 0; i < KEY_COUNT && i < 32; i++) {
-            if (keyDown[i]) {
+            if (keyDown[i] && !keyHeldOver[i]) {
                 input.keys |= 1u << i;
             }
         }

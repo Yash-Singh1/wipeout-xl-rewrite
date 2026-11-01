@@ -39,7 +39,17 @@ ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -DPORT_VERSION='"0.0.
 "$test_build/updates"
 ${CC:-cc} -O1 -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) \
     tools/bugtest/test_updates_web.c $(pkg-config --libs sdl3) -o "$test_build/updates_web"
+
 "$test_build/updates_web"
+
+# Exercise the real alert and SDL controller navigation without a GPU or network.
+imgui=platform/third_party/imgui
+${CXX:-c++} -std=c++17 -O1 -ffunction-sections -fdata-sections $discard -DPORT_VERSION='"0.0.7"' \
+    -Iplatform -Iplatform/psx -I"$imgui" $(pkg-config --cflags sdl3) \
+    tools/bugtest/test_update_navigation.cpp "$imgui/imgui.cpp" "$imgui/imgui_draw.cpp" \
+    "$imgui/imgui_tables.cpp" "$imgui/imgui_widgets.cpp" "$imgui/backends/imgui_impl_sdl3.cpp" \
+    $(pkg-config --libs sdl3) -o "$test_build/update_navigation"
+"$test_build/update_navigation"
 
 # Run track reaction on a steep guest descent with the production integer helpers.
 ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Wno-deprecated-declarations \

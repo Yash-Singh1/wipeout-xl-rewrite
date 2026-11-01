@@ -19,6 +19,20 @@ static SDL_AtomicInt finished;
 static int started, pending;
 static char available[64];
 
+/* git describe, plus CMake's shortened hash form, is a build after the base tag.
+   It is not a prerelease of that same tag. */
+static int GitBuild(const char *suffix)
+{
+    const char *hash = suffix, *end;
+    if (!strcmp(suffix, "dirty")) return 1;
+    while (*hash >= '0' && *hash <= '9') hash++;
+    if (hash != suffix && hash[0] == '-' && hash[1] == 'g') hash += 2;
+    else hash = suffix;
+    end = hash;
+    while ((*end >= '0' && *end <= '9') || (*end >= 'a' && *end <= 'f')) end++;
+    return end - hash >= 7 && (!*end || !strcmp(end, "-dirty"));
+}
+
 static int Version(const char *text, int parts[3], int local)
 {
     int i;
@@ -36,7 +50,7 @@ static int Version(const char *text, int parts[3], int local)
     }
     /* Local git/prerelease suffixes are allowed; remote tags must be stable versions. */
     if (!*text) return 1;
-    if (local && (*text == '-' || *text == '+') && text[1]) return *text == '-' ? 2 : 1;
+    if (local && (*text == '-' || *text == '+') && text[1]) return *text == '-' && !GitBuild(text + 1) ? 2 : 1;
     return 0;
 }
 

@@ -65,6 +65,7 @@ void PortPadSecondRumble(int kind, int level)
     (void)level;
 }
 
+const char *PortUpdateAvailable(void) { return NULL; } /* no updater in I/O tests */
 int PortAnalogSteeringEnabled(void) { return 0; } /* these tests exercise the console pad protocol */
 
 int PortWindowFocused(void)

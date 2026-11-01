@@ -50,6 +50,15 @@ int main(void)
     assert(!PortUpdateNewer("0.0.8", "v0.0.7"));
     assert(PortUpdateNewer("0.0.7-rc.1", "v0.0.7"));
     assert(!PortUpdateNewer("0.0.7+build-name", "v0.0.7"));
+    assert(!PortUpdateNewer("0.0.6-16-gc3f956d", "v0.0.6"));
+    assert(!PortUpdateNewer("v0.0.6-16-gc3f956d-dirty", "v0.0.6"));
+    assert(!PortUpdateNewer("0.0.6-c3f956d", "v0.0.6"));
+    assert(!PortUpdateNewer("0.0.6-c3f956d-dirty", "v0.0.6"));
+    assert(!PortUpdateNewer("0.0.6-dirty", "v0.0.6"));
+    assert(PortUpdateNewer("0.0.6-c3f956d", "v0.0.7"));
+    assert(!PortUpdateNewer("0.0.6-c3f956d", "v0.0.5"));
+    assert(PortUpdateNewer("0.0.7-beta.2", "v0.0.7"));
+    assert(PortUpdateNewer("0.0.7-alpha.1", "v0.0.7"));
     assert(!PortUpdateNewer("0.0.6", "v0.0.7-beta.1"));
     assert(!PortUpdateNewer("unknown", "v0.0.7"));
     assert(!PortUpdateNewer("0.0.6", "999999999999999999.1.0"));
