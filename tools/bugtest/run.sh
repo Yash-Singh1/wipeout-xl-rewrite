@@ -40,7 +40,7 @@ ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Wno-deprecated-decla
 "$test_build/steering"
 for test in steering_target steering_ghost guest_motion guest_sign; do
     ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Wno-deprecated-declarations -Wno-pointer-sign \
-        -include platform/include/port.h -iquote game/include "tools/bugtest/test_$test.c" -o "$test_build/$test"
+        -include platform/include/port.h -iquote game/include "tools/bugtest/test_$test.c" -lm -o "$test_build/$test"
     "$test_build/$test"
 done
 ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -iquote game/include \

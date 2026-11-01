@@ -15,6 +15,7 @@
 #include "ttf.h"
 #include "portfar.h"
 #include "portorig.h"
+#include <math.h>
 
 extern s32       raceType;
 extern short     startLinePos[];
@@ -612,10 +613,55 @@ int PortOriginalFitDroid(Object *shape, TrackSection *section)
     return FitDroid(shape, section, 3000);
 }
 
+/* N64 atan2 rounds the 12-bit ratio before its 16-bit angle lookup, then
+   shifts the signed angle down by four. PS1 ratan2 uses a different table. */
+static int SignAngle64(int x, int z)
+{
+    unsigned ax = x < 0 ? 0u - (unsigned)x : (unsigned)x;
+    unsigned az = z < 0 ? 0u - (unsigned)z : (unsigned)z;
+    unsigned small = ax < az ? ax : az, large = ax > az ? ax : az;
+    unsigned numerator, index, bits = 0, value;
+    int angle;
+    if (!large) return 0;
+    for (value = small; value; value >>= 1) bits++;
+    if (bits > 20) {
+        large >>= bits - 20;
+        numerator = small << (32 - bits);
+    } else {
+        numerator = small << 12;
+    }
+    index = numerator / large;
+    if ((numerator % large) * 2u > large) index++;
+    /* Reconstruct the lookup value without a second copy of the ROM table. */
+    angle = (int)(atan(index / 4096.0) * (65536.0 / 6.2831853071795864769) + 0.5);
+    if (ax > az) angle = 16384 - angle;
+    if (z < 0) angle = 32768 - angle;
+    if (x < 0) angle = -angle;
+    return (short)angle >> 4;
+}
+
+static void SignDirection64(Skeleton *skeleton, int heading)
+{
+    double radians = (heading & 4095) * (6.2831853071795864769 / 4096.0);
+    int sine = (int)lround(sin(radians) * 16384.0);
+    int cosine = (int)lround(cos(radians) * 16384.0);
+    MATRIX *m = &skeleton->relative;
+    memset(m->m, 0, sizeof(m->m));
+    /* The N64 multiplies 14-bit trig values before reducing to 12 bits.
+       Negating after the shift loses a unit for some headings. */
+    m->m[0][0] = m->m[2][2] = (short)(cosine >> 2);
+    m->m[0][2] = (short)((-sine) >> 2);
+    m->m[2][0] = (short)(sine >> 2);
+    m->m[1][1] = 4096;
+    skeleton->update = 1;
+}
+
 /* The N64 uses the pit/sign housing and its own S, F, C and arrow faces, rather than XL's droid. */
 int PortOriginalDrawDroid(TrackSection *section, int texture, int mirrored, int tick)
 {
     Object *body = signParts[SIGN_HOUSING], *panel;
+    TrackSection *position;
+    MATRIX *m;
     FT4 *face;
     /* N64 vertex intensity 255 is unmodulated; the PS1's equivalent is 128. */
     int heading, colour = tick % 20 < 10 ? 128 : 64;
@@ -623,13 +669,22 @@ int PortOriginalDrawDroid(TrackSection *section, int texture, int mirrored, int 
     panel = signParts[texture == 0 ? SIGN_START : texture == 1 ? SIGN_FINISH :
                       texture == 2 ? SIGN_CHECKPOINT : mirrored ? SIGN_RIGHT : SIGN_LEFT];
     if (!panel) return 0;
-    heading = 4096 - ratan2(section->centre.vx - section->prevSection.ptr->centre.vx,
-                            section->centre.vz - section->prevSection.ptr->centre.vz);
-    SetSkeletonDirectionHPR(body->skeleton, (short)heading, 0, 0);
-    SetSkeletonPosition(body->skeleton, section->centre.vx, FitDroid(body, section, 2500), section->centre.vz);
-    panel->skeleton->super = body->skeleton;
-    SetSkeletonDirection(panel->skeleton, 0, 0, 0);
-    SetSkeletonPosition(panel->skeleton, 0, 0, -1200);
+    /* The placement routine advances past the flagged checkpoint section.
+       Its height is fixed, including in tunnels; it never rescales the housing. */
+    position = section->nextSection.ptr;
+    heading = 4096 - SignAngle64(position->centre.vx - position->prevSection.ptr->centre.vx,
+                                position->centre.vz - position->prevSection.ptr->centre.vz);
+    SignDirection64(body->skeleton, heading);
+    SetSkeletonPosition(body->skeleton, (position->centre.vx >> 1) * 2,
+                        ((position->centre.vy - 2500) >> 1) * 2, (position->centre.vz >> 1) * 2);
+    /* The original composes the panel's -600 offset in half-size coordinates.
+       Compose here before doubling to preserve that rounding in native units. */
+    m = &body->skeleton->relative;
+    panel->skeleton->super = body->skeleton->super;
+    panel->skeleton->relative = *m;
+    SetSkeletonPosition(panel->skeleton, m->t[0] + ((m->m[0][2] * -600) >> 12) * 2,
+                        m->t[1] + ((m->m[1][2] * -600) >> 12) * 2,
+                        m->t[2] + ((m->m[2][2] * -600) >> 12) * 2);
     face = (FT4 *)panel->primitives;
     face->colour.r = face->colour.g = face->colour.b = (u_char)colour;
     /* One stable drawing identity per gate, including the far pass. */
