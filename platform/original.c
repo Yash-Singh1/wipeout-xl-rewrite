@@ -107,6 +107,9 @@ static const char *const fileNames[FILES] = {"track.wad", "track.tex", "cpoint0.
                                              "cpoint3.chk"};
 static uint8_t *files[FILES];
 static size_t fileSizes[FILES];
+static size_t raceModels;       /* Wipeout 64's pit/sign models and textures. */
+static uint8_t *markerModel, *markerTextures;
+static size_t markerModelSize, markerTexturesSize;
 /* The original's track models (its common/track.prm), asked for as the menus' MODELS_NAME in XL's common
    folder: read at the first ask, read at the virtual sector after the guest's files. */
 #define MODELS_NAME "\\origtrk.prm"
@@ -632,6 +635,7 @@ static uint8_t *MakeViewLists(uint8_t *sections, int count, size_t *size)
    (which starts with the class's own time), the track's measured ones (GateSeconds). The same for every class: a
    guest is raced at its own. */
 static int gates[3];        /* the gates' section numbers */
+static int gateCount = 3;
 static int mainSections;    /* the sections of the main loop (a lap) */
 
 static uint8_t *MakeCheckpoints(size_t *size)
@@ -647,7 +651,13 @@ static uint8_t *MakeCheckpoints(size_t *size)
     for (i = 0; i < 6; i++) {
         uint8_t *cell = out + i * 6;
         /* (an unused cell has no seconds: the checkpoint droids take a cell with seconds for a gate) */
-        int section = i < 3 ? gates[i] : -1, bonus = i < 3 ? seconds[i] : 0;
+        int section = i < gateCount ? gates[i] : -1, bonus = i < gateCount ? seconds[i] : 0;
+
+        /* Keep the guest's existing lap budget when its original course has two gates. */
+        if (guest->from == FROM_64 && gateCount == 2 && i < 2) {
+            int total = seconds[0] + seconds[1] + seconds[2];
+            bonus = (total + (i == 0)) / 2;
+        }
 
         cell[0] = (uint8_t)section;
         cell[1] = (uint8_t)(section >> 8);
@@ -672,6 +682,9 @@ static void FreeFiles(void)
     builtFor = -1;
     libraryTextures = 0;
     FreeAnimations();
+    SDL_free(markerModel); markerModel = NULL;
+    SDL_free(markerTextures); markerTextures = NULL;
+    markerModelSize = markerTexturesSize = 0;
 }
 
 static int32_t Be32(const uint8_t *p)
@@ -782,6 +795,7 @@ static int NumberSections(uint8_t *sections, int count)
     int *numbers = SDL_malloc(sizeof(int) * (size_t)(count ? count : 1));
     int section, start = -1, steps, i, guard;
 
+    gateCount = 3;
     mainSections = Number(sections, count, numbers);
     for (i = 0; i < count; i++) {
         PutBe16(sections + (size_t)i * SECTION_BYTES + 152, numbers[i]);
@@ -831,6 +845,33 @@ static int NumberSections(uint8_t *sections, int count)
     return start >= 0 && mainSections >= 3;
 }
 
+/* The N64 track already marks its gates. Preserve their positions rather than putting new ones a third
+   of a lap apart, which put Qoron's extra sign inside scenery the original checkpoint never occupied. */
+static int Wipeout64Gates(const uint8_t *sections, int count, const uint8_t *faces, size_t faceSize)
+{
+    int section, start = -1, i;
+    for (i = 0; i < count; i++) {
+        if ((short)Be16(sections + (size_t)i * SECTION_BYTES + 152) == guests[chosen].startLine) start = i;
+    }
+    if (start < 0) return 0;
+    gateCount = 0;
+    section = start;
+    for (i = 0; i < mainSections; i++) {
+        int first = (short)Be16(sections + (size_t)section * SECTION_BYTES + 142);
+        int n = (short)Be16(sections + (size_t)section * SECTION_BYTES + 144), j, gate = 0;
+        for (j = first; j >= 0 && j < first + n && (size_t)(j + 1) * FACE_BYTES <= faceSize; j++) {
+            gate |= (faces[(size_t)j * FACE_BYTES + 15] & 0x81) == 0x81;
+        }
+        if (gate) {
+            if (gateCount == 3) return 0;
+            gates[gateCount++] = (short)Be16(sections + (size_t)section * SECTION_BYTES + 152);
+        }
+        section = FIELD32(section, 8);
+        if (section < 0 || section >= count) return 0;
+    }
+    return gateCount >= 2;
+}
+
 static uint8_t *Relocate(const uint8_t *cmp, size_t length, int *paletteSlot, size_t *size);
 static int Wipeout64Parts(int index, uint8_t **parts, size_t *sizes);
 int PortPrmShiftTextures(char *file, int length, int shift); /* (game/src/port_widen.c) */
@@ -867,6 +908,7 @@ static int Build(void)
         fprintf(stderr, "guest track %s: its sections make no loop\n", guest->name);
         ok = 0;
     }
+    if (ok && from64) ok = Wipeout64Gates(parts[2], sectionCount, parts[1], sizes[1]);
     if (ok && !parts[3]) {
         parts[3] = MakeViewLists(parts[2], sectionCount, &sizes[3]);
     }
@@ -922,7 +964,8 @@ static int Build(void)
                 const uint8_t *s = parts[2] + (size_t)i * SECTION_BYTES;
                 int face, first = (int16_t)Be16(s + 142), count = (int16_t)Be16(s + 144);
                 int number = (int16_t)Be16(s + 152);
-                int gate = number == gates[0] || number == gates[1] || number == gates[2];
+                int gate = 0, g;
+                for (g = 0; g < gateCount; g++) gate |= number == gates[g];
 
                 for (face = first; face < first + count && (size_t)(face + 1) * FACE_BYTES <= sizes[1]; face++) {
                     uint8_t flags = parts[1][(size_t)face * FACE_BYTES + 15];
@@ -1214,6 +1257,14 @@ int PortOriginalFileInfo(const char *pathname, int *loc, int *size)
     if (chosen < 0 || !guestCount) {
         return 0;
     }
+    if (guests[chosen].from == FROM_64 &&
+        (SDL_strcasestr(pathname, "\\w64sign.prm") || SDL_strcasestr(pathname, "\\w64sign.cmp"))) {
+        int model = SDL_strcasestr(pathname, "\\w64sign.prm") != NULL;
+        if (!Build() || !(model ? markerModel : markerTextures)) return 0;
+        *loc = VIRTUAL_LOC + (FILES + 2 + !model) * VIRTUAL_SPAN;
+        *size = (int)(model ? markerModelSize : markerTexturesSize);
+        return 1;
+    }
     /* Talon's Reach's folder: ...\track01\NAME */
     name = SDL_strcasestr(pathname, "\\track01\\");
     if (!name) {
@@ -1241,12 +1292,15 @@ int PortOriginalRead(int loc, int sectors, void *buffer)
     const uint8_t *data;
     size_t size;
 
-    if (loc < VIRTUAL_LOC || file > FILES + 1 || (file < FILES && !files[file]) || (file == FILES && !modelsFile) ||
-        (file == FILES + 1 && !picturesFile)) {
+    if (loc < VIRTUAL_LOC || file > FILES + 3 || (file < FILES && !files[file]) || (file == FILES && !modelsFile) ||
+        (file == FILES + 1 && !picturesFile) || (file == FILES + 2 && !markerModel) ||
+        (file == FILES + 3 && !markerTextures)) {
         return 0;
     }
-    data = file == FILES + 1 ? picturesFile : file == FILES ? modelsFile : files[file];
-    size = file == FILES + 1 ? picturesSize : file == FILES ? modelsSize : fileSizes[file];
+    data = file == FILES + 3 ? markerTextures : file == FILES + 2 ? markerModel :
+           file == FILES + 1 ? picturesFile : file == FILES ? modelsFile : files[file];
+    size = file == FILES + 3 ? markerTexturesSize : file == FILES + 2 ? markerModelSize :
+           file == FILES + 1 ? picturesSize : file == FILES ? modelsSize : fileSizes[file];
     from = (size_t)sector * 2048;
     length = (size_t)sectors * 2048;
     memset(buffer, 0, length);
@@ -1357,6 +1411,7 @@ void PortWipeout64Close(void)
     wadCount = 0;
     frontEnd = 0;
     effects = 0;
+    raceModels = 0;
     ListGuests();
 }
 
@@ -1406,6 +1461,8 @@ int PortWipeout64Open(const char *path, char *message, int messageSize)
             frontEnd = i - 2;
         } else if (rom[i] == 't' && !effects && !memcmp(rom + i, "turbSin.cmp", 12) && WadPart(i - 2, "steam.cmp", &size)) {
             effects = i - 2;
+        } else if (rom[i] == 'p' && !raceModels && !memcmp(rom + i, "pit.cmp", 8) && WadPart(i - 2, "pit.prm", &size)) {
+            raceModels = i - 2;
         }
     }
     if (!wadCount) {
@@ -1756,12 +1813,12 @@ static int MakeLibrary(const uint8_t *cmp, size_t length, Layout *l, uint8_t **l
    Its fans, steam, lava and flames are texture sequences in a wad of their own (with its turbo pads' and other
    pictures), each picture with a palette of its own. A track's scene has a sequence's first picture, and the race
    shows the others over it in turn (PortOriginalAnimate), so that texture is given a palette no other shares. The
-   pace is Wipeout 64's code's, not its data's: these are guesses, in game frames a picture. */
+   pace is in game frames per picture. */
 
 static const struct {
     const char *name;
     int period;
-} effects64[] = {{"fan.cmp", 1}, {"steam.cmp", 2}, {"lava.cmp", 2}, {"flame.cmp", 2}};
+} effects64[] = {{"fan.cmp", 1}, {"steam.cmp", 2}, {"lava.cmp", 2}, {"flame.cmp", 3}};
 
 typedef struct Animation {
     int scene;          /* the scene's TIM it shows on */
@@ -1809,6 +1866,8 @@ static void FindAnimations(TimList *scene, int *own)
         own[i] = 1;
         animations[animationCount].scene = i;
         animations[animationCount].period = effects64[e].period;
+        /* Sokana updates steam every frame; Terafumos updates it every other frame. */
+        if (e == 1 && chosen >= 0 && guests[chosen].track == 2) animations[animationCount].period = 1;
         animations[animationCount++].pictures = pictures;
     }
 }
@@ -1973,6 +2032,21 @@ static int Wipeout64Parts(int index, uint8_t **parts, size_t *sizes)
         memcpy(parts[9], data, size);
         sizes[9] = size;
         ok = ok && Wipeout64Sky(parts[9], sizes[9], &sky);
+    }
+    if (ok) {
+        TimList signs = {0};
+        data = raceModels ? WadPart(raceModels, "pit.cmp", &size) : NULL;
+        ok = data && Unpack(data, size, &signs) && PlaceTims(&layout, &signs, NULL);
+        if (ok) {
+            markerTextures = Pack(&signs, &markerTexturesSize);
+            data = WadPart(raceModels, "pit.prm", &markerModelSize);
+            ok = data != NULL;
+            if (ok) {
+                markerModel = SDL_malloc(markerModelSize);
+                memcpy(markerModel, data, markerModelSize);
+            }
+        }
+        TimFree(&signs);
     }
     if (!ok) {
         fprintf(stderr, "Wipeout 64: %s's textures or scenery could not be made XL's\n", guests[chosen].name);

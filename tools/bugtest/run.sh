@@ -14,10 +14,12 @@ ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard \
     tools/bugtest/test_movie.c $(pkg-config --libs sdl3) -o "$test_build/movie"
 "$test_build/movie"
 
-${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard \
-    -Iplatform -Iplatform/psx -iquote game/include $(pkg-config --cflags sdl3) \
-    tools/bugtest/test_guest_sky.c $(pkg-config --libs sdl3) -o "$test_build/guest_sky"
-"$test_build/guest_sky"
+for test in guest_sky guest_animation; do
+    ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard \
+        -Iplatform -Iplatform/psx -iquote game/include $(pkg-config --cflags sdl3) \
+        "tools/bugtest/test_$test.c" $(pkg-config --libs sdl3) -o "$test_build/$test"
+    "$test_build/$test"
+done
 
 # Port rendering changes must preserve the original effect segments and quad geometry.
 for test in electric near_object; do
@@ -36,7 +38,7 @@ ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Wno-deprecated-decla
     -include platform/include/port.h -iquote game/include -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) \
     tools/bugtest/test_steering.c platform/psx/pad.c game/src/pad.c $(pkg-config --libs sdl3) -o "$test_build/steering"
 "$test_build/steering"
-for test in steering_target steering_ghost; do
+for test in steering_target steering_ghost guest_motion guest_sign; do
     ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Wno-deprecated-declarations -Wno-pointer-sign \
         -include platform/include/port.h -iquote game/include "tools/bugtest/test_$test.c" -o "$test_build/$test"
     "$test_build/$test"

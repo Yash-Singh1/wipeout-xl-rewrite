@@ -53,6 +53,27 @@ int main(void)
     assert(!Wipeout64Sky(model, sizeof(model) - 1, &sky));
     PutBe16(model + 436, 36);
     assert(!Wipeout64Sky(model, sizeof(model), &sky));
-    puts("guest sky tiles and UVs: OK");
+    {
+        uint8_t sections[4 * SECTION_BYTES] = {0}, faces[4 * FACE_BYTES] = {0}, *checkpoints;
+        size_t checkpointSize;
+        chosen = 0; guests[0].from = FROM_64; guests[0].track = 1; guests[0].startLine = 1;
+        mainSections = 4;
+        for (i = 0; i < 4; i++) {
+            sections[i * SECTION_BYTES + 11] = (i + 1) % 4;
+            PutBe16(sections + i * SECTION_BYTES + 142, i);
+            PutBe16(sections + i * SECTION_BYTES + 144, 1);
+            PutBe16(sections + i * SECTION_BYTES + 152, i);
+        }
+        faces[FACE_BYTES + 15] = faces[3 * FACE_BYTES + 15] = 0x81;
+        assert(Wipeout64Gates(sections, 4, faces, sizeof(faces)));
+        assert(gateCount == 2 && gates[0] == 1 && gates[1] == 3);
+        checkpoints = MakeCheckpoints(&checkpointSize);
+        assert(checkpointSize == 36);
+        assert(Le16(checkpoints) == 1 && Le16(checkpoints + 6) == 3);
+        assert(Le16(checkpoints + 2) + Le16(checkpoints + 8) == 55);
+        assert(Le16(checkpoints + 12) == -1 && Le16(checkpoints + 14) == 0);
+        SDL_free(checkpoints);
+    }
+    puts("guest sky tiles, UVs and original checkpoint positions: OK");
     return 0;
 }

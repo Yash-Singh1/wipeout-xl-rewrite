@@ -971,6 +971,7 @@ static void DrawDroid(Object *shape, TrackSection *section, int texture, int mir
     TrackSection *previous;
     GT4 *poly;
     Texture *tex;
+    if (PortOriginalDrawDroid(section, texture, mirrored, droidBlinkTick)) return;
     previous=section->prevSection.ptr;
     direction.vx=section->centre.vx-previous->centre.vx;
     direction.vy=section->centre.vy-previous->centre.vy;

@@ -20,6 +20,7 @@ int   PortOriginalLooks(void);         /* the race is on a track of the original
 int   PortOriginalEightShips(void);    /* ... an arcade race there: eight ships race, as in the original */
 void  PortOriginalShipPhysics(ShipData *ship, int number, int shipClass);
 int   PortOriginalFitDroid(Object *shape, TrackSection *section);
+int   PortOriginalDrawDroid(TrackSection *section, int texture, int mirrored, int tick);
 void  PortOriginalPlaceSky(Object *sky);   /* ... a Wipeout 64 track's sky, as it is loaded */
 void  PortOriginalSceneInit(Object **prm, short prmCount);
 void  PortOriginalCount(int updateCount);

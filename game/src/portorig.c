@@ -13,6 +13,8 @@
 #include "menus.h"
 #include "effects.h"
 #include "ttf.h"
+#include "portfar.h"
+#include "portorig.h"
 
 extern s32       raceType;
 extern short     startLinePos[];
@@ -271,6 +273,93 @@ short PortOriginalLibraryPlaced(TexTemplate *tiles, short tileCount, short loade
 
 static Object *beacons[MAX_BEACONS], *pumps[MAX_PUMPS];
 static int     beaconCount, pumpCount, sceneryFrame;
+/* The N64's moving structures. Positions use XL's full track units; the N64 halves them on load. */
+typedef struct GuestMover {
+    Object *object;
+    VECTOR origin;
+    int phase, random;
+} GuestMover;
+enum { SIGN_RIGHT, SIGN_FRAME, SIGN_START, SIGN_LEFT, SIGN_FINISH,
+       SIGN_CLOSED, SIGN_CHECKPOINT, SIGN_HOUSING, SIGN_COUNT };
+static Object *rotors[3], *signParts[SIGN_COUNT];
+static int rotorCount;
+static GuestMover carts[3], claws[2];
+static uint32_t sceneryRandom;
+
+static int CraneRandom(void)
+{
+    int value;
+    do {
+        sceneryRandom = (uint32_t)((int32_t)sceneryRandom >> 1) ^ (sceneryRandom << 3);
+        value = sceneryRandom & 32767;
+    } while (value < 8192);
+    return value;
+}
+
+static void FindMover(Object **prm, int count, const char *name, GuestMover *mover)
+{
+    int i;
+    Object *object;
+    memset(mover, 0, sizeof(*mover));
+    for (i = 0; i < count; i++) {
+        for (object = prm[i]; object; object = object->next) {
+            if (!strcmp(object->name, name)) {
+                mover->object = object;
+                mover->origin.vx = object->skeleton->relative.t[0];
+                mover->origin.vy = object->skeleton->relative.t[1];
+                mover->origin.vz = object->skeleton->relative.t[2];
+                return;
+            }
+        }
+    }
+}
+
+static void MoveGuestScenery(int tick)
+{
+    static const struct CartRoute {
+        int fromX, fromZ, toX, toZ, travelFrames, restartFrames;
+    } paths[3] = {
+        {3000, -1500, -4000, 2100, 90, 150},
+        {-2700, -610, 4600, 1050, 60, 120},
+        {-2400, 6000, 1600, -5000, 150, 240}
+    };
+    int i;
+    for (i = 0; i < rotorCount; i++) SetSkeletonDirection(rotors[i]->skeleton, 0, (short)(((tick - 1) * 32) & 4095), 0);
+    for (i = 0; i < 3; i++) {
+        GuestMover *m = &carts[i];
+        const struct CartRoute *route = &paths[i];
+        int step = (tick - 1) % route->restartFrames;
+        if (!m->object) continue;
+        if (step > route->travelFrames) step = route->travelFrames;
+        SetSkeletonPosition(m->object->skeleton,
+            m->origin.vx + 2 * (route->fromX + step * (route->toX - route->fromX) / route->travelFrames), m->origin.vy,
+            m->origin.vz + 2 * (route->fromZ + step * (route->toZ - route->fromZ) / route->travelFrames));
+    }
+    for (i = 0; i < 2; i++) {
+        GuestMover *m = &claws[i];
+        int duration, half, start[3], end[3], point[3], axis;
+        if (!m->object) continue;
+        duration = (i ? 150 : 120) * m->random / 32767;
+        half = duration / 2;
+        start[0] = i ? 2000 : -3000; start[1] = 240; start[2] = i ? 20 : -80;
+        end[0] = start[0] + (i ? -5000 : 5000) * m->random / 32767;
+        end[1] = start[1] + (i ? 0 : 30 * m->random / 32767);
+        end[2] = start[2] + (i ? -80 : 80) * m->random / 32767;
+        if (m->phase <= duration) {
+            for (axis = 0; axis < 3; axis++) {
+                point[axis] = m->phase <= half ? start[axis] + m->phase * (end[axis] - start[axis]) / half
+                    : end[axis] + (m->phase - half) * (start[axis] - end[axis]) / half;
+            }
+            SetSkeletonPosition(m->object->skeleton, m->origin.vx + point[0] * 2,
+                                 m->origin.vy + point[1] * 2, m->origin.vz + point[2] * 2);
+        }
+        if (++m->phase > duration + 30) {
+            m->phase = 0;
+            m->random = CraneRandom();
+        }
+    }
+}
+
 static Object *guestScene;
 static TrackSection *boardSections[8];
 static int boardHeights[8], boardTops[8], boardBottoms[8], boardScales[8], boardCount;
@@ -285,8 +374,8 @@ int PortOriginalEightShips(void)
     return PortOriginalLooks() && gameType == 2 && raceType != 1;
 }
 
-/* Wipeout 64's tracks share one sky (Talon's Reach's model: an open cylinder about the camera, 2956 high), and
-   Wipeout 64 keeps its heights in its code, not its data. Its lower rim goes at the camera's height, so that it fills
+/* Wipeout 64 keeps its sky heights in its code, not its data. Place the model's lower rim at the camera's
+   height, so that it fills
    all above the horizon: placed by the track's heights, it hung thousands of units above some tracks' cameras and
    the black background showed below it (Velocitar's and Qoron IV's walls of panels missing, popping in). */
 void PortOriginalPlaceSky(Object *sky)
@@ -330,6 +419,27 @@ void PortOriginalSceneInit(Object **prm, short prmCount)
     Collect(prm, looks ? prmCount : 0, "redl", beacons, &beaconCount, MAX_BEACONS);
     Collect(prm, looks ? prmCount : 0, "donkey", pumps, &pumpCount, MAX_PUMPS);
     sceneryFrame = 0;
+    rotorCount = 0;
+    memset(carts, 0, sizeof(carts)); memset(claws, 0, sizeof(claws));
+    memset(signParts, 0, sizeof(signParts));
+    if (PortOriginalTrackIs64()) {
+        Object *object;
+        int i, base = TextureTableCount;
+        sceneryRandom = 0x12345678;
+        Collect(prm, prmCount, "rot", rotors, &rotorCount, 3);
+        FindMover(prm, prmCount, "C_CART_1", &carts[0]);
+        FindMover(prm, prmCount, "C_CART_2", &carts[1]);
+        FindMover(prm, prmCount, "M_CART_4", &carts[2]);
+        FindMover(prm, prmCount, "claw1", &claws[0]);
+        FindMover(prm, prmCount, "claw2", &claws[1]);
+        for (i = 0; i < 2; i++) if (claws[i].object) claws[i].random = CraneRandom();
+        LoadCmpFiles(LoadCompressedTextureSequence("\\w64sign.cmp"));
+        object = LoadPrm("\\w64sign.prm", (short)base);
+        for (i = 0; object && i < SIGN_COUNT; i++, object = object->next) {
+            signParts[i] = object;
+            object->skeleton->super = cameraPtr->camPos;
+        }
+    }
 }
 
 /* The count before the start (GeneralStartProcs): the gantries' lamps. */
@@ -354,8 +464,14 @@ void PortOriginalSceneUpdate(int paused)
     int i, red, angle;
 
     if (!paused) {
+        int previous = sceneryFrame * 30 / (portPal ? 25 : 30), tick;
         sceneryFrame++;
-        PortOriginalAnimate(sceneryFrame);
+        if (PortOriginalTrackIs64()) {
+            for (tick = previous + 1; tick <= sceneryFrame * 30 / (portPal ? 25 : 30); tick++) {
+                MoveGuestScenery(tick);
+                PortOriginalAnimate(tick);
+            }
+        }
     }
     red = 128 + rsin((short)((sceneryFrame * 4096 / PAL_TIME(30)) & 4095)) * 127 / 4096;
     for (i = 0; i < beaconCount; i++) {
@@ -421,10 +537,10 @@ static void ScaleBoard(Object *shape, int scale)
     }
 }
 
-int PortOriginalFitDroid(Object *shape, TrackSection *section)
+static int FitDroid(Object *shape, TrackSection *section, int offset)
 {
     Object *object;
-    int y = section->centre.vy - 3000, top = 0, bottom = 0, scale = 4096, i, j;
+    int y = section->centre.vy - offset, top = 0, bottom = 0, scale = 4096, i, j;
 
     if (!PortOriginalTrackIs64()) return y;
     for (i = 0; i < (u_short)shape->vertexCount; i++) {
@@ -471,7 +587,7 @@ int PortOriginalFitDroid(Object *shape, TrackSection *section)
             poly.ptr += size;
         }
     }
-    /* An XL board can be taller than a guest tunnel. Keep its proportions while
+    /* A marker can be taller than a guest tunnel. Keep its proportions while
        fitting both edges between the roof clearance and the racing surface. */
     if (y + bottom > section->centre.vy - 512 && bottom > top) {
         int roof = y + top, floor = section->centre.vy - 512;
@@ -489,6 +605,44 @@ int PortOriginalFitDroid(Object *shape, TrackSection *section)
         boardHeights[boardCount++] = y;
     }
     return y;
+}
+
+int PortOriginalFitDroid(Object *shape, TrackSection *section)
+{
+    return FitDroid(shape, section, 3000);
+}
+
+/* The N64 uses the pit/sign housing and its own S, F, C and arrow faces, rather than XL's droid. */
+int PortOriginalDrawDroid(TrackSection *section, int texture, int mirrored, int tick)
+{
+    Object *body = signParts[SIGN_HOUSING], *panel;
+    FT4 *face;
+    /* N64 vertex intensity 255 is unmodulated; the PS1's equivalent is 128. */
+    int heading, colour = tick % 20 < 10 ? 128 : 64;
+    if (!PortOriginalTrackIs64() || !body) return 0;
+    panel = signParts[texture == 0 ? SIGN_START : texture == 1 ? SIGN_FINISH :
+                      texture == 2 ? SIGN_CHECKPOINT : mirrored ? SIGN_RIGHT : SIGN_LEFT];
+    if (!panel) return 0;
+    heading = 4096 - ratan2(section->centre.vx - section->prevSection.ptr->centre.vx,
+                            section->centre.vz - section->prevSection.ptr->centre.vz);
+    SetSkeletonDirectionHPR(body->skeleton, (short)heading, 0, 0);
+    SetSkeletonPosition(body->skeleton, section->centre.vx, FitDroid(body, section, 2500), section->centre.vz);
+    panel->skeleton->super = body->skeleton;
+    SetSkeletonDirection(panel->skeleton, 0, 0, 0);
+    SetSkeletonPosition(panel->skeleton, 0, 0, -1200);
+    face = (FT4 *)panel->primitives;
+    face->colour.r = face->colour.g = face->colour.b = (u_char)colour;
+    /* One stable drawing identity per gate, including the far pass. */
+    PortInterpInstance(section->secNo);
+    AsmDrawObject(body, cameraPtr->camPos, 0);
+    PortInterpInstance(section->secNo);
+    PortFarObject(body);
+    PortInterpInstance(section->secNo);
+    AsmDrawObject(panel, cameraPtr->camPos, 0);
+    PortInterpInstance(section->secNo);
+    PortFarObject(panel);
+    PortInterpInstance(-1);
+    return 1;
 }
 
 /* Qirex's XL Rapier profile outruns the original circuits' ramps. Use its
