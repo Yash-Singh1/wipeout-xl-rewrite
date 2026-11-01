@@ -160,6 +160,23 @@ set(WIPEOUT_VERSION "" CACHE STRING "The release's version, shown in the debug c
 if(WIPEOUT_VERSION)
     set(PORT_VERSION "${WIPEOUT_VERSION}")
 else()
+    # Recompute the version after commits, branch switches or newly fetched tags.
+    # A normal build otherwise keeps the version from the last configure.
+    execute_process(COMMAND git symbolic-ref -q HEAD WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                    OUTPUT_VARIABLE version_branch OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    foreach(version_ref HEAD packed-refs refs/tags ${version_branch})
+        execute_process(COMMAND git rev-parse --git-path ${version_ref} WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                        OUTPUT_VARIABLE version_path OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+        if(version_path)
+            get_filename_component(version_path "${version_path}" ABSOLUTE BASE_DIR "${CMAKE_SOURCE_DIR}")
+            if(NOT EXISTS "${version_path}")
+                get_filename_component(version_path "${version_path}" DIRECTORY)
+            endif()
+            if(EXISTS "${version_path}")
+                set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${version_path}")
+            endif()
+        endif()
+    endforeach()
     execute_process(COMMAND git describe --tags --always --dirty WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
                     OUTPUT_VARIABLE PORT_VERSION OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
 endif()
