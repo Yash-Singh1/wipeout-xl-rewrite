@@ -41,6 +41,13 @@ ${CC:-cc} -O1 -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) \
     tools/bugtest/test_updates_web.c $(pkg-config --libs sdl3) -o "$test_build/updates_web"
 "$test_build/updates_web"
 
+# Run track reaction on a steep guest descent with the production integer helpers.
+${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Wno-deprecated-declarations \
+    -include platform/include/port.h -iquote game/include tools/bugtest/test_guest_descent.c \
+    game/src/utils.c game/data/ships_data.c platform/psx/libgte.c \
+    platform/psx/gte.c platform/psx/gte_tables.c -lm -o "$test_build/guest_descent"
+"$test_build/guest_descent"
+
 # The input tests drive a real SDL virtual controller and the game's button decoder.
 ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Wno-deprecated-declarations -Wno-pointer-sign \
     -include platform/include/port.h -iquote game/include -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) \

@@ -114,8 +114,15 @@ void ShipTrkReaction(ShipData *playerShip, Object **shipShapes)
         nosePos.vz = (playerShip->unitVecNose.vz >> 5) + playerShip->ppivot.vz;
         alpha = PlaneLineCollision(facePoint, nosePos, face->normal);
         if (playerShip->rotationCorrectionDisabled == 0) {
+            /* Above 600 units XL falls back to a fixed nose-down rate. On continuous
+               guest descents retain the road-derived correction when it is stronger,
+               so fast ships can follow the slope. Actual jumps retain XL behaviour. */
             clearance -= alpha;
-            if (alpha < 600) { short angle = playerShip->vpitch + 5; playerShip->vpitch = angle + clearance; }
+            if (alpha < 600 || (PortOriginalLooks() &&
+                !(playerShip->nearTrkSect->flags & TRACK_JUMP) && clearance + 5 < -50)) {
+                short angle = playerShip->vpitch + 5;
+                playerShip->vpitch = angle + clearance;
+            }
             else playerShip->vpitch -= 50;
             playerShip->vpitch -= playerShip->vpitch >> 2;
             playerShip->hdg += sar((short)sar(playerShip->r_brake_rot - playerShip->l_brake_rot, 3) * playerShip->speed, 15);
