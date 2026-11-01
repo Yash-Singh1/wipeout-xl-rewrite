@@ -247,7 +247,7 @@ void race(ConfigData *gameData, int attractMode, int idleLimit)
     trackCycleTimer=0;InitTrackCycle();
     InitDroidThings(startDroidObjects,startDroidNames,raceCamera.camPos,(Checkpoint *)CHECKPOINTS,gameData);
     InitDroidThings(lightGroups,lightGroupNames,raceCamera.camPos,(Checkpoint *)CHECKPOINTS,gameData);
-    PortOriginalSceneInit(prmObjects,prmCount); /* Port: an original Wipeout track's start gantries, beacons, pumps (portorig.c) */
+    PortOriginalSceneInit(prmObjects,prmCount,prmObjects[locals.skyIndex]); /* Port: a guest's scenery and sky animation (portorig.c) */
     InitRaceLine(track,gameData);InitInGameMenu(&locals.inGameMenu);
     locals.crowdCount=InitCrowdSound(prmObjects,prmCount,locals.crowdObjects,locals.crowdCount);
     if(gameData->actTrackNum==1) {

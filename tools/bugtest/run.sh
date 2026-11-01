@@ -43,6 +43,11 @@ for test in steering_target steering_ghost guest_motion guest_sign; do
         -include platform/include/port.h -iquote game/include "tools/bugtest/test_$test.c" -lm -o "$test_build/$test"
     "$test_build/$test"
 done
+${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Wno-deprecated-declarations \
+    -include platform/include/port.h -iquote game/include tools/bugtest/test_guest_1995.c \
+    game/src/skeleton.c platform/psx/libgte.c platform/psx/gte.c platform/psx/gte_tables.c \
+    -lm -o "$test_build/guest_1995"
+"$test_build/guest_1995"
 ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -iquote game/include \
     -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) tools/bugtest/test_steering_recording.c \
     $(pkg-config --libs sdl3) -o "$test_build/steering_recording"

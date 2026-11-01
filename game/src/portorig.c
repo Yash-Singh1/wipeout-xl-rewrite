@@ -265,15 +265,69 @@ short PortOriginalLibraryPlaced(TexTemplate *tiles, short tileCount, short loade
 
    A track of the original Wipeout (not Wipeout 64's) looks as in its own race. Its start gantries ("start...")
    light their three lamps one by one for the count, red at two, amber at one and green at go (the original's
-   code, which XL kept, ColourStartBoom, but no longer called); its beacons ("redl...") pulse once a second and
-   its oil pumps ("donkey...") nod. XL's own markers are not drawn over it: the droids with the start lights,
-   the lap boards and the checkpoint signs, and the white of its checkpoint sections (dynam.c). */
+   code, which XL kept, ColourStartBoom, but no longer called); its warning beacon ("redl...") pulses and
+   its oil pumps ("donkey...") nod. Silverstream Rapier's sky changes colour. XL's own markers are not drawn
+   over it: the droids with the start lights, the lap boards and the checkpoint signs, and the white of its
+   checkpoint sections (dynam.c). */
 
 #define MAX_BEACONS 8
 #define MAX_PUMPS   8
 
 static Object *beacons[MAX_BEACONS], *pumps[MAX_PUMPS];
 static int     beaconCount, pumpCount, sceneryFrame;
+static struct AuroraFace {
+    GT4 *polygon;
+    unsigned char corners;
+} aurora[80];
+static int auroraCount;
+
+static void InitGuestAurora(Object *sky)
+{
+    Poly poly;
+    int i;
+    poly.prim = sky->primitives;
+    for (i = 0; i < (u_short)sky->primitiveCount; i++) {
+        if (poly.prim->type == TypeGT3) {
+            poly.gt3++;
+        } else if (poly.prim->type == TypeGT4) {
+            int y = sky->vertices[poly.gt4->coords[0]].vy;
+            if (y < -6000 && auroraCount < 80) {
+                aurora[auroraCount].polygon = poly.gt4;
+                /* Leave the lower edge and the top cap at their original colours. */
+                aurora[auroraCount++].corners = (unsigned char)(y > -6800 ? 3 : y < -11000 ? 12 : 15);
+            }
+            poly.gt4++;
+        } else {
+            break; /* The original sky contains only GT3 and GT4 polygons. */
+        }
+    }
+}
+
+static void MoveOriginalScenery(int tick)
+{
+    int i, k, red = (rsin((short)((uint32_t)tick * 140)) >> 5) + 128;
+    int angle = rsin((short)((uint32_t)(tick - 1) * 20)) >> 3;
+    if (red > 255) red = 255;
+    for (i = 0; i < beaconCount; i++) {
+        GT4 *face = (GT4 *)beacons[i]->primitives;
+        for (k = 0; k < 4; k++) {
+            face->colour[k].r = (u_char)red;
+            face->colour[k].g = face->colour[k].b = 0;
+        }
+    }
+    for (i = 0; i < pumpCount; i++) SetSkeletonDirection(pumps[i]->skeleton, (short)angle, 0, 0);
+    for (i = 0; i < auroraCount; i++) {
+        GT4 *face = aurora[i].polygon;
+        for (k = 0; k < 4; k++) {
+            if (aurora[i].corners & (1 << k)) {
+                int phase = face->coords[k] * (tick & 4095);
+                face->colour[k].r = (u_char)((rsin(phase) >> 6) + 190);
+                face->colour[k].g = (u_char)((rsin(phase + face->coords[k] * 54) >> 6) + 190);
+                face->colour[k].b = (u_char)((rsin(phase + face->coords[k] * 39) >> 6) + 190);
+            }
+        }
+    }
+}
 /* The N64's moving structures. Positions use XL's full track units; the N64 halves them on load. */
 typedef struct GuestMover {
     Object *object;
@@ -409,7 +463,7 @@ static void Collect(Object **prm, short prmCount, const char *name, Object **fou
 
 /* A race begins: its scenery's moving parts (none but on the original's tracks: XL's own start gantries are
    left as they are). */
-void PortOriginalSceneInit(Object **prm, short prmCount)
+void PortOriginalSceneInit(Object **prm, short prmCount, Object *sky)
 {
     int looks = PortOriginalLooks();
 
@@ -418,7 +472,15 @@ void PortOriginalSceneInit(Object **prm, short prmCount)
     InitStartBoom(prm, looks ? prmCount : 0);
     ResetStartBoom();
     Collect(prm, looks ? prmCount : 0, "redl", beacons, &beaconCount, MAX_BEACONS);
+    /* The original selects the last red-light model, not every tower in the scene. */
+    if (beaconCount) {
+        beacons[0] = beacons[beaconCount - 1];
+        beaconCount = 1;
+    }
     Collect(prm, looks ? prmCount : 0, "donkey", pumps, &pumpCount, MAX_PUMPS);
+    auroraCount = 0;
+    if (looks && sky && PortOriginalTrackClass(PortOriginalTrack()) == 2 &&
+        !strcmp(PortOriginalTrackModel(PortOriginalTrack()), "silverstream")) InitGuestAurora(sky);
     sceneryFrame = 0;
     rotorCount = 0;
     memset(carts, 0, sizeof(carts)); memset(claws, 0, sizeof(claws));
@@ -458,46 +520,20 @@ void PortOriginalCount(int updateCount)
     }
 }
 
-/* Each frame of the race (but while paused): the beacons and the pumps; on Wipeout 64's tracks, its animated
-   scenery. */
+/* Guest scenery advances at its original 30 Hz, including when the host race is PAL. */
 void PortOriginalSceneUpdate(int paused)
 {
-    int i, red, angle;
-
     if (!paused) {
         int previous = sceneryFrame * 30 / (portPal ? 25 : 30), tick;
         sceneryFrame++;
-        if (PortOriginalTrackIs64()) {
-            for (tick = previous + 1; tick <= sceneryFrame * 30 / (portPal ? 25 : 30); tick++) {
+        for (tick = previous + 1; tick <= sceneryFrame * 30 / (portPal ? 25 : 30); tick++) {
+            if (PortOriginalTrackIs64()) {
                 MoveGuestScenery(tick);
                 PortOriginalAnimate(tick);
+            } else if (PortOriginalLooks()) {
+                MoveOriginalScenery(tick);
             }
         }
-    }
-    red = 128 + rsin((short)((sceneryFrame * 4096 / PAL_TIME(30)) & 4095)) * 127 / 4096;
-    for (i = 0; i < beaconCount; i++) {
-        Poly     poly;
-        CVECTOR *colour = NULL;
-        int      corners = 0, k;
-
-        poly.prim = beacons[i]->primitives;
-        if (poly.prim->type == TypeGT4) {
-            colour = poly.gt4->colour;
-            corners = 4;
-        } else if (poly.prim->type == TypeGT3) {
-            colour = poly.gt3->colour;
-            corners = 3;
-        }
-        for (k = 0; k < corners; k++) {
-            colour[k].r = (u_char)red;
-            colour[k].g = 0;
-            colour[k].b = 0;
-        }
-    }
-    /* (a radian each way, every eight seconds) */
-    angle = rsin((short)((sceneryFrame * 4096 / PAL_TIME(240)) & 4095)) * 652 / 4096;
-    for (i = 0; i < pumpCount; i++) {
-        SetSkeletonDirection(pumps[i]->skeleton, (short)angle, 0, 0);
     }
 }
 
