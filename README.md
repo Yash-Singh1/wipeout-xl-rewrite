@@ -1,6 +1,6 @@
 # Wipeout XL / 2097
 
-This project is a rewrite of Wipeout XL / 2097 inspired by [wipeout-rewrite](https://github.com/phoboslab/wipeout-rewrite). It is based off a decompilation of the PS1 version of Wipeout XL & 2097 and another partial decompilation of the PC release.
+This project is a rewrite of Wipeout XL / 2097 inspired by [wipeout-rewrite](https://github.com/phoboslab/wipeout-rewrite). It is based off a [decompilation](https://github.com/Yash-Singh1/wipeout-xl-decomp) of the PS1 version of Wipeout XL & 2097 and another partial decompilation of the PC release.
 
 The goal of this project is to keep the original behavior as much as possible while also upgrading the game with more capabilities. Here is a rough list of the changes in this game compared with the original PS1 version:
 - Higher resolutions (HD Mod support, accurate rendering w/out PGXP)
