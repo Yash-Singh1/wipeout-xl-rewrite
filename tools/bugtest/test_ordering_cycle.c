@@ -52,6 +52,14 @@ int main(void)
     EndTableCycle(ot + 3);
     assert(!memcmp(saved, ot, sizeof(ot)));
     EndTableCycle(NULL);
+    /* Clearing a reused frame buffer expires only that buffer's HUD packet tags. */
+    PortHudColourBars(&a, &b, ot, 0);
+    PortHudColourBars(&a, &b, empty, 1);
+    ClearOTagR(ot, 4);
+    assert(!hudColourBars[0].fill[0] && !hudColourBars[0].fill[1]);
+    assert(hudColourBars[1].fill[0] == (uint32_t *)&a + 1);
+    ClearOTagR(empty, 4);
+    assert(!hudColourBars[1].fill[0] && !hudColourBars[1].fill[1]);
     puts("cyclic scene/HUD/empty ordering tables end; packet payloads and valid frames preserved: OK");
     return 0;
 }

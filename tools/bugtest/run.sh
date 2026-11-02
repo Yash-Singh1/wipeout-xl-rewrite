@@ -28,6 +28,15 @@ ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard \
     $(pkg-config --libs sdl3) -o "$test_build/ordering_cycle"
 "$test_build/ordering_cycle"
 
+# Optional real GPU checks, for a desktop session with an OpenGL driver.
+if [ "${WIPEOUT_TEST_GL:-0}" = 1 ]; then
+    case $(uname -s) in Darwin) gl_libs='-framework OpenGL';; *) gl_libs='-lGL';; esac
+    ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard \
+        -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) tools/bugtest/test_gpu_hud.c \
+        $(pkg-config --libs sdl3) $gl_libs -lm -o "$test_build/gpu_hud"
+    "$test_build/gpu_hud"
+fi
+
 ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Wno-deprecated-declarations \
     -include platform/include/port.h -Iplatform -Iplatform/psx -iquote game/include $(pkg-config --cflags sdl3) \
     tools/bugtest/test_far_lifetime.c platform/psx/gte.c platform/psx/gte_tables.c \

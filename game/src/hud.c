@@ -325,6 +325,7 @@ void fill_speedo(Speedo *speedo, ShipData *ships, ConfigData *game, int player)
     SPEEDO_QUAD(marker).v2 = (u_char)speedoMarkerTex->v2 + 1;
     SPEEDO_QUAD(marker).u3 = (u_char)speedoMarkerTex->u0 + thrustBottom;
     SPEEDO_QUAD(marker).v3 = (u_char)speedoMarkerTex->v3 + 1;
+    PortHudColourBars(&speedo->marker[CurrentScreen], &speedo->shield[CurrentScreen], OT[CurrentScreen], CurrentScreen);
     AddPrim(OT[CurrentScreen], &speedo->speed[CurrentScreen]);
     if (player != -1) AddPrim(OT[CurrentScreen], &speedo->shield[CurrentScreen]);
     else if (100 - shipDamage[ownShip] >= 41) AddPrim(OT[CurrentScreen], &speedo->shield[CurrentScreen]);

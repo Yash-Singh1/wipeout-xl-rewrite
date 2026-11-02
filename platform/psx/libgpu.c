@@ -38,6 +38,10 @@ static void **linkPointers;
 static uint32_t linkCount = 1; /* 0 is unused */
 static void **linkKeys;
 static uint32_t *linkIds;
+static struct {
+    const uint32_t *fill[2];
+    const void *table;
+} hudColourBars[2];
 
 static uint32_t HashPointer(const void *pointer)
 {
@@ -145,6 +149,11 @@ u_long *ClearOTagR(u_long *ot, int n)
 {
     int i;
 
+    for (i = 0; i < 2; i++) {
+        if (hudColourBars[i].table == ot) {
+            memset(&hudColourBars[i], 0, sizeof(hudColourBars[i]));
+        }
+    }
     for (i = n - 1; i > 0; i--) {
         ot[i] = LinkId(&ot[i - 1]) & 0x00FFFFFFu;
     }
@@ -399,6 +408,16 @@ static int Backdrop(const uint32_t *w)
 
 static int heldCount; /* (the ships' shadows held: PortShadowRange) */
 static int hudPackets; /* (below) */
+static int hudColourOverlay;
+
+void PortHudColourBars(const void *thrust, const void *energy, const void *table, int screen)
+{
+    if (screen >= 0 && screen < 2) {
+        hudColourBars[screen].fill[0] = (const uint32_t *)thrust + 1;
+        hudColourBars[screen].fill[1] = (const uint32_t *)energy + 1;
+        hudColourBars[screen].table = table;
+    }
+}
 static int HoldShadow(const uint32_t *w, int words);
 static void ReleaseShadows(void);
 static int AheadOfShadows(const uint32_t *w, int words);
@@ -420,7 +439,11 @@ static void Submit(const uint32_t *w, int words)
     if (backdrop) {
         GpuBackdrop(1);
     }
+    hudColourOverlay = !PortTracing() &&
+        (w == hudColourBars[0].fill[0] || w == hudColourBars[0].fill[1] ||
+         w == hudColourBars[1].fill[0] || w == hudColourBars[1].fill[1]);
     Packet(w, words);
+    hudColourOverlay = 0;
     if (backdrop) {
         GpuBackdrop(0);
     }
@@ -1297,6 +1320,7 @@ static void TextureFromPage(GpuDrawState *draw, uint32_t page)
 static void StateFor(GpuDrawState *draw, int textured, int semi, int raw)
 {
     memset(draw, 0, sizeof(*draw));
+    draw->hudColourOverlay = hudColourOverlay;
     draw->textured = textured;
     draw->raw = raw;
     draw->semi = semi ? (int)((state.texpage >> 5) & 3) : -1;

@@ -86,6 +86,8 @@ void PortTrackPackets(const void *start, const void *end);
 void PortHudCentred(const void *start, const void *end);
 /* ... and all of this frame's HUD (a screen of text over the race, the results: its scene is shown wide). */
 void PortHudInPlace(void);
+/* Keep coloured thrust/energy texels readable while leaving black texels transparent. */
+void PortHudColourBars(const void *thrust, const void *energy, const void *table, int screen);
 /* ShakeScreen's jolt (a menu landing, a hit in a race): the display moved x units right (of 1/256 of the screen's
    width) and y lines down from where it rests. The console moves the picture on the TV (DISPENV.screen), which the
    port has no TV for; the window's picture moves as much from the next PutDispEnv on. */

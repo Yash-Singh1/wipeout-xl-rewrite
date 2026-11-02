@@ -68,6 +68,7 @@ typedef struct GpuDrawState {
     int windowMaskX, windowMaskY, windowOffsetX, windowOffsetY; /* texture window, in 8-texel units */
     int dither;
     int fade;          /* the port's distance fade: the vertices' alpha (GpuVertex.a) blends it out */
+    int hudColourOverlay; /* coloured HUD fill attenuates the background; black stays transparent */
 } GpuDrawState;
 
 int GpuInit(void);

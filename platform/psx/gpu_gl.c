@@ -250,6 +250,7 @@ static const char *vertexSource =
     "flat out ivec4 vWindow;\n"
     "flat out ivec4 mode;\n"
     "flat out int semiMode;\n"        /* the primitive's blending: -1 opaque, else the console's mode 0-3 */
+    "flat out int hudColourOverlay;\n"
     "uniform int pass;\n"
     "uniform float depthPull;\n"       /* the depth buffer (Flush): depth tested this much nearer */
     "uniform int depthPass;\n"         /* ... 1: depth written, at the true depth */
@@ -267,6 +268,7 @@ static const char *vertexSource =
        the blending mode + 1 */
     "    float pull = depthPass == 1 || (modeIn.w & 1u) == 1u ? 1.0 : depthPull;\n"
     "    semiMode = int(modeIn.w >> 4u) - 1;\n"
+    "    hudColourOverlay = int((modeIn.w >> 1u) & 1u);\n"
     "    float z = position.z > 0.0 ? w - 2.0 * pull : (depthPass == 1 ? w : -w);\n"
     "    gl_Position = vec4(ndc * w, z, w);\n"
     "    vColour = colour;\n"
@@ -293,6 +295,7 @@ static const char *fragmentSource =
     "in vec4 vColour;\n"
     "in vec3 vTexel;\n"
     "flat in int semiMode;\n"
+    "flat in int hudColourOverlay;\n"
     "uniform usampler2D vram;\n"
     "uniform sampler2D glyphs;\n"
     "uniform sampler2D portPages;\n"
@@ -320,6 +323,12 @@ static const char *fragmentSource =
     "    col *= fade;\n"
     "    cov *= fade;\n"
     "    if (!blended) fragment = vec4(col, cov);\n"
+    /* Preserve the additive colour on dark ground, attenuating bright ground only
+       under coloured fill. Pure black has zero coverage, so no rectangle appears. */
+    "    else if (hudColourOverlay != 0 && semiMode == 1) {\n"
+    "        float coverage = clamp(max(col.r, max(col.g, col.b)) * 2.0, 0.0, 1.0);\n"
+    "        fragment = vec4(col, 0.8 * coverage * cov);\n"
+    "    }\n"
     "    else if (semiMode == 0) fragment = vec4(col * 0.5, cov * 0.5);\n"  /* B/2 + F/2 */
     "    else if (semiMode == 3) fragment = vec4(col * 0.25, 0.0);\n"      /* B + F/4 */
     "    else fragment = vec4(col, 0.0);\n"                               /* B + F; B - F (its own blend) */
@@ -1170,7 +1179,8 @@ static void Add(const GpuVertex *v)
     out->mode[1] = (uint8_t)primitiveState.raw;
     out->mode[2] = (uint8_t)primitiveState.depth;
     /* (the vertex shader's: a polygon seen from behind; the blending) */
-    out->mode[3] = (uint8_t)((v->backFacing || v->exactDepth) | (primitiveState.semi + 1) << 4);
+    out->mode[3] = (uint8_t)((v->backFacing || v->exactDepth) |
+                           (primitiveState.hudColourOverlay != 0) << 1 | (primitiveState.semi + 1) << 4);
     memcpy(out->hd, primitiveHd, sizeof(out->hd));
     memcpy(out->hdTexels, primitiveHdTexels, sizeof(out->hdTexels));
 }
