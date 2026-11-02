@@ -68,8 +68,8 @@ int main(void){
   psxVram[0][512]=black?0x8000:0x8010;GpuVramChanged(512,0,1,1);
   GpuTriangles(&s,v,3);GpuFlush();
   int w,h;uint8_t*p=GpuReadArea(2,2,1,1,&w,&h);
-  int expectedR=black?bg:128+(int)lround(bg*0.2);
-  int expectedGB=black?bg:(int)lround(bg*0.2);
+  int expectedR=black?bg:SDL_min(255,128+(int)lround(bg*0.65));
+  int expectedGB=black?bg:(int)lround(bg*0.65);
   assert(abs(p[0]-expectedR)<=1&&abs(p[1]-expectedGB)<=1&&abs(p[2]-expectedGB)<=1);
  }
  /* Scene and HUD triangles can share a batch; the flag belongs to each primitive. */
@@ -81,7 +81,35 @@ int main(void){
  int w,h;uint8_t *pixel=GpuReadArea(2,2,1,1,&w,&h);
  assert(pixel[0]==224&&pixel[1]==96&&pixel[2]==96);
  pixel=GpuReadArea(26,2,1,1,&w,&h);
- assert(abs(pixel[0]-147)<=1&&abs(pixel[1]-19)<=1&&abs(pixel[2]-19)<=1);
+ assert(abs(pixel[0]-190)<=1&&abs(pixel[1]-62)<=1&&abs(pixel[2]-62)<=1);
+ /* A track pattern must remain visible through the fill. Transparent gaps and
+    the coloured edge must occupy exactly the same texels as in additive mode. */
+ uint8_t samples[2][8][3];
+ for(int overlay=0;overlay<2;overlay++) {
+  GpuFill(0,0,16,8,80,80,80);GpuFill(8,0,8,8,200,200,200);
+  for(int x=0;x<16;x++) psxVram[0][512+x]=(x==3||x==11)?0x8000:0x8010;
+  GpuVramChanged(512,0,16,1);
+  GpuVertex strip[6]={
+   {.x=0,.y=0,.u=0,.r=128,.g=128,.b=128,.a=255},
+   {.x=16,.y=0,.u=16,.r=128,.g=128,.b=128,.a=255},
+   {.x=0,.y=8,.u=0,.r=128,.g=128,.b=128,.a=255},
+   {.x=16,.y=0,.u=16,.r=128,.g=128,.b=128,.a=255},
+   {.x=0,.y=8,.u=0,.r=128,.g=128,.b=128,.a=255},
+   {.x=16,.y=8,.u=16,.r=128,.g=128,.b=128,.a=255}};
+  s.hudColourOverlay=overlay;GpuTriangles(&s,strip,6);
+  for(int x=0;x<8;x++) {
+   pixel=GpuReadArea(x+2,2,1,1,&w,&h);memcpy(samples[overlay][x],pixel,3);
+  }
+  pixel=GpuReadArea(11,2,1,1,&w,&h);
+  assert(pixel[0]==200&&pixel[1]==200&&pixel[2]==200);
+ }
+ for(int overlay=0;overlay<2;overlay++) {
+  assert(samples[overlay][1][0]==80&&samples[overlay][1][1]==80&&samples[overlay][1][2]==80);
+  assert(samples[overlay][0][0]>samples[overlay][0][1]);
+  assert(samples[overlay][2][0]>samples[overlay][2][1]);
+ }
+ /* The background changes by 120. Its contrast through the tint stays above 60%. */
+ assert(samples[1][6][1]-samples[1][0][1]>=72);
  puts("HUD colour remains visible, black stays transparent, original scene blend modes and CLUTs preserved: OK");
  SDL_GL_DestroyContext(ctx);SDL_DestroyWindow(win);SDL_Quit();
 }
