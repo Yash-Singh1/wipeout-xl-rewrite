@@ -245,6 +245,7 @@ void fill_speedo(Speedo *speedo, ShipData *ships, ConfigData *game, int player)
     short secondInset;
     int energyTop;
     int thrustTop, thrustBottom;
+    int thrustLeft;
 
     if (PortPcData()) {
         PcFillSpeedo(ships, game, player); /* Port: the PC version's speedometer (pc/pchud.c) */
@@ -309,13 +310,16 @@ void fill_speedo(Speedo *speedo, ShipData *ships, ConfigData *game, int player)
     }
     thrustBottom = thrustTop - secondInset + 1;
     if (thrustBottom < 0) thrustBottom = 0;
-    SPEEDO_QUAD(marker).x0 = 206;
+    /* Port: the marker artwork ends one pixel left of the frame's inside edge.
+       Align its texels with the frame, retaining the console packets for tracing. */
+    thrustLeft = 206 + !PortTracing();
+    SPEEDO_QUAD(marker).x0 = thrustLeft;
     SPEEDO_QUAD(marker).y0 = PAL_PANEL_Y(173);
-    SPEEDO_QUAD(marker).x1 = 206 + thrustTop;
+    SPEEDO_QUAD(marker).x1 = thrustLeft + thrustTop;
     SPEEDO_QUAD(marker).y1 = PAL_PANEL_Y(173);
-    SPEEDO_QUAD(marker).x2 = 206;
+    SPEEDO_QUAD(marker).x2 = thrustLeft;
     SPEEDO_QUAD(marker).y2 = PAL_PANEL_Y(195);
-    SPEEDO_QUAD(marker).x3 = 206 + thrustBottom;
+    SPEEDO_QUAD(marker).x3 = thrustLeft + thrustBottom;
     SPEEDO_QUAD(marker).y3 = PAL_PANEL_Y(195);
     SPEEDO_QUAD(marker).u0 = (u_short)speedoMarkerTex->u0;
     SPEEDO_QUAD(marker).v0 = (u_short)speedoMarkerTex->v0;

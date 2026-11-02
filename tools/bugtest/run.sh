@@ -9,6 +9,10 @@ ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Wno-deprecated-decla
     -std=gnu11 -include platform/include/port.h -iquote game/include \
     tools/bugtest/test_clearance.c -o "$test_build/clearance"
 "$test_build/clearance"
+${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Wno-deprecated-declarations -Wno-pointer-sign \
+    -std=gnu11 -include platform/include/port.h -iquote game/include \
+    tools/bugtest/test_hud_fill.c -o "$test_build/hud_fill"
+"$test_build/hud_fill"
 ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard \
     -Iplatform -Iplatform/psx -iquote game/include $(pkg-config --cflags sdl3) \
     tools/bugtest/test_movie.c $(pkg-config --libs sdl3) -o "$test_build/movie"
