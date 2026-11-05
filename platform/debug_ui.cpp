@@ -1727,6 +1727,26 @@ static void Resolution(void)
         portSettings.renderScale = choice;
         Changed();
     }
+    items[0] = "Off";
+    int downsample = SDL_min(portSettings.downsample, count);
+    if (ImGui::Combo("Downsample to", &downsample, items, SDL_min(count, 16) + 1)) {
+        portSettings.downsample = downsample;
+        Changed();
+    }
+    static const char *styles[] = {"Box", "Adaptive"};
+    int style = portSettings.downsampleStyle;
+    if (ImGui::Combo("Downsampling style", &style, styles, 2)) {
+        portSettings.downsampleStyle = style;
+        Changed();
+    }
+    if (style == DOWNSAMPLE_ADAPTIVE) {
+        ImGui::TextWrapped("Smooths enlarged flat pixels while preserving fine detail at the rendering resolution. "
+                           "The target controls the flat-pixel grid; detection is based on the image.");
+        ImGui::TextDisabled("Adaptive style inspired by DuckStation.");
+    } else {
+        ImGui::TextWrapped("Averages the whole picture into the target, then enlarges it with sharp pixel edges.");
+    }
+    ImGui::TextWrapped("Off disables either style. Targets above the rendering resolution use the rendering resolution.");
 }
 
 static void UsePack(const char *path)

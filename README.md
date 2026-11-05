@@ -4,6 +4,7 @@ This project is a rewrite of Wipeout XL / 2097 inspired by [wipeout-rewrite](htt
 
 The goal of this project is to keep the original behavior as much as possible while also upgrading the game with more capabilities. Here is a rough list of the changes in this game compared with the original PS1 version:
 - Higher resolutions (HD Mod support, accurate rendering w/out PGXP)
+- Downsampling to a chosen resolution, with smoother edges from higher-resolution rendering
 - Uncapped framerates (physics & game logic still limited to original framerate)
 - Widescreen support
 - Split-screen for one on one mode
@@ -16,6 +17,26 @@ The goal of this project is to keep the original behavior as much as possible wh
 - Minor culling & depth buffer fixes
 
 If you would like to change any of the settings or files for the game press the <kbd>`</kbd> or <kbd>~</kbd> key on your keyboard to toggle the debug UI. It has multiple tabs with many options to configure.
+
+Choose a rendering **Resolution** in the debug UI, then a target under **Downsample to**.
+Targets are multiples of PS1 native resolution: 1× is 320×240 for NTSC, 2× is 640×480, and so on.
+PAL uses 256 lines; widescreen adds columns. Rendering at 4× and downsampling to 2× gives smoother
+edges at 640×480. Targets above the rendering resolution use the rendering resolution. Off is the default.
+
+**Downsampling style** has two choices:
+
+- **Box** averages the whole picture, including the HUD, and enlarges it with sharp pixels.
+- **Adaptive** smooths enlarged flat pixels while preserving fine detail at the rendering resolution.
+  The target sets the coarse pixel grid, rather than forcing the whole picture to that resolution.
+  It detects detail from the image, so it cannot always distinguish 2D from 3D.
+
+The adaptive approach is inspired by [DuckStation](https://github.com/stenzek/duckstation), with independently
+written shaders. See [the attribution](docs/THIRD_PARTY.md#adaptive-downsampling).
+
+The settings file stores the target as `downsample` and the style as `downsample_style`, with 0 for Box
+and 1 for Adaptive. `WIPEOUT_DOWNSAMPLE=2` selects a 2× target for one run; `WIPEOUT_DOWNSAMPLE_STYLE=1`
+selects Adaptive. A target of zero disables either style. Existing settings with `downsample = 1` still
+target PS1 native, using Box unless a style is chosen.
 
 ## Getting Started
 

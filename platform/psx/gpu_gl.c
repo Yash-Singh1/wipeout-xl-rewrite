@@ -1533,6 +1533,226 @@ static void BarColour(int x, int y, int h, float colour[3])
     }
 }
 
+/* A presentation pass owns its texture; it never changes the game's drawing buffers. */
+typedef struct PictureBuffer {
+    GLuint framebuffer, texture;
+    int width, height;
+} PictureBuffer;
+
+static void BindPictureBuffer(PictureBuffer *buffer, int w, int h)
+{
+    if (!buffer->framebuffer) {
+        glGenFramebuffers(1, &buffer->framebuffer);
+        glGenTextures(1, &buffer->texture);
+    }
+    glBindTexture(GL_TEXTURE_2D, buffer->texture);
+    glBindFramebuffer(GL_FRAMEBUFFER, buffer->framebuffer);
+    if (buffer->width != w || buffer->height != h) {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, buffer->texture, 0);
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            SDL_Log("downsampling framebuffer incomplete");
+            abort();
+        }
+        buffer->width = w;
+        buffer->height = h;
+    }
+    glViewport(0, 0, w, h);
+}
+
+static GLuint PictureProgram(const char *fragment)
+{
+    static const char *vertex =
+        "void main() {\n"
+        "    vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);\n"
+        "    gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n"
+        "}\n";
+    GLuint result = glCreateProgram();
+    GLint ok;
+
+    glAttachShader(result, Compile(GL_VERTEX_SHADER, vertex));
+    glAttachShader(result, Compile(GL_FRAGMENT_SHADER, fragment));
+    glLinkProgram(result);
+    glGetProgramiv(result, GL_LINK_STATUS, &ok);
+    if (!ok) {
+        char log[4096];
+        glGetProgramInfoLog(result, sizeof(log), NULL, log);
+        SDL_Log("downsampling program: %s", log);
+        abort();
+    }
+    return result;
+}
+
+/* Adaptive downsampling is inspired by DuckStation (https://github.com/stenzek/duckstation).
+   These are independent variance-guided shaders, not DuckStation source. See docs/THIRD_PARTY.md.
+   Spread detail weights over neighbouring target pixels before reconstruction, so a fine feature
+   cannot disappear where it meets a flat cell. Only low-detail regions use the reduced image. */
+static GLuint AdaptivePicture(GLuint source, PictureBuffer *average, int left, int top, int w, int h, int targetScale)
+{
+    static PictureBuffer weights, result;
+    static GLuint weightProgram, compositeProgram;
+    static GLint weightSource, compositeSource, compositeCoarse, compositeRect, compositeStep;
+
+    if (!weightProgram) {
+        static const char *weightFragment =
+            "#ifdef GL_ES\nprecision highp float;\nprecision highp int;\n#endif\n"
+            "uniform sampler2D source;\nout vec4 colour;\n"
+            "void main() {\n"
+            "    ivec2 at = ivec2(gl_FragCoord.xy);\n"
+            "    ivec2 last = textureSize(source, 0) - 1;\n"
+            "    float detail = 0.0;\n"
+            "    for (int y = -1; y <= 1; ++y)\n"
+            "        for (int x = -1; x <= 1; ++x)\n"
+            "            detail = max(detail, texelFetch(source, clamp(at + ivec2(x, y), ivec2(0), last), 0).a);\n"
+            "    colour = vec4(texelFetch(source, at, 0).rgb, detail);\n"
+            "}\n";
+        static const char *compositeFragment =
+            "#ifdef GL_ES\nprecision highp float;\nprecision highp int;\n#endif\n"
+            "uniform sampler2D source;\nuniform sampler2D coarse;\n"
+            "uniform ivec4 rect;\nuniform float stepSize;\nout vec4 colour;\n"
+            "void main() {\n"
+            "    vec2 p = gl_FragCoord.xy;\n"
+            "    vec2 size = vec2(textureSize(coarse, 0));\n"
+            "    vec2 uv = clamp(p / stepSize, vec2(0.5), size - 0.5) / size;\n"
+            "    vec4 low = texture(coarse, uv);\n"
+            "    vec3 high = texelFetch(source, rect.xy + ivec2(p), 0).rgb;\n"
+            "    colour = vec4(mix(low.rgb, high, low.a), 1.0);\n"
+            "}\n";
+        weightProgram = PictureProgram(weightFragment);
+        compositeProgram = PictureProgram(compositeFragment);
+        weightSource = glGetUniformLocation(weightProgram, "source");
+        compositeSource = glGetUniformLocation(compositeProgram, "source");
+        compositeCoarse = glGetUniformLocation(compositeProgram, "coarse");
+        compositeRect = glGetUniformLocation(compositeProgram, "rect");
+        compositeStep = glGetUniformLocation(compositeProgram, "stepSize");
+    }
+    BindPictureBuffer(&weights, average->width, average->height);
+    glUseProgram(weightProgram);
+    glUniform1i(weightSource, 0);
+    glBindTexture(GL_TEXTURE_2D, average->texture);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+
+    BindPictureBuffer(&result, w, h);
+    glUseProgram(compositeProgram);
+    glUniform1i(compositeSource, 0);
+    glUniform1i(compositeCoarse, 1);
+    glUniform4i(compositeRect, left, top, left + w, top + h);
+    glUniform1f(compositeStep, (float)scale / targetScale);
+    glBindTexture(GL_TEXTURE_2D, source);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, weights.texture);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glActiveTexture(GL_TEXTURE0);
+    return result.framebuffer;
+}
+
+/* Presentation only: leave the game's framebuffer and VRAM readbacks at the rendering resolution.
+   A linear blit samples at most four texels, so average source texels by their coverage of each target pixel. */
+static void BlitPicture(int wide, int left, int top, int right, int bottom, GLuint target,
+                        int outLeft, int outTop, int outRight, int outBottom)
+{
+    static PictureBuffer average;
+    static GLuint averageProgram, averageArray;
+    static GLint sourceUniform, rectUniform, scaleUniform, targetScaleUniform, adaptiveUniform;
+    int w, h;
+    GLint viewport[4];
+    GLboolean blend, depth;
+    int downsample = PortLinkDownsample(), style = PortLinkDownsampleStyle();
+    GLuint picture;
+
+    if (downsample < 0) {
+        downsample = portSettings.downsample;
+    }
+    if (style < 0) {
+        style = portSettings.downsampleStyle;
+    }
+    downsample = SDL_clamp(downsample, 0, scale);
+    if (!downsample || right <= left || bottom <= top) {
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, wide ? wideFramebuffer : framebuffer);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, target);
+        glBlitFramebuffer(left, top, right, bottom, outLeft, outTop, outRight, outBottom,
+                          GL_COLOR_BUFFER_BIT, GL_LINEAR);
+        return;
+    }
+    w = ((right - left) * downsample + scale - 1) / scale;
+    h = ((bottom - top) * downsample + scale - 1) / scale;
+    if (!averageProgram) {
+        static const char *fragment =
+            "#ifdef GL_ES\nprecision highp float;\nprecision highp int;\n#endif\n"
+            "uniform sampler2D source;\nuniform ivec4 rect;\nuniform int factor;\nuniform int targetScale;\n"
+            "uniform int adaptive;\nout vec4 colour;\n"
+            "void main() {\n"
+            "    float stepSize = float(factor) / float(targetScale);\n"
+            "    vec2 lo = vec2(rect.xy) + floor(gl_FragCoord.xy) * stepSize;\n"
+            "    vec2 hi = min(lo + stepSize, vec2(rect.zw));\n"
+            "    vec4 sum = vec4(0.0);\n"
+            "    vec3 squares = vec3(0.0);\n"
+            "    for (int y = int(floor(lo.y)); y < int(ceil(hi.y)); ++y) {\n"
+            "        for (int x = int(floor(lo.x)); x < int(ceil(hi.x)); ++x) {\n"
+            "            vec2 cell = vec2(x, y);\n"
+            "            vec2 covered = max(min(hi, cell + 1.0) - max(lo, cell), vec2(0.0));\n"
+            "            float weight = covered.x * covered.y;\n"
+            "            vec4 value = texelFetch(source, ivec2(x, y), 0);\n"
+            "            sum += value * weight;\n"
+            "            if (adaptive != 0) squares += value.rgb * value.rgb * weight;\n"
+            "        }\n"
+            "    }\n"
+            "    float area = (hi.x - lo.x) * (hi.y - lo.y);\n"
+            "    colour = sum / area;\n"
+            "    if (adaptive != 0) {\n"
+            "        vec3 variance = max(squares / area - colour.rgb * colour.rgb, vec3(0.0));\n"
+            "        float deviation = sqrt(max(variance.r, max(variance.g, variance.b)));\n"
+            "        colour.a = smoothstep(0.5 / 255.0, 4.0 / 255.0, deviation);\n"
+            "    }\n"
+            "}\n";
+        averageProgram = PictureProgram(fragment);
+        sourceUniform = glGetUniformLocation(averageProgram, "source");
+        rectUniform = glGetUniformLocation(averageProgram, "rect");
+        scaleUniform = glGetUniformLocation(averageProgram, "factor");
+        targetScaleUniform = glGetUniformLocation(averageProgram, "targetScale");
+        adaptiveUniform = glGetUniformLocation(averageProgram, "adaptive");
+        glGenVertexArrays(1, &averageArray);
+    }
+    glGetIntegerv(GL_VIEWPORT, viewport);
+    blend = glIsEnabled(GL_BLEND);
+    depth = glIsEnabled(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_SCISSOR_TEST);
+    glActiveTexture(GL_TEXTURE0);
+    BindPictureBuffer(&average, w, h);
+    glUseProgram(averageProgram);
+    glUniform1i(sourceUniform, 0);
+    glUniform1i(scaleUniform, scale);
+    glUniform1i(targetScaleUniform, downsample);
+    glUniform1i(adaptiveUniform, style == DOWNSAMPLE_ADAPTIVE);
+    glUniform4i(rectUniform, left, top, right, bottom);
+    glBindTexture(GL_TEXTURE_2D, wide ? wideColour : colour);
+    glBindVertexArray(averageArray);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    picture = average.framebuffer;
+    if (style == DOWNSAMPLE_ADAPTIVE) {
+        w = right - left;
+        h = bottom - top;
+        picture = AdaptivePicture(wide ? wideColour : colour, &average, left, top, w, h, downsample);
+    }
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, picture);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, target);
+    glBlitFramebuffer(0, 0, w, h, outLeft, outTop, outRight, outBottom, GL_COLOR_BUFFER_BIT,
+                      style == DOWNSAMPLE_ADAPTIVE ? GL_LINEAR : GL_NEAREST);
+    glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+    if (blend) {
+        glEnable(GL_BLEND);
+    }
+    if (depth) {
+        glEnable(GL_DEPTH_TEST);
+    }
+}
+
 static void Present(int x, int y, int w, int h, int interpolated)
 {
     int width, height, outW, outH, outX, outY;
@@ -1574,9 +1794,8 @@ static void Present(int x, int y, int w, int h, int interpolated)
         }
         left = wide ? (int)SDL_lround((WideWidth() - across) / 2 * scale) : x * scale;
         right = wide ? WideWidth() * scale - left : (x + w) * scale;
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, wide ? wideFramebuffer : framebuffer);
-        glBlitFramebuffer(left, y * scale, right, (y + h) * scale, outX, outY + outH, outX + outW, outY,
-                          GL_COLOR_BUFFER_BIT, GL_LINEAR);
+        BlitPicture(wide, left, y * scale, right, (y + h) * scale, windowFramebuffer,
+                    outX, outY + outH, outX + outW, outY);
         if (!wide && portSettings.widescreen && outX > 0) {
             float colour[3];
 
@@ -1737,15 +1956,8 @@ static void ScalePicture(int x, int y, int w, int h, int margin, int outW, int o
         smallH = outH;
     }
     glDisable(GL_SCISSOR_TEST);
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, wide ? wideFramebuffer : framebuffer);
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, small);
-    if (wide) {
-        glBlitFramebuffer(0, y * scale, WideWidth() * scale, (y + h) * scale, 0, 0, outW, outH, GL_COLOR_BUFFER_BIT,
-                          GL_LINEAR);
-    } else {
-        glBlitFramebuffer(x * scale, y * scale, (x + w) * scale, (y + h) * scale, 0, 0, outW, outH, GL_COLOR_BUFFER_BIT,
-                          GL_LINEAR);
-    }
+    BlitPicture(wide, wide ? 0 : x * scale, y * scale, (wide ? WideWidth() : x + w) * scale,
+                (y + h) * scale, small, 0, 0, outW, outH);
     glBindFramebuffer(GL_READ_FRAMEBUFFER, small);
     glPixelStorei(GL_PACK_ALIGNMENT, 4);
 }
@@ -1878,7 +2090,7 @@ void GpuPresentSplit(int x, int y, int w, int h, const uint8_t *lower, int lower
     }
     PortDrawableSize(&width, &height);
     /* the other game draws the lower half as wide, and hands it over at its size in pixels */
-    PortLinkSetBand(GpuShownMargin(x, w), width, height / 2);
+    PortLinkSetBand(GpuShownMargin(x, w), width, height / 2, portSettings.downsample, portSettings.downsampleStyle);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, windowFramebuffer);
     glDisable(GL_SCISSOR_TEST);
     glViewport(0, 0, width, height);
@@ -1887,9 +2099,8 @@ void GpuPresentSplit(int x, int y, int w, int h, const uint8_t *lower, int lower
     /* the upper half: this game's band (OpenGL's rows go up: the upper half is from height / 2), its pixels as wide
        as the console's are (PAL's 256 lines across the same 4:3 screen: wider than tall) */
     Fit(0, height - height / 2, width, height / 2, across * GPU_LINES, h * 240, &ox, &oy, &ow, &oh);
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, wide ? wideFramebuffer : framebuffer);
-    glBlitFramebuffer(wide ? 0 : x * scale, y * scale, (wide ? across : x + w) * scale, (y + h) * scale, ox, oy + oh,
-                      ox + ow, oy, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+    BlitPicture(wide, wide ? 0 : x * scale, y * scale, (wide ? across : x + w) * scale,
+                (y + h) * scale, windowFramebuffer, ox, oy + oh, ox + ow, oy);
     /* the lower half: the other game's band, as it read it (rows from the bottom) */
     if (lower && lowerW > 0 && lowerH > 0) {
         if (!texture) {
@@ -1911,7 +2122,8 @@ void GpuPresentSplit(int x, int y, int w, int h, const uint8_t *lower, int lower
         Fit(0, 0, width, height / 2, lowerW, lowerH, &ox, &oy, &ow, &oh);
         glBindFramebuffer(GL_READ_FRAMEBUFFER, readFramebuffer);
         glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
-        glBlitFramebuffer(0, 0, lowerW, lowerH, ox, oy + oh, ox + ow, oy, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+        glBlitFramebuffer(0, 0, lowerW, lowerH, ox, oy + oh, ox + ow, oy, GL_COLOR_BUFFER_BIT,
+                          portSettings.downsample && portSettings.downsampleStyle == DOWNSAMPLE_BOX ? GL_NEAREST : GL_LINEAR);
     }
     glBindFramebuffer(GL_FRAMEBUFFER, windowFramebuffer);
     PortVideoPresent();

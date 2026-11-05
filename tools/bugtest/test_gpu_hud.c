@@ -5,6 +5,8 @@
 #include <math.h>
 PortConfig portConfig;
 PortSettings portSettings;
+int PortLinkDownsample(void){return -1;}
+int PortLinkDownsampleStyle(void){return -1;}
 uint16_t psxVram[VRAM_HEIGHT][VRAM_WIDTH],psxVramHigh[VRAM_HEIGHT][VRAM_WIDTH];
 int portPal;
 void PortDrawableSize(int *w,int*h){*w=320;*h=240;}
@@ -112,4 +114,5 @@ int main(void){
  assert(samples[1][6][1]-samples[1][0][1]>=72);
  puts("HUD colour remains visible, black stays transparent, original scene blend modes and CLUTs preserved: OK");
  SDL_GL_DestroyContext(ctx);SDL_DestroyWindow(win);SDL_Quit();
+ return 0;
 }

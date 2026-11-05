@@ -23,3 +23,15 @@ EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT 
 OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
 CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+## Adaptive downsampling
+
+The Adaptive downsampling style in `platform/psx/gpu_gl.c` is inspired by the
+[adaptive downsampling feature in DuckStation](https://github.com/stenzek/duckstation#features).
+Credit goes to the DuckStation project and its contributors for that approach.
+
+This project uses independently written variance-guided reduction, detail-weight
+filtering and reconstruction shaders. No DuckStation source code is incorporated.
+The result follows the same goal of smoothing enlarged flat pixels while preserving
+fine rendered detail; it does not promise identical output to DuckStation. Box
+downsampling uses conventional area averaging.

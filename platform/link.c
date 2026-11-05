@@ -16,6 +16,7 @@
 
 #include "link.h"
 #include "platform.h"
+#include "settings.h"
 #ifdef PORT_HAVE_SECOND_GAME
 #include "second/second.h"
 #endif
@@ -38,6 +39,8 @@ typedef struct LinkShared {
     atomic_int secondShip;          /* the second player's ship */
     atomic_int quit;                /* master: the slave is to exit */
     atomic_int split;               /* master: both are racing, the window is split */
+    atomic_int bandDownsampleStyle; /* master: Box or Adaptive for both bands */
+    atomic_int bandDownsample;       /* master: target scale for both bands, or 0 for off */
     atomic_int bandMargin, bandWidth, bandHeight; /* master: the lower half (widescreen margin, pixels) */
     atomic_int interpolate;         /* master: pictures between the game's frames (the slave draws its own too) */
     SDL_Mutex *inputLock;
@@ -426,13 +429,31 @@ int PortLinkSplit(void)
     return shared && atomic_load(&shared->split);
 }
 
-void PortLinkSetBand(int margin, int width, int height)
+void PortLinkSetBand(int margin, int width, int height, int downsample, int style)
 {
     if (shared) {
+        atomic_store(&shared->bandDownsampleStyle, SDL_clamp(style, DOWNSAMPLE_BOX, DOWNSAMPLE_ADAPTIVE));
+        atomic_store(&shared->bandDownsample, SDL_clamp(downsample, 0, 16));
         atomic_store(&shared->bandMargin, margin);
         atomic_store(&shared->bandWidth, width);
         atomic_store(&shared->bandHeight, height);
     }
+}
+
+int PortLinkDownsampleStyle(void)
+{
+    if (role != LINK_SLAVE || !shared || atomic_load(&shared->bandWidth) <= 0) {
+        return -1;
+    }
+    return atomic_load(&shared->bandDownsampleStyle);
+}
+
+int PortLinkDownsample(void)
+{
+    if (role != LINK_SLAVE || !shared || atomic_load(&shared->bandWidth) <= 0) {
+        return -1;
+    }
+    return atomic_load(&shared->bandDownsample);
 }
 
 int PortLinkBand(int *margin, int *width, int *height)

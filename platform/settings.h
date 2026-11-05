@@ -1,6 +1,6 @@
 /* The player's settings (settings.c): a small INI file in the user's data folder, changed from the
    debug console (debug_ui.cpp, the ~ key). Environment variables still override them for a
-   run (WIPEOUT_FAR_VIEW, WIPEOUT_FAR_FLARES, WIPEOUT_FADE, WIPEOUT_WIDESCREEN, WIPEOUT_FRAME_RATE, WIPEOUT_SAVE_DIR, WIPEOUT_RENDER_SCALE,
+   run (WIPEOUT_FAR_VIEW, WIPEOUT_FAR_FLARES, WIPEOUT_FADE, WIPEOUT_WIDESCREEN, WIPEOUT_FRAME_RATE, WIPEOUT_SAVE_DIR, WIPEOUT_RENDER_SCALE, WIPEOUT_DOWNSAMPLE, WIPEOUT_DOWNSAMPLE_STYLE,
    WIPEOUT_HD_PACK, WIPEOUT_MUSIC, WIPEOUT_TOUCH, WIPEOUT_SURROUND); the tests' hidden runs ignore the file. */
 #ifndef PORT_SETTINGS_H
 #define PORT_SETTINGS_H
@@ -35,6 +35,8 @@ typedef struct PortSettings {
     int negconPad;        /* which pad is in the first port: 0 whatever its controls look like, 1 a digital
                              pad, 2 a neGcon (psx/pad.h's PsxPadSetType) */
     int renderScale;      /* the framebuffer's pixels per console pixel; 0: as many as the window shows (gpu_gl.c) */
+    int downsample;       /* target pixels per console pixel; 0: off, 1: PS1 native; capped at renderScale */
+    int downsampleStyle;  /* DOWNSAMPLE_BOX or DOWNSAMPLE_ADAPTIVE */
     int hdTextures;       /* the HD texture pack is drawn (hdtex.c) */
     char hdPackPath[1024]; /* ... the player's pack: its .zip or folder */
     int touchControls;    /* the touch controls (touch.h): TOUCH_AUTO, TOUCH_ON or TOUCH_OFF */
@@ -52,6 +54,9 @@ typedef struct PortSettings {
     int fullscreen;       /* the window was full screen when last left: the next start is too (video.c) */
     int noUpdateCheck;    /* 0: check GitHub once at launch, 1: stay offline */
 } PortSettings;
+
+/* PortSettings.downsampleStyle: the target scale is in downsample; 0 there disables either style. */
+enum { DOWNSAMPLE_BOX, DOWNSAMPLE_ADAPTIVE };
 
 /* PortSettings.surround */
 enum {

@@ -80,6 +80,10 @@ static void Set(const char *key, const char *value)
         portSettings.noAutoSave = number == 0;
     } else if (!strcmp(key, "render_scale")) {
         portSettings.renderScale = SDL_clamp(number, 0, 16);
+    } else if (!strcmp(key, "downsample")) {
+        portSettings.downsample = SDL_clamp(number, 0, 16);
+    } else if (!strcmp(key, "downsample_style")) {
+        portSettings.downsampleStyle = SDL_clamp(number, DOWNSAMPLE_BOX, DOWNSAMPLE_ADAPTIVE);
     } else if (!strcmp(key, "hd_textures")) {
         portSettings.hdTextures = number != 0;
     } else if (!strcmp(key, "hd_pack")) {
@@ -165,6 +169,12 @@ void PortSettingsLoad(void)
     if ((value = SDL_getenv("WIPEOUT_RENDER_SCALE"))) {
         portSettings.renderScale = SDL_clamp(SDL_atoi(value), 0, 16);
     }
+    if ((value = SDL_getenv("WIPEOUT_DOWNSAMPLE"))) {
+        portSettings.downsample = SDL_clamp(SDL_atoi(value), 0, 16);
+    }
+    if ((value = SDL_getenv("WIPEOUT_DOWNSAMPLE_STYLE"))) {
+        portSettings.downsampleStyle = SDL_clamp(SDL_atoi(value), DOWNSAMPLE_BOX, DOWNSAMPLE_ADAPTIVE);
+    }
     if ((value = SDL_getenv("WIPEOUT_HD_PACK"))) {
         /* a pack's .zip or folder, drawn ("" not) */
         SDL_strlcpy(portSettings.hdPackPath, value, sizeof(portSettings.hdPackPath));
@@ -241,7 +251,7 @@ int PortSettingsSave(void)
             "# Wipeout XL settings (the ~ key opens the debug console that changes them)\n"
             "show_fps = %d\nfar_view = %d\nfade = %d\nfade_near = %d\nfade_far = %d\n"
             "widescreen = %d\nframe_rate = %d\nframe_cap = %d\nskip_intro = %d\nrecord_frames = %d\nrecord_replays = %d\nsave_dir = %s\ndisc = %s\noriginal = %s\n"
-            "render_scale = %d\nhd_textures = %d\nhd_pack = %s\nwipeout64 = %s\n"
+            "render_scale = %d\ndownsample = %d\ndownsample_style = %d\nhd_textures = %d\nhd_pack = %s\nwipeout64 = %s\n"
             "custom_music = %d\nmusic_shuffle = %d\nmusic_folder = %s\nsave_slot = %s\nautosave = %d\n"
             "touch_controls = %d\ntouch_size = %d\ntouch_opacity = %d\ndepth_buffer = %d\nskip_logos = %d\nrecord_rate = %d\n"
             "video_standard = %d\nvibration = %d\nvibration_strength = %d\nfar_flares = %d\npause_unfocused = %d\n"
@@ -252,7 +262,7 @@ int PortSettingsSave(void)
             portSettings.recordFrames,
             portSettings.recordReplays,
             portSettings.saveDir, portSettings.discPath, portSettings.originalPath, portSettings.renderScale,
-            portSettings.hdTextures, portSettings.hdPackPath, portSettings.wipeout64Path, portSettings.customMusic,
+            portSettings.downsample, portSettings.downsampleStyle, portSettings.hdTextures, portSettings.hdPackPath, portSettings.wipeout64Path, portSettings.customMusic,
             portSettings.musicShuffle, portSettings.musicFolder, portSettings.saveSlot, !portSettings.noAutoSave,
             portSettings.touchControls, portSettings.touchSize ? portSettings.touchSize : 100,
             portSettings.touchOpacity ? portSettings.touchOpacity : 60, !portSettings.consoleDepth, portSettings.skipLogos,

@@ -54,7 +54,9 @@ void PortLinkGo(int secondShip);
 void PortLinkSetInput(const LinkInput *input);
 const uint8_t *PortLinkGetFrame(int *width, int *height, unsigned *sequence);
 /* The split window's lower half, for the slave's band: the widescreen margin and its size in pixels. */
-void PortLinkSetBand(int margin, int width, int height);
+void PortLinkSetBand(int margin, int width, int height, int downsample, int style);
+int PortLinkDownsampleStyle(void); /* the master's style for the slave; -1 before its first band */
+int PortLinkDownsample(void); /* the master's setting for the slave; -1 before its first band */
 /* Whether this game draws pictures between the game's frames: the slave then hands such pictures over too, as
    often as this game shows the window (microseconds). */
 void PortLinkSetInterpolate(int on);
