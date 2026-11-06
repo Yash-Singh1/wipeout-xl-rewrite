@@ -153,6 +153,34 @@ static void OffscreenPicture(void)
     SetWideMargin(0);
 }
 
+/* A partial or disjoint clear must preserve the depth outside its rectangle,
+   including when depth was written into the separate widescreen target. */
+static void PartialDepthClear(void)
+{
+    GpuDrawState state = {.semi = -1};
+    GpuVertex v[3] = {{.x = 0, .y = 0, .w = 100, .r = 255, .a = 255},
+                      {.x = 32, .y = 0, .w = 100, .r = 255, .a = 255},
+                      {.x = 0, .y = 32, .w = 100, .r = 255, .a = 255}};
+    portSettings.consoleDepth = 0;
+    for (int wide = 0; wide < 2; wide++) {
+        SetWideMargin(wide ? 16 : 0);
+        GpuSetDrawArea(0, 0, 320, 240, 0, 0);
+        GpuClearArea(0, 0, 320, 240, 0, 0, 0);
+        for (int i = 0; i < 3; i++) { v[i].w = 100; v[i].r = 255; v[i].g = 0; }
+        GpuTriangles(&state, v, 3);
+        GpuClearDepth(64, 64, 8, 8); /* disjoint from the drawn triangle */
+        GpuClearDepth(0, 0, 8, 8);
+        for (int i = 0; i < 3; i++) { v[i].w = 300; v[i].r = 0; v[i].g = 255; }
+        GpuTriangles(&state, v, 3);
+        int w, h;
+        const uint8_t *p = GpuReadArea(4, 4, 1, 1, &w, &h);
+        assert(p[0] == 0 && p[1] == 255);
+        p = GpuReadArea(12, 4, 1, 1, &w, &h);
+        assert(p[0] == 255 && p[1] == 0);
+    }
+    SetWideMargin(0);
+}
+
 int main(int argc, char **argv)
 {
     assert(SDL_Init(SDL_INIT_VIDEO));
@@ -168,6 +196,7 @@ int main(int argc, char **argv)
     PaletteChanges();
     PageChanges();
     OffscreenPicture();
+    PartialDepthClear();
     for (int i = 0; i < 16 * 16; i++) {
         hdPixels[i * 4] = i; hdPixels[i * 4 + 1] = 255 - i; hdPixels[i * 4 + 2] = 128;
         hdPixels[i * 4 + 3] = i % 3 == 0 ? 0 : i % 3 == 1 ? 128 : 255;

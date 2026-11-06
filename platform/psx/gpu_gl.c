@@ -192,6 +192,10 @@ static int LoadFunctions(void)
 
 static int scale = 1;
 static GLuint framebuffer, colour;   /* all of video memory, scaled */
+typedef struct DepthUse {
+    int written, left, top, right, bottom;
+} DepthUse;
+static DepthUse depthUse, wideDepthUse;
 static GLuint depthBuffer;           /* ... its depth (the depth buffer: Flush) */
 static GLuint vramTexture;           /* the CPU copy, R16UI */
 static GLuint glyphTexture;          /* the glyph page (GpuSetGlyphMemory): RGBA, premultiplied, filtered */
@@ -526,6 +530,7 @@ static int CreateFramebuffer(void)
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colour, 0);
     depthBuffer = DepthFor(VRAM_WIDTH * scale, VRAM_HEIGHT * scale);
+    depthUse.written = 0;
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         SDL_Log("framebuffer incomplete at scale %d", scale);
         return 0;
@@ -872,6 +877,7 @@ static void SetWideMargin(int margin)
         glBindFramebuffer(GL_FRAMEBUFFER, wideFramebuffer);
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, wideColour, 0);
         wideDepth = DepthFor(WideWidth() * scale, VRAM_HEIGHT * scale);
+        wideDepthUse.written = 0;
         glDisable(GL_SCISSOR_TEST);
         glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT);
@@ -1115,16 +1121,47 @@ typedef struct DrawCommand {
     int first, count, pass, blend; /* blend: 0 off, 1 premultiplied, 2 subtraction */
 } DrawCommand;
 
+/* Track a conservative bound of depth writes. Empty targets, including the
+   regular VRAM target during widescreen drawing, need no repeated depth clear. */
+static void NoteDepthWrite(void)
+{
+    DepthUse *use = areaWide ? &wideDepthUse : &depthUse;
+    int full = areaWide && areaX == 0 && areaW == SCREEN_COLUMNS;
+    int left = full ? 0 : SDL_max(areaX + (areaWide ? wideMargin : 0), 0);
+    int right = full ? WideWidth() : SDL_min(areaX + areaW + (areaWide ? wideMargin : 0),
+                                            areaWide ? WideWidth() : VRAM_WIDTH);
+    int top = SDL_max(areaY, 0), bottom = SDL_min(areaY + areaH, VRAM_HEIGHT);
+    if (right <= left || bottom <= top) return;
+    if (!use->written) {
+        *use = (DepthUse){1, left, top, right, bottom};
+    } else {
+        use->left = SDL_min(use->left, left); use->top = SDL_min(use->top, top);
+        use->right = SDL_max(use->right, right); use->bottom = SDL_max(use->bottom, bottom);
+    }
+}
+
+static GLbitfield NeededClear(DepthUse *use, int x, int y, int w, int h, GLbitfield buffers)
+{
+    if (!(buffers & GL_DEPTH_BUFFER_BIT)) return buffers;
+    if (!use->written || x >= use->right || x + w <= use->left || y >= use->bottom || y + h <= use->top) {
+        return buffers & ~GL_DEPTH_BUFFER_BIT;
+    }
+    if (x <= use->left && y <= use->top && x + w >= use->right && y + h >= use->bottom) use->written = 0;
+    return buffers;
+}
+
 static void ExecuteCommand(const DrawCommand *command, int *previousPass, int *previousBlend)
 {
     if (!command->count) return;
     if (command->pass != *previousPass) {
         int depth = command->pass == 3;
         glUniform1i(uniformPass, command->pass);
-        glUniform1i(uniformDepthPass, depth);
-        glColorMask(!depth, !depth, !depth, !depth);
-        glDepthMask(depth);
-        glDepthFunc(depth ? GL_LESS : GL_LEQUAL);
+        if (*previousPass < 0 || depth != (*previousPass == 3)) {
+            glUniform1i(uniformDepthPass, depth);
+            glColorMask(!depth, !depth, !depth, !depth);
+            glDepthMask(depth);
+            glDepthFunc(depth ? GL_LESS : GL_LEQUAL);
+        }
         *previousPass = command->pass;
     }
     if (command->blend != *previousBlend) {
@@ -1157,7 +1194,7 @@ static void AppendCommand(DrawCommand *pending, DrawCommand next, int *pass, int
 static void SubmitRanges(void)
 {
     DrawCommand pending = {0};
-    int previousPass = -1, previousBlend = -1;
+    int previousPass = -1, previousBlend = -1, depthNoted = 0;
 
     if (!rangeCount) return;
     glUseProgram(program);
@@ -1192,6 +1229,10 @@ static void SubmitRanges(void)
             !(s->semi >= 0 && !s->textured)) {
             command.pass = 3;
             command.blend = 0;
+            if (!depthNoted) {
+                NoteDepthWrite();
+                depthNoted = 1;
+            }
             AppendCommand(&pending, command, &previousPass, &previousBlend);
         }
         command.pass = 0;
@@ -1593,23 +1634,32 @@ void GpuFill(int x, int y, int w, int h, uint8_t r, uint8_t g, uint8_t b)
 /* Clears (x, y, w, h) of the framebuffers: `buffers` (colour to r, g, b, depth to the farthest). */
 static void Clear(int x, int y, int w, int h, GLbitfield buffers, uint8_t r, uint8_t g, uint8_t b)
 {
+    GLbitfield needed;
+
     Flush();
-    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
     glEnable(GL_SCISSOR_TEST);
-    glScissor(x * scale, y * scale, w * scale, h * scale);
     glClearColor(r / 255.0f, g / 255.0f, b / 255.0f, 1.0f);
     glDepthMask(GL_TRUE);
-    glClear(buffers);
+    needed = NeededClear(&depthUse, x, y, w, h, buffers);
+    if (needed) {
+        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+        glScissor(x * scale, y * scale, w * scale, h * scale);
+        glClear(needed);
+    }
     if (InScreenColumns(x, w) && wideFramebuffer) {
         /* across the whole screen: the sides too */
         int left = x <= 0 && x + w >= SCREEN_COLUMNS ? 0 : SDL_max(x, 0) + wideMargin;
         int right = x <= 0 && x + w >= SCREEN_COLUMNS ? WideWidth() : SDL_min(x + w, SCREEN_COLUMNS) + wideMargin;
 
-        glBindFramebuffer(GL_FRAMEBUFFER, wideFramebuffer);
-        glScissor(left * scale, y * scale, (right - left) * scale, h * scale);
-        glClear(buffers);
-        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+        needed = NeededClear(&wideDepthUse, left, y, right - left, h, buffers);
+        if (needed) {
+            glBindFramebuffer(GL_FRAMEBUFFER, wideFramebuffer);
+            glScissor(left * scale, y * scale, (right - left) * scale, h * scale);
+            glClear(needed);
+        }
     }
+    /* Every draw/transfer binds its own target. Restoring the regular VRAM
+       target here only ends a widescreen render pass that drawing resumes. */
     glDisable(GL_SCISSOR_TEST);
 }
 
@@ -2098,6 +2148,7 @@ void GpuPictureHandedOver(void)
 static void SetScale(int newScale)
 {
     GLuint oldColour = colour, oldFramebuffer = framebuffer, oldDepth = depthBuffer;
+    DepthUse oldDepthUse = depthUse;
     int oldScale = scale, margin = wideMargin;
 
     Flush();
@@ -2110,6 +2161,7 @@ static void SetScale(int newScale)
         colour = oldColour;
         framebuffer = oldFramebuffer;
         depthBuffer = oldDepth;
+        depthUse = oldDepthUse;
         scale = oldScale;
     } else {
         glBindFramebuffer(GL_READ_FRAMEBUFFER, oldFramebuffer);
