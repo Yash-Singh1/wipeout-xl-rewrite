@@ -18,6 +18,7 @@ extern unsigned char PsxScratchpad[1024];
    again (an ordering table drawn there): for a wipe of video memory between two pictures that the player
    is not meant to see. */
 void PsxHoldPicture(void);
+void PsxStartupDisplay(int enabled); /* keep resident loaders hidden until both title buffers are ready */
 
 
 /* Frame interpolation (platform/psx/libgpu.c): the ordering tables Swap will draw when its fields have passed (the

@@ -389,8 +389,12 @@ void PortWideMenu(void)
     GpuWideMenu();
 }
 
+static int loadingPending;
+static const void *loadingTable;
+
 void PortWideLoadScreen(void)
 {
+    loadingPending = 1;
     GpuWideLoadScreen(); /* (as a menu without a backdrop: only the fills across the screen reach the sides) */
 }
 
@@ -557,12 +561,21 @@ DISPENV *PutDispEnv(DISPENV *env)
     return given;
 }
 
+static int startupDisplayBlocked;
+
+void PsxStartupDisplay(int enabled)
+{
+    startupDisplayBlocked = !enabled;
+    SetDispMask(enabled);
+}
+
 void SetDispMask(int mask)
 {
     if (!mask) {
         ForgetDrawnFrame();
     }
-    state.displayEnabled = mask != 0;
+    state.displayEnabled = mask != 0 && !startupDisplayBlocked;
+    FrameCapDisplayEnabled(state.displayEnabled);
 }
 
 /* ResetGraph as the library's _reset: mode 0 resets the GPU (GP1 0), modes 1
@@ -2092,6 +2105,10 @@ void PsxUpcomingTables(u_long *table, u_long *second, u_long *hudFirst, DRAWENV 
     centredCount[0] = 0;
     inPlace[1] = inPlace[0];
     inPlace[0] = 0;
+    if (loadingPending) {
+        loadingTable = table;
+        loadingPending = 0;
+    }
     upcoming.table = table;
     upcoming.second = second;
     upcoming.hudEntry = hudFirst;
@@ -2146,7 +2163,8 @@ int PsxInterpolationOn(void)
 
 int PsxCanInterpolate(void)
 {
-    return upcoming.table && upcoming.width > 0 && upcoming.height > 0 && !holdPicture && PsxInterpolationOn();
+    return state.displayEnabled && upcoming.table && upcoming.width > 0 && upcoming.height > 0 &&
+           !holdPicture && PsxInterpolationOn();
 }
 
 static void DrawTableAgain(u_long *p)
@@ -2191,6 +2209,7 @@ static void DrawInterpolated(float along)
     interpolating = 1;
     interpolationAlong = along < 0.0f ? 0.0f : along > 1.0f ? 1.0f : along;
     GpuInterpolating(1);
+    if (upcoming.table == loadingTable) GpuWideLoadScreen();
     state.areaLeft = upcoming.left;
     state.areaTop = upcoming.top;
     state.areaRight = upcoming.left + upcoming.width - 1;
@@ -2304,12 +2323,18 @@ void DrawOTag(u_long *p)
     } else if (p != drawnFrame.second) {
         ForgetDrawnFrame();
     }
-    if (holdPicture && holdAreaCount < HOLD_AREAS) {
+    if (holdPicture && holdAreaCount < HOLD_AREAS && TableDraws(p)) {
         holdAreas[holdAreaCount].left = state.areaLeft;
         holdAreas[holdAreaCount].top = state.areaTop;
         holdAreas[holdAreaCount].right = state.areaRight;
         holdAreas[holdAreaCount].bottom = state.areaBottom;
         holdAreaCount++;
+    }
+    if (p == loadingTable) {
+        /* Swap waits before drawing. Mark the loading table when it actually draws,
+           so a presentation of the previous picture cannot consume its wide flag. */
+        GpuWideLoadScreen();
+        loadingTable = NULL;
     }
     FrameCapTable(state.offsetX, state.offsetY, state.areaLeft, state.areaTop, state.areaRight - state.areaLeft + 1,
                   state.areaBottom - state.areaTop + 1);

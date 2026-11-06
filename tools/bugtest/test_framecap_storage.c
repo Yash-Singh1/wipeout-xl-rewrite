@@ -4,6 +4,8 @@
 #include "../../platform/psx/framecap.c"
 #include <assert.h>
 int portPal;
+uint16_t psxVram[VRAM_HEIGHT][VRAM_WIDTH];
+uint64_t PortGameFrames(void) { return 0; }
 PortConfig portConfig;
 PortSettings portSettings;
 int PortLinkDownsample(void) { return -1; }
@@ -16,6 +18,19 @@ int PortShownFrames(void) { return 0; }
 int main(void)
 {
     SDL_setenv_unsafe("WIPEOUT_FRAMECAP", "1", 1);
+    FrameCapDisplayEnabled(0);
+    FrameCapTable(0, 0, 0, 0, 320, 240);
+    assert(!count && !FrameCapAdd());
+    FrameCapDisplayEnabled(1);
+    FrameCapTable(0, 0, 0, 0, 320, 240);
+    assert(count == 1 && FrameCapAdd());
+    FrameCapDisplayEnabled(0);
+    assert(!FrameCapAdd());
+    FrameCapDisplayEnabled(1);
+    FrameCapTable(0, 256, 0, 256, 320, 240);
+    assert(count == 2 && FrameCapFrameAt(1)->count == 0);
+    assert(!FrameCapPictureReady(0)); /* Unshown draws cannot enter the picture viewer. */
+    FrameCapClear();
     for (int n = 0; n < FRAMES * 3; n++) {
         FrameCapFrame *f = NewFrame();
         f->vram = -1;

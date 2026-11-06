@@ -475,28 +475,26 @@ static void RecorderTab(void)
         followNewest = true;
     }
     ImGui::Separator();
-    // the frames up to the newest shown: the one being drawn when the recording stopped (or while it goes on) is
-    // not finished, and has no picture
-    int usable = total;
-    while (usable > 0 && !FrameCapFrameAt(usable - 1)->shown) {
-        usable--;
+    // Hidden and unfinished draws have no displayed image. Keep them in the saved
+    // diagnostic data, but stepping the picture viewer visits presented frames only.
+    static ImVector<int> visibleFrames;
+    visibleFrames.resize(0);
+    for (int i = 0; i < total; i++) {
+        if (FrameCapPictureReady(i)) visibleFrames.push_back(i);
     }
-    if (usable == 0) {
+    int usable = visibleFrames.Size;
+    if (!usable) {
         ImGui::TextDisabled("Waiting for the first frame...");
         return;
     }
+    int position = usable - 1;
     if (frameShown >= 0 && !followNewest) {
-        // the same frame as before, wherever it is now (the oldest once it is gone)
-        int i = usable - 1;
-        while (i >= 0 && FrameCapFrameAt(i)->number != frameShownNumber) {
-            i--;
-        }
-        frameShown = SDL_max(i, 0);
-    }
-    if (frameShown < 0 || frameShown >= usable || followNewest) {
-        frameShown = usable - 1;
-        while (frameShown > 0 && !FrameCapFrameAt(frameShown)->shown) {
-            frameShown--; // the newest frame that reached the screen
+        position = 0;
+        for (int i = usable - 1; i >= 0; i--) {
+            if (FrameCapFrameAt(visibleFrames[i])->number == frameShownNumber) {
+                position = i;
+                break;
+            }
         }
     }
     // , and . step back and forward a frame (held: on and on), as the arrows do
@@ -517,19 +515,20 @@ static void RecorderTab(void)
         }
     }
     bool changed = step != 0;
-    frameShown = SDL_clamp(frameShown + step, 0, usable - 1);
+    position = SDL_clamp(position + step, 0, usable - 1);
     ImGui::SameLine();
     ImGui::SetNextItemWidth(-1);
     char sliderLabel[64];
-    int number = frameShown + 1; // (counted from 1)
+    int number = position + 1; // (counted from 1)
     SDL_snprintf(sliderLabel, sizeof(sliderLabel), live ? "frame %%d / %d (recording)" : "frame %%d / %d", usable);
     if (ImGui::SliderInt("##frame", &number, 1, usable, sliderLabel)) {
-        frameShown = number - 1;
+        position = number - 1;
         changed = true;
     }
-    if (changed || frameShown >= usable - 1) {
-        followNewest = live && frameShown >= usable - 1; // back at the newest: following it again
+    if (changed || position >= usable - 1) {
+        followNewest = live && position >= usable - 1; // back at the newest: following it again
     }
+    frameShown = visibleFrames[position];
     const FrameCapFrame *f = FrameCapFrameAt(frameShown);
     frameShownNumber = f->number;
 
@@ -541,9 +540,9 @@ static void RecorderTab(void)
     const uint8_t *picture = f->shown ? FrameCapPicture(frameShown, &picturePixelsW, &picturePixelsH) : nullptr;
     bool hasPicture = picture != nullptr;
     // pictureW: the picture's console columns (its pixels are pictureScale times as many each way)
-    int pictureScale = hasPicture ? SDL_max(f->pictureScale, 1) : 1;
-    int pictureW = hasPicture ? f->pictureW / pictureScale : 320, pictureX = hasPicture ? f->pictureX : 0;
-    int pictureH = hasPicture ? f->pictureH / pictureScale : GPU_LINES; // (PAL's 256 lines)
+    int pictureScale = SDL_max(f->pictureScale, 1);
+    int pictureW = f->pictureW / pictureScale, pictureX = f->pictureX;
+    int pictureH = f->pictureH / pictureScale; // (PAL's 256 lines)
     // below the picture, the pixel's primitives: at least a few rows and the details (zoomed in, the picture
     // takes the rest)
     float below = SDL_min(240 * ui, room.y * 0.35f), belowZoomed = SDL_min(170 * ui, room.y * 0.3f);
@@ -626,14 +625,10 @@ static void RecorderTab(void)
     // the picture as large as fits or as zoomed (in a pane of its own that scrolls when it is larger), the picked
     // pixel's primitives beside it (in a narrow window below it)
     float zoom = pictureZoom > 0 ? pictureZoom : fit;
-    ImVec2 imageSize(pictureW * zoom, pictureH * zoom);
     if (!beside && pictureZoom > 0 && pictureRoom <= 0) {
         paneH = SDL_max(paneH, room.y - belowZoomed - splitter); // zoomed in: as tall as it gets, the list smaller
     }
-    float bar = ImGui::GetStyle().ScrollbarSize;
-    bool across = imageSize.x > paneW, down = imageSize.y > paneH;
-    ImGui::BeginChild("##picture",
-                      ImVec2(across ? paneW : imageSize.x + (down ? bar : 0), down ? paneH : imageSize.y + (across ? bar : 0)),
+    ImGui::BeginChild("##picture", ImVec2(paneW, paneH),
                       ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar);
     ImVec2 origin = ImGui::GetCursorScreenPos();
     PixelImage(ImVec2(pictureW * zoom, pictureH * zoom), ImVec2(0, 0), ImVec2(1, 1), zoom < pictureScale);

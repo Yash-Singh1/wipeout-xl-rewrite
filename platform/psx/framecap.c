@@ -54,6 +54,7 @@ static int current = -1; /* the frame being recorded */
 static int newFrame = 1; /* a picture was shown since the last table: the next table starts a frame */
 static int skipFrame;    /* the rest of a dropped frame (DropUnfinished) is not recorded, up to its picture */
 static int frozen;
+static int displayEnabled = 1;
 static int taking;       /* RECORD_WITH_TAB: between the Tab that started a recording and the one that stops it */
 static int generation;
 static char savedDir[1024];
@@ -92,7 +93,17 @@ int FrameCapMode(void)
 
 int FrameCapRecording(void)
 {
-    return FrameCapMode() == RECORD_LAST_SECONDS ? !frozen : FrameCapMode() == RECORD_WITH_TAB && taking;
+    return displayEnabled && (FrameCapMode() == RECORD_LAST_SECONDS ? !frozen :
+                              FrameCapMode() == RECORD_WITH_TAB && taking);
+}
+
+void FrameCapDisplayEnabled(int enabled)
+{
+    if (displayEnabled != enabled) {
+        displayEnabled = enabled;
+        current = -1;
+        newFrame = 1;
+    }
 }
 
 int FrameCapTaking(void)
@@ -342,6 +353,17 @@ static void ForgetPicture(FrameCapFrame *f)
     f->jpegSize = 0;
     f->pictureToken = 0;
     SDL_UnlockMutex(lockMutex);
+}
+
+int FrameCapPictureReady(int index)
+{
+    const FrameCapFrame *f = FrameCapFrameAt(index);
+    int ready;
+    if (!f) return 0;
+    SDL_LockMutex(Lock());
+    ready = f->shown && f->jpeg != NULL;
+    SDL_UnlockMutex(lockMutex);
+    return ready;
 }
 
 const uint8_t *FrameCapPicture(int index, int *w, int *h)
