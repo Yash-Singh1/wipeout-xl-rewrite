@@ -1056,6 +1056,22 @@ static int32_t Distance(int32_t a, int32_t b)
     return a > b ? a - b : b - a;
 }
 
+/* Candidate chains are strictly decreasing record indices. A nearest search
+   only needs the two neighbors around the insertion point. Equal distances
+   keep the newer record, matching the exhaustive newest-first scan. */
+static int32_t NearestCandidate(const int32_t *list, int count, int32_t record)
+{
+    int low = 0, high = count;
+    while (low < high) {
+        int middle = (low + high) / 2;
+        if (list[middle] > record) low = middle + 1;
+        else high = middle;
+    }
+    if (!low) return list[0];
+    if (low == count) return list[count - 1];
+    return Distance(list[low], record) < Distance(list[low - 1], record) ? list[low] : list[low - 1];
+}
+
 static int resolvedBound; /* (GteResolvedBound) */
 
 int GteResolvedBound(void)
@@ -1098,15 +1114,16 @@ static unsigned ResolvePrecise(const uint32_t *xy, const void *const *addresses,
             /* each ambiguous vertex: the projection nearest to an unambiguous one */
             for (i = 0; i < count; i++) {
                 int32_t best = -1, bestDistance = 0x7FFFFFFF;
-                int k;
                 if (found[i] < 2) {
                     continue;
                 }
-                for (k = 0; k < found[i]; k++) {
-                    for (j = 0; j < count; j++) {
-                        if (found[j] == 1 && Distance(candidates[i][k], chosen[j]) < bestDistance) {
-                            bestDistance = Distance(candidates[i][k], chosen[j]);
-                            best = candidates[i][k];
+                for (j = 0; j < count; j++) {
+                    if (found[j] == 1) {
+                        int32_t candidate = NearestCandidate(candidates[i], found[i], chosen[j]);
+                        int32_t distance = Distance(candidate, chosen[j]);
+                        if (distance < bestDistance || (distance == bestDistance && candidate > best)) {
+                            bestDistance = distance;
+                            best = candidate;
                         }
                     }
                 }
@@ -1117,6 +1134,7 @@ static unsigned ResolvePrecise(const uint32_t *xy, const void *const *addresses,
                vertex, the nearest of the others; the tightest group wins */
             int first = 0, k, bestSpread = 0x7FFFFFFF;
             int32_t group[GTE_RESOLVE_MAX];
+            int nearest[GTE_RESOLVE_MAX] = {0};
 
             while (found[first] < 2) {
                 first++;
@@ -1125,12 +1143,17 @@ static unsigned ResolvePrecise(const uint32_t *xy, const void *const *addresses,
                 int32_t low = candidates[first][k], high = low;
                 for (i = 0; i < count; i++) {
                     int32_t best = -1;
-                    int m;
-                    for (m = 0; m < found[i]; m++) {
-                        if (best < 0 || Distance(candidates[i][m], candidates[first][k]) <
-                                            Distance(best, candidates[first][k])) {
-                            best = candidates[i][m];
-                        }
+                    if (found[i]) {
+                        /* Both lists are newest first. As the first list's
+                           candidate decreases, the nearest index never moves
+                           backward. Strict improvement retains the newer
+                           candidate when distances tie, as the full scan did. */
+                        int n = nearest[i];
+                        while (n + 1 < found[i] &&
+                               Distance(candidates[i][n + 1], candidates[first][k]) <
+                               Distance(candidates[i][n], candidates[first][k])) n++;
+                        nearest[i] = n;
+                        best = candidates[i][n];
                     }
                     group[i] = best;
                     if (best >= 0) {
@@ -1174,6 +1197,42 @@ static unsigned ResolvePrecise(const uint32_t *xy, const void *const *addresses,
     return mask;
 }
 
+/* Fully bound packet corners need no screen-position candidate search. Keep
+   the original spread filter: an exact binding can still be too far from the
+   primitive's other projections. The lower median is required for quads. */
+static int BoundPrimitive(const uint32_t *xy, const void *const *addresses, int count,
+                          int32_t chosen[GTE_RESOLVE_MAX])
+{
+    for (int i = 0; i < count; i++) {
+        uint32_t slot = BindingSlot(addresses[i]);
+        uint32_t handle = 0;
+        for (int probe = 0; probe < 64; probe++) {
+            const Binding *b = &bindings[(slot + probe) & (BINDING_SLOTS - 1)];
+            if (b->frame != preciseFrame) break;
+            if (b->address == addresses[i]) { handle = b->handle; break; }
+        }
+        if (handle == FLAT_HANDLE) return -1;
+        int32_t record = HandleRecord(handle);
+        chosen[i] = record;
+        if (record < 0 || records[record].key != xy[i]) return 0;
+    }
+    return 1;
+}
+static int32_t LowerMedian(const int32_t *v, int count)
+{
+    int32_t a = v[0];
+    if (count == 1) return a;
+    int32_t b = v[1];
+    if (a > b) { int32_t t = a; a = b; b = t; }
+    if (count == 2) return a;
+    int32_t c = v[2];
+    if (count == 3) return c < a ? a : c < b ? c : b;
+    int32_t d = v[3];
+    if (c > d) { int32_t t = c; c = d; d = t; }
+    int32_t low = a > c ? a : c, high = b < d ? b : d;
+    return low < high ? low : high;
+}
+
 unsigned GteResolvePrecise(const uint32_t *xy, const void *const *addresses, int count, GtePrecise *out)
 {
     uintptr_t hash;
@@ -1199,7 +1258,20 @@ unsigned GteResolvePrecise(const uint32_t *xy, const void *const *addresses, int
             entry->addresses[i] = addresses ? addresses[i] : NULL;
             entry->chosen[i] = -1;
         }
-        entry->mask = ResolvePrecise(xy, addresses, count, entry->chosen);
+        int exact = addresses ? BoundPrimitive(xy, addresses, count, entry->chosen) : 0;
+        if (!exact) {
+            entry->mask = ResolvePrecise(xy, addresses, count, entry->chosen);
+        } else {
+            entry->mask = 0;
+            resolvedBound = exact > 0;
+            if (exact > 0) {
+                int32_t middle = LowerMedian(entry->chosen, count);
+                for (int i = 0; i < count; i++) {
+                    if (Distance(entry->chosen[i], middle) <= PRECISE_SPREAD)
+                        entry->mask |= 1u << i;
+                }
+            }
+        }
         entry->bound = resolvedBound;
         entry->frame = preciseFrame;
         entry->records = recordCount;
