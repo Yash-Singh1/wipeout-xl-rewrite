@@ -1426,6 +1426,9 @@ static void Polygon(const uint32_t *w, uint32_t code)
     StateFor(&draw, textured, semi, raw);
     if (textured) {
         TextureFromPage(&draw, page);
+        /* Port-only texture page bit: Saturn's checkerboard mesh, drawn opaque
+           at alternating console pixels rather than blended with the scene. */
+        if (semi && (page & 0x1000)) draw.semi = 4;
         draw.clutX = (int)(clut & 0x3F) * 16;
         draw.clutY = (int)((clut >> 6) & 0x3FF); /* (bit 15: a palette in the second half, gpu.h) */
     }

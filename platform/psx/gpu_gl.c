@@ -230,6 +230,7 @@ static int menuWide;                           /* the game built a menu's backdr
 static int picturesWithoutMenu = 1000;         /* ... and new pictures in a row that were not a menu's */
 static int backdropNext;                       /* the primitive being drawn is a menu's backdrop (GpuBackdrop) */
 static GLint uniformOrigin;
+static GLint uniformRasterScale;
 
 /* A batch of triangles drawn with one blending state. What else a primitive's draw state says
    (texture page, palette, texture window, colour depth) goes with each vertex, so that primitives of
@@ -343,6 +344,7 @@ static const char *fragmentSource =
     "uniform sampler2D glyphs;\n"
     "uniform sampler2D portPages;\n"
     "uniform sampler2D hdAtlas;\n"
+    "uniform float rasterScale;\n"
     "flat in uvec4 hd;\n"
     "flat in ivec4 hdTexels;\n"
     "flat in ivec4 texturePage;\n"
@@ -355,6 +357,11 @@ static const char *fragmentSource =
     "uint FetchClut(ivec2 p) { return texelFetch(vram, ivec2(p.x & 1023, p.y & 1023), 0).r; }\n"
     /* colour col with coverage cov (premultiplied), blended or opaque, faded with distance (vColour.a) */
     "void Out(vec3 col, float cov, bool blended) {\n"
+    "    if (semiMode == 4) {\n"
+    "        ivec2 pixel = ivec2(floor(gl_FragCoord.xy / rasterScale));\n"
+    "        if (((pixel.x + pixel.y) & 1) != 0) discard;\n"
+    "        blended = false;\n"
+    "    }\n"
     "    float fade = vColour.a;\n"
     "    if (mode.z == 3) {\n"
     "        if (blended || fade < 0.999 || cov < 0.999) discard;\n"
@@ -576,6 +583,7 @@ int GpuInit(void)
     uniformDepthPass = glGetUniformLocation(program, "depthPass");
     uniformTarget = glGetUniformLocation(program, "target");
     uniformOrigin = glGetUniformLocation(program, "origin");
+    uniformRasterScale = glGetUniformLocation(program, "rasterScale");
     /* each sampler its own unit from the start (an integer and a float texture may not share one) */
     glUseProgram(program);
     glUniform1i(uniformVram, 0);
@@ -959,7 +967,7 @@ static void BindTarget(void)
 /* Whether a primitive is drawn over what is behind (semi-transparent, faded, or glyphs with their coverage). */
 static int Blended(const GpuDrawState *s)
 {
-    return s->semi >= 0 || s->fade || (s->textured && s->depth == 3);
+    return (s->semi >= 0 && s->semi != 4) || s->fade || (s->textured && s->depth == 3);
 }
 
 static int SameState(const GpuDrawState *a, const GpuDrawState *b)
@@ -1214,6 +1222,7 @@ static void SubmitRanges(void)
     glActiveTexture(GL_TEXTURE0);
     glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(queuedCount * sizeof(BatchVertex)), queuedVertices, GL_STREAM_DRAW);
     glUniform1f(uniformDepthPull, 1.0f / (1.0f - DEPTH_SLACK));
+    glUniform1f(uniformRasterScale, (float)scale);
     if (portSettings.consoleDepth) glDisable(GL_DEPTH_TEST);
     else glEnable(GL_DEPTH_TEST);
 
@@ -1226,7 +1235,7 @@ static void SubmitRanges(void)
         /* Keep each original batch's depth prepass ahead of its colours. The
            two-percent depth slack and the game's ordering still decide visibility. */
         if (!portSettings.consoleDepth && range->depth && (passes & PALETTE_OPAQUE) &&
-            !(s->semi >= 0 && !s->textured)) {
+            !(s->semi >= 0 && s->semi != 4 && !s->textured)) {
             command.pass = 3;
             command.blend = 0;
             if (!depthNoted) {

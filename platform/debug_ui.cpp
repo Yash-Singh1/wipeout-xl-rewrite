@@ -352,7 +352,9 @@ static void Explain(const FrameCapPrim *p, const FrameCapHit *h, char *out, size
     if (h->transparent) {
         n += SDL_snprintf(out + n, size - n, "transparent texel: what is below shows; ");
     }
-    if (p->draw.semi >= 0 && p->kind != FRAMECAP_FILL) {
+    if (p->draw.semi == 4) {
+        n += SDL_snprintf(out + n, size - n, "Saturn checkerboard mesh; ");
+    } else if (p->draw.semi >= 0 && p->kind != FRAMECAP_FILL) {
         n += SDL_snprintf(out + n, size - n, "blend %s; ", blends[p->draw.semi & 3]);
     }
     if (h->alpha < 254.5f && p->kind != FRAMECAP_FILL) {

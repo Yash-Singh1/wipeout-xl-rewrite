@@ -61,7 +61,7 @@ typedef struct GpuVertex {
 typedef struct GpuDrawState {
     int textured;
     int raw;           /* texture without colour modulation */
-    int semi;          /* -1 opaque, else blend mode 0-3 */
+    int semi;          /* -1 opaque, blend mode 0-3, or 4: Saturn screen-space mesh */
     int depth;         /* texture colours: 0 = 4-bit, 1 = 8-bit, 2 = 15-bit, 3 = the glyph page */
     int pageX, pageY;  /* texture page origin in video memory */
     int clutX, clutY;  /* palette origin */

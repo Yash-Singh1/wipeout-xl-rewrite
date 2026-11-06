@@ -53,6 +53,10 @@ if [ "${WIPEOUT_TEST_GL:-0}" = 1 ]; then
         $(pkg-config --libs sdl3) $gl_libs -lm -o "$test_build/gpu_hud"
     "$test_build/gpu_hud"
     ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard \
+        -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) tools/bugtest/test_gpu_mesh.c \
+        $(pkg-config --libs sdl3) $gl_libs -lm -o "$test_build/gpu_mesh"
+    "$test_build/gpu_mesh"
+    ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard \
         -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) tools/bugtest/test_gpu_downsample.c \
         $(pkg-config --libs sdl3) $gl_libs -lm -o "$test_build/gpu_downsample"
     "$test_build/gpu_downsample"
@@ -145,6 +149,9 @@ ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Iplatform \
     -include platform/include/port.h -iquote game/include $(pkg-config --cflags sdl3) \
     tools/bugtest/test_saturn_font.c game/data/ships_data.c $(pkg-config --libs sdl3) -o "$test_build/saturn_font"
 "$test_build/saturn_font"
+${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Iplatform $(pkg-config --cflags sdl3) \
+    tools/bugtest/test_saturn_art.c $(pkg-config --libs sdl3) -o "$test_build/saturn_art"
+"$test_build/saturn_art"
 
 ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Iplatform -Iplatform/psx \
     $(pkg-config --cflags sdl3) tools/bugtest/test_link_lifecycle.c $(pkg-config --libs sdl3) \
