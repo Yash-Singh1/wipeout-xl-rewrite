@@ -787,9 +787,9 @@ unsigned char *SaturnBlock(const char *path, int block, size_t *size)
 /* A VDP2 background as 15-bit pixels (the Saturn's colours are laid out as the PlayStation's): a map of 1-word
    pattern names (12 bits of character number, in 0x20-byte units, 4 of palette: 256 colours of colour RAM each),
    8-bit cells of 8x8 from `cells` (the lowest character number of the map is its first), or 4-bit ones (their 16
-   colours from `colours` on, by the pattern name's palette). 40x28 cells: 320x224. */
+   colours from `colours` on, by the pattern name's palette). Fit the native viewport to 320x224. */
 static void RenderBackground(Video *v, const uint8_t *map, size_t mapSize, uint32_t cells, int fourBit, int colours,
-                             uint16_t *pixels)
+                             int nativeWidth, int nativeHeight, uint16_t *pixels)
 {
     int first = 0xfff, x, y, i;
 
@@ -800,7 +800,8 @@ static void RenderBackground(Video *v, const uint8_t *map, size_t mapSize, uint3
     }
     for (y = 0; y < 224; y++) {
         for (x = 0; x < 320; x++) {
-            int at = ((y / 8) * 64 + x / 8) * 2, w, colour = 0;
+            int sx = x * nativeWidth / 320, sy = y * nativeHeight / 224;
+            int at = ((sy / 8) * 64 + sx / 8) * 2, w, colour = 0;
             const uint8_t *cell;
 
             if (at + 1 >= (int)mapSize) {
@@ -809,9 +810,9 @@ static void RenderBackground(Video *v, const uint8_t *map, size_t mapSize, uint3
             w = Be16(map + at);
             cell = VideoAt(v, cells + (uint32_t)((w & 0xfff) - first) * 0x20, fourBit ? 32 : 64);
             if (cell) {
-                int nibbles = cell[(y % 8) * 4 + x % 8 / 2];
-                int index = fourBit ? colours + ((w >> 12) & 15) * 16 + (x & 1 ? nibbles & 15 : nibbles >> 4)
-                                    : ((w >> 12) & 15) * 256 + cell[(y % 8) * 8 + x % 8];
+                int nibbles = cell[(sy % 8) * 4 + sx % 8 / 2];
+                int index = fourBit ? colours + ((w >> 12) & 15) * 16 + (sx & 1 ? nibbles & 15 : nibbles >> 4)
+                                    : ((w >> 12) & 15) * 256 + cell[(sy % 8) * 8 + sx % 8];
 
                 colour = index * 2 + 1 < (int)sizeof(v->cram) ? Be16(v->cram + index * 2) & 0x7FFF : 0;
             }
@@ -1039,7 +1040,7 @@ static uint8_t *MakePicture(const char *path, size_t *size)
 {
     const char *art = NULL;
     uint32_t cells = 0;
-    int block = 0, fourBit = 0, colours = 0;
+    int block = 0, fourBit = 0, colours = 0, title = 0;
     const Shape *shape = ShapeOf(path);
     Video *v;
     uint8_t *map, *tim;
@@ -1050,6 +1051,7 @@ static uint8_t *MakePicture(const char *path, size_t *size)
     if (strstr(path, "\\rstartxl.tim") || strstr(path, "\\startpal.tim")) {
         art = europe ? "art\\title\\title2" : "art\\title\\title";
         cells = 0x25E6E000u;
+        title = 1;
     } else if (strstr(path, "\\rcopyxl.tim") || strstr(path, "\\copy2097.tim")) {
         art = "art\\title\\logos";
         block = europe ? 0 : 1;
@@ -1081,7 +1083,9 @@ static uint8_t *MakePicture(const char *path, size_t *size)
         return NULL;
     }
     pixels = SDL_calloc(320 * 224, sizeof(uint16_t));
-    RenderBackground(v, map, mapSize, cells, fourBit, colours, pixels);
+    /* The title uses a 352x240 viewport. Reading just its first 320x224 pixels left the
+       16-pixel border on one side and cropped the art on the other, including in the menus. */
+    RenderBackground(v, map, mapSize, cells, fourBit, colours, title ? 352 : 320, title ? 240 : 224, pixels);
     w = shape->r2[2];
     h = shape->r2[3];
     wide = w >= 640 ? 2 : 1;
@@ -1120,7 +1124,7 @@ int SaturnTitlePicture(unsigned short *pixels)
     LoadVri(v, europe ? "art\\title\\title2.vri" : "art\\title\\title.vri");
     map = BlockData(europe ? "art\\title\\title2.rbh" : "art\\title\\title.rbh", 0, &mapSize);
     if (map) {
-        RenderBackground(v, map, mapSize, 0x25E6E000u, 0, 0, pixels);
+        RenderBackground(v, map, mapSize, 0x25E6E000u, 0, 0, 352, 240, pixels);
     }
     SDL_free(map);
     SDL_free(v);

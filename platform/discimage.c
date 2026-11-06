@@ -448,16 +448,52 @@ static int FindImage(const char *folder, char *cue, size_t cueSize)
 
 /* ---- extraction ---- */
 
+/* A solid 7z block can take seconds before the first file is returned. Report the
+   compressed input as it is decoded, then the bytes written, instead of only completed files. */
+typedef struct {
+    ISeekInStream vt;
+    CSzFile file;
+    UInt64 packedSize, packedRead, outputSize, outputWritten;
+    int decoding;
+} ArchiveStream;
+
+static void ArchiveStreamProgress(const ArchiveStream *stream)
+{
+    UInt64 read = SDL_min(stream->packedRead, stream->packedSize);
+    UInt64 written = SDL_min(stream->outputWritten, stream->outputSize);
+
+    Progress((int)(900 * read / (stream->packedSize ? stream->packedSize : 1) +
+                   99 * written / (stream->outputSize ? stream->outputSize : 1)));
+}
+
+static SRes ArchiveRead(ISeekInStreamPtr input, void *buffer, size_t *size)
+{
+    ArchiveStream *stream = (ArchiveStream *)input;
+    WRes result = File_Read(&stream->file, buffer, size);
+
+    if (stream->decoding && !result) {
+        stream->packedRead += *size;
+        ArchiveStreamProgress(stream);
+    }
+    return result ? SZ_ERROR_READ : SZ_OK;
+}
+
+static SRes ArchiveSeek(ISeekInStreamPtr input, Int64 *position, ESzSeek origin)
+{
+    ArchiveStream *stream = (ArchiveStream *)input;
+
+    return File_Seek(&stream->file, position, origin) ? SZ_ERROR_READ : SZ_OK;
+}
+
 static int Extract7z(const char *archive, const char *folder, char *message, size_t messageSize)
 {
     ISzAlloc alloc = {SzAlloc, SzFree}, allocTemp = {SzAllocTemp, SzFreeTemp};
-    CFileInStream file;
+    ArchiveStream file = {0};
     CLookToRead2 look;
     CSzArEx db;
     UInt32 blockIndex = 0xFFFFFFFF, i;
     Byte *outBuffer = NULL;
     size_t outBufferSize = 0;
-    UInt64 total = 0, done = 0;
     SRes result;
     int ok = 1;
 
@@ -465,8 +501,8 @@ static int Extract7z(const char *archive, const char *folder, char *message, siz
         SDL_snprintf(message, messageSize, "%s could not be opened.", archive);
         return 0;
     }
-    FileInStream_CreateVTable(&file);
-    file.wres = 0;
+    file.vt.Read = ArchiveRead;
+    file.vt.Seek = ArchiveSeek;
     LookToRead2_CreateVTable(&look, False);
     look.buf = (Byte *)ISzAlloc_Alloc(&alloc, 1 << 18);
     look.bufSize = 1 << 18;
@@ -480,8 +516,15 @@ static int Extract7z(const char *archive, const char *folder, char *message, siz
         ok = 0;
     }
     for (i = 0; ok && i < db.NumFiles; i++) {
-        total += SzArEx_GetFileSize(&db, i);
+        file.outputSize += SzArEx_GetFileSize(&db, i);
     }
+    if (ok && db.db.NumPackStreams) {
+        file.packedSize = db.db.PackPositions[db.db.NumPackStreams];
+    }
+    /* Metadata reads can already have buffered the first packed block. Read it afresh
+       with reporting enabled, including for small archives that fit in the look buffer. */
+    LookToRead2_INIT(&look);
+    file.decoding = 1;
     for (i = 0; ok && i < db.NumFiles; i++) {
         UInt16 name16[1024];
         size_t length = SzArEx_GetFileNameUtf16(&db, i, NULL), offset = 0, processed = 0;
@@ -509,16 +552,26 @@ static int Extract7z(const char *archive, const char *folder, char *message, siz
         SDL_snprintf(path, sizeof(path), "%s%s", folder, name);
         MakeFolders(path);
         out = fopen(path, "wb");
-        if (!out || fwrite(outBuffer + offset, 1, processed, out) != processed) {
+        if (!out) {
             SDL_snprintf(message, messageSize, "%s could not be written (is the disk full?).", path);
             ok = 0;
+        }
+        for (size_t at = 0; ok && at < processed;) {
+            size_t bytes = SDL_min(processed - at, (size_t)1 << 18);
+
+            if (fwrite(outBuffer + offset + at, 1, bytes, out) != bytes) {
+                SDL_snprintf(message, messageSize, "%s could not be written (is the disk full?).", path);
+                ok = 0;
+                break;
+            }
+            at += bytes;
+            file.outputWritten += bytes;
+            ArchiveStreamProgress(&file);
         }
         if (out) {
             fclose(out);
         }
         SDL_free(name);
-        done += processed;
-        Progress((int)(done * 1000 / (total ? total : 1)));
     }
     ISzAlloc_Free(&alloc, outBuffer);
     SzArEx_Free(&db, &alloc);

@@ -35,7 +35,7 @@ void SaturnDrawFont(unsigned char *page, int pageWidth, int size)
 
     for (glyph = 0; glyph < 38; glyph++) {
         int row = widths[glyph] / 100, width = widths[glyph] % 100, x0 = 0, left = SOURCE_W, right = -1, x, y;
-        float scale = (float)size / sourceH, sx, offset;
+        float scale = (float)size / sourceH, sx;
 
         if (!SaturnFontGlyph(glyph, small, rgba, SOURCE_W, SOURCE_H)) {
             return;
@@ -56,9 +56,9 @@ void SaturnDrawFont(unsigned char *page, int pageWidth, int size)
         if (right < left) {
             continue;
         }
-        /* the ink, as tall as the glyph, no wider than it (a column to spare), centred in it */
+        /* Match the text code's left bearing. The advance includes trailing space; centring
+           the ink in it shifted each letter by a different amount, especially HUD digits. */
         sx = SDL_min(scale, (float)(width - 1) / (right - left + 1));
-        offset = (width - (right - left + 1) * sx) / 2;
         for (y = 0; y < size; y++) {
             for (x = 0; x < width; x++) {
                 float sum = 0;
@@ -66,12 +66,12 @@ void SaturnDrawFont(unsigned char *page, int pageWidth, int size)
 
                 for (k = 0; k < 4; k++) {
                     for (i = 0; i < 4; i++) {
-                        sum += Lit(rgba, left + (int)SDL_floorf((x + (i + 0.5f) / 4 - offset) / sx),
+                        sum += Lit(rgba, left + (int)SDL_floorf((x + (i + 0.5f) / 4) / sx),
                                    (int)SDL_floorf((y + (k + 0.5f) / 4) / scale));
                     }
                 }
                 level = (int)(sum / 16 * 15 + 0.5f);
-                if (level > 0 && px < pageWidth && py < 256 && x + 0.5f >= offset) {
+                if (level > 0 && px < pageWidth && py < 256) {
                     unsigned char *b = &page[py * (pageWidth / 2) + px / 2];
 
                     level = SDL_min(level, 15);

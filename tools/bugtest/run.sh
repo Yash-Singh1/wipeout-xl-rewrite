@@ -125,6 +125,14 @@ ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -iquote game/include 
     $(pkg-config --libs sdl3) -o "$test_build/link_timing"
 "$test_build/link_timing"
 
+${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Iplatform $(pkg-config --cflags sdl3) \
+    tools/bugtest/test_saturn_viewport.c $(pkg-config --libs sdl3) -o "$test_build/saturn_viewport"
+"$test_build/saturn_viewport"
+${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Iplatform \
+    -include platform/include/port.h -iquote game/include $(pkg-config --cflags sdl3) \
+    tools/bugtest/test_saturn_font.c game/data/ships_data.c $(pkg-config --libs sdl3) -o "$test_build/saturn_font"
+"$test_build/saturn_font"
+
 ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Iplatform -Iplatform/psx \
     $(pkg-config --cflags sdl3) tools/bugtest/test_link_lifecycle.c $(pkg-config --libs sdl3) \
     -o "$test_build/link_lifecycle"

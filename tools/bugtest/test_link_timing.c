@@ -1,4 +1,4 @@
-/* A slow split-screen presentation must not make the race clock run at half speed. */
+/* Slow presentations must not slow the single-player or split-screen race clock. */
 #define SDL_GetTicksNS TestTicksNS
 #define SDL_DelayPrecise TestDelayPrecise
 #include "../../platform/psx/libetc.c"
@@ -104,12 +104,18 @@ int main(void)
     elapsed = Run(50);
     assert(elapsed > 1.9 && elapsed < 2.15);
     portPal = 0;
-    split = 0;
-    Run(60); assert(presentations == 120); /* single-player presentation is unchanged */
+    split = 0; linkRole = LINK_NONE;
+    elapsed = Run(60); assert(elapsed > 1.9 && elapsed < 2.15);
+    assert(presentations > 30 && presentations < 60);
+    portPal = 1;
+    elapsed = Run(50); assert(elapsed > 1.9 && elapsed < 2.15);
+    portPal = 0;
+    presentationCost = 2000000ull;
+    Run(60); assert(presentations == 120); /* inexpensive pictures still show every field */
     split = 1; linkRole = LINK_SLAVE;
     Run(60); assert(presentations == 120); /* the master alone paces the split window */
     linkRole = LINK_MASTER; portConfig.fixedStep = 1;
     Run(60); assert(presentations == 120); /* deterministic captures never omit fields */
-    puts("split-screen NTSC/PAL race clocks keep their rate under presentation load: OK");
+    puts("single-player and split-screen NTSC/PAL race clocks keep their rate under presentation load: OK");
     return 0;
 }

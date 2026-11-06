@@ -152,9 +152,10 @@ static void Field(void)
     if (vblankCallback) {
         vblankCallback();
     }
-    /* A split-screen picture can take longer than a field. Do not present it again while the
-       race clock is behind: both consoles still need their fields and simulation updates. */
-    if (!startTicks || portConfig.fixedStep || PortLinkRole() != LINK_MASTER || !PortLinkSplit() ||
+    /* Rendering can take longer than a field. Service overdue fields without presenting again,
+       so GPU load reduces displayed frames rather than slowing the simulation clock. The slave
+       is paced by its master, and deterministic captures must still include every field. */
+    if (!startTicks || portConfig.fixedStep || PortLinkRole() == LINK_SLAVE ||
         SDL_GetTicksNS() <= startTicks + (uint64_t)((fields - paceField + 0.5) * FIELD_SECONDS * 1e9)) {
         PsxShowDisplay();
     }

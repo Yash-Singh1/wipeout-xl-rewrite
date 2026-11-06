@@ -114,9 +114,11 @@ static int SDLCALL ImageJob(void *data)
 /* Runs a job on a thread of its own while the window says what is going on and how far it is (thousandths). */
 static void RunShowing(SDL_ThreadFunction run, DiscJob *job, const char *text, int (*progress)(void))
 {
-    SDL_Thread *thread = SDL_CreateThread(run, "disc", job);
+    SDL_Thread *thread;
     SDL_Event event;
 
+    SDL_SetAtomicInt(&job->done, 0);
+    thread = SDL_CreateThread(run, "disc", job);
     if (!thread) {
         run(job);
         return;
