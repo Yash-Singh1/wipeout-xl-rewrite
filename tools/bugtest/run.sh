@@ -40,6 +40,11 @@ ${CC:-cc} -O1 -Iplatform $(pkg-config --cflags sdl3) tools/bugtest/test_downsamp
     $(pkg-config --libs sdl3) -o "$test_build/downsample_settings"
 "$test_build/downsample_settings"
 
+${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Wno-deprecated-declarations \
+    -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) tools/bugtest/test_framecap_storage.c \
+    $(pkg-config --libs sdl3) -o "$test_build/framecap_storage"
+"$test_build/framecap_storage"
+
 # Optional real GPU checks, for a desktop session with an OpenGL driver.
 if [ "${WIPEOUT_TEST_GL:-0}" = 1 ]; then
     case $(uname -s) in Darwin) gl_libs='-framework OpenGL';; *) gl_libs='-lGL';; esac

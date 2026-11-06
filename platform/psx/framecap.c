@@ -19,6 +19,7 @@
 #include "../debug_ui.h"
 #include "../platform.h"
 #include "../settings.h"
+#include "../link.h"
 
 int PortGameInfo(char *out, int size); /* (game/src/portinfo.c) */
 
@@ -26,9 +27,9 @@ int PortGameInfo(char *out, int size); /* (game/src/portinfo.c) */
 #define TAB_SECONDS 10 /* RECORD_WITH_TAB: up to the last ten */
 #define FRAMES 1200    /* (at most: ten seconds of 120 pictures a second, five of 240) */
 #define PICTURE_W 320
-/* The picture is kept at the framebuffer's scale (the pixels drawn, not the console's: thin lines and seams
-   show), read back without waiting for the GPU (gpu.h's GPU_READ_RECORDER) and compressed as a JPEG of this
-   quality (above 90: colours not subsampled) by worker threads: 1 to 3 MB a frame at 4K. */
+/* Keep the displayed detail: Box's effective scale, or the rendering scale for Adaptive and Off.
+   Read back asynchronously (gpu.h's GPU_READ_RECORDER) and compress with worker threads at this
+   JPEG quality (above 90: colours not subsampled): 1 to 3 MB a frame at 4K. */
 #define PICTURE_QUALITY 95
 
 static FrameCapFrame frames[FRAMES];
@@ -384,6 +385,8 @@ const uint8_t *FrameCapPicture(int index, int *w, int *h)
 static FrameCapFrame *NewFrame(void)
 {
     FrameCapFrame *f;
+    FrameCapPrim *reusable = NULL;
+    int reusableCapacity = 0;
 
     while (count >= Capacity()) {
         f = &frames[first];
@@ -392,10 +395,22 @@ static FrameCapFrame *NewFrame(void)
         }
         Release(f->vram);
         ForgetPicture(f);
+        /* Move storage with the active history, rather than retaining an
+           allocation in every one of the 1200 possible ring slots. */
+        free(reusable);
+        reusable = f->prims;
+        reusableCapacity = f->capacity;
+        f->prims = NULL;
+        f->count = f->capacity = 0;
         first = (first + 1) % FRAMES;
         count--;
     }
     f = &frames[(first + count) % FRAMES];
+    if (reusable) {
+        free(f->prims);
+        f->prims = reusable;
+        f->capacity = reusableCapacity;
+    }
     count++;
     f->number = ++nextNumber;
     return f;
@@ -531,7 +546,19 @@ void PortTagPrims(const void *start, const void *end, const char *what, const ch
 static void TakePicture(FrameCapFrame *f, int x, int y, int w, int h)
 {
     int margin = GpuShownMargin(x, w), scale = SDL_max(GpuScale(), 1);
-    int width = (PICTURE_W + 2 * margin) * scale, height = GPU_LINES * scale; /* (240 lines, or PAL's 256) */
+    int downsample = PortLinkDownsample(), style = PortLinkDownsampleStyle();
+    int width, height;
+
+    if (downsample < 0) downsample = portSettings.downsample;
+    if (style < 0) style = portSettings.downsampleStyle;
+    /* Box presentation already discarded the higher-resolution pixels. Keep
+       that image directly instead of enlarging it before readback and JPEG.
+       Adaptive retains fine detail and must stay at the rendering scale. */
+    if (style == DOWNSAMPLE_BOX && downsample > 0) {
+        scale = SDL_min(scale, downsample);
+    }
+    width = (PICTURE_W + 2 * margin) * scale;
+    height = GPU_LINES * scale; /* (240 lines, or PAL's 256) */
 
     FinishRead(1); /* (the picture before's: back by now) */
     ForgetPicture(f);
@@ -916,7 +943,14 @@ void FrameCapClear(void)
     FinishPictures();
     for (i = 0; i < count; i++) {
         Release(frames[(first + i) % FRAMES].vram);
-        ForgetPicture(&frames[(first + i) % FRAMES]); /* (the memory back) */
+    }
+    /* A dropped unfinished frame can retain storage just outside the history. */
+    for (i = 0; i < FRAMES; i++) {
+        FrameCapFrame *f = &frames[i];
+        ForgetPicture(f);
+        free(f->prims);
+        f->prims = NULL;
+        f->count = f->capacity = 0;
     }
     first = count = 0;
     current = -1;

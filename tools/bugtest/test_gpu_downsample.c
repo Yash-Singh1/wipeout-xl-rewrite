@@ -3,6 +3,56 @@
 #include "test_gpu_hud.c"
 #undef main
 
+/* Compare hardware Box reduction with a CPU coverage integral. Include clipped
+   odd edges, nonzero origins, fractional ratios, all scales and colour channels. */
+static void TestBoxCoverage(void)
+{
+    PictureBuffer output = {0};
+    for (int factor = 1; factor <= SDL_min(12, GpuMaxScale()); factor++) {
+        SetScale(factor);
+        for (int clipped = 0; clipped < 2; clipped++) {
+            int w = 5 * factor + clipped, h = 3 * factor + clipped;
+            uint8_t *pixels = malloc((size_t)w * h * 4);
+            for (int i = 0; i < w * h * 4; i++) pixels[i] = (i * 73 + i / 7 * 19) & 255;
+            glBindTexture(GL_TEXTURE_2D, colour);
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 7, 9, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+            for (int target = 1; target <= factor; target++) {
+                int ow = (w * target + factor - 1) / factor;
+                int oh = (h * target + factor - 1) / factor;
+                uint8_t got[128 * 128 * 4];
+                BindPictureBuffer(&output, ow, oh);
+                portSettings.downsample = target;
+                portSettings.downsampleStyle = DOWNSAMPLE_BOX;
+                glEnable(GL_SCISSOR_TEST);
+                glScissor(0, 0, 1, 1); /* presentation copies must ignore the scene's scissor */
+                BlitPicture(0, 7, 9, 7 + w, 9 + h, output.framebuffer, 0, 0, ow, oh);
+                glBindFramebuffer(GL_READ_FRAMEBUFFER, output.framebuffer);
+                glReadPixels(0, 0, ow, oh, GL_RGBA, GL_UNSIGNED_BYTE, got);
+                for (int y = 0; y < oh; y++) for (int x = 0; x < ow; x++) {
+                    double step = (double)factor / target;
+                    double loX = x * step, loY = y * step;
+                    double hiX = fmin(loX + step, w), hiY = fmin(loY + step, h);
+                    for (int c = 0; c < 4; c++) {
+                        double sum = 0;
+                        for (int sy = (int)loY; sy < (int)ceil(hiY); sy++)
+                            for (int sx = (int)loX; sx < (int)ceil(hiX); sx++) {
+                                double weight = (fmin(sx + 1, hiX) - fmax(sx, loX)) *
+                                                (fmin(sy + 1, hiY) - fmax(sy, loY));
+                                sum += pixels[(sy * w + sx) * 4 + c] * weight;
+                            }
+                        int expected = (int)floor(sum / ((hiX - loX) * (hiY - loY)) + 0.5);
+                        assert(abs(got[(y * ow + x) * 4 + c] - expected) <= 1);
+                    }
+                }
+            }
+            free(pixels);
+        }
+    }
+    glDeleteFramebuffers(1, &output.framebuffer);
+    glDeleteTextures(1, &output.texture);
+    puts("Box coverage matches CPU averaging within one UNORM level at scales 1..12 and clipped edges: OK");
+}
+
 static void TestAdaptive(GLuint output, GLuint outputTexture)
 {
     portSettings.renderScale = SDL_min(4, GpuMaxScale());
@@ -119,6 +169,7 @@ int main(void)
     assert(context);
     portSettings.renderScale = 1;
     assert(GpuInit());
+    TestBoxCoverage();
 
     GLuint output, outputTexture;
     glGenFramebuffers(1, &output);

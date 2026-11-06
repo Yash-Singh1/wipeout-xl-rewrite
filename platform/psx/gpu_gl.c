@@ -1992,11 +1992,14 @@ static void BlitPicture(int wide, int left, int top, int right, int bottom, GLui
         style = portSettings.downsampleStyle;
     }
     downsample = SDL_clamp(downsample, 0, scale);
-    if (!downsample || right <= left || bottom <= top) {
+    /* A 1:1 Box reduction is an identity. Copy directly with the same nearest
+       output sampling rather than rendering a full-size intermediate image. */
+    if (!downsample || (downsample == scale && style == DOWNSAMPLE_BOX) || right <= left || bottom <= top) {
+        glDisable(GL_SCISSOR_TEST);
         glBindFramebuffer(GL_READ_FRAMEBUFFER, wide ? wideFramebuffer : framebuffer);
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, target);
         glBlitFramebuffer(left, top, right, bottom, outLeft, outTop, outRight, outBottom,
-                          GL_COLOR_BUFFER_BIT, GL_LINEAR);
+                          GL_COLOR_BUFFER_BIT, downsample ? GL_NEAREST : GL_LINEAR);
         return;
     }
     w = ((right - left) * downsample + scale - 1) / scale;
@@ -2012,14 +2015,28 @@ static void BlitPicture(int wide, int left, int top, int right, int bottom, GLui
             "    vec2 hi = min(lo + stepSize, vec2(rect.zw));\n"
             "    vec4 sum = vec4(0.0);\n"
             "    vec3 squares = vec3(0.0);\n"
-            "    for (int y = int(floor(lo.y)); y < int(ceil(hi.y)); ++y) {\n"
-            "        for (int x = int(floor(lo.x)); x < int(ceil(hi.x)); ++x) {\n"
-            "            vec2 cell = vec2(x, y);\n"
-            "            vec2 covered = max(min(hi, cell + 1.0) - max(lo, cell), vec2(0.0));\n"
-            "            float weight = covered.x * covered.y;\n"
-            "            vec4 value = texelFetch(source, ivec2(x, y), 0);\n"
-            "            sum += value * weight;\n"
-            "            if (adaptive != 0) squares += value.rgb * value.rgb * weight;\n"
+            /* Equal-weight 2x2 blocks use one hardware-filtered fetch instead
+               of four. Only Box with complete even blocks qualifies. Floating
+               summation can change the final RGBA8 rounding by one level;
+               Adaptive's variance and fractional edge coverage stay unchanged. */
+            "    if (adaptive == 0 && factor % (targetScale * 2) == 0 &&\n"
+            "        (rect.z - rect.x) % 2 == 0 && (rect.w - rect.y) % 2 == 0) {\n"
+            "        vec2 size = vec2(textureSize(source, 0));\n"
+            "        for (int y = int(lo.y); y < int(hi.y); y += 2) {\n"
+            "            for (int x = int(lo.x); x < int(hi.x); x += 2) {\n"
+            "                sum += textureLod(source, (vec2(x, y) + 1.0) / size, 0.0) * 4.0;\n"
+            "            }\n"
+            "        }\n"
+            "    } else {\n"
+            "        for (int y = int(floor(lo.y)); y < int(ceil(hi.y)); ++y) {\n"
+            "            for (int x = int(floor(lo.x)); x < int(ceil(hi.x)); ++x) {\n"
+            "                vec2 cell = vec2(x, y);\n"
+            "                vec2 covered = max(min(hi, cell + 1.0) - max(lo, cell), vec2(0.0));\n"
+            "                float weight = covered.x * covered.y;\n"
+            "                vec4 value = texelFetch(source, ivec2(x, y), 0);\n"
+            "                sum += value * weight;\n"
+            "                if (adaptive != 0) squares += value.rgb * value.rgb * weight;\n"
+            "            }\n"
             "        }\n"
             "    }\n"
             "    float area = (hi.x - lo.x) * (hi.y - lo.y);\n"
