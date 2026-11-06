@@ -17,6 +17,7 @@ static void TestBoxCoverage(void)
             RgBindTexture(RG_TEXTURE_2D, colour);
             RgTexSubImage2D(RG_TEXTURE_2D, 0, 7, 9, w, h, RG_RGBA, RG_UNSIGNED_BYTE, pixels);
             for (int target = 1; target <= factor; target++) {
+                if (factor % target) continue;
                 int ow = (w * target + factor - 1) / factor;
                 int oh = (h * target + factor - 1) / factor;
                 uint8_t got[128 * 128 * 4];
@@ -239,10 +240,10 @@ int main(void)
         }
         SetWideMargin(0);
 
-        /* Each target preserves its own grid. Include fractional reductions
-           such as 3x to 2x, and a target above the rendering scale. */
+        /* Box resolves non-dividing requests to an integer grid. Include
+           3x requesting 2x, and targets above the rendering scale. */
         for (int targetScale = 1; targetScale <= factor + 1; targetScale++) {
-            int effective = SDL_min(targetScale, factor), side = 2 * effective;
+            int effective = PortDownsampleTarget(factor, targetScale, DOWNSAMPLE_BOX), side = 2 * effective;
             portSettings.downsample = targetScale;
             BlitPicture(0, 7 * factor, 9 * factor, 9 * factor, 11 * factor, output, 0, 0, side, side);
             RgBindFramebuffer(RG_READ_FRAMEBUFFER, output);

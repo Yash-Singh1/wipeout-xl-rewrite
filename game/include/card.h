@@ -40,9 +40,7 @@ typedef struct CardEntry {
     u_char    alignment;
     u_char    used;
     char      filename[32];
-    Label8    label;        /* Port: eight bytes, for WipEout 2097's "WO2097 "; Wipeout XL's labels are six and
-                               its reserved bytes start two earlier (the label text runs on into them either way) */
-    char      reserved[24];
+    char      label[32];    /* Prefix and save name. Includes the original reserved bytes used by the text. */
     u_char    type;
     u_char    first;        /* (not in WipEout 2097's entries: its browser has no multi-block files) */
     u_char    multi;

@@ -1707,10 +1707,17 @@ static void Resolution(void)
         Changed();
     }
     items[0] = "Off";
-    int downsample = SDL_min(portSettings.downsample, count);
-    if (ImGui::Combo("Downsample to", &downsample, items, SDL_min(count, 16) + 1)) {
-        portSettings.downsample = downsample;
-        Changed();
+    int rendering = GpuScale();
+    int downsample = PortDownsampleTarget(rendering, portSettings.downsample, portSettings.downsampleStyle);
+    if (ImGui::BeginCombo("Downsample to", items[downsample])) {
+        for (int target = 0; target <= SDL_min(rendering, 16); target++) {
+            if (target && portSettings.downsampleStyle == DOWNSAMPLE_BOX && rendering % target) continue;
+            if (ImGui::Selectable(items[target], downsample == target)) {
+                portSettings.downsample = target;
+                Changed();
+            }
+        }
+        ImGui::EndCombo();
     }
     static const char *styles[] = {"Box", "Adaptive"};
     int style = portSettings.downsampleStyle;
@@ -1720,12 +1727,12 @@ static void Resolution(void)
     }
     if (style == DOWNSAMPLE_ADAPTIVE) {
         ImGui::TextWrapped("Smooths enlarged flat pixels while preserving fine detail at the rendering resolution. "
-                           "The target controls the flat-pixel grid; detection is based on the image.");
+                           "The target controls the flat-pixel grid; detection is based on the image. Choose Box to keep 2D pixel edges sharp.");
         ImGui::TextDisabled("Adaptive style inspired by DuckStation.");
     } else {
-        ImGui::TextWrapped("Averages the whole picture into the target, then enlarges it with sharp pixel edges.");
+        ImGui::TextWrapped("Averages equal blocks into the target, then enlarges with nearest-neighbour sampling for crisp 2D pixels.");
     }
-    ImGui::TextWrapped("Off disables either style. Targets above the rendering resolution use the rendering resolution.");
+    ImGui::TextWrapped("Off disables either style. Box targets divide the rendering scale exactly; automatic resolution changes use the nearest lower valid target. A 2x-to-1x reduction averages a 2x2 block, or four pixels.");
 }
 
 static void UsePack(const char *path)

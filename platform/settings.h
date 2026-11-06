@@ -85,6 +85,17 @@ enum {
 
 extern PortSettings portSettings;
 
+/* Equal Box footprints keep the native 2D pixel grid aligned. Resolution scales
+   count pixels along each axis: 2x to 1x averages four pixels, 4x to 1x sixteen. */
+static inline int PortDownsampleTarget(int rendering, int requested, int style)
+{
+    int target = requested < rendering ? requested : rendering;
+    if (target <= 0) return 0;
+    if (style == DOWNSAMPLE_BOX)
+        while (rendering % target) target--;
+    return target;
+}
+
 void PortSettingsLoad(void);
 int PortSettingsSave(void);
 const char *PortSettingsPath(void);  /* the file */

@@ -16,6 +16,17 @@ PortConfig portConfig;
 
 int main(void)
 {
+    for (int render = 1; render <= 16; render++) for (int target = 0; target <= 16; target++) {
+        int box = PortDownsampleTarget(render, target, DOWNSAMPLE_BOX);
+        int adaptive = PortDownsampleTarget(render, target, DOWNSAMPLE_ADAPTIVE);
+        assert(adaptive == SDL_min(render, target));
+        assert(box <= adaptive && (!box || render % box == 0));
+        for (int next = box + 1; next <= adaptive; next++) assert(render % next != 0);
+    }
+    assert(PortDownsampleTarget(4, 1, DOWNSAMPLE_BOX) == 1);
+    assert(PortDownsampleTarget(8, 2, DOWNSAMPLE_BOX) == 2);
+    assert(PortDownsampleTarget(16, 4, DOWNSAMPLE_BOX) == 4);
+    assert(PortDownsampleTarget(8, 3, DOWNSAMPLE_BOX) == 2);
     char temp[] = "/tmp/wipeout-downsample-test-XXXXXX";
     assert(mkdtemp(temp));
     SDL_snprintf(directory, sizeof(directory), "%s/", temp);

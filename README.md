@@ -26,6 +26,9 @@ edges at 640×480. Targets above the rendering resolution use the rendering reso
 **Downsampling style** has two choices:
 
 - **Box** averages the whole picture, including the HUD, and enlarges it with sharp pixels.
+  Targets divide the rendering scale exactly, so 4× to 1×, 8× to 2× and 16× to 4× all work.
+  A saved target that no longer divides an automatic rendering scale uses the nearest lower divisor.
+  Scales count pixels along each axis: 2× to 1× averages four source pixels per output pixel.
 - **Adaptive** smooths enlarged flat pixels while preserving fine detail at the rendering resolution.
   The target sets the coarse pixel grid, rather than forcing the whole picture to that resolution.
   It detects detail from the image, so it cannot always distinguish 2D from 3D.

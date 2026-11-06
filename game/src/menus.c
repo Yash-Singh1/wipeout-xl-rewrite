@@ -1734,7 +1734,7 @@ void InitCard(s32 card)
 
     for (; slot < 15; slot++) {
         cardSlots[card].entry[slot].name[0] = 0;
-        *(Label6 *)&cardSlots[card].entry[slot].label = *defaultName;
+        memcpy(cardSlots[card].entry[slot].label, defaultName->bytes, sizeof(*defaultName));
         cardSlots[card].entry[slot].used = 0;
         cardSlots[card].entry[slot].filename[0] = 0;
         cardSlots[card].entry[slot].type = 1;
@@ -2607,8 +2607,8 @@ display:
             CardMessage(1);
         }
     }
-    Print((u_char *)cardSlots[0].entry[selection->cardSelection[0]].label.bytes, 30, 182, 8);
-    Print((u_char *)cardSlots[1].entry[selection->cardSelection[1]].label.bytes, 210, 182, 8);
+    Print((u_char *)cardSlots[0].entry[selection->cardSelection[0]].label, 30, 182, 8);
+    Print((u_char *)cardSlots[1].entry[selection->cardSelection[1]].label, 210, 182, 8);
     if (card1Exists) {
         if (!cardPresent1) {
             myFinished = 0;
