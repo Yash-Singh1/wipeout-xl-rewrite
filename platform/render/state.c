@@ -317,12 +317,13 @@ enum {
     U_SCALE,
     U_ADAPTIVE,
     U_STEP,
+    U_RASTER_SCALE,
     U_UNUSED
 };
 int RgGetUniformLocation(RgHandle p, const char *name) {
-    const char *names[] = {"target", "origin", "depthPull",   "pass",     "depthPass",
-                           "rect",   "factor", "targetScale", "adaptive", "stepSize"};
-    for (int i = 0; i < 10; i++)
+    const char *names[] = {"target", "origin",      "depthPull", "pass",     "depthPass",  "rect",
+                           "factor", "targetScale", "adaptive",  "stepSize", "rasterScale"};
+    for (int i = 0; i < 11; i++)
         if (!strcmp(name, names[i]))
             return (int)p * 32 + i + 1;
     return (int)p * 32 + U_UNUSED;
@@ -354,6 +355,8 @@ void RgUniform1f(int id, float v) {
         u->depthPull = v;
     else if (id % 32 == U_STEP)
         u->stepSize = v;
+    else if (id % 32 == U_RASTER_SCALE)
+        u->rasterScale = v;
 }
 void RgUniform2f(int id, float x, float y) {
     RenderUniforms *u = Uniform(id);
@@ -561,9 +564,16 @@ void RgBufferData(int kind, size_t size, const void *data, int usage) {
     b->size = size;
     if (data)
         memcpy(copy, data, size);
-    if (b->native)
-        device.ops->releaseBuffer(&device, b->native);
-    b->native = device.ops->buffer(&device, copy, size, b->kind);
+    if (b->native && device.ops->writeBuffer) {
+        if (!device.ops->writeBuffer(&device, b->native, copy, size, b->kind)) {
+            Failed("buffer upload");
+            abort();
+        }
+    } else {
+        if (b->native)
+            device.ops->releaseBuffer(&device, b->native);
+        b->native = device.ops->buffer(&device, copy, size, b->kind);
+    }
 }
 void RgGenVertexArrays(int n, RgHandle *out) {
     while (n--)

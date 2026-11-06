@@ -56,6 +56,7 @@ typedef struct RenderUniforms {
     int left, top, right, bottom, factor, targetScale, adaptive;
     float stepSize;
     float uiScaleX, uiScaleY, uiOffsetX, uiOffsetY;
+    float rasterScale;
 } RenderUniforms;
 typedef struct RenderPipeline {
     RenderShader shader;
@@ -111,6 +112,9 @@ typedef struct RenderDeviceOps {
     uintptr_t (*beginRead)(RenderDevice *, RenderTarget, RenderRect);
     int (*pollRead)(RenderDevice *, uintptr_t, int wait, const uint8_t **pixels);
     void (*releaseRead)(RenderDevice *, uintptr_t);
+    /* Optional streaming update. Drivers may orphan native storage while
+       keeping the buffer identity. Otherwise the shared layer replaces it. */
+    int (*writeBuffer)(RenderDevice *, uintptr_t, const void *, size_t, RenderBufferKind);
 } RenderDeviceOps;
 struct RenderDevice {
     const RenderDeviceOps *ops;

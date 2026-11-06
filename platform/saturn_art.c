@@ -491,8 +491,23 @@ static void StartScreen(Canvas *c, int model)
     }
 }
 
-/* Talon's Reach's smoke (smoke.cmp, 25 frames of a column, 32 x 96, risen 4 lines a frame): billows of yellow
-   and brown, semi-transparent. */
+/* Talon's Reach's pipe effect: the course's thirteen 32 x 96 sprites. The remaining
+   PlayStation sequence slots repeat them; the Saturn animation uses only thirteen. */
+static void Smoke(Canvas *c, int frame)
+{
+    static SaturnVideo *courseVideo;
+    static unsigned char *courseSprites;
+    static size_t courseSpritesSize;
+
+    if (!courseVideo) {
+        courseVideo = SaturnLoadVideo("art\\track01\\course01.vri");
+    }
+    if (!courseSprites) {
+        courseSprites = SaturnBlock("art\\track01\\course01.rbh", 4, &courseSpritesSize);
+    }
+    SpriteOf(c, courseVideo, courseSprites, courseSpritesSize, frame % 13, 0, 0, 255);
+}
+
 static float Noise(int x, int y)
 {
     unsigned h = (unsigned)x * 374761393u + (unsigned)y * 668265263u;
@@ -510,26 +525,6 @@ static float SmoothNoise(float x, float y)
     fx = fx * fx * (3 - 2 * fx);
     fy = fy * fy * (3 - 2 * fy);
     return (a + (b - a) * fx) + ((c + (d - c) * fx) - (a + (b - a) * fx)) * fy;
-}
-
-static void Smoke(Canvas *c, int frame)
-{
-    int x, y;
-
-    for (y = 0; y < c->h; y++) {
-        for (x = 0; x < c->w; x++) {
-            float rise = (float)(y + frame * 4), across = SDL_fabsf(x + 0.5f - c->w / 2.0f) / (c->w / 2.0f);
-            float density = SmoothNoise(x / 6.0f, rise / 8.0f) * 0.6f + SmoothNoise(x / 3.0f, rise / 4.0f) * 0.4f;
-            float edge = density - across * 0.9f - (y < 12 ? (12 - y) / 12.0f : 0);
-
-            if (edge > 0.05f) {
-                float heat = SDL_min(1.0f, edge * 2.5f);
-                unsigned r = (unsigned)(96 + 104 * heat), g = (unsigned)(56 + 124 * heat), b = (unsigned)(16 * (1 - heat));
-
-                Plot(c, x, y, r | g << 8 | b << 16 | 128u << 24);
-            }
-        }
-    }
 }
 
 /* ---- the pad's buttons ---- */
@@ -635,7 +630,8 @@ static void LinkArrow(Canvas *c)
     }
 }
 
-/* The reflections of chrome (chrome.tim): grey clouds. */
+/* The reflection map needs deep shadows as well as highlights. A grey pedestal
+   washes out the Saturn logos' dark bevels after the gold modulation. */
 static void Chrome(Canvas *c)
 {
     int x, y;
@@ -643,7 +639,7 @@ static void Chrome(Canvas *c)
     for (y = 0; y < c->h; y++) {
         for (x = 0; x < c->w; x++) {
             float v = SmoothNoise(x / 16.0f, y / 6.0f) * 0.6f + SmoothNoise(x / 6.0f, y / 3.0f) * 0.4f;
-            unsigned g = (unsigned)(32 + 200 * v);
+            unsigned g = (unsigned)(248 * SDL_clamp((v - 0.35f) * 3.0f, 0.0f, 1.0f));
 
             Plot(c, x, y, g | g << 8 | g << 16 | 0xff000000u);
         }
@@ -672,7 +668,8 @@ static int Draw(const char *name, int index, Canvas *c)
     } else if (!strcmp(name, "energy.tim")) {
         SpeedoBar(c, 3, 38, energyColours, 5, 128);
     } else if (!strcmp(name, "revs.tim")) {
-        SpeedoBar(c, 11, 10, revsColours, 1, 128);
+        /* The thrust marker starts at x207; the frame starts at x195. */
+        SpeedoBar(c, 12, 10, revsColours, 1, 128);
     } else if (!strcmp(name, "pilot.tim")) {
         Sprite(c, 44, 0, 0, 255);
     } else if (!strcmp(name, "wepicon.cmp") && index < 14) {

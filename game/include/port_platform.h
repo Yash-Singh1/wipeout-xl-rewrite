@@ -145,6 +145,9 @@ int PortOriginalRead(int loc, int sectors, void *buffer);
 int PortRegionFileInfo(const char *pathname, int *loc, int *size);
 int PortRegionRead(int loc, int sectors, void *buffer);
 /* ... and with the Sega Saturn's disc, everything the game reads, made from the Saturn's (platform/saturn.c). */
+int PortSaturnDisc(void);
+/* Fit a font quad from 352 columns to 320 about its alignment anchor. */
+void PortSaturnFontQuad(void *quad, int anchorX);
 int PortSaturnFileInfo(const char *pathname, int *loc, int *size);
 int PortSaturnRead(int loc, int sectors, void *buffer);
 /* ... and with the PC CD-ROM version's files (platform/pc.c): whether they are in use, the files the game reads. */

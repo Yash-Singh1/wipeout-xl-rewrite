@@ -104,6 +104,15 @@ static void ReleaseBufferFake(RenderDevice *d, uintptr_t p) {
     free(b);
     liveBuffers--;
 }
+static int WriteBufferFake(RenderDevice *d, uintptr_t id, const void *pixels, size_t size,
+                           RenderBufferKind kind) {
+    FakeBuffer *b = (FakeBuffer *)id;
+    assert(b->api == Api(d) && b->kind == kind);
+    b->pixels = realloc(b->pixels, size);
+    assert(b->pixels);
+    memcpy(b->pixels, pixels, size);
+    return 1;
+}
 static int ClearFake(RenderDevice *d, const RenderClear *c) {
     FakeImage *im = (FakeImage *)c->target.colour;
     assert(im && im->api == Api(d));
@@ -150,10 +159,10 @@ static void ReleaseReadFake(RenderDevice *d, uintptr_t id) {
 }
 const RenderDeviceOps *RenderOpenGLDevice(void) {
     static const RenderDeviceOps ops = {
-        CreateGL,      DestroyFake,  ImageFake,      ReleaseImageFake,  UploadFake,
-        ReadFake,      MipsFake,     BufferFake,     ReleaseBufferFake, ClearFake,
-        DrawFake,      CopyFake,     FinishFake,     PresentFake,       ActivateFake,
-        BeginReadFake, PollReadFake, ReleaseReadFake};
+        CreateGL,      DestroyFake,  ImageFake,       ReleaseImageFake,  UploadFake,
+        ReadFake,      MipsFake,     BufferFake,      ReleaseBufferFake, ClearFake,
+        DrawFake,      CopyFake,     FinishFake,      PresentFake,       ActivateFake,
+        BeginReadFake, PollReadFake, ReleaseReadFake, WriteBufferFake};
     return &ops;
 }
 const RenderDeviceOps *RenderMetalDevice(void) {
@@ -202,6 +211,10 @@ int main(void) {
     RgBindBuffer(RG_ARRAY_BUFFER, buffer);
     RenderVertex verts[3] = {{0}};
     RgBufferData(RG_ARRAY_BUFFER, sizeof(verts), verts, RG_STREAM_DRAW);
+    uintptr_t initialBuffer = buffers[buffer].native;
+    verts[1].x = 17;
+    RgBufferData(RG_ARRAY_BUFFER, sizeof(verts), verts, RG_STREAM_DRAW);
+    assert(buffers[buffer].native == initialBuffer);
     RgHandle indexBuffer;
     RgGenBuffers(1, &indexBuffer);
     RgBindBuffer(RG_ELEMENT_ARRAY_BUFFER, indexBuffer);
@@ -231,6 +244,8 @@ int main(void) {
     assert(!memcmp(m->pixels, texels, sizeof(texels)));
     FakeBuffer *ib = (FakeBuffer *)buffers[indexBuffer].native;
     assert(ib->kind == RENDER_INDEX_BUFFER && !memcmp(ib->pixels, indices, sizeof(indices)));
+    FakeBuffer *vb = (FakeBuffer *)buffers[buffer].native;
+    assert(!memcmp(vb->pixels, verts, sizeof(verts)));
     RgDrawArrays(RG_TRIANGLES, 0, 3);
     for (int i = 0; i < 8; i++) {
         assert(RenderRequestBackend(i & 1 ? RENDER_METAL : RENDER_OPENGL));

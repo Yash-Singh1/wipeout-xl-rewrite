@@ -388,6 +388,9 @@ void DrawEnvMap(Object *object, void *unused, SVECTOR *normals, int xOffset, int
     Poly      currentPrimitive;
     SVECTOR  *vertices;
     char     *start = nextPrim.ptr; /* Port: the frame recorder */
+    int saturnMedal = PortSaturnDisc() &&
+        (!strcmp(object->name, "vect") || !strcmp(object->name, "ven") ||
+         !strcmp(object->name, "rap") || !strcmp(object->name, "phant"));
 
     eye.vx = 0;
     eye.vy = 0;
@@ -515,9 +518,12 @@ void DrawEnvMap(Object *object, void *unused, SVECTOR *normals, int xOffset, int
                 packet->v1 = envMapV[vertex1];
                 packet->v2 = envMapV[vertex2];
                 packet->clut = GetClut(704, 258);
-                packet->r0 = envmapr;
-                packet->g0 = envmapg;
-                packet->b0 = envmapb;
+                /* Port: the Saturn logo's baked face colours carry its bevel
+                   shading. Preserve that contrast under the reflection. */
+                int shade = saturnMedal ? currentPrimitive.f3->colour.r : 248;
+                packet->r0 = envmapr * shade / 248;
+                packet->g0 = envmapg * shade / 248;
+                packet->b0 = envmapb * shade / 248;
                 *(DVECTOR *)&packet->x0 = screen[vertex0];
                 *(DVECTOR *)&packet->x1 = screen[vertex1];
                 *(DVECTOR *)&packet->x2 = screen[vertex2];
@@ -635,9 +641,10 @@ void DrawEnvMap(Object *object, void *unused, SVECTOR *normals, int xOffset, int
                 packet->v2 = envMapV[vertex2];
                 packet->v3 = envMapV[vertex3];
                 packet->clut = GetClut(704, 258);
-                packet->r0 = envmapr;
-                packet->g0 = envmapg;
-                packet->b0 = envmapb;
+                int shade = saturnMedal ? currentPrimitive.f4->colour.r : 248;
+                packet->r0 = envmapr * shade / 248;
+                packet->g0 = envmapg * shade / 248;
+                packet->b0 = envmapb * shade / 248;
                 *(DVECTOR *)&packet->x0 = screen[vertex0];
                 *(DVECTOR *)&packet->x1 = screen[vertex1];
                 *(DVECTOR *)&packet->x2 = screen[vertex2];

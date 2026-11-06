@@ -4,6 +4,7 @@ struct Uniforms {
     float targetX, targetY, originX, originY, depthPull;
     int pass, depthPass, left, top, right, bottom, factor, targetScale, adaptive;
     float stepSize, uiScaleX, uiScaleY, uiOffsetX, uiOffsetY;
+    float rasterScale;
     int window;
     float surfaceHeight;
 };
@@ -62,6 +63,7 @@ float4 Output(float3 col, float cov, bool blended, GameOut in)
     int semiMode = in.semiMode;
     int hudColourOverlay = in.hudColourOverlay;
 
+    if (semiMode == 4) blended = false;
     float fade = vColour.a;
     if (mode.z == 3) {
         if (blended || fade < 0.999 || cov < 0.999)
@@ -89,7 +91,7 @@ float4 Output(float3 col, float cov, bool blended, GameOut in)
 
     return result;
 }
-fragment float4 gameFragment(GameOut in [[stage_in]], texture2d<uint> vram [[texture(0)]],
+fragment float4 gameFragment(GameOut in [[stage_in]], constant Uniforms &u [[buffer(1)]], texture2d<uint> vram [[texture(0)]],
                              texture2d<float> glyphs [[texture(1)]], texture2d<float> hdAtlas [[texture(2)]],
                              texture2d<float> portPages [[texture(3)]],
                              texture2d_array<uint> decoded [[texture(4)]],
@@ -102,6 +104,10 @@ fragment float4 gameFragment(GameOut in [[stage_in]], texture2d<uint> vram [[tex
     uint4 hd = in.hd;
     int4 hdTexels = in.hdTexels;
 
+    if (semiMode == 4) {
+        int2 pixel = int2(floor(in.position.xy / u.rasterScale));
+        if (((pixel.x + pixel.y) & 1) != 0) discard_fragment();
+    }
     float3 c = vColour.rgb;
     if (mode.x == 0) {
         return Output(c, 1.0, semiMode >= 0, in);

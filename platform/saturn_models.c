@@ -1848,6 +1848,19 @@ static uint8_t *MakeScene(int track, int wantCmp, size_t *size)
             AddModelSplit(&cv, name, &ms.model[i], v, ms.model[i].position, 0, 0);
         } else {
             AddModel(&cv, name, &ms.model[i], v, ms.model[i].position);
+            if (!strncmp(name, "smoke", 5)) {
+                /* AnimateTexture replaces the UVs in row order. Change A,D,B,C
+                   to A,B,D,C so its axes match the Saturn's texture. Keep A at
+                   the same end: the downward jets intentionally flip the sprite. */
+                Object *o = &cv.object[cv.objectCount - 1];
+                for (int j = 0; j < o->specCount; j++) {
+                    Spec *s = &o->spec[j];
+                    if (s->kind != SPEC_TEXTURED || s->corners != 4) continue;
+                    int corner = s->corner[1];
+                    s->corner[1] = s->corner[2];
+                    s->corner[2] = corner;
+                }
+            }
         }
     }
     prm = BuildPrm(&cv, &prmSize, &tims, &timSizes, &timCount);

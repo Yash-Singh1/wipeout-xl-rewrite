@@ -759,6 +759,7 @@ int FrameCapHits(int frame, int x, int y, FrameCapHit *hits, int max)
                 h->triangle = k;
                 h->skipped = (p->flags & FRAMECAP_DROPPED) || (p->flags & (k ? FRAMECAP_SKIP1 : FRAMECAP_SKIP0));
                 Shade(p, t, l, vram, h);
+                if (p->draw.semi == 4 && ((x + y) & 1)) h->transparent = 1;
             }
         }
     }

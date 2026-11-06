@@ -19,6 +19,7 @@
 #include "../../platform/controls.h" /* Port: keyboard and gamepad glyphs and contexts */
 
 /* $gp-relative globals are tentative definitions; the rest are extern. */
+extern Texture         *textureTable[];
 extern u_short          startTextureBase;
 extern u_short          keyDef[6];
 extern WeaponGrid      *weaponGrids;
@@ -259,6 +260,12 @@ void race(ConfigData *gameData, int attractMode, int idleLimit)
         smokeNumber=TextureTableCount;LoadCmpFiles(LoadCompressedTextureSequence(track1SmokeTextureSequence));
         InitRedBull(sharedTrackTextureSequence);
         smokeColour.r=64;smokeColour.g=64;smokeColour.b=64;
+        if (PortSaturnDisc()) {
+            /* Saturn sprites keep their own colour and use screen-space mesh transparency.
+               Page bit 12 is reserved by the port for that draw mode. */
+            for (int i = 0; i < 13; i++) textureTable[smokeNumber + i]->tsb |= 0x1000;
+            smokeColour.r=128;smokeColour.g=128;smokeColour.b=128;
+        }
     }
     if(gameData->actTrackNum==6) {
         InitObject(prmObjects,prmCount,advert,advertNames,6,&advertCount);
@@ -619,8 +626,9 @@ void TrackSpecificFunctions(void)
     if (trackNumber == 1) {
         MoveCameraDroid(cameraDroids, cameraCount, shipIndex, &bobCount);
         MoveFan(fans, fanCount);
-        AnimateTexture(smokeSlowObjects, smokeSlowCount, 1, smokeNumber, 25, smokeColour, &fastCount, &fastTexCount, 1);
-        AnimateTexture(smokeFastObjects, smokeFastCount, 1, smokeNumber, 25, smokeColour, &slowCount, &slowTexCount, 2);
+        int smokeFrames = PortSaturnDisc() ? 13 : 25;
+        AnimateTexture(smokeSlowObjects, smokeSlowCount, 1, smokeNumber, smokeFrames, smokeColour, &fastCount, &fastTexCount, 1);
+        AnimateTexture(smokeFastObjects, smokeFastCount, 1, smokeNumber, smokeFrames, smokeColour, &slowCount, &slowTexCount, 2);
     } else if (trackNumber == 8) {
         MoveCameraDroid(cameraDroids, cameraCount, shipIndex, &bobCount);
         MoveAdvert(advert, advertCount);

@@ -62,7 +62,7 @@ static RgHandle portPagesTexture;      /* the port's other pages (GpuSetPortPage
 static RgHandle hdAtlas;               /* HD textures: the images in use (HdPlaced) */
 static RgHandle program, vertexArray, vertexBuffer;
 static int uniformVram, uniformGlyphs, uniformPortPages, uniformHdAtlas, uniformPass, uniformTarget;
-static int uniformDepthPull, uniformDepthPass;
+static int uniformDepthPull, uniformDepthPass, uniformRasterScale;
 static int vramDirty = 1;
 static unsigned paletteEpoch = 1;
 static struct {
@@ -127,15 +127,12 @@ static void DecodeBatch(void);
    framebuffers then take some 560 MB). */
 int GpuMaxScale(void)
 {
-    static int largest;
+    int size = 4096;
 
-    if (!largest) {
-        int size = 4096;
-
-        RgGetIntegerv(RG_MAX_TEXTURE_SIZE, &size);
-        largest = SDL_clamp(size / (SCREEN_COLUMNS + 2 * MAX_WIDE_MARGIN), 1, 12);
-    }
-    return largest;
+    /* A later backend may have different limits. The shared query reads the
+       active device's capabilities without a driver call. */
+    RgGetIntegerv(RG_MAX_TEXTURE_SIZE, &size);
+    return SDL_clamp(size / (SCREEN_COLUMNS + 2 * MAX_WIDE_MARGIN), 1, 12);
 }
 
 /* The scale the window asks for: enough for its height, at least 1. */
@@ -220,6 +217,7 @@ int GpuInit(void)
     uniformDepthPass = RgGetUniformLocation(program, "depthPass");
     uniformTarget = RgGetUniformLocation(program, "target");
     uniformOrigin = RgGetUniformLocation(program, "origin");
+    uniformRasterScale = RgGetUniformLocation(program, "rasterScale");
     /* each sampler its own unit from the start (an integer and a float texture may not share one) */
     RgUseProgram(program);
     RgUniform1i(uniformVram, 0);
@@ -584,7 +582,7 @@ static void BindTarget(void)
 /* Whether a primitive is drawn over what is behind (semi-transparent, faded, or glyphs with their coverage). */
 static int Blended(const GpuDrawState *s)
 {
-    return s->semi >= 0 || s->fade || (s->textured && s->depth == 3);
+    return (s->semi >= 0 && s->semi != 4) || s->fade || (s->textured && s->depth == 3);
 }
 
 static int SameState(const GpuDrawState *a, const GpuDrawState *b)
@@ -839,6 +837,7 @@ static void SubmitRanges(void)
     RgActiveTexture(RG_TEXTURE0);
     RgBufferData(RG_ARRAY_BUFFER, (size_t)(queuedCount * sizeof(BatchVertex)), queuedVertices, RG_STREAM_DRAW);
     RgUniform1f(uniformDepthPull, 1.0f / (1.0f - DEPTH_SLACK));
+    RgUniform1f(uniformRasterScale, (float)scale);
     if (portSettings.consoleDepth) RgDisable(RG_DEPTH_TEST);
     else RgEnable(RG_DEPTH_TEST);
 
@@ -851,7 +850,7 @@ static void SubmitRanges(void)
         /* Keep each original batch's depth prepass ahead of its colours. The
            two-percent depth slack and the game's ordering still decide visibility. */
         if (!portSettings.consoleDepth && range->depth && (passes & PALETTE_OPAQUE) &&
-            !(s->semi >= 0 && !s->textured)) {
+            !(s->semi >= 0 && s->semi != 4 && !s->textured)) {
             command.pass = 3;
             command.blend = 0;
             if (!depthNoted) {

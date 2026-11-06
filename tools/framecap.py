@@ -202,6 +202,8 @@ def hits(frame, x, y):
             if l is None:
                 continue
             h = shade(frame, p, t, l)
+            if p.draw['semi'] == 4 and (x + y) & 1:
+                h['transparent'] = True
             h.update(prim=i, triangle=k,
                      skipped=bool(p.flags & DROPPED or p.flags & (SKIP1 if k else SKIP0)))
             found.append(h)
@@ -214,7 +216,9 @@ def notes(p, h):
         n.append('NOT DRAWN (%s)' % ('dropped' if p.flags & DROPPED else 'GPU size limit'))
     if h['transparent']:
         n.append('transparent texel')
-    if p.draw['semi'] >= 0 and p.kind != 3:
+    if p.draw['semi'] == 4:
+        n.append('Saturn checkerboard mesh')
+    elif p.draw['semi'] >= 0 and p.kind != 3:
         n.append('blend ' + BLENDS[p.draw['semi'] & 3])
     if h['alpha'] < 254.5 and p.kind != 3:
         n.append('fade %.0f%%' % (h['alpha'] / 2.55))

@@ -73,6 +73,10 @@ int PortVideoInit(void)
             SDL_Log("second player: %s", SDL_GetError());
             return 0;
         }
+        if (!RenderStart(window)) {
+            SDL_Log("second player renderer: %s", RenderBackendError());
+            return 0;
+        }
         PortSwapInterval(0);
         return GpuInit();
     }

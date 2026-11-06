@@ -418,6 +418,20 @@ void PortHudColourBars(const void *thrust, const void *energy, const void *table
         hudColourBars[screen].table = table;
     }
 }
+
+void PortSaturnFontQuad(void *packet, int anchorX)
+{
+    POLY_FT4 *quad = packet;
+    short *xy[4] = {&quad->x0, &quad->x1, &quad->x2, &quad->x3};
+
+    for (int i = 0; i < 4; i++) {
+        float x = anchorX + (xy[i][0] - anchorX) * (320.0f / 352.0f);
+        xy[i][0] = (short)SDL_roundf(x);
+        uint32_t key = (uint16_t)xy[i][0] | (uint32_t)(uint16_t)xy[i][1] << 16;
+        GteBindPrecise(xy[i], GteRecordProjection(key, x, (float)xy[i][1], 0.0f, 1.0f));
+    }
+}
+
 static int HoldShadow(const uint32_t *w, int words);
 static void ReleaseShadows(void);
 static int AheadOfShadows(const uint32_t *w, int words);
@@ -1426,6 +1440,9 @@ static void Polygon(const uint32_t *w, uint32_t code)
     StateFor(&draw, textured, semi, raw);
     if (textured) {
         TextureFromPage(&draw, page);
+        /* Port-only texture page bit: Saturn's checkerboard mesh, drawn opaque
+           at alternating console pixels rather than blended with the scene. */
+        if (semi && (page & 0x1000)) draw.semi = 4;
         draw.clutX = (int)(clut & 0x3F) * 16;
         draw.clutY = (int)((clut >> 6) & 0x3FF); /* (bit 15: a palette in the second half, gpu.h) */
     }

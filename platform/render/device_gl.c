@@ -14,7 +14,7 @@ typedef struct GlImage {
 } GlImage;
 typedef struct GlProgram {
     GLuint name;
-    GLint uniform[12];
+    GLint uniform[13];
     RenderUniforms last;
     int valid;
 } GlProgram;
@@ -97,10 +97,10 @@ static int Program(GlProgram *p, RenderShader kind) {
         glUniform1i(glGetUniformLocation(p->name, samplers[i]), i);
     glUniform1i(glGetUniformLocation(p->name, "source"), 0);
     glUniform1i(glGetUniformLocation(p->name, "coarse"), 1);
-    const char *names[] = {"target",    "origin",   "depthPull", "pass",
-                           "depthPass", "rect",     "factor",    "targetScale",
-                           "adaptive",  "stepSize", "uiScale",   "uiOffset"};
-    for (int i = 0; i < 12; i++)
+    const char *names[] = {"target",  "origin",   "depthPull",   "pass",     "depthPass",
+                           "rect",    "factor",   "targetScale", "adaptive", "stepSize",
+                           "uiScale", "uiOffset", "rasterScale"};
+    for (int i = 0; i < 13; i++)
         p->uniform[i] = glGetUniformLocation(p->name, names[i]);
     return 1;
 }
@@ -239,15 +239,20 @@ static void Mipmaps(RenderDevice *d, uintptr_t p) {
     glBindTexture(GL_TEXTURE_2D, im->name);
     glGenerateMipmap(GL_TEXTURE_2D);
 }
-static uintptr_t Buffer(RenderDevice *d, const void *data, size_t size, RenderBufferKind kind) {
+static int WriteBuffer(RenderDevice *d, uintptr_t buffer, const void *data, size_t size,
+                       RenderBufferKind kind) {
     ((GlDevice *)d->data)->valid = 0;
-    GLuint b;
-    glGenBuffers(1, &b);
     GLenum target = kind == RENDER_INDEX_BUFFER ? GL_ELEMENT_ARRAY_BUFFER : GL_ARRAY_BUFFER;
     if (kind == RENDER_INDEX_BUFFER)
         glBindVertexArray(((GlDevice *)d->data)->vertexArray);
-    glBindBuffer(target, b);
+    glBindBuffer(target, (GLuint)buffer);
     glBufferData(target, size, data, GL_STREAM_DRAW);
+    return 1;
+}
+static uintptr_t Buffer(RenderDevice *d, const void *data, size_t size, RenderBufferKind kind) {
+    GLuint b;
+    glGenBuffers(1, &b);
+    WriteBuffer(d, b, data, size, kind);
     return b;
 }
 static void ReleaseBuffer(RenderDevice *d, uintptr_t p) {
@@ -300,6 +305,8 @@ static void Uniforms(GlProgram *p, const RenderUniforms *u) {
         glUniform2f(p->uniform[10], u->uiScaleX, u->uiScaleY);
     if (all || u->uiOffsetX != l->uiOffsetX || u->uiOffsetY != l->uiOffsetY)
         glUniform2f(p->uniform[11], u->uiOffsetX, u->uiOffsetY);
+    if (all || u->rasterScale != l->rasterScale)
+        glUniform1f(p->uniform[12], u->rasterScale);
     p->last = *u;
     p->valid = 1;
 }
@@ -521,14 +528,14 @@ static void DestroyReadPool(GlDevice *g) {
 }
 #endif
 const RenderDeviceOps *RenderOpenGLDevice(void) {
-    static const RenderDeviceOps ops = {Create,    Destroy,  NewImage,   ReleaseImage,  Upload,
-                                        Read,      Mipmaps,  Buffer,     ReleaseBuffer, Clear,
-                                        Draw,      Copy,     Finish,     Present,       Activate,
+    static const RenderDeviceOps ops = {Create,     Destroy,  NewImage,    ReleaseImage,  Upload,
+                                        Read,       Mipmaps,  Buffer,      ReleaseBuffer, Clear,
+                                        Draw,       Copy,     Finish,      Present,       Activate,
 #ifdef GPU_READ_ASYNC
-                                        BeginRead, PollRead, ReleaseRead
+                                        BeginRead,  PollRead, ReleaseRead,
 #else
-                                        NULL,   NULL,    NULL
+                                        NULL,       NULL,    NULL,
 #endif
-    };
+                                        WriteBuffer};
     return &ops;
 }

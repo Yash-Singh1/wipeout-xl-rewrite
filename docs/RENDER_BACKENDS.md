@@ -44,7 +44,11 @@ Texture row zero is the same logical row on every backend. A window target uses 
 
 Color images are RGBA8, indexed texture data uses exact R16 unsigned values, and depth transfers use normalized floating-point values. OpenGL uses 24-bit depth storage; Metal uses 32-bit floating-point depth. Their stored depth bits are therefore not interchangeable hashes. Migration transfers depth values rather than native storage bytes.
 
+Native APIs can also differ in interpolation, edge coverage, and color rounding. Metal and OpenGL are not promised to produce identical pixel hashes. The regression suite checks palette and blend semantics, occlusion, mesh coverage, and presentation on each driver; the OpenGL refactor additionally preserves the previous renderer's exact color/depth output.
+
 Render images and buffers have stable logical identities. Immutable uploads retain CPU shadows; rendered images are read from the previous device when switching. Mipmaps are regenerated after upload. Native handles and backend-specific caches are never copied between implementations.
+
+Drivers can implement `writeBuffer` to retain a native streaming buffer and orphan its storage, as OpenGL does. Drivers that need immutable storage can omit it and receive replacement buffers. The CPU shadow always holds the latest bytes for migration.
 
 ## Switching and failure handling
 
