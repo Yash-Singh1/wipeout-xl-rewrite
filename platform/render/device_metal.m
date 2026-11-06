@@ -1,6 +1,10 @@
 /* Native Metal implementation. Device resources and command encoding stay here. */
 #include "device.h"
+#ifdef PORT_PRECOMPILED_METAL
+#include "shaders_metallib.h"
+#else
 #include "shaders_metal.h"
+#endif
 #import <AppKit/AppKit.h>
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
@@ -21,11 +25,22 @@ typedef struct MetalUniforms {
     return nil;
 }
 @end
+@interface WipeoutMetalReusableBuffer : NSObject
+@property id<MTLBuffer> buffer;
+@property id<MTLCommandBuffer> lastUse;
+@end
+@implementation WipeoutMetalReusableBuffer
+@end
 @interface WipeoutMetalDevice : NSObject
 @property id<MTLDevice> gpu;
 @property id<MTLCommandQueue> queue;
 @property id<MTLLibrary> library;
 @property id<MTLCommandBuffer> command;
+@property id<MTLCommandBuffer> lastCommand;
+@property NSMutableArray<WipeoutMetalReusableBuffer *> *buffers;
+@property NSUInteger pooledBytes;
+@property RenderDraw previousDraw;
+@property BOOL drawValid;
 @property id<MTLRenderCommandEncoder> encoder;
 @property id<MTLTexture> encoderColour;
 @property id<MTLTexture> encoderDepth;
@@ -54,6 +69,7 @@ static int Error(NSString *what) {
     return 0;
 }
 static void End(WipeoutMetalDevice *m) {
+    m.drawValid = NO;
     if (m.encoder) {
         [m.encoder endEncoding];
         m.encoder = nil;
@@ -65,6 +81,7 @@ static id<MTLCommandBuffer> Command(WipeoutMetalDevice *m) {
     if (!m.command) {
         dispatch_semaphore_wait(m.inflight, DISPATCH_TIME_FOREVER);
         m.command = [m.queue commandBuffer];
+        m.lastCommand = m.command;
         dispatch_semaphore_t gate = m.inflight;
         [m.command addCompletedHandler:^(id<MTLCommandBuffer> command) {
           dispatch_semaphore_signal(gate);
@@ -112,6 +129,31 @@ static uintptr_t Image(RenderDevice *d, RenderImageDesc desc) {
     }
 }
 static void ReleaseImage(RenderDevice *d, uintptr_t image) { Release(image); }
+/* A retired buffer may still be referenced by an encoder or an in-flight
+   command. Reuse only after the last possible command has completed. The pool
+   is bounded so a temporary large recording/upload cannot retain memory forever. */
+static id<MTLBuffer> ReuseBuffer(WipeoutMetalDevice *m, size_t size) {
+    for (NSUInteger i = 0; i < m.buffers.count; i++) {
+        WipeoutMetalReusableBuffer *entry = m.buffers[i];
+        if (entry.buffer.length >= size && entry.buffer.length <= SDL_max(size * 2, 4096) &&
+            (!entry.lastUse || entry.lastUse.status == MTLCommandBufferStatusCompleted)) {
+            id<MTLBuffer> buffer = entry.buffer;
+            m.pooledBytes -= buffer.length;
+            [m.buffers removeObjectAtIndex:i];
+            return buffer;
+        }
+    }
+    return [m.gpu newBufferWithLength:SDL_max(size, 1) options:MTLResourceStorageModeShared];
+}
+static void RetireBuffer(WipeoutMetalDevice *m, id<MTLBuffer> buffer) {
+    if (m.buffers.count >= 64 || m.pooledBytes + buffer.length > 64 * 1024 * 1024)
+        return;
+    WipeoutMetalReusableBuffer *entry = [WipeoutMetalReusableBuffer new];
+    entry.buffer = buffer;
+    entry.lastUse = m.lastCommand;
+    [m.buffers addObject:entry];
+    m.pooledBytes += buffer.length;
+}
 static int Upload(RenderDevice *d, uintptr_t image, RenderRect r, int layer, const void *data,
                   size_t rowBytes) {
     @autoreleasepool {
@@ -119,8 +161,7 @@ static int Upload(RenderDevice *d, uintptr_t image, RenderRect r, int layer, con
         id<MTLTexture> t = Texture(image);
         int bpp = t.pixelFormat == MTLPixelFormatR16Uint ? 2 : 4;
         size_t pitch = ((size_t)r.w * bpp + 255) & ~(size_t)255;
-        id<MTLBuffer> staging = [m.gpu newBufferWithLength:pitch * r.h
-                                                   options:MTLResourceStorageModeShared];
+        id<MTLBuffer> staging = ReuseBuffer(m, pitch * r.h);
         if (!staging)
             return Error(@"Metal upload allocation failed");
         for (int y = 0; y < r.h; y++)
@@ -138,6 +179,7 @@ static int Upload(RenderDevice *d, uintptr_t image, RenderRect r, int layer, con
                destinationLevel:0
               destinationOrigin:MTLOriginMake(r.x, r.y, 0)];
         [b endEncoding];
+        RetireBuffer(m, staging);
         return 1;
     }
 }
@@ -152,13 +194,18 @@ static void Mipmaps(RenderDevice *d, uintptr_t image) {
 }
 static uintptr_t Buffer(RenderDevice *d, const void *data, size_t size, RenderBufferKind kind) {
     @autoreleasepool {
-        id<MTLBuffer> b = [Data(d).gpu newBufferWithBytes:data
-                                                   length:size
-                                                  options:MTLResourceStorageModeShared];
+        id<MTLBuffer> b = ReuseBuffer(Data(d), size);
+        if (b && data)
+            memcpy(b.contents, data, size);
         return b ? Keep(b) : 0;
     }
 }
-static void ReleaseBuffer(RenderDevice *d, uintptr_t buffer) { Release(buffer); }
+static void ReleaseBuffer(RenderDevice *d, uintptr_t buffer) {
+    @autoreleasepool {
+        RetireBuffer(Data(d), VertexBuffer(buffer));
+        Release(buffer);
+    }
+}
 static id<MTLTexture> Surface(WipeoutMetalDevice *m) {
     int w, h;
     SDL_GetWindowSizeInPixels(m.window, &w, &h);
@@ -341,22 +388,39 @@ static int Draw(RenderDevice *d, const RenderDraw *draw) {
         if (!scissor.w || !scissor.h)
             return 1;
         id<MTLRenderCommandEncoder> e = Encoder(m, draw->target);
-        [e setRenderPipelineState:p];
-        [e setDepthStencilState:Depth(m, draw->pipeline.depthTest, draw->pipeline.depthWrite,
-                                      draw->pipeline.depthLess)];
-        SetViewport(e, draw->viewport, colour, draw->target.window);
-        [e setScissorRect:(MTLScissorRect){scissor.x, scissor.y, scissor.w, scissor.h}];
-        [e setCullMode:MTLCullModeNone];
-        MetalUniforms u = Uniform(draw->uniforms, draw->target, colour);
-        [e setVertexBytes:&u length:sizeof(u) atIndex:1];
-        [e setFragmentBytes:&u length:sizeof(u) atIndex:1];
-        if (draw->vertices)
+        RenderDraw last = m.previousDraw;
+        BOOL all = !m.drawValid;
+        if (all || memcmp(&last.pipeline, &draw->pipeline, sizeof(RenderPipeline))) {
+            [e setRenderPipelineState:p];
+            [e setDepthStencilState:Depth(m, draw->pipeline.depthTest, draw->pipeline.depthWrite,
+                                          draw->pipeline.depthLess)];
+        }
+        if (all || memcmp(&last.viewport, &draw->viewport, sizeof(RenderRect)))
+            SetViewport(e, draw->viewport, colour, draw->target.window);
+        if (all || last.scissorEnabled != draw->scissorEnabled ||
+            memcmp(&last.scissor, &draw->scissor, sizeof(RenderRect)))
+            [e setScissorRect:(MTLScissorRect){scissor.x, scissor.y, scissor.w, scissor.h}];
+        if (all)
+            [e setCullMode:MTLCullModeNone];
+        if (all || memcmp(&last.uniforms, &draw->uniforms, sizeof(RenderUniforms))) {
+            MetalUniforms u = Uniform(draw->uniforms, draw->target, colour);
+            [e setVertexBytes:&u length:sizeof(u) atIndex:1];
+            [e setFragmentBytes:&u length:sizeof(u) atIndex:1];
+        }
+        if (draw->vertices &&
+            (all || last.vertices != draw->vertices || last.vertexOffset != draw->vertexOffset))
             [e setVertexBuffer:VertexBuffer(draw->vertices) offset:draw->vertexOffset atIndex:0];
         for (int i = 0; i < 5; i++) {
-            if (draw->images[i])
-                [e setFragmentTexture:Texture(draw->images[i]) atIndex:i];
-            [e setFragmentSamplerState:Sampler(m, draw->samplers[i]) atIndex:i];
+            if (draw->images[i]) {
+                if (all || last.images[i] != draw->images[i])
+                    [e setFragmentTexture:Texture(draw->images[i]) atIndex:i];
+                if (all || !last.images[i] ||
+                    memcmp(&last.samplers[i], &draw->samplers[i], sizeof(RenderSampler)))
+                    [e setFragmentSamplerState:Sampler(m, draw->samplers[i]) atIndex:i];
+            }
         }
+        m.previousDraw = *draw;
+        m.drawValid = YES;
         if (draw->indices)
             [e drawIndexedPrimitives:MTLPrimitiveTypeTriangle
                           indexCount:draw->count
@@ -373,6 +437,7 @@ static int Draw(RenderDevice *d, const RenderDraw *draw) {
 static int Clear(RenderDevice *d, const RenderClear *c) {
     @autoreleasepool {
         WipeoutMetalDevice *m = Data(d);
+        m.drawValid = NO;
         id<MTLTexture> colour = Colour(m, c->target), depth = Texture(c->target.depth);
         RenderRect r =
             Clip(c->scissorEnabled ? c->scissor
@@ -397,7 +462,9 @@ static int Clear(RenderDevice *d, const RenderClear *c) {
                 pass.depthAttachment.clearDepth = 1.0;
             }
             id<MTLRenderCommandEncoder> e = [Command(m) renderCommandEncoderWithDescriptor:pass];
-            [e endEncoding];
+            m.encoder = e;
+            m.encoderColour = colour;
+            m.encoderDepth = depth;
             return 1;
         }
         id<MTLRenderPipelineState> p =
@@ -419,6 +486,7 @@ static int Clear(RenderDevice *d, const RenderClear *c) {
 static int Copy(RenderDevice *d, const RenderCopy *c) {
     @autoreleasepool {
         WipeoutMetalDevice *m = Data(d);
+        m.drawValid = NO;
         id<MTLTexture> source = c->depth ? Texture(c->source.depth) : Colour(m, c->source),
                        dest = c->depth ? Texture(c->destination.depth) : Colour(m, c->destination);
         if (!source || !dest)
@@ -523,6 +591,11 @@ static int Read(RenderDevice *d, RenderTarget target, RenderRect r, RenderFormat
 @interface WipeoutMetalRead : NSObject
 @property id<MTLBuffer> buffer;
 @property id<MTLCommandBuffer> command;
+@property id<MTLCommandBuffer> lastCommand;
+@property NSMutableArray<WipeoutMetalReusableBuffer *> *buffers;
+@property NSUInteger pooledBytes;
+@property RenderDraw previousDraw;
+@property BOOL drawValid;
 @property NSMutableData *packed;
 @property size_t pitch;
 @property int width, height, window, bgra;
@@ -644,7 +717,13 @@ static int Create(RenderDevice *d, void *window) {
         m.pipelines = [NSMutableDictionary new];
         m.depthStates = [NSMutableDictionary new];
         m.samplers = [NSMutableDictionary new];
+        m.buffers = [NSMutableArray new];
         NSError *error = nil;
+#ifdef PORT_PRECOMPILED_METAL
+        dispatch_data_t libraryData = dispatch_data_create(
+            metalLibraryBytes, sizeof(metalLibraryBytes), NULL, DISPATCH_DATA_DESTRUCTOR_DEFAULT);
+        m.library = [m.gpu newLibraryWithData:libraryData error:&error];
+#else
         MTLCompileOptions *options = [MTLCompileOptions new];
 #if __MAC_OS_X_VERSION_MAX_ALLOWED >= 150000
         if (@available(macOS 15.0, *))
@@ -660,6 +739,7 @@ static int Create(RenderDevice *d, void *window) {
         m.library = [m.gpu newLibraryWithSource:[NSString stringWithUTF8String:metalShaderSource]
                                         options:options
                                           error:&error];
+#endif
         if (!m.library)
             return Error(error.localizedDescription);
         NSWindow *native = (__bridge NSWindow *)SDL_GetPointerProperty(

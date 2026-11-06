@@ -126,12 +126,19 @@ def build_game(target, options, prefix, jobs, version):
             "-DWIPEOUT_BUILD_SDL=ON", "-DWIPEOUT_BUILD_LIBARCHIVE=ON",
             "-DZLIB_LIBRARY=" + zlib[0], "-DZLIB_INCLUDE_DIR=" + os.path.join(prefix, "include"),
             *found, *options, env=env)
-    run("cmake", "-B", build, "-DWIPEOUT_VERSION=" + version, env=env)  # (the debug console shows it)
+    metal = ["-DWIPEOUT_METALLIB=ON"] if target == "mac" else []
+    run("cmake", "-B", build, "-DWIPEOUT_VERSION=" + version, *metal, env=env)  # (the debug console shows it)
     run("cmake", "--build", build, "-j", str(jobs), env=env)
     return build
 
 
 def check_mac(app):
+    library = os.path.join(app, "Contents", "Resources", "wipeout.metallib")
+    if not os.path.isfile(library):
+        sys.exit("release: missing compiled Metal shader library")
+    with open(library, "rb") as shader:
+        if shader.read(4) != b"MTLB":
+            sys.exit("release: invalid Metal shader library")
     program = os.path.join(app, "Contents", "MacOS", "wipeoutxl")
     archs = output("lipo", "-archs", program).split()
     if sorted(archs) != ["arm64", "x86_64"]:

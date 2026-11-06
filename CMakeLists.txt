@@ -95,14 +95,36 @@ endif()
 # The native driver is shared by both game instances. All mutable device state
 # belongs to RenderDevice, so the second game's symbol rewriting excludes it.
 if(APPLE AND NOT IOS)
-    set(METAL_SHADER_HEADER ${CMAKE_BINARY_DIR}/generated/shaders_metal.h)
-    add_custom_command(OUTPUT ${METAL_SHADER_HEADER}
-        COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/embed_shader.py
-            ${CMAKE_SOURCE_DIR}/platform/render/shaders_metal.metal ${METAL_SHADER_HEADER}
-        DEPENDS tools/embed_shader.py platform/render/shaders_metal.metal VERBATIM)
+    option(WIPEOUT_METALLIB "Compile macOS Metal shaders ahead of time (requires Xcode Metal tools)" OFF)
+    if(WIPEOUT_METALLIB)
+        find_program(XCRUN_EXECUTABLE xcrun REQUIRED)
+        set(METAL_LIBRARY ${CMAKE_BINARY_DIR}/generated/wipeout.metallib)
+        set(METAL_SHADER_HEADER ${CMAKE_BINARY_DIR}/generated/shaders_metallib.h)
+        set(METAL_MINIMUM "${CMAKE_OSX_DEPLOYMENT_TARGET}")
+        if(NOT METAL_MINIMUM)
+            set(METAL_MINIMUM "11.0")
+        endif()
+        add_custom_command(OUTPUT ${METAL_LIBRARY} ${METAL_SHADER_HEADER}
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/generated
+            COMMAND ${XCRUN_EXECUTABLE} -sdk macosx metal -std=macos-metal2.3 -fno-fast-math
+                -mmacosx-version-min=${METAL_MINIMUM} -c ${CMAKE_SOURCE_DIR}/platform/render/shaders_metal.metal
+                -o ${CMAKE_BINARY_DIR}/generated/wipeout.air
+            COMMAND ${XCRUN_EXECUTABLE} -sdk macosx metallib ${CMAKE_BINARY_DIR}/generated/wipeout.air -o ${METAL_LIBRARY}
+            COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/embed_metallib.py ${METAL_LIBRARY} ${METAL_SHADER_HEADER}
+            DEPENDS tools/embed_metallib.py platform/render/shaders_metal.metal VERBATIM)
+    else()
+        set(METAL_SHADER_HEADER ${CMAKE_BINARY_DIR}/generated/shaders_metal.h)
+        add_custom_command(OUTPUT ${METAL_SHADER_HEADER}
+            COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/embed_shader.py
+                ${CMAKE_SOURCE_DIR}/platform/render/shaders_metal.metal ${METAL_SHADER_HEADER}
+            DEPENDS tools/embed_shader.py platform/render/shaders_metal.metal VERBATIM)
+    endif()
     add_library(render_metal STATIC platform/render/device_metal.m ${METAL_SHADER_HEADER})
     target_include_directories(render_metal PRIVATE ${CMAKE_BINARY_DIR}/generated)
     target_compile_options(render_metal PRIVATE -fobjc-arc)
+    if(WIPEOUT_METALLIB)
+        target_compile_definitions(render_metal PRIVATE PORT_PRECOMPILED_METAL)
+    endif()
     target_link_libraries(render_metal PRIVATE SDL3::SDL3 "-framework Metal" "-framework QuartzCore" "-framework AppKit")
     add_compile_definitions(PORT_HAVE_METAL)
 endif()
@@ -298,9 +320,9 @@ if(APPLE AND NOT IOS)
     set(MAC_APP "${CMAKE_BINARY_DIR}/Wipeout XL.app")
     add_custom_command(OUTPUT "${MAC_APP}/Contents/Info.plist"
         COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/macos_app.py $<TARGET_FILE:wipeoutxl> "${MAC_APP}"
-                ${CMAKE_SOURCE_DIR}/platform/macos/Info.plist ${CMAKE_SOURCE_DIR}/platform/macos/wipeoutxl.icns
+                ${CMAKE_SOURCE_DIR}/platform/macos/Info.plist ${CMAKE_SOURCE_DIR}/platform/macos/wipeoutxl.icns ${METAL_LIBRARY}
         DEPENDS wipeoutxl ${CMAKE_SOURCE_DIR}/tools/macos_app.py ${CMAKE_SOURCE_DIR}/platform/macos/Info.plist
-                ${CMAKE_SOURCE_DIR}/platform/macos/wipeoutxl.icns
+                ${CMAKE_SOURCE_DIR}/platform/macos/wipeoutxl.icns ${METAL_LIBRARY}
         COMMENT "Wipeout XL.app"
         VERBATIM)
     add_custom_target(macos_app ALL DEPENDS "${MAC_APP}/Contents/Info.plist")

@@ -36,7 +36,12 @@ int main(void)
     SDL_GLContext context = SDL_GL_CreateContext(window);
     assert(context);
     portSettings.renderScale = 1;
+    assert(RenderStart(window));
     assert(GpuInit());
+    if (SDL_getenv("WIPEOUT_TEST_METAL")) {
+        assert(RenderRequestBackend(RENDER_METAL));
+        assert(RenderApplyBackend());
+    }
     for (int y = 128; y < 384; y++) for (int x = 512; x < 768; x++) psxVram[y][x] = Next();
     GpuVramChanged(512, 128, 256, 256);
     for (int kind = 0; kind < 4; kind++) {

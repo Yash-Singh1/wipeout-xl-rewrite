@@ -3,7 +3,7 @@
 it uses from outside the system (Homebrew's SDL3, libarchive and theirs) in Contents/Frameworks, the program and
 the libraries pointed at those copies and signed for this Mac (ad hoc).
 
-    tools/macos_app.py PROGRAM APP INFO_PLIST ICNS
+    tools/macos_app.py PROGRAM APP INFO_PLIST ICNS [METALLIB]
 """
 import os
 import shutil
@@ -64,6 +64,8 @@ def main():
     shutil.rmtree(app, ignore_errors=True)
     for folder in ("MacOS", "Resources", "Frameworks"):
         os.makedirs(os.path.join(contents, folder))
+    if len(sys.argv) > 5:
+        shutil.copy2(sys.argv[5], os.path.join(contents, "Resources", "wipeout.metallib"))
     main_binary = os.path.join(contents, "MacOS", "wipeoutxl")
     shutil.copy2(program, main_binary)
     shutil.copy2(icns, os.path.join(contents, "Resources", "wipeoutxl.icns"))

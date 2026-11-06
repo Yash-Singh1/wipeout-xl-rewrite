@@ -56,7 +56,11 @@ A switch finishes the old work, drains outstanding asynchronous reads into CPU-o
 
 Full-resolution color and depth buffers are transferred, including widescreen content and intermediate images. At large rendering scales this can briefly pause presentation and temporarily increase memory use. Game state is not reinitialized.
 
-Native Metal shader source is embedded at build time by `tools/embed_shader.py` and compiled by Metal at runtime. The build needs Python and Apple's Metal frameworks, not a third-party shader translator or a separate runtime shader file.
+macOS releases enable `WIPEOUT_METALLIB=ON`. CMake invokes `xcrun metal` and `xcrun metallib` for macOS Metal 2.3, with safe floating-point math and the configured deployment target. The resulting `wipeout.metallib` is embedded in the executable and copied into `Contents/Resources` before signing. The same compiled IR supports Intel and Apple Silicon; the driver specializes pipelines for the installed GPU. Releases load compiled IR and contain no runtime shader-source compilation path. The release script enables this option even for existing build caches and rejects a missing or invalid packaged library.
+
+Local builds can leave the option off to embed shader source with `tools/embed_shader.py` and compile it at runtime without the Xcode Metal compiler. To exercise the release shader path locally, configure with `cmake -S . -B build/mac -DWIPEOUT_METALLIB=ON`.
+
+Metal recycles upload and vertex buffers only after their last possible command has completed. The per-device pool retains at most 64 buffers and 64 MiB. Full clears keep their encoder open for following draws, and each encoder caches draw bindings. Clears, copies, transfers and encoder changes invalidate that cache.
 
 ## Validation
 
