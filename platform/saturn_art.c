@@ -21,6 +21,7 @@
 #include <string.h>
 
 #include "saturn.h"
+#include "psyq.h"
 
 #define VDP1_RAM 0x25C00000u
 #define CELLS 0x25E20000u /* the HUD's VDP2 characters */
@@ -191,6 +192,48 @@ static void Sprite(Canvas *c, int sprite, int x, int y, unsigned alpha)
 static void MenuSprite(Canvas *c, int sprite, int x, int y)
 {
     SpriteOf(c, menuVideo, menuSprites, menuSpritesSize, sprite, x, y, 255);
+}
+
+/* The start gantry is one lamp strip, not eight independently tinted quads.
+   Its models 1-4 share an image with neutral/red/amber/green LUTs; 5-12 are
+   the green chase frames. Replace only its converted image and palette. */
+int PortSaturnLightFrame(unsigned page, unsigned clut, int u, int v, int frame)
+{
+    static int lastFrame = -1;
+    static unsigned lastPage, lastClut;
+    static int lastU, lastV;
+    unsigned at, group, source, colours;
+    unsigned short pixels[4 * 128], palette[16];
+    RECT image, lut;
+    const unsigned char *raw, *rgb;
+
+    if (frame < 1 || frame > 12 || !Load() || !models || modelsSize < (size_t)frame * 4 + 4) return 0;
+    if (lastFrame == frame && lastPage == page && lastClut == clut && lastU == u && lastV == v) return 1;
+    at = Be32(models + frame * 4);
+    if (modelsSize < 32 || at > modelsSize - 32) return 0;
+    group = Be32(models + at);
+    if (group > modelsSize - 28) return 0;
+    source = Be16(models + group + 20) * 8u;
+    colours = Be16(models + group + 26) * 8u;
+    raw = SaturnVideoAt(video, VDP1_RAM + source, 16 * 128 / 2);
+    rgb = SaturnVideoAt(video, VDP1_RAM + colours, 32);
+    if (!raw || !rgb) return 0;
+    for (int i = 0; i < 4 * 128; i++) {
+        unsigned a = raw[i * 2], b = raw[i * 2 + 1];
+        pixels[i] = a >> 4 | (a & 15) << 4 | (b >> 4) << 8 | (b & 15) << 12;
+    }
+    palette[0] = 0;
+    for (int i = 1; i < 16; i++) {
+        unsigned c = Be16(rgb + i * 2) & 0x7fff;
+        palette[i] = c ? c : 0x8000;
+    }
+    image = (RECT){(page & 15) * 64 + u / 4,
+                   ((page >> 4) & 1) * 256 + ((page >> 11) & 1) * 512 + v, 4, 128};
+    lut = (RECT){(clut & 63) * 16, (clut >> 6) & 1023, 16, 1};
+    LoadImage(&image, (u_long *)pixels);
+    LoadImage(&lut, (u_long *)palette);
+    lastFrame = frame; lastPage = page; lastClut = clut; lastU = u; lastV = v;
+    return 1;
 }
 
 /* ---- the font ---- */
