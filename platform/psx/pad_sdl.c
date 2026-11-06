@@ -1132,6 +1132,16 @@ static void rumble_tick(void)
     }
 }
 
+void PsxPadStopRumble(void)
+{
+    for (int player = 0; player < 2; player++) {
+        Rumble *r = &rumbles[player];
+        rumble_device(r->port, 0, 0, 0);
+        memset(r, 0, sizeof(*r));
+        r->port = -1;
+    }
+}
+
 void PsxPadRumble(int player, int kind, int level)
 {
     Rumble *r = &rumbles[player ? 1 : 0];

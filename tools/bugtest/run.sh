@@ -43,6 +43,11 @@ ${CC:-cc} -O1 -Iplatform $(pkg-config --cflags sdl3) tools/bugtest/test_downsamp
 ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Wno-deprecated-declarations \
     -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) tools/bugtest/test_framecap_storage.c \
     $(pkg-config --libs sdl3) -o "$test_build/framecap_storage"
+
+${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard \
+    -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) tools/bugtest/test_rumble_stop.c \
+    $(pkg-config --libs sdl3) -o "$test_build/rumble_stop"
+"$test_build/rumble_stop"
 "$test_build/framecap_storage"
 
 ${CC:-cc} -O2 -D_FORTIFY_SOURCE=2 -include platform/include/port.h -iquote game/include \
