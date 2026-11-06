@@ -76,6 +76,17 @@ else()
     endif()
 endif()
 
+# Full-resolution rolling recording must keep JPEG compression off the render path.
+# Releases bundle the static SIMD codec; minimal builds retain the stb fallback.
+option(WIPEOUT_FAST_JPEG "Use libjpeg-turbo for recorder compression when available" ON)
+option(WIPEOUT_REQUIRE_FAST_JPEG "Fail if the recorder's fast JPEG codec is unavailable" OFF)
+if(WIPEOUT_FAST_JPEG AND NOT EMSCRIPTEN)
+    find_package(libjpeg-turbo CONFIG QUIET)
+endif()
+if(WIPEOUT_REQUIRE_FAST_JPEG AND NOT TARGET libjpeg-turbo::turbojpeg-static)
+    message(FATAL_ERROR "The release requires the static libjpeg-turbo library")
+endif()
+
 # ---- Platform: the PsyQ libraries and the program entry ----
 # platform/*.c: entry point, window, movies, traces.  platform/psx/: the libraries (gte, gpu, etc here;
 # the sound, disc, controller and memory card libraries are the psxio target of platform/psx/CMakeLists.txt).
@@ -232,6 +243,10 @@ function(port_platform_target name)
         target_link_libraries(${name} PRIVATE gamedata)
     endif()
     target_link_libraries(${name} PRIVATE SDL3::SDL3)
+    if(WIPEOUT_FAST_JPEG AND TARGET libjpeg-turbo::turbojpeg-static)
+        target_link_libraries(${name} PRIVATE libjpeg-turbo::turbojpeg-static)
+        target_compile_definitions(${name} PRIVATE PORT_HAVE_TURBOJPEG)
+    endif()
     if(TARGET port_archive)
         target_link_libraries(${name} PRIVATE port_archive)
         target_compile_definitions(${name} PRIVATE PORT_HAVE_LIBARCHIVE)
@@ -323,6 +338,7 @@ if(APPLE AND NOT IOS)
                 ${CMAKE_SOURCE_DIR}/platform/macos/Info.plist ${CMAKE_SOURCE_DIR}/platform/macos/wipeoutxl.icns ${METAL_LIBRARY}
         DEPENDS wipeoutxl ${CMAKE_SOURCE_DIR}/tools/macos_app.py ${CMAKE_SOURCE_DIR}/platform/macos/Info.plist
                 ${CMAKE_SOURCE_DIR}/platform/macos/wipeoutxl.icns ${METAL_LIBRARY}
+                ${CMAKE_SOURCE_DIR}/docs/licenses/libjpeg-turbo.txt
         COMMENT "Wipeout XL.app"
         VERBATIM)
     add_custom_target(macos_app ALL DEPENDS "${MAC_APP}/Contents/Info.plist")

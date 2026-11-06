@@ -15,6 +15,10 @@
 #include <malloc/malloc.h>
 #endif
 
+#ifdef PORT_HAVE_TURBOJPEG
+#include <turbojpeg.h>
+#endif
+
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #define STBI_WRITE_NO_STDIO
 #include "../third_party/stb/stb_image_write.h"
@@ -223,10 +227,12 @@ static int TakeSnapshot(void)
 
 /* ---- the pictures: read back, compressed by worker threads ---- */
 
+typedef struct RawPicture RawPicture;
 typedef struct Job {
     uint8_t *pixels; /* RGBA */
     int w, h, slot;
     unsigned token;
+    RawPicture *raw; /* shared while one identical picture is being encoded */
 } Job;
 #define JOBS 3 /* (each a whole picture uncompressed: 24 MB at 8x) */
 static Job jobs[JOBS];
@@ -259,20 +265,61 @@ typedef struct EncodedPicture {
     unsigned users;
 } EncodedPicture;
 static EncodedPicture *encodedPictures[FRAMES], *lastEncodedPicture;
+struct RawPicture {
+    unsigned users;
+    uint8_t *pixels;
+    int width, height;
+    EncodedPicture *encoded;
+};
+static RawPicture *lastRawPicture;
+static struct { RawPicture *raw; unsigned token; } pendingPictures[FRAMES];
+
+static void ReleaseEncoded(EncodedPicture *picture)
+{
+    if (picture && !--picture->users) {
+        if (lastEncodedPicture == picture) lastEncodedPicture = NULL;
+        free(picture->data);
+        free(picture);
+    }
+}
+
+static void ReleaseRaw(RawPicture *raw)
+{
+    if (raw && !--raw->users) {
+        ReleaseEncoded(raw->encoded);
+        free(raw->pixels);
+        free(raw);
+    }
+}
 
 /* Caller holds the recorder lock, or has drained all compression jobs. */
 static void ReleaseJpeg(FrameCapFrame *f)
 {
     EncodedPicture *picture = encodedPictures[f - frames];
     if (picture) {
-        if (!--picture->users) {
-            if (lastEncodedPicture == picture) lastEncodedPicture = NULL;
-            free(picture->data);
-            free(picture);
-        }
+        ReleaseEncoded(picture);
         encodedPictures[f - frames] = NULL;
     } else free(f->jpeg);
     f->jpeg = NULL;
+}
+
+/* Caller holds the recorder lock. A pending frame keeps its own token, even
+   when its identical pixels share an in-flight compression job. */
+static void ShareRawPicture(FrameCapFrame *f, RawPicture *raw)
+{
+    ReleaseJpeg(f);
+    int slot = (int)(f - frames);
+    pendingPictures[slot].raw = NULL;
+    if (raw->encoded) {
+        EncodedPicture *picture = raw->encoded;
+        picture->users++;
+        encodedPictures[slot] = picture;
+        f->jpeg = picture->data;
+        f->jpegSize = picture->size;
+    } else {
+        pendingPictures[slot].raw = raw;
+        pendingPictures[slot].token = f->pictureToken;
+    }
 }
 
 static void Write(void *context, void *data, int size)
@@ -293,18 +340,30 @@ static void Encode(Job *job)
     Output out = {NULL, 0, 0};
     FrameCapFrame *f = &frames[job->slot];
 
-    if (!stbi_write_jpg_to_func(Write, &out, job->w, job->h, 4, job->pixels, PICTURE_QUALITY)) {
+#ifdef PORT_HAVE_TURBOJPEG
+    /* Each job owns its compressor. Keep 4:4:4 chroma and the same quality as
+       the fallback, with the accurate DCT for small text and pixel artwork. */
+    tjhandle compressor = tjInitCompress();
+    unsigned char *jpeg = NULL;
+    unsigned long bytes = 0;
+    int compressed = compressor && !tjCompress2(compressor, job->pixels, job->w, 0, job->h,
+        TJPF_RGBA, &jpeg, &bytes, TJSAMP_444, PICTURE_QUALITY, TJFLAG_ACCURATEDCT);
+    if (compressed) Write(&out, jpeg, (int)bytes);
+    tjFree(jpeg);
+    if (compressor) tjDestroy(compressor);
+#endif
+    /* Allocation/codec failures retain the portable encoder, without lowering quality. */
+    if (!out.data && !stbi_write_jpg_to_func(Write, &out, job->w, job->h, 4, job->pixels, PICTURE_QUALITY)) {
         free(out.data);
         out.data = NULL;
-    } else {
-        uint8_t *fitted = realloc(out.data, out.size); /* (no room to grow kept) */
-
-        out.data = fitted ? fitted : out.data;
     }
-    free(job->pixels);
+    if (out.data) {
+        uint8_t *fitted = realloc(out.data, out.size);
+        if (fitted) out.data = fitted;
+    }
+    if (!job->raw) free(job->pixels);
     SDL_LockMutex(Lock());
-    if (f->pictureToken == job->token && out.data) {
-        ReleaseJpeg(f);
+    if (out.data && (job->raw || f->pictureToken == job->token)) {
         EncodedPicture *picture = lastEncodedPicture;
         if (picture && picture->size == out.size && !memcmp(picture->data, out.data, out.size)) {
             picture->users++;
@@ -315,12 +374,32 @@ static void Encode(Job *job)
             *picture = (EncodedPicture){out.data, out.size, 1};
             lastEncodedPicture = picture;
         }
-        encodedPictures[f - frames] = picture;
-        f->jpeg = picture->data;
-        f->jpegSize = picture->size;
+        if (job->raw) {
+            job->raw->encoded = picture; /* job/cache owns the initial reference */
+            for (int i = 0; i < FRAMES; i++) {
+                if (pendingPictures[i].raw != job->raw) continue;
+                if (frames[i].pictureToken == pendingPictures[i].token)
+                    ShareRawPicture(&frames[i], job->raw);
+                else pendingPictures[i].raw = NULL;
+            }
+        } else {
+            ReleaseJpeg(f);
+            encodedPictures[f - frames] = picture;
+            f->jpeg = picture->data;
+            f->jpegSize = picture->size;
+        }
     } else {
         free(out.data);
     }
+    if (job->raw && !job->raw->encoded) {
+        for (int i = 0; i < FRAMES; i++)
+            if (pendingPictures[i].raw == job->raw) pendingPictures[i].raw = NULL;
+        if (lastRawPicture == job->raw) {
+            ReleaseRaw(lastRawPicture);
+            lastRawPicture = NULL;
+        }
+    }
+    ReleaseRaw(job->raw);
     SDL_UnlockMutex(lockMutex);
 }
 
@@ -356,22 +435,47 @@ static void ReadBack(const uint8_t *pixels, int w, int h, void *user)
     if (readSlot < 0) {
         return;
     }
-    job.pixels = malloc((size_t)w * h * 4);
-    if (!job.pixels) {
+    size_t size = (size_t)w * h * 4;
+    SDL_LockMutex(Lock());
+    if (frames[readSlot].pictureToken != readToken) {
+        readSlot = -1;
+        SDL_UnlockMutex(lockMutex);
         return;
     }
-    memcpy(job.pixels, pixels, (size_t)w * h * 4);
-    job.w = w;
-    job.h = h;
-    job.slot = readSlot;
-    job.token = readToken;
+    if (lastRawPicture && lastRawPicture->width == w && lastRawPicture->height == h &&
+        !memcmp(lastRawPicture->pixels, pixels, size)) {
+        ShareRawPicture(&frames[readSlot], lastRawPicture);
+        readSlot = -1;
+        SDL_UnlockMutex(lockMutex);
+        return;
+    }
+    uint8_t *recycled = NULL;
+    if (lastRawPicture && lastRawPicture->users == 1 && lastRawPicture->width == w && lastRawPicture->height == h) {
+        recycled = lastRawPicture->pixels;
+        lastRawPicture->pixels = NULL;
+        ReleaseRaw(lastRawPicture);
+        lastRawPicture = NULL;
+    }
+    SDL_UnlockMutex(lockMutex);
+    RawPicture *raw = calloc(1, sizeof(*raw));
+    if (!raw) { free(recycled); return; }
+    raw->pixels = recycled ? recycled : malloc(size);
+    if (!raw->pixels) { free(raw); return; }
+    memcpy(raw->pixels, pixels, size);
+    raw->width = w; raw->height = h;
+    raw->users = 2; /* the latest-picture cache and the queued/running job */
+    job = (Job){.pixels = raw->pixels, .w = w, .h = h, .slot = readSlot, .token = readToken, .raw = raw};
+    SDL_LockMutex(lockMutex);
+    ReleaseRaw(lastRawPicture);
+    lastRawPicture = raw;
+    ShareRawPicture(&frames[readSlot], raw);
     readSlot = -1;
-    Lock();
+    SDL_UnlockMutex(lockMutex);
     if (!workersStarted) {
         int i, cores = SDL_GetNumLogicalCPUCores();
 
         workersStarted = 1;
-        for (i = 0; i < SDL_clamp(cores - 2, 1, 4); i++) {
+        for (i = 0; i < SDL_clamp(cores - 2, 1, 8); i++) {
             SDL_Thread *thread = SDL_CreateThread(Worker, "framecap", NULL);
 
             if (thread) {
@@ -411,6 +515,8 @@ static void FinishPictures(void)
     while (jobCount || jobsRunning) {
         SDL_WaitCondition(jobDone, lockMutex);
     }
+    ReleaseRaw(lastRawPicture);
+    lastRawPicture = NULL;
     SDL_UnlockMutex(lockMutex);
 }
 
@@ -419,6 +525,7 @@ static void ForgetPicture(FrameCapFrame *f)
 {
     SDL_LockMutex(Lock());
     ReleaseJpeg(f);
+    pendingPictures[f - frames].raw = NULL;
     f->jpegSize = 0;
     f->pictureToken = 0;
     SDL_free(savedPictures[f - frames].path);

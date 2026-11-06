@@ -7,7 +7,7 @@
 
     tools/release.py [--version 0.0.4] [--only mac,windows-x64,windows-arm64] [--smoke-disc GAME.cue]
 
-Each is self-contained: SDL3, libarchive and the compression libraries libarchive reads archives with (zlib, xz,
+Each is self-contained: SDL3, libjpeg-turbo, libarchive and the compression libraries libarchive reads archives with (zlib, xz,
 zstd, lz4) are downloaded and built into the program, never the build machine's (Homebrew's are for this Mac
 only). The builds are kept under build/release/, so a second run only rebuilds what changed.
 
@@ -33,6 +33,9 @@ MAC_MINIMUM = "11.0"  # the first macOS for Apple Silicon
 
 # the compression libraries: (name, archive URL, its SHA-256, the CMake project's folder in it, its options)
 LIBRARIES = [
+    ("libjpeg-turbo", "https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.2.0/libjpeg-turbo-3.2.0.tar.gz",
+     "6f30092cef9fb839779646608f4ee14ae3cbac989c47fa05e841b0841f09878e", "",
+     ["-DENABLE_SHARED=OFF", "-DENABLE_STATIC=ON", "-DWITH_TOOLS=OFF", "-DWITH_TESTS=OFF", "-DREQUIRE_SIMD=ON"]),
     ("zlib", "https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.xz",
      "d7a0654783a4da529d1bb793b7ad9c3318020af77667bcae35f95d0e42a792f3", "",
      ["-DZLIB_BUILD_SHARED=OFF", "-DZLIB_BUILD_TESTING=OFF"]),
@@ -98,11 +101,33 @@ def source(name, url, sha256):
     return folder
 
 
+def build_mac_jpeg(folder, prefix, options, own, jobs):
+    """The SIMD sources differ by ISA. Build each slice before joining the archives."""
+    slices = []
+    for arch in ("arm64", "x86_64"):
+        build = os.path.join(WORK, "mac", "deps-build", "libjpeg-turbo-" + arch)
+        stage = os.path.join(build, "install")
+        run("cmake", "-S", folder, "-B", build, "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release",
+            "-DCMAKE_INSTALL_PREFIX=" + stage, *options, "-DCMAKE_OSX_ARCHITECTURES=" + arch,
+            "-DCMAKE_SYSTEM_PROCESSOR=" + arch, *own)
+        run("cmake", "--build", build, "-j", str(jobs))
+        run("cmake", "--install", build)
+        slices.append(stage)
+    # Install relocatable headers and CMake targets, then replace both static archives.
+    run("cmake", "--install", build, "--prefix", prefix)
+    for library in ("libturbojpeg.a", "libjpeg.a"):
+        run("lipo", "-create", *(os.path.join(stage, "lib", library) for stage in slices),
+            "-output", os.path.join(prefix, "lib", library))
+
+
 def build_libraries(target, options, jobs):
     """The compression libraries for `target`, static, installed in build/release/TARGET/deps."""
     prefix = os.path.join(WORK, target, "deps")
     for name, url, sha256, subfolder, own in LIBRARIES:
         folder = os.path.join(source(name, url, sha256), subfolder)
+        if target == "mac" and name == "libjpeg-turbo":
+            build_mac_jpeg(folder, prefix, options, own, jobs)
+            continue
         build = os.path.join(WORK, target, "deps-build", name)
         if not os.path.exists(os.path.join(build, "CMakeCache.txt")):
             run("cmake", "-S", folder, "-B", build, "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release",
@@ -127,7 +152,7 @@ def build_game(target, options, prefix, jobs, version):
             "-DZLIB_LIBRARY=" + zlib[0], "-DZLIB_INCLUDE_DIR=" + os.path.join(prefix, "include"),
             *found, *options, env=env)
     metal = ["-DWIPEOUT_METALLIB=ON"] if target == "mac" else []
-    run("cmake", "-B", build, "-DWIPEOUT_VERSION=" + version, *metal, env=env)  # (the debug console shows it)
+    run("cmake", "-B", build, "-DWIPEOUT_VERSION=" + version, "-DWIPEOUT_REQUIRE_FAST_JPEG=ON", *metal, env=env)  # (the debug console shows it)
     run("cmake", "--build", build, "-j", str(jobs), env=env)
     return build
 

@@ -113,6 +113,27 @@ int main(void)
     SDL_unsetenv_unsafe("WIPEOUT_FRAMECAP_DIR");
     remove(path);
     FrameCapClear();
+    /* Duplicate readbacks join one in-flight job without losing frame tokens.
+       Recycled slots must never receive the old job's pixels. */
+    RawPicture *raw = calloc(1, sizeof(*raw));
+    raw->pixels = calloc(8 * 8, 4); raw->width = raw->height = 8;
+    raw->users = 2; lastRawPicture = raw;
+    FrameCapFrame *pending[3];
+    for (int i = 0; i < 3; i++) {
+        pending[i] = NewFrame(); pending[i]->vram = -1;
+        pending[i]->pictureToken = 200 + i;
+        ShareRawPicture(pending[i], raw);
+    }
+    pending[2]->pictureToken++; /* the slot has been replaced */
+    Job sharedJob = {.pixels = raw->pixels, .w = 8, .h = 8,
+                     .slot = (int)(pending[0] - frames), .token = 200, .raw = raw};
+    Encode(&sharedJob);
+    assert(pending[0]->jpeg && pending[0]->jpeg == pending[1]->jpeg && !pending[2]->jpeg);
+    assert(!pendingPictures[pending[2] - frames].raw);
+    assert(raw->users == 1 && raw->encoded->users == 3);
+    ShareRawPicture(pending[2], raw); /* completed work is reusable immediately */
+    assert(pending[2]->jpeg == pending[0]->jpeg);
+    FrameCapClear(); assert(!lastRawPicture);
     for (int n = 0; n < FRAMES * 3; n++) {
         FrameCapFrame *f = NewFrame();
         f->vram = -1;
@@ -150,4 +171,5 @@ int main(void)
     assert(!count);
     for (int i = 0; i < FRAMES; i++) assert(!frames[i].prims);
     puts("recording reuses active history storage and retains effective image resolution: OK");
+    return 0;
 }

@@ -83,7 +83,7 @@ real game.
 
 ## Build
 
-Each build has its own folder under `build/`. macOS (Homebrew's `sdl3`):
+Each build has its own folder under `build/`. macOS uses Homebrew's `sdl3` and `jpeg-turbo`:
 
 ```sh
 cmake -S . -B build/mac -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
@@ -92,6 +92,13 @@ ninja -C build/mac
 
 It also makes `build/mac/Wipeout XL.app`, with the Mac version's icon and the
 Homebrew libraries it uses inside (copy it to `/Applications`).
+
+The recorder uses the static libjpeg-turbo library when its CMake package is available.
+It preserves quality 95 and full 4:4:4 chroma. Minimal builds can use the slower portable
+encoder with `-DWIPEOUT_FAST_JPEG=OFF`; release builds require the SIMD codec.
+This software is based in part on the work of the Independent JPEG Group.
+See [JPEG notices](docs/licenses/libjpeg-turbo.txt).
+
 
 Linux (for example Debian 13 or Ubuntu 25.04: `libsdl3-dev libgl-dev`): the
 same two commands with `build/linux`.

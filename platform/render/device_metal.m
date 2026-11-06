@@ -39,6 +39,7 @@ typedef struct MetalUniforms {
 @property id<MTLCommandBuffer> lastCommand;
 @property NSMutableArray<WipeoutMetalReusableBuffer *> *buffers;
 @property NSUInteger pooledBytes;
+@property id<MTLBuffer> readbackBuffer;
 @property RenderDraw previousDraw;
 @property BOOL drawValid;
 @property id<MTLRenderCommandEncoder> encoder;
@@ -616,8 +617,11 @@ static uintptr_t BeginRead(RenderDevice *d, RenderTarget target, RenderRect r) {
         read.pitch = ((size_t)r.w * 4 + 255) & ~(size_t)255;
         read.window = target.window;
         read.bgra = source.pixelFormat == MTLPixelFormatBGRA8Unorm;
-        read.buffer = [m.gpu newBufferWithLength:read.pitch * r.h
-                                         options:MTLResourceStorageModeShared];
+        size_t bytes = read.pitch * r.h;
+        if (m.readbackBuffer.length >= bytes && m.readbackBuffer.length <= SDL_max(bytes * 2, 4096)) {
+            read.buffer = m.readbackBuffer;
+            m.readbackBuffer = nil;
+        } else read.buffer = [m.gpu newBufferWithLength:bytes options:MTLResourceStorageModeShared];
         if (!read.buffer)
             return 0;
         int y = target.window ? (int)source.height - r.y - r.h : r.y;
@@ -673,6 +677,10 @@ static int PollRead(RenderDevice *d, uintptr_t ticket, int wait, const uint8_t *
 }
 static void ReleaseRead(RenderDevice *d, uintptr_t ticket) {
     @autoreleasepool {
+        WipeoutMetalRead *read = (__bridge WipeoutMetalRead *)(void *)ticket;
+        WipeoutMetalDevice *m = Data(d);
+        if (read.command.status == MTLCommandBufferStatusCompleted && read.buffer.length <= 64 * 1024 * 1024 &&
+            read.buffer.length >= m.readbackBuffer.length) m.readbackBuffer = read.buffer;
         Release(ticket);
     }
 }
@@ -702,6 +710,7 @@ static void Trim(RenderDevice *d) {
         WipeoutMetalDevice *m = Data(d);
         [m.buffers removeAllObjects];
         m.pooledBytes = 0;
+        m.readbackBuffer = nil;
         m.lastCommand = nil;
     }
 }

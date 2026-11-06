@@ -32,6 +32,11 @@ ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard \
     $(pkg-config --libs sdl3) -o "$test_build/ordering_cycle"
 "$test_build/ordering_cycle"
 
+${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard \
+    -Iplatform -Iplatform/psx -iquote game/include $(pkg-config --cflags sdl3) tools/bugtest/test_menu_reuse.c \
+    $(pkg-config --libs sdl3) -o "$test_build/menu_reuse"
+"$test_build/menu_reuse"
+
 ${CC:-cc} -O2 -ffunction-sections -fdata-sections $discard \
     tools/bugtest/test_projection_cache.c -lm -o "$test_build/projection_cache"
 "$test_build/projection_cache"
@@ -44,6 +49,20 @@ ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Wno-deprecated-decla
     -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) tools/bugtest/test_framecap_storage.c \
     $(pkg-config --libs sdl3) -o "$test_build/framecap_storage"
 "$test_build/framecap_storage"
+
+# Keep the portable encoder covered, plus the optional SIMD codec when installed.
+${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Wno-deprecated-declarations \
+    -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) tools/bugtest/test_framecap_codec.c \
+    $(pkg-config --libs sdl3) -o "$test_build/framecap_codec"
+"$test_build/framecap_codec"
+if pkg-config --exists libturbojpeg; then
+    for test in framecap_storage framecap_codec; do
+        ${CC:-cc} -O1 -DPORT_HAVE_TURBOJPEG -ffunction-sections -fdata-sections $discard -Wno-deprecated-declarations \
+            -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3 libturbojpeg) "tools/bugtest/test_$test.c" \
+            $(pkg-config --libs sdl3 libturbojpeg) -o "$test_build/${test}_turbo"
+        "$test_build/${test}_turbo"
+    done
+fi
 
 ${CC:-cc} -O1 -Iplatform $(pkg-config --cflags sdl3) tools/bugtest/test_render_switch.c \
     $(pkg-config --libs sdl3) -lm -o "$test_build/render_switch"

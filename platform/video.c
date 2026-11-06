@@ -268,7 +268,8 @@ void PortDumpVram(void)
 static void TimingLog(void)
 {
     static int opened, wasRacing;
-    static FILE *file;
+    static FILE *file, *intervals;
+    static uint64_t previous;
     static uint64_t last, frames, fieldCount;
     static int pictures;
     uint64_t now;
@@ -276,12 +277,20 @@ static void TimingLog(void)
 
     if (!opened) {
         const char *path = SDL_getenv("WIPEOUT_TIMING_LOG");
+        const char *intervalPath = SDL_getenv("WIPEOUT_FRAME_TIMING_LOG");
+        if (intervalPath && !portConfig.secondPlayer) intervals = fopen(intervalPath, "w");
+        if (intervals) fprintf(intervals, "seconds,interval_ms,game_frame\n");
         opened = 1;
         if (path && !portConfig.secondPlayer) file = fopen(path, "w");
         if (file) fprintf(file, "seconds,display_fps,game_fps,field_hz,racing,cap\n");
     }
-    if (!file) return;
+    if (!file && !intervals) return;
     now = SDL_GetTicksNS();
+    if (intervals && previous)
+        fprintf(intervals, "%.6f,%.6f,%llu\n", now / 1e9, (now - previous) / 1e6,
+                (unsigned long long)PortGameFrames());
+    previous = now;
+    if (!file) return;
     racing = PortLinkRaceActive() && PortLinkSplit();
     if (!last || racing != wasRacing) {
         last = now; frames = PortGameFrames(); fieldCount = PsxFieldCount(); pictures = shown;

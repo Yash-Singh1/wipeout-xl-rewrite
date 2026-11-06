@@ -2,3 +2,6 @@
 1 ICON "wipeoutxl.ico"
 // The application manifest (wipeoutxl.manifest): file names in UTF-8
 1 24 "wipeoutxl.manifest"
+
+// Notices travel with the standalone Windows executable.
+2 RCDATA "../../docs/licenses/libjpeg-turbo.txt"

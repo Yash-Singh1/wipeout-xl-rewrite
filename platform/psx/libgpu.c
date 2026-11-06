@@ -357,6 +357,12 @@ static void ReadPendingTables(void);
 static int interpolating; /* drawing a picture between two of the game's frames (PsxDrawInterpolated) */
 static int recordingBetween; /* ... which the frame recorder keeps (FrameCapBetween) */
 static float interpolationAlong;
+static int interpolationHasGeometry;
+static struct {
+    int valid, scale, margin;
+    unsigned textures;
+    PortSettings settings;
+} menuPicture;
 
 /* Widescreen: the packets of the menus' backdrops (PortWideBackdrop), which fill the picture's sides. They are
    the same few packets every frame, named again each frame: one not named while the last few tables were drawn is
@@ -525,6 +531,7 @@ static struct {
 static void ForgetDrawnFrame(void)
 {
     drawnFrame.pending = 0;
+    menuPicture.valid = 0;
 }
 
 static int shakeX, shakeY; /* PortDisplayShake's, until the next PutDispEnv */
@@ -944,6 +951,8 @@ static void Vertex(GpuVertex *v, uint32_t xy, const GtePrecise *precise)
 {
     int x = (int32_t)(xy << 21) >> 21, y = (int32_t)(xy << 5) >> 21;
     GtePrecise moved;
+    if (interpolating && precise && (precise->z != 0.0f || precise->view[2] != 0.0f))
+        interpolationHasGeometry = 1;
 
     if (precise && interpolating && GteInterpolate(precise, interpolationAlong, &moved)) {
         precise = &moved; /* between the frame before and this one */
@@ -2085,6 +2094,7 @@ static int TableDraws(u_long *table)
 
 void PsxUpcomingTables(u_long *table, u_long *second, u_long *hudFirst, DRAWENV *env)
 {
+    menuPicture.valid = 0;
     EndTableCycle(table);
     EndTableCycle(second);
     memcpy(centred[1], centred[0], sizeof(centred[0])); /* (PortHudCentred: the frame's, for its tables) */
@@ -2183,11 +2193,24 @@ void PsxDrawInterpolatedTest(int k, int n)
     PsxDrawInterpolatedAt(((float)(PsxFieldCount() - frameDrawnField - 1) + (float)k / (float)n) / 2.0f);
 }
 
+static int CanReuseMenuPicture(void)
+{
+    return menuPicture.valid && !recordingBetween && menuPicture.scale == GpuScale() &&
+        menuPicture.margin == PortScreenMargin() && menuPicture.textures == HdTexEpoch() &&
+        !memcmp(&menuPicture.settings, &portSettings, sizeof(portSettings));
+}
+
 static void DrawInterpolated(float along)
 {
     u_long *savedHudEntry = hudEntry, *savedHudTable = hudTable;
     __typeof__(state) saved = state;
 
+    /* Flat menu packets do not change between game updates. Reuse their
+       full-resolution image for extra presentations, while recording frames
+       still rebuild their complete inspection records. Any 3D geometry keeps
+       the interpolation path. New tables/transfers/draws invalidate the image. */
+    if (CanReuseMenuPicture()) return;
+    interpolationHasGeometry = 0;
     interpolating = 1;
     interpolationAlong = along < 0.0f ? 0.0f : along > 1.0f ? 1.0f : along;
     GpuInterpolating(1);
@@ -2211,6 +2234,11 @@ static void DrawInterpolated(float along)
     hudTable = savedHudTable;
     state = saved;
     ApplyArea();
+    menuPicture.valid = !interpolationHasGeometry && !GpuRaceWide() && PortLinkRole() == LINK_NONE;
+    menuPicture.scale = GpuScale();
+    menuPicture.margin = PortScreenMargin();
+    menuPicture.textures = HdTexEpoch();
+    menuPicture.settings = portSettings;
     interpolating = 0;
     GpuInterpolating(0);
 }
@@ -2277,6 +2305,7 @@ void DrawOTag(u_long *p)
     u_long *node;
     int tracing = PortTracing() && pendingCount < PENDING_TABLES, inHud = p == hudTable;
 
+    menuPicture.valid = 0;
     EndTableCycle(p);
     WalkTable(p, 1);
     tablesDrawn++;

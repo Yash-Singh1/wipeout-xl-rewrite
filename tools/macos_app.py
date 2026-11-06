@@ -66,6 +66,8 @@ def main():
         os.makedirs(os.path.join(contents, folder))
     if len(sys.argv) > 5:
         shutil.copy2(sys.argv[5], os.path.join(contents, "Resources", "wipeout.metallib"))
+    notice = os.path.join(os.path.dirname(os.path.dirname(__file__)), "docs", "licenses", "libjpeg-turbo.txt")
+    shutil.copy2(notice, os.path.join(contents, "Resources", "libjpeg-turbo.txt"))
     main_binary = os.path.join(contents, "MacOS", "wipeoutxl")
     shutil.copy2(program, main_binary)
     shutil.copy2(icns, os.path.join(contents, "Resources", "wipeoutxl.icns"))
