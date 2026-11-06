@@ -18,6 +18,7 @@
 #ifdef PORT_HAVE_TURBOJPEG
 #include <turbojpeg.h>
 #endif
+#include "pad.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #define STBI_WRITE_NO_STDIO
@@ -1185,6 +1186,7 @@ void FrameCapToggleFreeze(void)
         return;
     }
     frozen = 1;
+    PsxPadStopRumble(); /* Fields stop while inspecting frames, including the motor expiry updates. */
     generation++;
     Save();
     TrimRecorderMemory();

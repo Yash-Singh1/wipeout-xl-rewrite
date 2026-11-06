@@ -518,6 +518,12 @@ int PortLogoFields(int fields)
     return portSettings.skipLogos && !SDL_getenv("WIPEOUT_TRACE") ? 0 : fields;
 }
 
+int PortStartupLoading(void)
+{
+    /* With both startup sequences skipped, go straight to the title. */
+    return PortLogoFields(1) || !portSettings.skipIntro;
+}
+
 int PortFarViewEnabled(void)
 {
     static int mode = -1; /* 2: forced on (tests), 0: off while tracing, 1: the setting */

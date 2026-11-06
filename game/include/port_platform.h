@@ -54,6 +54,7 @@ void PortExactDepth(int on);
 int PortGameInfo(char *out, int size);
 void PortInfoRaceDrawn(void);
 int PortLogoFields(int fields); /* how long a start-up logo is shown: the console's, or none (platform/main.c) */
+int PortStartupLoading(void); /* show startup loading messages unless both sequences are skipped */
 /* Widescreen (the settings): how far the picture reaches beyond each side of the console's 320 columns, in
    console pixels; 0 for the console's 4:3. A race's scene is shown wide (the game says so every frame it
    draws one, PortWideScene); a menu is too, its backdrop enlarged to fill the sides (PortWideBackdrop, each

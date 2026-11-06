@@ -87,6 +87,7 @@ int PsxMain(void) { /* Port: was void main(void), noreturn; the platform owns th
     int championshipType;
     int timeout;
     int musicSelection;
+    int startupHidden;
 
     promptTimer = 0;
     ResetCallback();
@@ -122,7 +123,9 @@ int PsxMain(void) { /* Port: was void main(void), noreturn; the platform owns th
     InitialiseLightMatrix();
     ClearVram();
     InitSonyDisplay();
-    Load16BitTexture(REGION_STR("c:\\wipeout2\\textures\\sce_logo.tim", "c:\\wipeout2\\textures\\warning.tim"), 1);
+    if (PortLogoFields(1)) {
+        Load16BitTexture(REGION_STR("c:\\wipeout2\\textures\\sce_logo.tim", "c:\\wipeout2\\textures\\warning.tim"), 1);
+    }
     InitCD(cdTrackLocs, 0);
     gameData = &config;
     TextureTableCount = 0x113;
@@ -144,7 +147,9 @@ int PsxMain(void) { /* Port: was void main(void), noreturn; the platform owns th
         }
         SetDispMask(0);
         InitGameDisplay(1);
-        Load16BitTexture(REGION_STR("c:\\wipeout2\\textures\\rcopyxl.tim", "c:\\wipeout2\\textures\\copy2097.tim"), 1);
+        if (PortLogoFields(1)) {
+            Load16BitTexture(REGION_STR("c:\\wipeout2\\textures\\rcopyxl.tim", "c:\\wipeout2\\textures\\copy2097.tim"), 1);
+        }
         SetDispMask(1);
         activateOT2 = 1;
         frame = 0;
@@ -152,16 +157,20 @@ int PsxMain(void) { /* Port: was void main(void), noreturn; the platform owns th
             VSync(0);
             frame += 1;
         }
-        Load16BitTexture(REGION_STR("c:\\wipeout2\\textures\\dolbynts.tim", "c:\\wipeout2\\textures\\dolbypal.tim"), 1);
+        if (PortLogoFields(1)) {
+            Load16BitTexture(REGION_STR("c:\\wipeout2\\textures\\dolbynts.tim", "c:\\wipeout2\\textures\\dolbypal.tim"), 1);
+        }
         frame = 0;
         while (frame < PortLogoFields(PAL_TIME(0x3C))) {
             VSync(0);
             frame += 1;
         }
         if (portJapanDisc) { /* the Japanese release shows no Red Book logo, it waits one frame */
-            VSync(0);
+            if (PortLogoFields(1)) VSync(0);
         } else {
-            Load16BitTexture(REGION_STR("c:\\wipeout2\\textures\\redbntsc.tim", "c:\\wipeout2\\textures\\redbpal.tim"), 1);
+            if (PortLogoFields(1)) {
+                Load16BitTexture(REGION_STR("c:\\wipeout2\\textures\\redbntsc.tim", "c:\\wipeout2\\textures\\redbpal.tim"), 1);
+            }
             frame = 0;
             while (frame < PortLogoFields(PAL_TIME(0x78))) {
                 VSync(0);
@@ -170,11 +179,15 @@ int PsxMain(void) { /* Port: was void main(void), noreturn; the platform owns th
         }
     }
     frame = 0;
-    ShowLoadMessage();
-    do {
-        VSync(0);
-        frame += 1;
-    } while (frame < 4);
+    startupHidden = !PortStartupLoading();
+    if (startupHidden) SetDispMask(0); /* Resident loaders also draw loading messages. */
+    if (!startupHidden) {
+        ShowLoadMessage();
+        do {
+            VSync(0);
+            frame += 1;
+        } while (frame < 4);
+    }
     InitCARD(1);
     StartCARD();
     _bu_init();
@@ -217,7 +230,7 @@ int PsxMain(void) { /* Port: was void main(void), noreturn; the platform owns th
     CloseCardEvents();
     anim(introFilename);
     InitCardEvents();
-    ShowLoadMessage();
+    if (PortStartupLoading()) ShowLoadMessage();
     enabled = 1;
     while (1) {
 restart_menu:
@@ -319,6 +332,10 @@ music_done:
                     }
                     promptTimer += 1;
                     Swap();
+                    if (startupHidden) {
+                        SetDispMask(1); /* Both the title picture and its display buffer are ready. */
+                        startupHidden = 0;
+                    }
                 }
             }
         }

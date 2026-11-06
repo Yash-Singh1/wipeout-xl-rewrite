@@ -101,6 +101,7 @@ void PsxPadFillBuffer(int port, uint8_t *buffer, int length);
    tests' hidden runs out of this library. */
 enum { PAD_RUMBLE_JOLT, PAD_RUMBLE_LEVEL, PAD_RUMBLE_SCRAPE, PAD_RUMBLE_KINDS };
 void PsxPadRumble(int player, int kind, int level);
+void PsxPadStopRumble(void); /* stop both players and discard pending motor effects */
 /* (platform/main.c) the second player's request, which their game sent over the link: at this game's setting */
 void PortPadSecondRumble(int kind, int level);
 
