@@ -14,8 +14,8 @@ static void TestBoxCoverage(void)
             int w = 5 * factor + clipped, h = 3 * factor + clipped;
             uint8_t *pixels = malloc((size_t)w * h * 4);
             for (int i = 0; i < w * h * 4; i++) pixels[i] = (i * 73 + i / 7 * 19) & 255;
-            glBindTexture(GL_TEXTURE_2D, colour);
-            glTexSubImage2D(GL_TEXTURE_2D, 0, 7, 9, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+            RgBindTexture(RG_TEXTURE_2D, colour);
+            RgTexSubImage2D(RG_TEXTURE_2D, 0, 7, 9, w, h, RG_RGBA, RG_UNSIGNED_BYTE, pixels);
             for (int target = 1; target <= factor; target++) {
                 int ow = (w * target + factor - 1) / factor;
                 int oh = (h * target + factor - 1) / factor;
@@ -23,11 +23,11 @@ static void TestBoxCoverage(void)
                 BindPictureBuffer(&output, ow, oh);
                 portSettings.downsample = target;
                 portSettings.downsampleStyle = DOWNSAMPLE_BOX;
-                glEnable(GL_SCISSOR_TEST);
-                glScissor(0, 0, 1, 1); /* presentation copies must ignore the scene's scissor */
+                RgEnable(RG_SCISSOR_TEST);
+                RgScissor(0, 0, 1, 1); /* presentation copies must ignore the scene's scissor */
                 BlitPicture(0, 7, 9, 7 + w, 9 + h, output.framebuffer, 0, 0, ow, oh);
-                glBindFramebuffer(GL_READ_FRAMEBUFFER, output.framebuffer);
-                glReadPixels(0, 0, ow, oh, GL_RGBA, GL_UNSIGNED_BYTE, got);
+                RgBindFramebuffer(RG_READ_FRAMEBUFFER, output.framebuffer);
+                RgReadPixels(0, 0, ow, oh, RG_RGBA, RG_UNSIGNED_BYTE, got);
                 for (int y = 0; y < oh; y++) for (int x = 0; x < ow; x++) {
                     double step = (double)factor / target;
                     double loX = x * step, loY = y * step;
@@ -48,12 +48,12 @@ static void TestBoxCoverage(void)
             free(pixels);
         }
     }
-    glDeleteFramebuffers(1, &output.framebuffer);
-    glDeleteTextures(1, &output.texture);
+    RgDeleteFramebuffers(1, &output.framebuffer);
+    RgDeleteTextures(1, &output.texture);
     puts("Box coverage matches CPU averaging within one UNORM level at scales 1..12 and clipped edges: OK");
 }
 
-static void TestAdaptive(GLuint output, GLuint outputTexture)
+static void TestAdaptive(RgHandle output, RgHandle outputTexture)
 {
     portSettings.renderScale = SDL_min(4, GpuMaxScale());
     SetScale(portSettings.renderScale);
@@ -61,8 +61,8 @@ static void TestAdaptive(GLuint output, GLuint outputTexture)
     uint8_t *pixels = malloc((size_t)side * side * 4);
     uint8_t result[16 * 16 * 4];
 
-    glBindTexture(GL_TEXTURE_2D, outputTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 16, 16, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    RgBindTexture(RG_TEXTURE_2D, outputTexture);
+    RgTexImage2D(RG_TEXTURE_2D, 0, RG_RGBA8, 16, 16, 0, RG_RGBA, RG_UNSIGNED_BYTE, NULL);
     /* Enlarged 2D pixels are constant inside each console pixel. Adaptive must
        smooth their transitions, while Box retains hard pixel boundaries. */
     for (int y = 0; y < side; y++) {
@@ -73,18 +73,18 @@ static void TestAdaptive(GLuint output, GLuint outputTexture)
             pixels[at + 3] = 255;
         }
     }
-    glBindTexture(GL_TEXTURE_2D, colour);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 7 * scale, 9 * scale, side, side, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    RgBindTexture(RG_TEXTURE_2D, colour);
+    RgTexSubImage2D(RG_TEXTURE_2D, 0, 7 * scale, 9 * scale, side, side, RG_RGBA, RG_UNSIGNED_BYTE, pixels);
     portSettings.downsample = 1;
     portSettings.downsampleStyle = DOWNSAMPLE_BOX;
     BlitPicture(0, 7 * scale, 9 * scale, 11 * scale, 13 * scale, output, 0, 0, 16, 16);
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, output);
-    glReadPixels(0, 0, 16, 16, GL_RGBA, GL_UNSIGNED_BYTE, result);
+    RgBindFramebuffer(RG_READ_FRAMEBUFFER, output);
+    RgReadPixels(0, 0, 16, 16, RG_RGBA, RG_UNSIGNED_BYTE, result);
     assert(result[(8 * 16 + 7) * 4] == 0 && result[(8 * 16 + 8) * 4] == 255);
     portSettings.downsampleStyle = DOWNSAMPLE_ADAPTIVE;
     BlitPicture(0, 7 * scale, 9 * scale, 11 * scale, 13 * scale, output, 0, 0, 16, 16);
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, output);
-    glReadPixels(0, 0, 16, 16, GL_RGBA, GL_UNSIGNED_BYTE, result);
+    RgBindFramebuffer(RG_READ_FRAMEBUFFER, output);
+    RgReadPixels(0, 0, 16, 16, RG_RGBA, RG_UNSIGNED_BYTE, result);
     assert(result[(8 * 16 + 7) * 4] > 0 && result[(8 * 16 + 7) * 4] < 128);
     assert(result[(8 * 16 + 8) * 4] > 128 && result[(8 * 16 + 8) * 4] < 255);
     assert(result[(8 * 16) * 4] == 0 && result[(8 * 16 + 15) * 4] == 255);
@@ -103,53 +103,53 @@ static void TestAdaptive(GLuint output, GLuint outputTexture)
                 pixels[at + 3] = 255;
             }
         }
-        glBindTexture(GL_TEXTURE_2D, colour);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 7 * factor, 9 * factor, side, side, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+        RgBindTexture(RG_TEXTURE_2D, colour);
+        RgTexSubImage2D(RG_TEXTURE_2D, 0, 7 * factor, 9 * factor, side, side, RG_RGBA, RG_UNSIGNED_BYTE, pixels);
         for (int targetScale = 1; targetScale <= factor; targetScale++) {
             portSettings.downsample = targetScale;
             portSettings.downsampleStyle = DOWNSAMPLE_BOX;
             BlitPicture(0, 7 * factor, 9 * factor, 11 * factor, 13 * factor, output, 0, 0, side, side);
-            glBindFramebuffer(GL_READ_FRAMEBUFFER, output);
-            glReadPixels(0, 0, side, side, GL_RGBA, GL_UNSIGNED_BYTE, result);
+            RgBindFramebuffer(RG_READ_FRAMEBUFFER, output);
+            RgReadPixels(0, 0, side, side, RG_RGBA, RG_UNSIGNED_BYTE, result);
             if (targetScale < factor) {
                 assert(result[0] > 0 && result[0] < 255);
             }
             portSettings.downsampleStyle = DOWNSAMPLE_ADAPTIVE;
             BlitPicture(0, 7 * factor, 9 * factor, 11 * factor, 13 * factor, output, 0, 0, side, side);
-            glBindFramebuffer(GL_READ_FRAMEBUFFER, output);
-            glReadPixels(0, 0, side, side, GL_RGBA, GL_UNSIGNED_BYTE, result);
+            RgBindFramebuffer(RG_READ_FRAMEBUFFER, output);
+            RgReadPixels(0, 0, side, side, RG_RGBA, RG_UNSIGNED_BYTE, result);
             assert(!memcmp(result, pixels, (size_t)side * side * 4));
 
             SetWideMargin(16);
-            glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
-            glBindTexture(GL_TEXTURE_2D, wideColour);
-            glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 7 * factor, 9 * factor, 7 * factor, 9 * factor, side, side);
+            RgBindFramebuffer(RG_READ_FRAMEBUFFER, framebuffer);
+            RgBindTexture(RG_TEXTURE_2D, wideColour);
+            RgCopyTexSubImage2D(RG_TEXTURE_2D, 0, 7 * factor, 9 * factor, 7 * factor, 9 * factor, side, side);
             BlitPicture(1, 7 * factor, 9 * factor, 11 * factor, 13 * factor, output, 0, side, side, 0);
-            glBindFramebuffer(GL_READ_FRAMEBUFFER, output);
-            glReadPixels(0, 0, side, side, GL_RGBA, GL_UNSIGNED_BYTE, result);
+            RgBindFramebuffer(RG_READ_FRAMEBUFFER, output);
+            RgReadPixels(0, 0, side, side, RG_RGBA, RG_UNSIGNED_BYTE, result);
             for (int row = 0; row < side; row++) {
                 assert(!memcmp(result + row * side * 4, pixels + (side - row - 1) * side * 4, (size_t)side * 4));
             }
             SetWideMargin(0);
-            assert(glGetError() == GL_NO_ERROR);
+            assert(!RenderBackendError()[0]);
         }
         /* A fine feature at a cell corner must stay bright without a halo. */
         memset(pixels, 0, (size_t)side * side * 4);
         for (int at = 3; at < side * side * 4; at += 4) pixels[at] = 255;
         int point = (factor * side + factor) * 4;
         pixels[point] = pixels[point + 1] = pixels[point + 2] = 255;
-        glBindTexture(GL_TEXTURE_2D, colour);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 7 * factor, 9 * factor, side, side, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+        RgBindTexture(RG_TEXTURE_2D, colour);
+        RgTexSubImage2D(RG_TEXTURE_2D, 0, 7 * factor, 9 * factor, side, side, RG_RGBA, RG_UNSIGNED_BYTE, pixels);
         portSettings.downsample = 1;
         BlitPicture(0, 7 * factor, 9 * factor, 11 * factor, 13 * factor, output, 0, 0, side, side);
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, output);
-        glReadPixels(0, 0, side, side, GL_RGBA, GL_UNSIGNED_BYTE, result);
+        RgBindFramebuffer(RG_READ_FRAMEBUFFER, output);
+        RgReadPixels(0, 0, side, side, RG_RGBA, RG_UNSIGNED_BYTE, result);
         assert(!memcmp(result, pixels, (size_t)side * side * 4));
         /* Off bypasses Adaptive too. */
         portSettings.downsample = 0;
         BlitPicture(0, 7 * factor, 9 * factor, 11 * factor, 13 * factor, output, 0, 0, side, side);
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, output);
-        glReadPixels(0, 0, side, side, GL_RGBA, GL_UNSIGNED_BYTE, result);
+        RgBindFramebuffer(RG_READ_FRAMEBUFFER, output);
+        RgReadPixels(0, 0, side, side, RG_RGBA, RG_UNSIGNED_BYTE, result);
         assert(!memcmp(result, pixels, (size_t)side * side * 4));
     }
     free(pixels);
@@ -168,17 +168,19 @@ int main(void)
     SDL_GLContext context = SDL_GL_CreateContext(window);
     assert(context);
     portSettings.renderScale = 1;
+    assert(RenderStart(window));
     assert(GpuInit());
+    if(SDL_getenv("WIPEOUT_TEST_METAL")){assert(RenderRequestBackend(RENDER_METAL));assert(RenderApplyBackend());}
     TestBoxCoverage();
 
-    GLuint output, outputTexture;
-    glGenFramebuffers(1, &output);
-    glGenTextures(1, &outputTexture);
-    glBindTexture(GL_TEXTURE_2D, outputTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 8, 8, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-    glBindFramebuffer(GL_FRAMEBUFFER, output);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, outputTexture, 0);
-    assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
+    RgHandle output, outputTexture;
+    RgGenFramebuffers(1, &output);
+    RgGenTextures(1, &outputTexture);
+    RgBindTexture(RG_TEXTURE_2D, outputTexture);
+    RgTexImage2D(RG_TEXTURE_2D, 0, RG_RGBA8, 8, 8, 0, RG_RGBA, RG_UNSIGNED_BYTE, NULL);
+    RgBindFramebuffer(RG_FRAMEBUFFER, output);
+    RgFramebufferTexture2D(RG_FRAMEBUFFER, RG_COLOR_ATTACHMENT0, RG_TEXTURE_2D, outputTexture, 0);
+    assert(RgCheckFramebufferStatus(RG_FRAMEBUFFER) == RG_FRAMEBUFFER_COMPLETE);
 
     /* Odd and even factors. A single bright corner must contribute even when a
        linear resize would only sample the centre. Also test a nonzero VRAM origin. */
@@ -195,18 +197,18 @@ int main(void)
             }
         }
         pixels[0] = 255;
-        glBindTexture(GL_TEXTURE_2D, colour);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 7 * factor, 9 * factor, 2 * factor, 2 * factor,
-                        GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+        RgBindTexture(RG_TEXTURE_2D, colour);
+        RgTexSubImage2D(RG_TEXTURE_2D, 0, 7 * factor, 9 * factor, 2 * factor, 2 * factor,
+                        RG_RGBA, RG_UNSIGNED_BYTE, pixels);
         free(pixels);
         portSettings.downsample = 1;
-        glEnable(GL_BLEND);
-        glEnable(GL_DEPTH_TEST);
+        RgEnable(RG_BLEND);
+        RgEnable(RG_DEPTH_TEST);
         BlitPicture(0, 7 * factor, 9 * factor, 9 * factor, 11 * factor, output, 0, 0, 8, 8);
-        assert(glIsEnabled(GL_BLEND) && glIsEnabled(GL_DEPTH_TEST));
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, output);
+        assert(RgIsEnabled(RG_BLEND) && RgIsEnabled(RG_DEPTH_TEST));
+        RgBindFramebuffer(RG_READ_FRAMEBUFFER, output);
         uint8_t result[8 * 8 * 4];
-        glReadPixels(0, 0, 8, 8, GL_RGBA, GL_UNSIGNED_BYTE, result);
+        RgReadPixels(0, 0, 8, 8, RG_RGBA, RG_UNSIGNED_BYTE, result);
         for (int py = 0; py < 8; py++) {
             for (int px = 0; px < 8; px++) {
                 int at = (py * 8 + px) * 4;
@@ -219,19 +221,19 @@ int main(void)
         /* Recorded pictures use the same reduction, with the original row order. */
         uint8_t *recorded = GpuReadPicture(7, 9, 2, 2, 0, 8, 8);
         assert(!memcmp(recorded, result, sizeof(result)));
-        assert(glGetError() == GL_NO_ERROR);
+        assert(!RenderBackendError()[0]);
 
         /* Widescreen uses a separate colour texture. The reduction and vertical
            flip for display must agree with the ordinary framebuffer. */
         SetWideMargin(16);
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
-        glBindTexture(GL_TEXTURE_2D, wideColour);
-        glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 7 * factor, 9 * factor, 7 * factor, 9 * factor,
+        RgBindFramebuffer(RG_READ_FRAMEBUFFER, framebuffer);
+        RgBindTexture(RG_TEXTURE_2D, wideColour);
+        RgCopyTexSubImage2D(RG_TEXTURE_2D, 0, 7 * factor, 9 * factor, 7 * factor, 9 * factor,
                            2 * factor, 2 * factor);
         BlitPicture(1, 7 * factor, 9 * factor, 9 * factor, 11 * factor, output, 0, 8, 8, 0);
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, output);
+        RgBindFramebuffer(RG_READ_FRAMEBUFFER, output);
         uint8_t flipped[sizeof(result)];
-        glReadPixels(0, 0, 8, 8, GL_RGBA, GL_UNSIGNED_BYTE, flipped);
+        RgReadPixels(0, 0, 8, 8, RG_RGBA, RG_UNSIGNED_BYTE, flipped);
         for (int row = 0; row < 8; row++) {
             assert(!memcmp(flipped + row * 32, result + (7 - row) * 32, 32));
         }
@@ -243,8 +245,8 @@ int main(void)
             int effective = SDL_min(targetScale, factor), side = 2 * effective;
             portSettings.downsample = targetScale;
             BlitPicture(0, 7 * factor, 9 * factor, 9 * factor, 11 * factor, output, 0, 0, side, side);
-            glBindFramebuffer(GL_READ_FRAMEBUFFER, output);
-            glReadPixels(0, 0, side, side, GL_RGBA, GL_UNSIGNED_BYTE, result);
+            RgBindFramebuffer(RG_READ_FRAMEBUFFER, output);
+            RgReadPixels(0, 0, side, side, RG_RGBA, RG_UNSIGNED_BYTE, result);
             for (int py = 0; py < side; py++) {
                 for (int px = 0; px < side; px++) {
                     int at = (py * side + px) * 4;
@@ -257,25 +259,26 @@ int main(void)
             }
             recorded = GpuReadPicture(7, 9, 2, 2, 0, side, side);
             assert(!memcmp(recorded, result, (size_t)side * side * 4));
-            assert(glGetError() == GL_NO_ERROR);
+            assert(!RenderBackendError()[0]);
         }
 
         portSettings.downsample = 0;
         BlitPicture(0, 7 * factor, 9 * factor, 9 * factor, 11 * factor, output, 0, 0, 8, 8);
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, output);
-        glReadPixels(0, 0, 8, 8, GL_RGBA, GL_UNSIGNED_BYTE, result);
+        RgBindFramebuffer(RG_READ_FRAMEBUFFER, output);
+        RgReadPixels(0, 0, 8, 8, RG_RGBA, RG_UNSIGNED_BYTE, result);
         uint8_t reference[sizeof(result)];
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, output);
-        glBlitFramebuffer(7 * factor, 9 * factor, 9 * factor, 11 * factor, 0, 0, 8, 8,
-                          GL_COLOR_BUFFER_BIT, GL_LINEAR);
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, output);
-        glReadPixels(0, 0, 8, 8, GL_RGBA, GL_UNSIGNED_BYTE, reference);
+        RgBindFramebuffer(RG_READ_FRAMEBUFFER, framebuffer);
+        RgBindFramebuffer(RG_DRAW_FRAMEBUFFER, output);
+        RgBlitFramebuffer(7 * factor, 9 * factor, 9 * factor, 11 * factor, 0, 0, 8, 8,
+                          RG_COLOR_BUFFER_BIT, RG_LINEAR);
+        RgBindFramebuffer(RG_READ_FRAMEBUFFER, output);
+        RgReadPixels(0, 0, 8, 8, RG_RGBA, RG_UNSIGNED_BYTE, reference);
         assert(!memcmp(reference, result, sizeof(result)));
-        assert(glGetError() == GL_NO_ERROR);
+        assert(!RenderBackendError()[0]);
     }
     puts("Downsampling supports target grids, fractional reductions, clamping, sharp pixels, readbacks and off: OK");
     TestAdaptive(output, outputTexture);
+    RenderStop();
     SDL_GL_DestroyContext(context);
     SDL_DestroyWindow(window);
     SDL_Quit();

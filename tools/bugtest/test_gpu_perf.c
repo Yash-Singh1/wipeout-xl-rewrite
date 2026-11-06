@@ -21,7 +21,7 @@ static uint64_t Picture(int conservative)
     GpuVramChanged(768, 400, 64, 1); /* Include palette-cache rebuilding, as in a game frame. */
     for (int i = 0; i < TRIANGLES; i++) GpuTriangles(&states[i], vertices[i], 3);
     GpuFlush();
-    glFinish();
+    RgFinish();
     return SDL_GetTicksNS() - start;
 }
 

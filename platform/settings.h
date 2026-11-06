@@ -53,6 +53,7 @@ typedef struct PortSettings {
     int digitalSteering; /* 0: proportional gamepad stick; 1: stick acts as the directional pad */
     int fullscreen;       /* the window was full screen when last left: the next start is too (video.c) */
     int noUpdateCheck;    /* 0: check GitHub once at launch, 1: stay offline */
+    int graphicsBackend; /* RenderBackend, selected only when available on this machine */
 } PortSettings;
 
 /* PortSettings.downsampleStyle: the target scale is in downsample; 0 there disables either style. */

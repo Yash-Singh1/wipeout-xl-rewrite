@@ -1,6 +1,6 @@
-/* The window, its OpenGL context and the event pump. */
+/* The SDL window, graphics device and event pump. */
 #include <SDL3/SDL.h>
-#include "port_gl.h"
+#include "render/state.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -113,6 +113,19 @@ int PortVideoInit(void)
         return 0;
     }
     SDL_GL_MakeCurrent(window, context);
+    SDL_SetPointerProperty(SDL_GetWindowProperties(window), "wipeout.opengl.context", context);
+    RenderBackend preferred = (RenderBackend)portSettings.graphicsBackend;
+    const char *renderer = SDL_getenv("WIPEOUT_RENDERER");
+    if (renderer && !RenderFindBackend(renderer, &preferred))
+        preferred = RenderDefaultBackend();
+    if (!RenderBackendAvailable(preferred))
+        preferred = RenderDefaultBackend();
+    if (!RenderStartBackend(window, preferred)) {
+        SDL_Log("renderer: %s", RenderBackendError());
+        if (preferred == RenderDefaultBackend() || !RenderStart(window))
+            return 0;
+    }
+    portSettings.graphicsBackend = RenderActiveBackend();
 #ifdef SDL_PLATFORM_IOS
     GpuSetWindowFramebuffer((unsigned int)SDL_GetNumberProperty(SDL_GetWindowProperties(window),
                                                                 SDL_PROP_WINDOW_UIKIT_OPENGL_FRAMEBUFFER_NUMBER, 0));
@@ -135,23 +148,15 @@ SDL_Window *PortWindow(void)
    uncapped or capped (the settings); tests run unthrottled. */
 void PortSwapInterval(int vsync)
 {
-    static int current = -2;
-
-    if (portConfig.hidden || portConfig.fixedStep) {
+    if (portConfig.hidden || portConfig.fixedStep)
         vsync = 0;
-    }
-    if (vsync == current) {
-        return;
-    }
-    current = vsync;
-    if (!vsync || !SDL_GL_SetSwapInterval(-1)) {
-        SDL_GL_SetSwapInterval(vsync);
-    }
+    RenderSetVsync(vsync);
 }
 
 void PortVideoShutdown(void)
 {
     DebugUiShutdown();
+    RenderStop();
 #ifdef PORT_SECOND_GAME
     if (portConfig.secondPlayer) {
         return; /* (its window and drawing context are the first game's to close: host.c) */
@@ -202,9 +207,9 @@ static void Capture(void)
         return;
     }
     PortDrawableSize(&width, &height);
-    /* RGBA, the one format every OpenGL (ES too) reads back */
+    /* The device contract returns window pixels in RGBA order. */
     pixels = SDL_malloc((size_t)width * height * 4);
-    glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    RgReadPixels(0, 0, width, height, RG_RGBA, RG_UNSIGNED_BYTE, pixels);
     if (SDL_getenv("WIPEOUT_ALPHA_CHECK")) {
         /* tests: pixels the window would show see-through */
         long low = 0, k;
@@ -287,20 +292,56 @@ static void TimingLog(void)
     }
 }
 
+/* Deterministic integration runs can exercise repeated switches while a race
+   is running. Visible games use the console selector. */
+static void TestBackendSwitch(void)
+{
+    static const char *next;
+    static int checked;
+    if (!portConfig.hidden)
+        return;
+    if (!checked) {
+        next = SDL_getenv("WIPEOUT_RENDERER_SWITCH");
+        checked = 1;
+    }
+    if (!next || !*next)
+        return;
+    unsigned frame;
+    char name[24];
+    int used = 0;
+    if (SDL_sscanf(next, "%u:%23[^,]%n", &frame, name, &used) < 2 || !used) {
+        next = NULL;
+        return;
+    }
+    if (shown < (int)frame)
+        return;
+    RenderRequestBackendName(name);
+    next += used;
+    if (*next == ',')
+        next++;
+}
+
 void PortVideoPresent(void)
 {
     /* The picture is opaque: blending (the subtractive modes, the fade) also changes the alpha the
        framebuffer holds, and the window system composites the window with it, so such pixels showed
        what is behind the window (black holes where ship shadows were). */
-    glDisable(GL_SCISSOR_TEST); /* the presenters leave the window's framebuffer bound */
+    RgDisable(RG_SCISSOR_TEST); /* the presenters leave the window's framebuffer bound */
     DebugUiRender();
-    glDisable(GL_SCISSOR_TEST);
-    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE);
-    glClearColor(0, 0, 0, 1);
-    glClear(GL_COLOR_BUFFER_BIT);
-    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    RgDisable(RG_SCISSOR_TEST);
+    RgColorMask(0, 0, 0, 1);
+    RgClearColor(0,0,0,1);
+    RgClear(RG_COLOR_BUFFER_BIT);
+    RgColorMask(1, 1, 1, 1);
     Capture();
-    SDL_GL_SwapWindow(window);
+    RenderPresent();
+    TestBackendSwitch();
+    RenderBackend oldBackend = RenderActiveBackend();
+    RenderApplyBackend();
+    if (oldBackend != RenderActiveBackend()) {
+        portSettings.graphicsBackend = RenderActiveBackend();
+        PortSettingsSave();
+    }
     PsxEndPresentation();
     TimingLog();
 #ifdef __EMSCRIPTEN__

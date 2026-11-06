@@ -6,6 +6,7 @@
 
 #include "platform.h"
 #include "settings.h"
+#include "render/device.h"
 
 PortSettings portSettings = {0, 1, 1, 64000, 96000, 0, FRAME_RATE_UNCAPPED, 144, 0, RECORD_OFF, 0, ""};
 
@@ -28,6 +29,8 @@ static void Set(const char *key, const char *value)
 
     if (!strcmp(key, "show_fps")) {
         portSettings.showFps = number != 0;
+    } else if (!strcmp(key, "graphics_backend")) {
+        portSettings.graphicsBackend = SDL_clamp(number, 0, RENDER_BACKEND_COUNT-1);
     } else if (!strcmp(key, "far_view")) {
         portSettings.farView = number != 0;
     } else if (!strcmp(key, "far_flares")) {
@@ -270,6 +273,7 @@ int PortSettingsSave(void)
             portSettings.rumbleStrength ? portSettings.rumbleStrength : 100, portSettings.farFlares,
             !portSettings.noFocusPause, portSettings.surround, portSettings.fullscreen, portSettings.digitalSteering,
             portSettings.negconPad, !portSettings.noUpdateCheck);
+    fprintf(file, "graphics_backend = %d\n", portSettings.graphicsBackend);
     fclose(file);
     return 1;
 }

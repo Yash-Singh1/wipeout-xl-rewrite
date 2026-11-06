@@ -200,3 +200,5 @@ the next start. Dear ImGui (`platform/third_party/imgui`, MIT) draws it.
 [docs/PLAN.md](docs/PLAN.md) describes the design; [docs/IO.md](docs/IO.md)
 the sound, CD, pad and card side. [docs/THIRD_PARTY.md](docs/THIRD_PARTY.md) has the licenses of code adapted
 from others (Monkey's Audio's decoder).
+
+Graphics devices and live switching in the debug console are described in [Graphics backends](docs/RENDER_BACKENDS.md).

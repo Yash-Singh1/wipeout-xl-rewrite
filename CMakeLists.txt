@@ -92,18 +92,33 @@ if(APPLE)
 elseif(NOT WIN32 AND NOT ANDROID AND NOT EMSCRIPTEN)
     find_package(CURL REQUIRED)
 endif()
+# The native driver is shared by both game instances. All mutable device state
+# belongs to RenderDevice, so the second game's symbol rewriting excludes it.
+if(APPLE AND NOT IOS)
+    set(METAL_SHADER_HEADER ${CMAKE_BINARY_DIR}/generated/shaders_metal.h)
+    add_custom_command(OUTPUT ${METAL_SHADER_HEADER}
+        COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/embed_shader.py
+            ${CMAKE_SOURCE_DIR}/platform/render/shaders_metal.metal ${METAL_SHADER_HEADER}
+        DEPENDS tools/embed_shader.py platform/render/shaders_metal.metal VERBATIM)
+    add_library(render_metal STATIC platform/render/device_metal.m ${METAL_SHADER_HEADER})
+    target_include_directories(render_metal PRIVATE ${CMAKE_BINARY_DIR}/generated)
+    target_compile_options(render_metal PRIVATE -fobjc-arc)
+    target_link_libraries(render_metal PRIVATE SDL3::SDL3 "-framework Metal" "-framework QuartzCore" "-framework AppKit")
+    add_compile_definitions(PORT_HAVE_METAL)
+endif()
 set(PLATFORM_PSX_SOURCES
-    platform/psx/gte.c platform/psx/gte_tables.c platform/psx/gpu_gl.c
+    platform/psx/gte.c platform/psx/gte_tables.c platform/psx/gpu_renderer.c
+    platform/render/state.c platform/render/device_gl.c
     platform/psx/libetc.c platform/psx/libgpu.c platform/psx/libgte.c platform/psx/libgte_more.c
     platform/psx/framecap.c)
 list(TRANSFORM PLATFORM_PSX_SOURCES PREPEND ${CMAKE_SOURCE_DIR}/)
-# The debug console: Dear ImGui (platform/third_party/imgui, MIT) over SDL3 and OpenGL 3.
+# The debug console uses SDL3 input and the shared graphics device interface.
 set(IMGUI_DIR ${CMAKE_SOURCE_DIR}/platform/third_party/imgui)
 set(IMGUI_SOURCES ${IMGUI_DIR}/imgui.cpp ${IMGUI_DIR}/imgui_draw.cpp ${IMGUI_DIR}/imgui_tables.cpp
-    ${IMGUI_DIR}/imgui_widgets.cpp ${IMGUI_DIR}/backends/imgui_impl_sdl3.cpp ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp)
-set(DEBUG_UI_SOURCES ${CMAKE_SOURCE_DIR}/platform/debug_ui.cpp ${CMAKE_SOURCE_DIR}/platform/touch.cpp ${IMGUI_SOURCES})
+    ${IMGUI_DIR}/imgui_widgets.cpp ${IMGUI_DIR}/backends/imgui_impl_sdl3.cpp)
+set(DEBUG_UI_SOURCES ${CMAKE_SOURCE_DIR}/platform/render/imgui.cpp ${CMAKE_SOURCE_DIR}/platform/debug_ui.cpp ${CMAKE_SOURCE_DIR}/platform/touch.cpp ${IMGUI_SOURCES})
 # (the port's own: what the second player's game has a copy of, platform/second/)
-set(PLATFORM_OWN_SOURCES ${PLATFORM_TOP_SOURCES} ${PLATFORM_PSX_SOURCES} ${CMAKE_SOURCE_DIR}/platform/debug_ui.cpp
+set(PLATFORM_OWN_SOURCES ${CMAKE_SOURCE_DIR}/platform/render/imgui.cpp ${PLATFORM_TOP_SOURCES} ${PLATFORM_PSX_SOURCES} ${CMAKE_SOURCE_DIR}/platform/debug_ui.cpp
     ${CMAKE_SOURCE_DIR}/platform/touch.cpp)
 list(SORT PLATFORM_OWN_SOURCES)
 set(PLATFORM_SOURCES ${PLATFORM_TOP_SOURCES} ${PLATFORM_PSX_SOURCES} ${DEBUG_UI_SOURCES})
@@ -198,6 +213,9 @@ function(port_platform_target name)
     if(TARGET port_archive)
         target_link_libraries(${name} PRIVATE port_archive)
         target_compile_definitions(${name} PRIVATE PORT_HAVE_LIBARCHIVE)
+    endif()
+    if(APPLE AND NOT IOS)
+        target_link_libraries(${name} PRIVATE render_metal)
     endif()
     if(APPLE)
         target_link_libraries(${name} PRIVATE "-framework Foundation")

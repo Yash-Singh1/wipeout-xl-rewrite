@@ -45,20 +45,34 @@ ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Wno-deprecated-decla
     $(pkg-config --libs sdl3) -o "$test_build/framecap_storage"
 "$test_build/framecap_storage"
 
+${CC:-cc} -O1 -Iplatform $(pkg-config --cflags sdl3) tools/bugtest/test_render_switch.c \
+    $(pkg-config --libs sdl3) -lm -o "$test_build/render_switch"
+"$test_build/render_switch"
+
 # Optional real GPU checks, for a desktop session with an OpenGL driver.
 if [ "${WIPEOUT_TEST_GL:-0}" = 1 ]; then
     case $(uname -s) in Darwin) gl_libs='-framework OpenGL';; *) gl_libs='-lGL';; esac
+    gpu_defines=''
+    gpu_objects=''
+    if [ "${WIPEOUT_TEST_METAL:-0}" = 1 ]; then
+        python3 tools/embed_shader.py platform/render/shaders_metal.metal "$test_build/shaders_metal.h"
+        ${CC:-cc} -c -fobjc-arc -Wno-deprecated-declarations -Iplatform -I"$test_build" $(pkg-config --cflags sdl3) \
+            platform/render/device_metal.m -o "$test_build/metal.o"
+        gpu_defines='-DPORT_HAVE_METAL'
+        gpu_objects="$test_build/metal.o"
+        gl_libs="$gl_libs -framework Metal -framework QuartzCore -framework AppKit"
+    fi
     ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard \
-        -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) tools/bugtest/test_gpu_hud.c \
-        $(pkg-config --libs sdl3) $gl_libs -lm -o "$test_build/gpu_hud"
+        $gpu_defines -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) tools/bugtest/test_gpu_hud.c platform/render/state.c platform/render/device_gl.c \
+        $gpu_objects $(pkg-config --libs sdl3) $gl_libs -lm -o "$test_build/gpu_hud"
     "$test_build/gpu_hud"
     ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard \
-        -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) tools/bugtest/test_gpu_downsample.c \
-        $(pkg-config --libs sdl3) $gl_libs -lm -o "$test_build/gpu_downsample"
+        $gpu_defines -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) tools/bugtest/test_gpu_downsample.c platform/render/state.c platform/render/device_gl.c \
+        $gpu_objects $(pkg-config --libs sdl3) $gl_libs -lm -o "$test_build/gpu_downsample"
     "$test_build/gpu_downsample"
     ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard \
-        -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) tools/bugtest/test_gpu_passes.c \
-        $(pkg-config --libs sdl3) $gl_libs -lm -o "$test_build/gpu_passes"
+        $gpu_defines -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) tools/bugtest/test_gpu_passes.c platform/render/state.c platform/render/device_gl.c \
+        $gpu_objects $(pkg-config --libs sdl3) $gl_libs -lm -o "$test_build/gpu_passes"
     "$test_build/gpu_passes"
 fi
 

@@ -25,7 +25,8 @@ int main(void){
  SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK,SDL_GL_CONTEXT_PROFILE_CORE);
  SDL_Window* win=SDL_CreateWindow("blend probe",320,240,SDL_WINDOW_OPENGL|SDL_WINDOW_HIDDEN);
  assert(win);SDL_GLContext ctx=SDL_GL_CreateContext(win);assert(ctx);
- portSettings.renderScale=1;portSettings.consoleDepth=1;assert(GpuInit());
+ portSettings.renderScale=1;portSettings.consoleDepth=1;assert(RenderStart(win));assert(GpuInit());
+ if(SDL_getenv("WIPEOUT_TEST_METAL")){assert(RenderRequestBackend(RENDER_METAL));assert(RenderApplyBackend());}
  GpuSetDrawArea(0,0,320,240,0,0);
  GpuVertex v[3]={{.x=0,.y=0,.r=128,.a=255},{.x=20,.y=0,.r=128,.a=255},{.x=0,.y=20,.r=128,.a=255}};
  GpuDrawState s={.semi=1};
