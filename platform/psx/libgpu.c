@@ -2195,7 +2195,8 @@ void PsxDrawInterpolatedTest(int k, int n)
 
 static int CanReuseMenuPicture(void)
 {
-    return menuPicture.valid && !recordingBetween && menuPicture.scale == GpuScale() &&
+    return menuPicture.valid && !recordingBetween && !GpuRaceWide() && PortLinkRole() == LINK_NONE &&
+        menuPicture.scale == GpuScale() &&
         menuPicture.margin == PortScreenMargin() && menuPicture.textures == HdTexEpoch() &&
         !memcmp(&menuPicture.settings, &portSettings, sizeof(portSettings));
 }

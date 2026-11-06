@@ -17,7 +17,9 @@ int PortLinkDownsample(void) { return -1; }
 int PortLinkDownsampleStyle(void) { return -1; }
 int GpuScale(void) { return 12; }
 int GpuShownMargin(int x, int w) { return 32; }
-int GpuReadPictureDone(int reader, int wait, void (*use)(const uint8_t *, int, int, void *), void *user) { return 0; }
+static int readBusy, readWait;
+int GpuReadPictureBusy(int reader) { return readBusy; }
+int GpuReadPictureDone(int reader, int wait, void (*use)(const uint8_t *, int, int, void *), void *user) { readWait = wait; return 0; }
 int GpuReadPictureStart(int reader, int x, int y, int w, int h, int margin, int width, int height) { return 1; }
 int PortShownFrames(void) { return 0; }
 int main(void)
@@ -134,6 +136,24 @@ int main(void)
     ShareRawPicture(pending[2], raw); /* completed work is reusable immediately */
     assert(pending[2]->jpeg == pending[0]->jpeg);
     FrameCapClear(); assert(!lastRawPicture);
+    /* Overload cannot wait on an encoder. Preview admission must leave the
+       frame's geometry available and reset when its ring slot is reused. */
+    FrameCapFrame *busy = NewFrame(); busy->vram = -1; busy->pictureToken = 900;
+    current = readSlot = (int)(busy - frames); readToken = 900;
+    FrameCapAdd()->address = 0x4567;
+    uint8_t busyPixels[8 * 8 * 4] = {0};
+    workerCount = 1; jobCount = JOBS;
+    ReadBack(busyPixels, 8, 8, NULL);
+    assert(readSlot == -1 && FrameCapPictureSkipped(0));
+    assert(busy->count == 1 && busy->prims[0].address == 0x4567 && !busy->jpeg);
+    jobCount = workerCount = 0; FrameCapClear();
+    assert(!FrameCapPictureSkipped(0));
+    /* An unfinished GPU ticket also cannot block normal capture admission. */
+    FrameCapFrame *gpuBusy = NewFrame(); gpuBusy->vram = -1;
+    readBusy = 1; readSlot = 7;
+    TakePicture(gpuBusy, 0, 0, 320, 240);
+    assert(!readWait && FrameCapPictureSkipped(0) && readSlot == 7);
+    readBusy = 0; readSlot = -1; FrameCapClear();
     for (int n = 0; n < FRAMES * 3; n++) {
         FrameCapFrame *f = NewFrame();
         f->vram = -1;

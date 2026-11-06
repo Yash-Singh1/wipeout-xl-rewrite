@@ -42,6 +42,7 @@ int PortGameInfo(char *out, int size); /* (game/src/portinfo.c) */
 #define PICTURE_QUALITY 95
 
 static FrameCapFrame frames[FRAMES];
+static uint8_t skippedPictures[FRAMES];
 static uint32_t nextNumber;
 static uint64_t lastPictureTicks; /* when the last recorded picture was taken */
 static int inBetween;             /* a picture between frames is being recorded (FrameCapBetween) ... */
@@ -156,6 +157,12 @@ int FrameCapFrameCount(void)
 const FrameCapFrame *FrameCapFrameAt(int index)
 {
     return index >= 0 && index < count ? &frames[(first + index) % FRAMES] : NULL;
+}
+
+int FrameCapPictureSkipped(int index)
+{
+    const FrameCapFrame *f = FrameCapFrameAt(index);
+    return f && skippedPictures[f - frames];
 }
 
 const uint16_t *FrameCapVram(int snapshot)
@@ -450,6 +457,14 @@ static void ReadBack(const uint8_t *pixels, int w, int h, void *user)
         SDL_UnlockMutex(lockMutex);
         return;
     }
+    /* Recording is best effort. A full encoder queue must never stall game
+       updates or presentation. Keep geometry/VRAM inspection for this frame. */
+    if (workerCount && jobCount == JOBS) {
+        skippedPictures[readSlot] = 1;
+        readSlot = -1;
+        SDL_UnlockMutex(lockMutex);
+        return;
+    }
     uint8_t *recycled = NULL;
     if (lastRawPicture && lastRawPicture->users == 1 && lastRawPicture->width == w && lastRawPicture->height == h) {
         recycled = lastRawPicture->pixels;
@@ -490,9 +505,8 @@ static void ReadBack(const uint8_t *pixels, int w, int h, void *user)
         return;
     }
     SDL_LockMutex(lockMutex);
-    while (jobCount == JOBS) {
-        SDL_WaitCondition(jobDone, lockMutex); /* (the workers are behind: the game waits) */
-    }
+    /* Only this thread produces jobs; consumers can only make more room
+       after the admission check above. */
     jobs[(jobFirst + jobCount) % JOBS] = job;
     jobCount++;
     SDL_SignalCondition(jobWaiting);
@@ -527,6 +541,7 @@ static void ForgetPicture(FrameCapFrame *f)
     SDL_LockMutex(Lock());
     ReleaseJpeg(f);
     pendingPictures[f - frames].raw = NULL;
+    skippedPictures[f - frames] = 0;
     f->jpegSize = 0;
     f->pictureToken = 0;
     SDL_free(savedPictures[f - frames].path);
@@ -786,19 +801,27 @@ static void TakePicture(FrameCapFrame *f, int x, int y, int w, int h)
     width = (PICTURE_W + 2 * margin) * scale;
     height = GPU_LINES * scale; /* (240 lines, or PAL's 256) */
 
-    FinishRead(1); /* (the picture before's: back by now) */
+    FinishRead(0); /* poll completed captures; presentation never waits for readback */
     ForgetPicture(f);
     f->pictureW = width;
     f->pictureH = height;
     f->pictureScale = scale;
     f->pictureX = -margin;
+    f->shown = PortShownFrames() + 1;
+    if (GpuReadPictureBusy(GPU_READ_RECORDER)) {
+        skippedPictures[f - frames] = 1;
+        lastPictureTicks = SDL_GetTicksNS();
+        return;
+    }
     SDL_LockMutex(Lock());
     f->pictureToken = ++nextToken;
     SDL_UnlockMutex(lockMutex);
     readSlot = (int)(f - frames);
     readToken = f->pictureToken;
-    GpuReadPictureStart(GPU_READ_RECORDER, x, y, w, h, margin, width, height);
-    f->shown = PortShownFrames() + 1;
+    if (!GpuReadPictureStart(GPU_READ_RECORDER, x, y, w, h, margin, width, height)) {
+        skippedPictures[f - frames] = 1;
+        readSlot = -1;
+    }
     lastPictureTicks = SDL_GetTicksNS();
 }
 
@@ -1148,11 +1171,14 @@ static void Save(void)
     if ((file = fopen(path, "w"))) {
         char info[2048];
         int n = PortGameInfo(info, (int)sizeof(info));
+        int skipped = 0;
+        for (int frame = 0; frame < count; frame++)
+            skipped += skippedPictures[(first + frame) % FRAMES] != 0;
 
         fprintf(file, "{\n  \"version\": \"%s\",\n  %.*s  \"widescreen\": %d,\n  \"frame rate\": %d,\n"
-                      "  \"console depth\": %d,\n  \"recorded frames\": %d\n}\n",
+                      "  \"console depth\": %d,\n  \"recorded frames\": %d,\n  \"skipped previews\": %d\n}\n",
                 PORT_VERSION, n, info, portSettings.widescreen, portSettings.frameRate, portSettings.consoleDepth,
-                count);
+                count, skipped);
         fclose(file);
     }
     PortLog("frame recorder: %d frames saved to %s\n", count, savedDir);

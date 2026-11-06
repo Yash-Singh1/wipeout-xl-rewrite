@@ -3,7 +3,9 @@
 #include "test_ordering_cycle.c"
 #undef main
 PortSettings portSettings;
-static int factor = 12, margin = 32;
+static int factor = 12, margin = 32, race, role;
+int GpuRaceWide(void) { return race; }
+int PortLinkRole(void) { return role; }
 static unsigned textureEpoch;
 int GpuScale(void) { return factor; }
 int PortScreenMargin(void) { return margin; }
@@ -13,6 +15,8 @@ int main(void)
     menuPicture.valid = 1; menuPicture.scale = factor; menuPicture.margin = margin;
     menuPicture.settings = portSettings;
     assert(CanReuseMenuPicture());
+    race = 1; assert(!CanReuseMenuPicture()); race = 0;
+    role = LINK_MASTER; assert(!CanReuseMenuPicture()); role = LINK_NONE;
     recordingBetween = 1; assert(!CanReuseMenuPicture()); recordingBetween = 0;
     factor++; assert(!CanReuseMenuPicture()); factor--;
     margin++; assert(!CanReuseMenuPicture()); margin--;

@@ -520,6 +520,8 @@ static void RecorderTab(void)
     int picturePixelsW = 0, picturePixelsH = 0;
     const uint8_t *picture = f->shown ? FrameCapPicture(frameShown, &picturePixelsW, &picturePixelsH) : nullptr;
     bool hasPicture = picture != nullptr;
+    if (FrameCapPictureSkipped(frameShown))
+        TextWrappedColored(note, "Preview skipped because recording was busy. Frame inspection data is available.");
     // pictureW: the picture's console columns (its pixels are pictureScale times as many each way)
     int pictureScale = hasPicture ? SDL_max(f->pictureScale, 1) : 1;
     int pictureW = hasPicture ? f->pictureW / pictureScale : 320, pictureX = hasPicture ? f->pictureX : 0;

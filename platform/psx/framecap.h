@@ -92,6 +92,7 @@ void FrameCapSave(void);
 
 /* The recording, oldest first. */
 int FrameCapFrameCount(void);
+int FrameCapPictureSkipped(int index); /* encoder overload; inspection records remain available */
 const FrameCapFrame *FrameCapFrameAt(int index);
 /* Materialized view, valid until the next FrameCapVram call or recorder clear. */
 const uint16_t *FrameCapVram(int snapshot);
