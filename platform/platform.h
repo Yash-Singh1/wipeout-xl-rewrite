@@ -90,6 +90,7 @@ int PortFarViewEnabled(void);
 int PortFarFlaresEnabled(void);
 /* main.c: how many fields a start-up logo screen is shown (0 with skip_logos) */
 int PortLogoFields(int fields);
+int PortStartupLoading(void); /* show startup loading messages unless both sequences are skipped */
 
 /* Diagnostics */
 void PortLog(const char *format, ...);
