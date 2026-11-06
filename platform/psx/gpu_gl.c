@@ -30,7 +30,11 @@
 
    HD textures (the player's texture pack, hdtex.c): a textured primitive that the pack has an image for
    carries where that image is in the atlas (an RGBA texture of the images in use, at the framebuffer's scale)
-   and which texels of its page it covers; the shader samples the image there instead of video memory. */
+   and which texels of its page it covers; the shader samples the image there instead of video memory.
+
+   Indexed pages are decoded once into a 16-bit texture array and invalidated when their source or palette
+   changes. Geometry is collected across batch boundaries, uploaded together, then submitted as ordered
+   depth/colour commands. Compatible consecutive commands share a draw; transfers end the sequence. */
 #include <SDL3/SDL.h>
 #include "../port_gl.h"
 #include <stddef.h>
@@ -48,6 +52,8 @@
     X(PFNGLGENBUFFERSPROC, glGenBuffers) \
     X(PFNGLBINDBUFFERPROC, glBindBuffer) \
     X(PFNGLBUFFERDATAPROC, glBufferData) \
+    X(PFNGLTEXIMAGE3DPROC, glTexImage3D) \
+    X(PFNGLTEXSUBIMAGE3DPROC, glTexSubImage3D) \
     X(PFNGLGENVERTEXARRAYSPROC, glGenVertexArrays) \
     X(PFNGLBINDVERTEXARRAYPROC, glBindVertexArray) \
     X(PFNGLENABLEVERTEXATTRIBARRAYPROC, glEnableVertexAttribArray) \
@@ -111,6 +117,8 @@ ASYNC_GL_FUNCTIONS(DECLARE_GL)
 #define glGenBuffers p_glGenBuffers
 #define glBindBuffer p_glBindBuffer
 #define glBufferData p_glBufferData
+#define glTexImage3D p_glTexImage3D
+#define glTexSubImage3D p_glTexSubImage3D
 #define glGenVertexArrays p_glGenVertexArrays
 #define glBindVertexArray p_glBindVertexArray
 #define glEnableVertexAttribArray p_glEnableVertexAttribArray
@@ -238,9 +246,28 @@ static int batchCount;
 static GpuDrawState batchState;
 static int batchDepth; /* a vertex of the batch can write the depth buffer (else Flush leaves out that pass) */
 static int batchPalette; /* every primitive uses batchState's indexed palette and subtractive mode */
-/* Valid only between internal batch flushes. Public flushes end the sequence before
-   clears, transfers, presentation or other code can change the OpenGL bindings. */
-static int drawBindingsValid;
+/* Collect geometry across blend/depth boundaries. Upload it once, then replay the
+   original draw ranges in order. Transfers and public flushes end the sequence. */
+typedef struct DrawRange {
+    int first, count, depth, passes;
+    GpuDrawState state;
+} DrawRange;
+static BatchVertex *queuedVertices;
+static DrawRange *queuedRanges;
+static int queuedCount, queuedCapacity, rangeCount, rangeCapacity;
+static void SubmitRanges(void);
+
+#define DECODED_PAGES 256
+static GLuint decodedTexture;
+static unsigned decodeSequence = 1;
+static struct DecodedPage {
+    uint64_t key;
+    unsigned used;
+    int valid;
+    int x, y, clutX, clutY, depth;
+} decodedPages[DECODED_PAGES];
+static void PagesChanged(int x, int y, int w, int h);
+static void DecodeBatch(void);
 
 /* The shaders are written once for OpenGL 3.3 and OpenGL ES 3 (WebGL 2): Compile() puts the version
    line in front (PORT_GLSL_VERSION); ES needs the precision of floats, integers and integer textures. */
@@ -301,12 +328,14 @@ static const char *fragmentSource =
     "precision highp float;\n"
     "precision highp int;\n"
     "precision highp usampler2D;\n"
+    "precision highp usampler2DArray;\n"
     "#endif\n"
     "in vec4 vColour;\n"
     "in vec3 vTexel;\n"
     "flat in int semiMode;\n"
     "flat in int hudColourOverlay;\n"
     "uniform usampler2D vram;\n"
+    "uniform usampler2DArray decoded;\n"
     "uniform sampler2D glyphs;\n"
     "uniform sampler2D portPages;\n"
     "uniform sampler2D hdAtlas;\n"
@@ -388,7 +417,9 @@ static const char *fragmentSource =
     "        }\n"
     "    }\n"
     "    uint texel;\n"
-    "    if (mode.w == 0) {\n"
+    "    if (mode.x == 2) {\n"
+    "        texel = texelFetch(decoded, ivec3(uv, texturePage.x), 0).r;\n"
+    "    } else if (mode.w == 0) {\n"
     "        uint word = Fetch(texturePage.xy + ivec2(uv.x >> 2, uv.y));\n"
     "        uint index = (word >> uint((uv.x & 3) * 4)) & 15u;\n"
     "        texel = FetchClut(clut.xy + ivec2(int(index), 0));\n"
@@ -546,6 +577,7 @@ int GpuInit(void)
     glUniform1i(uniformGlyphs, 1);
     glUniform1i(uniformHdAtlas, 2);
     glUniform1i(uniformPortPages, 3);
+    glUniform1i(glGetUniformLocation(program, "decoded"), 4);
 
     glGenVertexArrays(1, &vertexArray);
     glBindVertexArray(vertexArray);
@@ -579,6 +611,13 @@ int GpuInit(void)
                     psxVramHigh);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glGenTextures(1, &decodedTexture);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, decodedTexture);
+    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_R16UI, 256, 256, DECODED_PAGES, 0,
+                 GL_RED_INTEGER, GL_UNSIGNED_SHORT, NULL);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
     glGenTextures(1, &glyphTexture);
     glBindTexture(GL_TEXTURE_2D, glyphTexture);
@@ -631,6 +670,7 @@ void GpuVramChanged(int x, int y, int w, int h)
     if (w <= 0 || h <= 0) {
         return;
     }
+    SubmitRanges(); /* completed batches sampled the previous GPU texture */
     PalettesChanged();
     HdTexChanged(x, y, w, h);
     if (x < 0 || y < 0 || right > VRAM_WIDTH || bottom > VRAM_HEIGHT) {
@@ -639,6 +679,7 @@ void GpuVramChanged(int x, int y, int w, int h)
         right = VRAM_WIDTH;
         bottom = VRAM_HEIGHT;
     }
+    PagesChanged(x, y, right - x, bottom - y);
     if (!vramDirty) {
         dirtyLeft = x;
         dirtyTop = y;
@@ -672,6 +713,7 @@ void GpuSetPortPage(int page, const uint32_t *rgba)
 
 void GpuSetGlyphMemory(const uint32_t *rgba)
 {
+    SubmitRanges();
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, glyphTexture);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
@@ -685,15 +727,14 @@ static int vramHighDirty;
 
 void GpuVramHighChanged(void)
 {
+    SubmitRanges();
+    PagesChanged(0, VRAM_HEIGHT, VRAM_WIDTH, VRAM_HEIGHT);
     PalettesChanged();
     vramHighDirty = 1;
 }
 
 static void UploadVram(void)
 {
-    if (vramDirty || vramHighDirty) {
-        drawBindingsValid = 0;
-    }
     if (vramHighDirty) {
         glBindTexture(GL_TEXTURE_2D, vramTexture);
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, VRAM_HEIGHT, VRAM_WIDTH, VRAM_HEIGHT, GL_RED_INTEGER, GL_UNSIGNED_SHORT,
@@ -707,11 +748,10 @@ static void UploadVram(void)
     if (dirtyRight <= dirtyLeft) {
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, VRAM_WIDTH, VRAM_HEIGHT, GL_RED_INTEGER, GL_UNSIGNED_SHORT, psxVram);
     } else {
-        int row;
-        for (row = dirtyTop; row < dirtyBottom; row++) {
-            glTexSubImage2D(GL_TEXTURE_2D, 0, dirtyLeft, row, dirtyRight - dirtyLeft, 1, GL_RED_INTEGER,
-                            GL_UNSIGNED_SHORT, &psxVram[row][dirtyLeft]);
-        }
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, VRAM_WIDTH);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, dirtyLeft, dirtyTop, dirtyRight - dirtyLeft, dirtyBottom - dirtyTop,
+                        GL_RED_INTEGER, GL_UNSIGNED_SHORT, &psxVram[dirtyTop][dirtyLeft]);
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
     }
     vramDirty = 0;
     dirtyLeft = dirtyTop = dirtyRight = dirtyBottom = 0;
@@ -922,19 +962,6 @@ static int SameState(const GpuDrawState *a, const GpuDrawState *b)
     return (a->semi == 2) == (b->semi == 2) && Blended(a) == Blended(b);
 }
 
-/* The premultiplied blend every fragment says how much of what is behind stays in (the shader's Out), or the
-   console's subtraction; the framebuffer's alpha stays as it is. */
-static void SetBlend(int subtract)
-{
-    if (!Blended(&batchState)) {
-        glDisable(GL_BLEND); /* (the shader writes the colour itself: coverage 1, no fade) */
-        return;
-    }
-    glEnable(GL_BLEND);
-    glBlendEquation(subtract ? GL_FUNC_REVERSE_SUBTRACT : GL_FUNC_ADD);
-    glBlendFuncSeparate(GL_ONE, subtract ? GL_ONE : GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
-}
-
 /* The depth buffer's slack: what is drawn after may be this much farther (a fraction of its depth) than what is
    drawn before at that pixel and still be drawn over it, as in the game's order. */
 #define DEPTH_SLACK 0.02f
@@ -970,85 +997,234 @@ static int PalettePasses(const GpuDrawState *s)
     return passes;
 }
 
-static void DrawBatch(int pass)
+/* The shader wraps both texture and palette addresses over the two VRAM halves. */
+static int WrappedOverlap(int a, int length, int b, int size)
 {
-    glUniform1i(uniformPass, pass);
-    SetBlend(pass == 2);
-    glDrawArrays(GL_TRIANGLES, 0, batchCount);
+    return length >= 1024 || size >= 1024 || ((a - b) & 1023) < size || ((b - a) & 1023) < length;
+}
+
+static void PagesChanged(int x, int y, int w, int h)
+{
+    for (int i = 0; i < DECODED_PAGES; i++) {
+        struct DecodedPage *p = &decodedPages[i];
+        if (!p->valid) continue;
+        if ((WrappedOverlap(p->x, p->depth ? 128 : 64, x, w) && WrappedOverlap(p->y, 256, y, h)) ||
+            (WrappedOverlap(p->clutX, p->depth ? 256 : 16, x, w) && WrappedOverlap(p->clutY, 1, y, h))) {
+            p->valid = 0;
+        }
+    }
+}
+
+static uint16_t CpuTexel(int x, int y)
+{
+    return y & 512 ? psxVramHigh[y & 511][x & 1023] : psxVram[y & 511][x & 1023];
+}
+
+/* Cache complete indexed pages as their original 16-bit texels. Colour conversion,
+   modulation, texture windows and semi-transparency stay identical in the shader.
+   Four-way buckets bound lookup work; a layer referenced by queued geometry is
+   pinned until submission, with the original sampler as the overflow fallback. */
+static int DecodedLayer(const BatchVertex *v)
+{
+    uint64_t key = (uint64_t)(v->texture[0] & 1023) | (uint64_t)(v->texture[1] & 1023) << 10 |
+                   (uint64_t)(v->texture[2] & 1023) << 20 | (uint64_t)(v->texture[3] & 1023) << 30 |
+                   (uint64_t)v->mode[2] << 40;
+    unsigned bucket = (unsigned)((key ^ (key >> 13) ^ (key >> 27)) * UINT64_C(0x9e3779b97f4a7c15) >> 58) * 4;
+    int slot = -1;
+    struct DecodedPage *page;
+    static uint16_t pixels[256 * 256];
+
+    for (int i = (int)bucket; i < (int)bucket + 4; i++) {
+        if (decodedPages[i].key == key && decodedPages[i].valid) {
+            decodedPages[i].used = decodeSequence;
+            return i;
+        }
+        if (decodedPages[i].used != decodeSequence &&
+            (slot < 0 || decodedPages[i].used < decodedPages[slot].used)) slot = i;
+    }
+    if (slot < 0) return -1;
+    page = &decodedPages[slot];
+    page->x = v->texture[0]; page->y = v->texture[1];
+    page->clutX = v->texture[2]; page->clutY = v->texture[3];
+    page->depth = v->mode[2];
+    for (int y = 0; y < 256; y++) {
+        for (int x = 0; x < 256; x++) {
+            int shift = page->depth ? 1 : 2, bits = page->depth ? 8 : 4;
+            unsigned word = CpuTexel(page->x + (x >> shift), page->y + y);
+            unsigned index = word >> ((x & ((1 << shift) - 1)) * bits) & ((1 << bits) - 1);
+            pixels[y * 256 + x] = CpuTexel(page->clutX + (int)index, page->clutY);
+        }
+    }
+    glActiveTexture(GL_TEXTURE4);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, decodedTexture);
+    glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, slot, 256, 256, 1, GL_RED_INTEGER, GL_UNSIGNED_SHORT, pixels);
+    glActiveTexture(GL_TEXTURE0);
+    page->key = key;
+    page->used = decodeSequence;
+    page->valid = 1;
+    return slot;
+}
+
+static void DecodeBatch(void)
+{
+    if (HdTexActive()) return;
+    for (int i = 0; i < batchCount; i += 3) {
+        BatchVertex *v = &batch[i];
+        if (v->mode[0] && v->mode[2] < 2 && !v->hd[2]) {
+            int layer = DecodedLayer(v);
+            if (layer >= 0) {
+                for (int k = 0; k < 3; k++) {
+                    v[k].mode[0] = 2;
+                    v[k].texture[0] = (int16_t)layer;
+                }
+            }
+        }
+    }
 }
 
 static void FlushBatch(void)
 {
-    const GpuDrawState *s = &batchState;
-    int passes;
+    DrawRange *range;
 
     if (!batchCount) {
         return;
     }
     UploadVram();
-    passes = batchPalette && !HdTexActive() ? PalettePasses(s) : PALETTE_OPAQUE | PALETTE_BLENDED;
-    if (!drawBindingsValid || HdTexActive()) {
-        glUseProgram(program);
-        BindTarget();
-        glBindVertexArray(vertexArray);
-        glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, vramTexture);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, glyphTexture);
-        glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, hdAtlas);
-        glActiveTexture(GL_TEXTURE3);
-        glBindTexture(GL_TEXTURE_2D, portPagesTexture);
-        glActiveTexture(GL_TEXTURE0);
-        drawBindingsValid = !HdTexActive();
+    DecodeBatch();
+    if (queuedCount + batchCount > queuedCapacity) {
+        queuedCapacity = SDL_max(queuedCapacity * 2, queuedCount + batchCount);
+        queuedVertices = SDL_realloc(queuedVertices, (size_t)queuedCapacity * sizeof(*queuedVertices));
     }
-    glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(batchCount * sizeof(BatchVertex)), batch, GL_STREAM_DRAW);
-    /* The depth buffer: what has a depth is drawn where nothing nearer is, give or take DEPTH_SLACK (the game's own
-       order decides among things at about the same depth: a shadow or a pad on the track). The depth of the batch's
-       opaque texels is written first, so that the batch is tested against itself too: a polygon behind another of
-       the same batch (a far wall in the same batch as the track in front of it) is hidden by it whatever their
-       order in the batch, as by one of an earlier batch. Without it (the console's look) the game's order alone
-       decides. */
-    if (!portSettings.consoleDepth) {
-        glEnable(GL_DEPTH_TEST);
-        if (batchDepth && (passes & PALETTE_OPAQUE) && !(batchState.semi >= 0 && !batchState.textured)) {
-            glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-            glDepthMask(GL_TRUE);
-            glDepthFunc(GL_LESS);
-            glUniform1i(uniformDepthPass, 1);
-            glUniform1i(uniformPass, 3);
-            glDisable(GL_BLEND);
-            glDrawArrays(GL_TRIANGLES, 0, batchCount);
-            glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-        }
-        glDepthFunc(GL_LEQUAL);
-        glDepthMask(GL_FALSE);
-        glUniform1f(uniformDepthPull, 1.0f / (1.0f - DEPTH_SLACK));
-        glUniform1i(uniformDepthPass, 0);
-    } else {
-        glDisable(GL_DEPTH_TEST);
+    if (rangeCount == rangeCapacity) {
+        rangeCapacity = SDL_max(rangeCapacity * 2, 256);
+        queuedRanges = SDL_realloc(queuedRanges, (size_t)rangeCapacity * sizeof(*queuedRanges));
     }
-    if (s->semi == 2) {
-        /* the console's subtraction: what is opaque (texels without the semi-transparency bit) drawn first, then
-           the rest subtracted */
-        if (passes & PALETTE_OPAQUE) {
-            DrawBatch(1);
-        }
-        if (passes & PALETTE_BLENDED) {
-            DrawBatch(2);
-        }
-    } else {
-        DrawBatch(0);
-    }
-    glDisable(GL_DEPTH_TEST);
+    range = &queuedRanges[rangeCount++];
+    range->first = queuedCount;
+    range->count = batchCount;
+    range->depth = batchDepth;
+    range->state = batchState;
+    range->passes = batchPalette && !HdTexActive() ? PalettePasses(&batchState) : PALETTE_OPAQUE | PALETTE_BLENDED;
+    memcpy(queuedVertices + queuedCount, batch, (size_t)batchCount * sizeof(*batch));
+    queuedCount += batchCount;
     batchCount = 0;
+    if (queuedCount >= 131072) SubmitRanges();
+}
+
+typedef struct DrawCommand {
+    int first, count, pass, blend; /* blend: 0 off, 1 premultiplied, 2 subtraction */
+} DrawCommand;
+
+static void ExecuteCommand(const DrawCommand *command, int *previousPass, int *previousBlend)
+{
+    if (!command->count) return;
+    if (command->pass != *previousPass) {
+        int depth = command->pass == 3;
+        glUniform1i(uniformPass, command->pass);
+        glUniform1i(uniformDepthPass, depth);
+        glColorMask(!depth, !depth, !depth, !depth);
+        glDepthMask(depth);
+        glDepthFunc(depth ? GL_LESS : GL_LEQUAL);
+        *previousPass = command->pass;
+    }
+    if (command->blend != *previousBlend) {
+        if (!command->blend) {
+            glDisable(GL_BLEND);
+        } else {
+            glEnable(GL_BLEND);
+            glBlendEquation(command->blend == 2 ? GL_FUNC_REVERSE_SUBTRACT : GL_FUNC_ADD);
+            glBlendFuncSeparate(GL_ONE, command->blend == 2 ? GL_ONE : GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
+        }
+        *previousBlend = command->blend;
+    }
+    glDrawArrays(GL_TRIANGLES, command->first, command->count);
+}
+
+/* Coalesce only consecutive commands with identical raster state and contiguous
+   vertices. In particular, a depth write or the opaque part of a mixed subtractive
+   primitive remains a barrier. No triangles change order. */
+static void AppendCommand(DrawCommand *pending, DrawCommand next, int *pass, int *blend)
+{
+    if (pending->count && pending->first + pending->count == next.first &&
+        pending->pass == next.pass && pending->blend == next.blend) {
+        pending->count += next.count;
+    } else {
+        ExecuteCommand(pending, pass, blend);
+        *pending = next;
+    }
+}
+
+static void SubmitRanges(void)
+{
+    DrawCommand pending = {0};
+    int previousPass = -1, previousBlend = -1;
+
+    if (!rangeCount) return;
+    glUseProgram(program);
+    BindTarget();
+    glBindVertexArray(vertexArray);
+    glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, vramTexture);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, glyphTexture);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, hdAtlas);
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, portPagesTexture);
+    glActiveTexture(GL_TEXTURE4);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, decodedTexture);
+    glActiveTexture(GL_TEXTURE0);
+    glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(queuedCount * sizeof(BatchVertex)), queuedVertices, GL_STREAM_DRAW);
+    glUniform1f(uniformDepthPull, 1.0f / (1.0f - DEPTH_SLACK));
+    if (portSettings.consoleDepth) glDisable(GL_DEPTH_TEST);
+    else glEnable(GL_DEPTH_TEST);
+
+    for (int i = 0; i < rangeCount; i++) {
+        const DrawRange *range = &queuedRanges[i];
+        const GpuDrawState *s = &range->state;
+        int passes = range->passes;
+        DrawCommand command = {range->first, range->count, 0, Blended(s)};
+
+        /* Keep each original batch's depth prepass ahead of its colours. The
+           two-percent depth slack and the game's ordering still decide visibility. */
+        if (!portSettings.consoleDepth && range->depth && (passes & PALETTE_OPAQUE) &&
+            !(s->semi >= 0 && !s->textured)) {
+            command.pass = 3;
+            command.blend = 0;
+            AppendCommand(&pending, command, &previousPass, &previousBlend);
+        }
+        command.pass = 0;
+        command.blend = Blended(s);
+        if (s->semi == 2) {
+            if (passes & PALETTE_OPAQUE) {
+                /* Without any semi texels, pass zero is equivalent to pass one
+                   and can share a draw with the next ordinary colour command. */
+                command.pass = passes & PALETTE_BLENDED ? 1 : 0;
+                AppendCommand(&pending, command, &previousPass, &previousBlend);
+            }
+            if (passes & PALETTE_BLENDED) {
+                command.pass = 2;
+                command.blend = 2;
+                AppendCommand(&pending, command, &previousPass, &previousBlend);
+            }
+        } else {
+            AppendCommand(&pending, command, &previousPass, &previousBlend);
+        }
+    }
+    ExecuteCommand(&pending, &previousPass, &previousBlend);
+    glDisable(GL_DEPTH_TEST);
+    queuedCount = rangeCount = 0;
+    if (++decodeSequence == 0) {
+        for (int i = 0; i < DECODED_PAGES; i++) decodedPages[i].used = 0;
+        decodeSequence = 1;
+    }
 }
 
 static void Flush(void)
 {
     FlushBatch();
-    drawBindingsValid = 0;
+    SubmitRanges();
 }
 
 void GpuFlush(void)
@@ -1074,8 +1250,8 @@ void GpuSetDrawArea(int x, int y, int w, int h, int offsetX, int offsetY)
     areaWide = InScreenColumns(x, w) && x >= 0 && x + w <= SCREEN_COLUMNS;
 }
 
-/* Semi-transparent textured primitives must not share a batch: each one's
-   opaque and blended passes have to come before the next primitive. */
+/* Subtractive textured primitives retain an opaque/blended pass boundary.
+   SubmitRanges only combines the resulting commands when their order permits it. */
 static GpuDrawState primitiveState; /* the primitive being added */
 static uint16_t primitiveHd[4];     /* ... its HD texture (BatchVertex) */
 static int16_t primitiveHdTexels[4];
@@ -1189,8 +1365,6 @@ static void FindHd(const GpuDrawState *state, const GpuVertex *vertices, int cou
     if (!HdTexActive()) {
         return;
     }
-    /* Atlas uploads can change texture bindings before this primitive is flushed. */
-    drawBindingsValid = 0;
     if (!HdTexFind(state->pageX, state->pageY, state->depth, state->clutX, state->clutY, u0, v0, u1, v1, &hit) ||
         !HdPlaced(hit.image, at)) {
         return;
@@ -1322,6 +1496,31 @@ void GpuTriangles(const GpuDrawState *given, const GpuVertex *vertices, int coun
               maxX >= (float)SCREEN_COLUMNS;
     /* ... and a menu's backdrop is enlarged about the middle of the draw area to fill them, keeping its shape */
     backdrop = backdropNext && areaWide && areaX == 0 && areaW == SCREEN_COLUMNS && !perspective && !GpuRaceWide();
+    {
+        float left = areaWide && areaX == 0 && areaW == SCREEN_COLUMNS ? (float)-wideMargin : (float)areaX;
+        float right = areaWide && areaX == 0 && areaW == SCREEN_COLUMNS ? (float)(SCREEN_COLUMNS + wideMargin)
+                                                                      : (float)(areaX + areaW);
+        float x0 = minX, x1 = maxX, y0 = minY, y1 = maxY;
+        if (stretch) {
+            x0 = x0 * WideWidth() / SCREEN_COLUMNS - wideMargin;
+            x1 = x1 * WideWidth() / SCREEN_COLUMNS - wideMargin;
+        } else if (backdrop) {
+            float zoom = (float)WideWidth() / SCREEN_COLUMNS, middle = areaY + areaH * 0.5f;
+            x0 = SCREEN_COLUMNS * 0.5f + (x0 - SCREEN_COLUMNS * 0.5f) * zoom;
+            x1 = SCREEN_COLUMNS * 0.5f + (x1 - SCREEN_COLUMNS * 0.5f) * zoom;
+            y0 = middle + (y0 - middle) * zoom;
+            y1 = middle + (y1 - middle) * zoom;
+        }
+        if (x1 < left - 1 || x0 > right + 1 || y1 < areaY - 1 || y0 > areaY + areaH + 1) {
+            /* Keep the original batch boundary: merging its neighbours could
+               change how their depth prepasses interact, even though this
+               primitive itself cannot cover a sample in the draw area. */
+            Begin(state, count);
+            drawnSincePresent |= !interpolatingDraw;
+            if (areaWide) wideDirty = 1;
+            return;
+        }
+    }
     FindHd(state, vertices, count);
     Begin(state, count);
     for (i = 0; i < count; i++) {

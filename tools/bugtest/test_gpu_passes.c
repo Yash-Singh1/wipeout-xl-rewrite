@@ -84,6 +84,75 @@ static void PaletteChanges(void)
     }
 }
 
+/* More live palettes than cache layers, then texture and CLUT writes with both
+   completed batches and a final pending primitive. Compare with raw VRAM sampling. */
+static void PageChanges(void)
+{
+    uint64_t expected = 0;
+    int savedReference = referenceMode;
+    hdEnabled = 0;
+    SetWideMargin(0);
+    GpuSetDrawArea(0, 0, 128, 96, 0, 0);
+    for (int raw = 0; raw < 2; raw++) {
+        referenceMode = raw;
+        for (int y = 0; y < VRAM_HEIGHT; y++) {
+            for (int x = 0; x < VRAM_WIDTH; x++) {
+                psxVram[y][x] = psxVramHigh[y][x] = 0x1111;
+            }
+        }
+        for (int i = 0; i < 512; i++) {
+            psxVram[300 + i / 64][(i % 64) * 16 + 1] = 0x8001u + (i * 31u & 0x7fffu);
+        }
+        GpuVramChanged(0, 0, VRAM_WIDTH, VRAM_HEIGHT);
+        GpuVramHighChanged();
+        GpuClearArea(0, 0, 128, 96, 160, 160, 160);
+        for (int i = 0; i < 516; i++) {
+            GpuDrawState s = {.semi = 2, .textured = 1, .raw = 1, .depth = i & 1,
+                              .pageX = 1008, .pageY = 1008,
+                              .clutX = (i % 64) * 16, .clutY = 300 + i / 64};
+            GpuVertex v[3] = {{.x = i % 110, .y = i % 70, .u = 0, .v = 0, .a = 255},
+                              {.x = i % 110 + 16, .y = i % 70, .u = 31, .v = 0, .a = 255},
+                              {.x = i % 110, .y = i % 70 + 16, .u = 0, .v = 31, .a = 255}};
+            for (int k = 0; k < 3; k++) v[k].r = v[k].g = v[k].b = 128;
+            GpuTriangles(&s, v, 3);
+            if (i == 510) {
+                psxVramHigh[496][1008] = 0x2222;
+                GpuVramHighChanged();
+                psxVram[300][1] = 0x801f;
+                GpuVramChanged(1, 300, 1, 1);
+                psxVram[0][0] = 0x3333; /* the wrapped part of the page */
+                GpuVramChanged(0, 0, 1, 1);
+            }
+        }
+        int w, h;
+        const uint8_t *pixels = GpuReadArea(0, 0, 128, 96, &w, &h);
+        uint64_t result = Hash(pixels, (size_t)w * h * 4);
+        if (!raw) expected = result;
+        else assert(result == expected);
+        assert(glGetError() == GL_NO_ERROR);
+    }
+    referenceMode = savedReference;
+}
+
+static void OffscreenPicture(void)
+{
+    GpuDrawState state = {.semi = -1};
+    GpuVertex v[3] = {{.x = 500, .y = 0, .a = 255},
+                      {.x = 520, .y = 0, .a = 255},
+                      {.x = 500, .y = 20, .a = 255}};
+    SetWideMargin(16);
+    GpuSetDrawArea(0, 0, 320, 240, 0, 0);
+    GpuClearArea(0, 0, 320, 240, 32, 48, 64);
+    drawnSincePresent = wideDirty = 0;
+    GpuTriangles(&state, v, 3);
+    GpuFlush();
+    assert(drawnSincePresent && wideDirty);
+    int w, h;
+    const uint8_t *pixel = GpuReadArea(2, 2, 1, 1, &w, &h);
+    assert(pixel[0] == 32 && pixel[1] == 48 && pixel[2] == 64);
+    SetWideMargin(0);
+}
+
 int main(int argc, char **argv)
 {
     assert(SDL_Init(SDL_INIT_VIDEO));
@@ -97,6 +166,8 @@ int main(int argc, char **argv)
     portSettings.renderScale = 1;
     assert(GpuInit());
     PaletteChanges();
+    PageChanges();
+    OffscreenPicture();
     for (int i = 0; i < 16 * 16; i++) {
         hdPixels[i * 4] = i; hdPixels[i * 4 + 1] = 255 - i; hdPixels[i * 4 + 2] = 128;
         hdPixels[i * 4 + 3] = i % 3 == 0 ? 0 : i % 3 == 1 ? 128 : 255;

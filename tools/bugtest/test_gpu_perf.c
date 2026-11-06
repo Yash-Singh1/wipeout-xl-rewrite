@@ -1,28 +1,18 @@
-/* Paired offscreen renderer benchmark. Alternates the original pass/binding path and
-   the optimized path in one context, with identical geometry, textures and settings.
+/* Paired synthetic renderer benchmark. Alternates conservative texture sampling and
+   pass selection with the caches enabled, using the current submission path on both
+   sides. This is not a comparison with a historical renderer or whole-game FPS.
    Run separately from regression tests; prints latency samples for each render scale. */
 #define main PassRegressionMain
 #include "test_gpu_passes.c"
 #undef main
 
-static PFNGLUSEPROGRAMPROC savedUseProgram;
-static void APIENTRY ReferenceUseProgram(GLuint name)
-{
-    savedUseProgram(name);
-    if (referenceMode && name == program) {
-        /* The original renderer reset these constant sampler units for every batch. */
-        glUniform1i(uniformVram, 0); glUniform1i(uniformGlyphs, 1);
-        glUniform1i(uniformHdAtlas, 2); glUniform1i(uniformPortPages, 3);
-    }
-}
-
 enum { TRIANGLES = 1024 };
 static GpuDrawState states[TRIANGLES];
 static GpuVertex vertices[TRIANGLES][3];
 
-static uint64_t Picture(int original)
+static uint64_t Picture(int conservative)
 {
-    referenceMode = original;
+    referenceMode = conservative;
     hdEnabled = 0; /* The reference activates the conservative path without supplying HD art. */
     GpuSetDrawArea(0, 0, 320, 240, 0, 0);
     uint64_t start = SDL_GetTicksNS();
@@ -47,8 +37,6 @@ int main(void)
     assert(context);
     portSettings.renderScale = 1;
     assert(GpuInit());
-    savedUseProgram = p_glUseProgram;
-    p_glUseProgram = ReferenceUseProgram;
     for (int y = 128; y < 384; y++) for (int x = 512; x < 768; x++) psxVram[y][x] = Next();
     GpuVramChanged(512, 128, 256, 256);
     for (int kind = 0; kind < 4; kind++) {
@@ -77,7 +65,7 @@ int main(void)
     }
     sceneWide = 1; SetWideMargin(32);
     const int factors[] = {1, 6, 12};
-    puts("scale,pair,reference_ms,optimized_ms");
+    puts("scale,pair,conservative_ms,optimized_ms");
     for (int f = 0; f < 3; f++) {
         if (factors[f] > GpuMaxScale()) continue;
         SetScale(factors[f]); SetWideMargin(32);

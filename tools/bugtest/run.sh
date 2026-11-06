@@ -32,6 +32,10 @@ ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard \
     $(pkg-config --libs sdl3) -o "$test_build/ordering_cycle"
 "$test_build/ordering_cycle"
 
+${CC:-cc} -O2 -ffunction-sections -fdata-sections $discard \
+    tools/bugtest/test_projection_cache.c -lm -o "$test_build/projection_cache"
+"$test_build/projection_cache"
+
 ${CC:-cc} -O1 -Iplatform $(pkg-config --cflags sdl3) tools/bugtest/test_downsample_settings.c \
     $(pkg-config --libs sdl3) -o "$test_build/downsample_settings"
 "$test_build/downsample_settings"

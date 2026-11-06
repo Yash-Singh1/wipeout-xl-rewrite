@@ -267,6 +267,18 @@ typedef struct Binding {
     uint32_t handle;
 } Binding;
 static Binding bindings[BINDING_SLOTS];
+static uint64_t bindingRevision;
+
+/* Interpolated pictures resolve the same packet corners repeatedly. Keep record
+   indices, so changes to projection values are still read from the live records. */
+#define RESOLVE_CACHE_SLOTS 4096
+static struct ResolveCache {
+    uint32_t frame, xy[GTE_RESOLVE_MAX];
+    uint64_t bindings;
+    const void *addresses[GTE_RESOLVE_MAX];
+    int records, count, chosen[GTE_RESOLVE_MAX], bound;
+    unsigned mask;
+} resolveCache[RESOLVE_CACHE_SLOTS];
 
 
 static PreciseSlot slots[PRECISE_SLOTS];
@@ -950,6 +962,7 @@ void GteBindPrecise(const void *address, uint32_t handle)
             return; /* nothing to undo */
         }
         if (b->frame != preciseFrame || b->address == address) {
+            if (b->frame != preciseFrame || b->address != address || b->handle != handle) bindingRevision++;
             b->address = address;
             b->frame = preciseFrame;
             b->handle = handle;
@@ -1050,9 +1063,9 @@ int GteResolvedBound(void)
     return resolvedBound;
 }
 
-unsigned GteResolvePrecise(const uint32_t *xy, const void *const *addresses, int count, GtePrecise *out)
+static unsigned ResolvePrecise(const uint32_t *xy, const void *const *addresses, int count, int32_t *chosen)
 {
-    int32_t candidates[GTE_RESOLVE_MAX][PRECISE_CANDIDATES], chosen[GTE_RESOLVE_MAX];
+    int32_t candidates[GTE_RESOLVE_MAX][PRECISE_CANDIDATES];
     int found[GTE_RESOLVE_MAX], i, j, anchors = 0, any = 0, bound = 0;
     int32_t sorted[GTE_RESOLVE_MAX], middle;
     unsigned mask = 0;
@@ -1155,11 +1168,49 @@ unsigned GteResolvePrecise(const uint32_t *xy, const void *const *addresses, int
     middle = sorted[(j - 1) / 2];
     for (i = 0; i < count; i++) {
         if (chosen[i] >= 0 && (j == 1 || Distance(chosen[i], middle) <= PRECISE_SPREAD)) {
-            out[i] = records[chosen[i]].value;
             mask |= 1u << i;
         }
     }
     return mask;
+}
+
+unsigned GteResolvePrecise(const uint32_t *xy, const void *const *addresses, int count, GtePrecise *out)
+{
+    uintptr_t hash;
+    struct ResolveCache *entry;
+    int hit;
+
+    if (count <= 0) {
+        resolvedBound = 0;
+        return 0;
+    }
+    hash = (uintptr_t)(addresses ? addresses[0] : NULL) ^ xy[0];
+    for (int i = 1; i < count; i++) hash = hash * 33u + xy[i] + (uintptr_t)(addresses ? addresses[i] : NULL);
+    hash ^= hash >> 17;
+    entry = &resolveCache[hash & (RESOLVE_CACHE_SLOTS - 1)];
+    hit = entry->frame == preciseFrame && entry->records == recordCount &&
+          entry->bindings == bindingRevision && entry->count == count;
+    for (int i = 0; hit && i < count; i++) {
+        hit = entry->xy[i] == xy[i] && entry->addresses[i] == (addresses ? addresses[i] : NULL);
+    }
+    if (!hit) {
+        for (int i = 0; i < count; i++) {
+            entry->xy[i] = xy[i];
+            entry->addresses[i] = addresses ? addresses[i] : NULL;
+            entry->chosen[i] = -1;
+        }
+        entry->mask = ResolvePrecise(xy, addresses, count, entry->chosen);
+        entry->bound = resolvedBound;
+        entry->frame = preciseFrame;
+        entry->records = recordCount;
+        entry->bindings = bindingRevision;
+        entry->count = count;
+    }
+    resolvedBound = entry->bound;
+    for (int i = 0; i < count; i++) {
+        if (entry->mask & (1u << i)) out[i] = records[entry->chosen[i]].value;
+    }
+    return entry->mask;
 }
 
 uint32_t GteRecordProjection(uint32_t sxy, float x, float y, float z, float fade)
@@ -1218,6 +1269,7 @@ void GteClearPrecise(void)
     preciseFrame++;
     if (preciseFrame == 0xFFFFFFFFu) {
         memset(slots, 0, sizeof(slots));
+        memset(resolveCache, 0, sizeof(resolveCache));
         preciseFrame = 1;
     }
 }

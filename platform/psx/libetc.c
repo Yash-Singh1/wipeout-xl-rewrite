@@ -51,6 +51,7 @@ static uint64_t paceField; /* the field the real-time pacing counts from (after 
    rendering, so a slow picture consumes its budget rather than adding another full wait afterward. */
 static uint64_t nextPresentation, presentationStarted;
 static int presentationPending, presentationCap;
+static uint64_t pictureCost = 2000000;
 
 static uint64_t PresentationPeriod(void)
 {
@@ -119,17 +120,18 @@ static void Pace(void)
     if (due > now && PsxCanInterpolate()) {
         /* frame interpolation: pictures between the game's frames until the field is due, as many as the
            settings allow (each waits for the display's refresh with VSync) */
-        static uint64_t pictureCost = 2000000;
-
         while ((now = SDL_GetTicksNS()) < due) {
             uint64_t next = PsxNextPresentation();
 
-            if (next > now || now + pictureCost / 2 > due) {
+            if (next > now || (portSettings.frameRate != FRAME_RATE_UNCAPPED && now + pictureCost / 2 > due)) {
                 /* not yet (the cap), or no time for one before the field: the game's time comes first (half a picture
                    late at most: sleeping the rest of the field instead left the display idle for up to a picture) */
                 SDL_DelayPrecise(((next > now && next < due) ? next : due) - now);
                 continue;
             }
+            /* Uncapped pictures can cross a field deadline. Field services late
+               fields without presenting again, keeping simulation time while
+               using the renderer's throughput rather than the field's gaps. */
             PsxDrawInterpolated();
             /* what a picture takes, drawing and showing it (with VSync, the wait for the display's refresh) */
             pictureCost = (pictureCost * 7 + (SDL_GetTicksNS() - now)) / 8;
@@ -157,7 +159,15 @@ static void Field(void)
        is paced by its master, and deterministic captures must still include every field. */
     if (!startTicks || portConfig.fixedStep || PortLinkRole() == LINK_SLAVE ||
         SDL_GetTicksNS() <= startTicks + (uint64_t)((fields - paceField + 0.5) * FIELD_SECONDS * 1e9)) {
+        uint64_t began = SDL_GetTicksNS();
+        int shown = PortShownFrames();
         PsxShowDisplay();
+        /* Mandatory field pictures keep the estimate fresh even when it is too
+           high to admit an extra picture. Otherwise one stall can suppress
+           interpolation forever, since only extra pictures used to update it. */
+        if (PortShownFrames() != shown) {
+            pictureCost = (pictureCost * 7 + (SDL_GetTicksNS() - began)) / 8;
+        }
     }
     if (!PortPumpEvents()) {
         exit(0);
