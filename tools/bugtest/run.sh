@@ -47,6 +47,10 @@ if [ "${WIPEOUT_TEST_GL:-0}" = 1 ]; then
         -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) tools/bugtest/test_gpu_downsample.c \
         $(pkg-config --libs sdl3) $gl_libs -lm -o "$test_build/gpu_downsample"
     "$test_build/gpu_downsample"
+    ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard \
+        -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) tools/bugtest/test_gpu_passes.c \
+        $(pkg-config --libs sdl3) $gl_libs -lm -o "$test_build/gpu_passes"
+    "$test_build/gpu_passes"
 fi
 
 ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Wno-deprecated-declarations \

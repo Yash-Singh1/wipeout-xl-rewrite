@@ -193,6 +193,12 @@ static GLuint program, vertexArray, vertexBuffer;
 static GLint uniformVram, uniformGlyphs, uniformPortPages, uniformHdAtlas, uniformPass, uniformTarget;
 static GLint uniformDepthPull, uniformDepthPass;
 static int vramDirty = 1;
+static unsigned paletteEpoch = 1;
+static struct {
+    unsigned epoch, key;
+    int passes;
+} paletteCache[256];
+
 static GLuint windowFramebuffer;     /* the window's own: 0, but on iOS SDL's view has one of its own */
 static int dirtyLeft, dirtyTop, dirtyRight, dirtyBottom;
 static int areaX, areaY, areaW = VRAM_WIDTH, areaH = VRAM_HEIGHT;
@@ -231,6 +237,10 @@ static BatchVertex batch[BATCH_VERTICES];
 static int batchCount;
 static GpuDrawState batchState;
 static int batchDepth; /* a vertex of the batch can write the depth buffer (else Flush leaves out that pass) */
+static int batchPalette; /* every primitive uses batchState's indexed palette and subtractive mode */
+/* Valid only between internal batch flushes. Public flushes end the sequence before
+   clears, transfers, presentation or other code can change the OpenGL bindings. */
+static int drawBindingsValid;
 
 /* The shaders are written once for OpenGL 3.3 and OpenGL ES 3 (WebGL 2): Compile() puts the version
    line in front (PORT_GLSL_VERSION); ES needs the precision of floats, integers and integer textures. */
@@ -606,6 +616,14 @@ int GpuInit(void)
     return 1;
 }
 
+static void PalettesChanged(void)
+{
+    if (++paletteEpoch == 0) {
+        memset(paletteCache, 0, sizeof(paletteCache));
+        paletteEpoch = 1;
+    }
+}
+
 void GpuVramChanged(int x, int y, int w, int h)
 {
     int right = x + w, bottom = y + h;
@@ -613,6 +631,7 @@ void GpuVramChanged(int x, int y, int w, int h)
     if (w <= 0 || h <= 0) {
         return;
     }
+    PalettesChanged();
     HdTexChanged(x, y, w, h);
     if (x < 0 || y < 0 || right > VRAM_WIDTH || bottom > VRAM_HEIGHT) {
         x = 0;
@@ -666,11 +685,15 @@ static int vramHighDirty;
 
 void GpuVramHighChanged(void)
 {
+    PalettesChanged();
     vramHighDirty = 1;
 }
 
 static void UploadVram(void)
 {
+    if (vramDirty || vramHighDirty) {
+        drawBindingsValid = 0;
+    }
     if (vramHighDirty) {
         glBindTexture(GL_TEXTURE_2D, vramTexture);
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, VRAM_HEIGHT, VRAM_WIDTH, VRAM_HEIGHT, GL_RED_INTEGER, GL_UNSIGNED_SHORT,
@@ -916,6 +939,37 @@ static void SetBlend(int subtract)
    drawn before at that pixel and still be drawn over it, as in the game's order. */
 #define DEPTH_SLACK 0.02f
 
+enum { PALETTE_OPAQUE = 1, PALETTE_BLENDED = 2 };
+
+/* A palette bounds the possible texels even when the texture wraps or uses a texture
+   window. Check after UploadVram, against the same data the shader sees. Mixed palettes,
+   direct-colour textures and HD replacements keep the original passes and draw ordering. */
+static int PalettePasses(const GpuDrawState *s)
+{
+    unsigned key = (unsigned)(s->clutX & 1023) | (unsigned)(s->clutY & 1023) << 10 | (unsigned)s->depth << 20;
+    unsigned slot = (key ^ (key >> 8) ^ (key >> 16)) & 255;
+    int i, passes = 0, count = s->depth ? 256 : 16;
+
+    if (paletteCache[slot].epoch == paletteEpoch && paletteCache[slot].key == key) {
+        return paletteCache[slot].passes;
+    }
+    for (i = 0; i < count; i++) {
+        int x = (s->clutX + i) & (VRAM_WIDTH - 1), y = s->clutY & (VRAM_HEIGHT - 1);
+        uint16_t colour = s->clutY & VRAM_HEIGHT ? psxVramHigh[y][x] : psxVram[y][x];
+
+        if (colour) {
+            passes |= colour & 0x8000 ? PALETTE_BLENDED : PALETTE_OPAQUE;
+        }
+        if (passes == (PALETTE_OPAQUE | PALETTE_BLENDED)) {
+            break;
+        }
+    }
+    paletteCache[slot].epoch = paletteEpoch;
+    paletteCache[slot].key = key;
+    paletteCache[slot].passes = passes;
+    return passes;
+}
+
 static void DrawBatch(int pass)
 {
     glUniform1i(uniformPass, pass);
@@ -923,32 +977,33 @@ static void DrawBatch(int pass)
     glDrawArrays(GL_TRIANGLES, 0, batchCount);
 }
 
-static void Flush(void)
+static void FlushBatch(void)
 {
     const GpuDrawState *s = &batchState;
+    int passes;
 
     if (!batchCount) {
         return;
     }
     UploadVram();
-    glUseProgram(program);
-    BindTarget();
-    glBindVertexArray(vertexArray);
-    glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+    passes = batchPalette && !HdTexActive() ? PalettePasses(s) : PALETTE_OPAQUE | PALETTE_BLENDED;
+    if (!drawBindingsValid || HdTexActive()) {
+        glUseProgram(program);
+        BindTarget();
+        glBindVertexArray(vertexArray);
+        glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, vramTexture);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, glyphTexture);
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, hdAtlas);
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D, portPagesTexture);
+        glActiveTexture(GL_TEXTURE0);
+        drawBindingsValid = !HdTexActive();
+    }
     glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(batchCount * sizeof(BatchVertex)), batch, GL_STREAM_DRAW);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, vramTexture);
-    glUniform1i(uniformVram, 0);
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, glyphTexture);
-    glUniform1i(uniformGlyphs, 1);
-    glActiveTexture(GL_TEXTURE2);
-    glBindTexture(GL_TEXTURE_2D, hdAtlas);
-    glUniform1i(uniformHdAtlas, 2);
-    glActiveTexture(GL_TEXTURE3);
-    glBindTexture(GL_TEXTURE_2D, portPagesTexture);
-    glUniform1i(uniformPortPages, 3);
-    glActiveTexture(GL_TEXTURE0);
     /* The depth buffer: what has a depth is drawn where nothing nearer is, give or take DEPTH_SLACK (the game's own
        order decides among things at about the same depth: a shadow or a pad on the track). The depth of the batch's
        opaque texels is written first, so that the batch is tested against itself too: a polygon behind another of
@@ -957,7 +1012,7 @@ static void Flush(void)
        decides. */
     if (!portSettings.consoleDepth) {
         glEnable(GL_DEPTH_TEST);
-        if (batchDepth && !(batchState.semi >= 0 && !batchState.textured)) {
+        if (batchDepth && (passes & PALETTE_OPAQUE) && !(batchState.semi >= 0 && !batchState.textured)) {
             glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
             glDepthMask(GL_TRUE);
             glDepthFunc(GL_LESS);
@@ -977,13 +1032,23 @@ static void Flush(void)
     if (s->semi == 2) {
         /* the console's subtraction: what is opaque (texels without the semi-transparency bit) drawn first, then
            the rest subtracted */
-        DrawBatch(1);
-        DrawBatch(2);
+        if (passes & PALETTE_OPAQUE) {
+            DrawBatch(1);
+        }
+        if (passes & PALETTE_BLENDED) {
+            DrawBatch(2);
+        }
     } else {
         DrawBatch(0);
     }
     glDisable(GL_DEPTH_TEST);
     batchCount = 0;
+}
+
+static void Flush(void)
+{
+    FlushBatch();
+    drawBindingsValid = 0;
 }
 
 void GpuFlush(void)
@@ -1124,6 +1189,8 @@ static void FindHd(const GpuDrawState *state, const GpuVertex *vertices, int cou
     if (!HdTexActive()) {
         return;
     }
+    /* Atlas uploads can change texture bindings before this primitive is flushed. */
+    drawBindingsValid = 0;
     if (!HdTexFind(state->pageX, state->pageY, state->depth, state->clutX, state->clutY, u0, v0, u1, v1, &hit) ||
         !HdPlaced(hit.image, at)) {
         return;
@@ -1144,11 +1211,16 @@ static void Begin(const GpuDrawState *state, int vertices)
 {
     if (batchCount && (!SameState(state, &batchState) || batchCount + vertices > BATCH_VERTICES ||
                        (state->textured && state->semi == 2))) {
-        Flush();
+        FlushBatch();
     }
     if (!batchCount) {
         batchState = *state;
         batchDepth = 0;
+        batchPalette = state->textured && state->semi == 2 && !primitiveHd[2] &&
+                       (state->depth == 0 || state->depth == 1);
+    } else if (!state->textured || state->semi != 2 || state->depth != batchState.depth ||
+               state->clutX != batchState.clutX || state->clutY != batchState.clutY || primitiveHd[2]) {
+        batchPalette = 0;
     }
     primitiveState = *state;
 }
