@@ -630,7 +630,8 @@ static void LinkArrow(Canvas *c)
     }
 }
 
-/* The reflections of chrome (chrome.tim): grey clouds. */
+/* The reflection map needs deep shadows as well as highlights. A grey pedestal
+   washes out the Saturn logos' dark bevels after the gold modulation. */
 static void Chrome(Canvas *c)
 {
     int x, y;
@@ -638,7 +639,7 @@ static void Chrome(Canvas *c)
     for (y = 0; y < c->h; y++) {
         for (x = 0; x < c->w; x++) {
             float v = SmoothNoise(x / 16.0f, y / 6.0f) * 0.6f + SmoothNoise(x / 6.0f, y / 3.0f) * 0.4f;
-            unsigned g = (unsigned)(32 + 200 * v);
+            unsigned g = (unsigned)(248 * SDL_clamp((v - 0.35f) * 3.0f, 0.0f, 1.0f));
 
             Plot(c, x, y, g | g << 8 | g << 16 | 0xff000000u);
         }

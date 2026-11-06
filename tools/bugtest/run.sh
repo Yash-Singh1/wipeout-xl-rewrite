@@ -149,6 +149,10 @@ ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Iplatform \
     -include platform/include/port.h -iquote game/include $(pkg-config --cflags sdl3) \
     tools/bugtest/test_saturn_font.c game/data/ships_data.c $(pkg-config --libs sdl3) -o "$test_build/saturn_font"
 "$test_build/saturn_font"
+${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Iplatform -Iplatform/psx -iquote game/include \
+    $(pkg-config --cflags sdl3) tools/bugtest/test_saturn_text.c platform/psx/gte.c platform/psx/gte_tables.c \
+    $(pkg-config --libs sdl3) -lm -o "$test_build/saturn_text"
+"$test_build/saturn_text"
 ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Iplatform $(pkg-config --cflags sdl3) \
     tools/bugtest/test_saturn_art.c $(pkg-config --libs sdl3) -o "$test_build/saturn_art"
 "$test_build/saturn_art"

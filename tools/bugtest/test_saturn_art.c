@@ -69,5 +69,14 @@ int main(void)
         }
         assert(ink == 1);
     }
-    puts("Saturn HUD divider alignment and all thirteen pipe sprite frames: OK");
+    Canvas reflection = {64, 64, pixels};
+    Chrome(&reflection);
+    int dark = 0, bright = 0;
+    for (int i = 0; i < 64 * 64; i++) {
+        dark += (pixels[i] & 255) < 16;
+        bright += (pixels[i] & 255) > 232;
+        assert(pixels[i] >> 24 == 255 && Ps1Colour(pixels[i]) != 0);
+    }
+    assert(dark > 100 && bright > 100);
+    puts("Saturn HUD alignment, thirteen pipe sprites and opaque dark/bright reflections: OK");
 }
