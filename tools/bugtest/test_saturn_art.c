@@ -27,6 +27,22 @@ unsigned char *SaturnVideoAt(SaturnVideo *v, unsigned address, size_t bytes)
     return NULL;
 }
 
+static int uploads;
+static unsigned short uploaded[512];
+int LoadImage(RECT *rect, u_long *data)
+{
+    if (rect->h == 128) {
+        assert(rect->x == 456 && rect->y == 808 && rect->w == 4);
+        memcpy(uploaded, data, sizeof(uploaded));
+    } else {
+        assert(rect->x == 784 && rect->y == 1002 && rect->w == 16 && rect->h == 1);
+        const unsigned short *p = (const unsigned short *)data;
+        assert(p[0] == 0 && p[1] == 31 && p[2] == 0x8000);
+    }
+    uploads++;
+    return 0;
+}
+
 int main(void)
 {
     loaded = 1; video = (SaturnVideo *)vdp1; hudMap = map; hudMapSize = sizeof(map);
@@ -78,5 +94,22 @@ int main(void)
         assert(pixels[i] >> 24 == 255 && Ps1Colour(pixels[i]) != 0);
     }
     assert(dark > 100 && bright > 100);
-    puts("Saturn HUD alignment, thirteen pipe sprites and opaque dark/bright reflections: OK");
+    unsigned char lightModels[2048] = {0};
+    models = lightModels; modelsSize = sizeof(lightModels);
+    pieces = sprites = map;
+    assert(!PortSaturnLightFrame(0, 0, 0, 0, 0));
+    assert(!PortSaturnLightFrame(0, 0, 0, 0, 13));
+    for (int frame = 1; frame <= 12; frame++) {
+        unsigned at = 64 + frame * 32, group = 512 + frame * 32;
+        unsigned src = 0x38000 + frame * 1024, lut = 0x10000 + frame * 32;
+        BeLong(lightModels + frame * 4, at); BeLong(lightModels + at, group);
+        BeWord(lightModels + group + 20, src / 8); BeWord(lightModels + group + 26, lut / 8);
+        memset(vdp1 + src, 0x12, 1024);
+        vdp1[src] = frame << 4 | 2; BeWord(vdp1 + lut + 2, 0x801f);
+        assert(PortSaturnLightFrame(7 | 16 | 2048, 1002 * 64 + 49, 32, 40, frame));
+        assert(uploaded[0] == (0x2120 | frame) && uploads == frame * 2);
+        assert(PortSaturnLightFrame(7 | 16 | 2048, 1002 * 64 + 49, 32, 40, frame));
+        assert(uploads == frame * 2); /* Shared gantries reuse one upload. */
+    }
+    puts("Saturn HUD alignment, thirteen pipe sprites, opaque reflections and twelve gantry frames: OK");
 }

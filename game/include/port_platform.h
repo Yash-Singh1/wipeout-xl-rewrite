@@ -146,6 +146,7 @@ int PortRegionFileInfo(const char *pathname, int *loc, int *size);
 int PortRegionRead(int loc, int sectors, void *buffer);
 /* ... and with the Sega Saturn's disc, everything the game reads, made from the Saturn's (platform/saturn.c). */
 int PortSaturnDisc(void);
+int PortSaturnLightFrame(unsigned page, unsigned clut, int u, int v, int frame);
 /* Fit a font quad from 352 columns to 320 about its alignment anchor. */
 void PortSaturnFontQuad(void *quad, int anchorX);
 int PortSaturnFileInfo(const char *pathname, int *loc, int *size);

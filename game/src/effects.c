@@ -1207,38 +1207,49 @@ void UpdateLightStart(Object **objects, ShipData *ships, DroidData *droids, shor
         SetSkeletonPosition(object->skeleton, section->centre.vx, section->centre.vy - 3000, section->centre.vz);
         if (mode == -1) {
             face = (FT4 *)object->primitives;
-            for (j = 0; j < 8; j++) {
-                if (face->type == 4) {
-                    if (lightUpdate < PAL_TIME(480)) {
-                        if (startCountdown >= REGION(34, 42) && startCountdown <= REGION(66, 83)) {
-                            face->colour.r = white;
-                            face->colour.g = 0;
-                            face->colour.b = 0;
-                        } else if (startCountdown >= 1 && startCountdown <= REGION(33, 41)) {
-                            face->colour.r = white;
-                            face->colour.g = 128;
-                            face->colour.b = 0;
-                        } else if (startCountdown == 0) {
-                            face->colour.r = 0;
-                            face->colour.g = white;
-                            face->colour.b = 0;
-                            lightUpdate++;
-                        }
-                    } else {
-                        lightUpdate++;
-                        if (lightUpdate >= PAL_TIME(480)) {
-                            if ((short)(lightChaseStep % 8) == j) {
+            if (PortSaturnDisc()) {
+                int frame = startCountdown >= REGION(67, 84) ? 1 :
+                            startCountdown >= REGION(34, 42) ? 2 : startCountdown > 0 ? 3 :
+                            lightUpdate < PAL_TIME(480) ? 4 : 5 + lightChaseStep % 8;
+                PortSaturnLightFrame((u_short)face->tsb, (u_short)face->cba,
+                                    (u_char)face->u0, (u_char)face->v0, frame);
+                face->colour.r = face->colour.g = face->colour.b = 128;
+                /* The strip replaces eight PS1 faces; preserve their timer rate. */
+                if (!startCountdown) lightUpdate += 8;
+            } else {
+                for (j = 0; j < 8; j++) {
+                    if (face->type == 4) {
+                        if (lightUpdate < PAL_TIME(480)) {
+                            if (startCountdown >= REGION(34, 42) && startCountdown <= REGION(66, 83)) {
+                                face->colour.r = white;
+                                face->colour.g = 0;
+                                face->colour.b = 0;
+                            } else if (startCountdown >= 1 && startCountdown <= REGION(33, 41)) {
+                                face->colour.r = white;
+                                face->colour.g = 128;
+                                face->colour.b = 0;
+                            } else if (startCountdown == 0) {
                                 face->colour.r = 0;
                                 face->colour.g = white;
                                 face->colour.b = 0;
-                            } else {
-                                face->colour.r = 0;
-                                face->colour.g = j << 4;
-                                face->colour.b = 0;
+                                lightUpdate++;
+                            }
+                        } else {
+                            lightUpdate++;
+                            if (lightUpdate >= PAL_TIME(480)) {
+                                if ((short)(lightChaseStep % 8) == j) {
+                                    face->colour.r = 0;
+                                    face->colour.g = white;
+                                    face->colour.b = 0;
+                                } else {
+                                    face->colour.r = 0;
+                                    face->colour.g = j << 4;
+                                    face->colour.b = 0;
+                                }
                             }
                         }
+                        face++;
                     }
-                    face++;
                 }
             }
         }
