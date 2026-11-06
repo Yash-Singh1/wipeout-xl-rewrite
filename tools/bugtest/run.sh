@@ -45,6 +45,10 @@ ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Wno-deprecated-decla
     $(pkg-config --libs sdl3) -o "$test_build/framecap_storage"
 "$test_build/framecap_storage"
 
+${CC:-cc} -O2 -D_FORTIFY_SOURCE=2 -include platform/include/port.h -iquote game/include \
+    tools/bugtest/test_card_label.c -o "$test_build/card_label"
+"$test_build/card_label" TESTSAVE
+
 # Optional real GPU checks, for a desktop session with an OpenGL driver.
 if [ "${WIPEOUT_TEST_GL:-0}" = 1 ]; then
     case $(uname -s) in Darwin) gl_libs='-framework OpenGL';; *) gl_libs='-lGL';; esac

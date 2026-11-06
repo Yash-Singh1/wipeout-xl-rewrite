@@ -460,7 +460,7 @@ static void LoadCardFilesEurope(CardSlot *cards, int slot)
         entry->name[0] = 0;
         entry->used = 0;
         entry->filename[0] = 0;
-        *(Label6 *)&entry->label = labelEmpty[0];
+        memcpy(entry->label, labelEmpty[0].bytes, sizeof(labelEmpty[0]));
         entry->type = 1;
     }
     if (slot == 0) {
@@ -491,8 +491,8 @@ static void LoadCardFilesEurope(CardSlot *cards, int slot)
                 cards[slot].entry[count].used = 1;
                 strcpy(cards[slot].entry[count].filename, directory.name);
                 cards[slot].entry[count].type = 4;
-                cards[slot].entry[count].label = labelGameEurope[0];
-                strcat((char *)&cards[slot].entry[count].label, cards[slot].entry[count].name);
+                memcpy(cards[slot].entry[count].label, labelGameEurope[0].bytes, sizeof(labelGameEurope[0]));
+                strcat(cards[slot].entry[count].label, cards[slot].entry[count].name);
                 count++;
             } else {
                 blocks = directory.size / 8192;
@@ -503,7 +503,7 @@ static void LoadCardFilesEurope(CardSlot *cards, int slot)
                     cards[slot].entry[count].used = 1;
                     strcpy(cards[slot].entry[count].filename, directory.name);
                     cards[slot].entry[count].type = 2;
-                    *(Label5 *)&cards[slot].entry[count].label = labelUsed[0];
+                    memcpy(cards[slot].entry[count].label, labelUsed[0].bytes, sizeof(labelUsed[0]));
                     if (i != 0) {
                         dest = &cards[slot].entry[count];
                         source = &cards[slot].entry[firstBlock];
@@ -566,7 +566,7 @@ void LoadCardFiles(CardSlot *cards, int slot)
         entry->name[0] = 0;
         entry->used = 0;
         entry->filename[0] = 0;
-        *(Label6 *)&entry->label = labelEmpty[0];
+        memcpy(entry->label, labelEmpty[0].bytes, sizeof(labelEmpty[0]));
         entry->type = 1;
         entry->first = 0;
         entry->multi = 0;
@@ -599,8 +599,8 @@ void LoadCardFiles(CardSlot *cards, int slot)
                 cards[slot].entry[count].used = 1;
                 strcpy(cards[slot].entry[count].filename, directory.name);
                 cards[slot].entry[count].type = 4;
-                *(Label6 *)&cards[slot].entry[count].label = labelGame[0];
-                strcat((char *)&cards[slot].entry[count].label, cards[slot].entry[count].name);
+                memcpy(cards[slot].entry[count].label, labelGame[0].bytes, sizeof(labelGame[0]));
+                strcat(cards[slot].entry[count].label, cards[slot].entry[count].name);
                 count++;
             } else {
                 blocks = directory.size / 8192;
@@ -609,7 +609,7 @@ void LoadCardFiles(CardSlot *cards, int slot)
                     cards[slot].entry[count].used = 1;
                     strcpy(cards[slot].entry[count].filename, directory.name);
                     cards[slot].entry[count].type = 2;
-                    *(Label5 *)&cards[slot].entry[count].label = labelUsed[0];
+                    memcpy(cards[slot].entry[count].label, labelUsed[0].bytes, sizeof(labelUsed[0]));
                     cards[slot].entry[count].first = 1;
                     if (blocks > 1) cards[slot].entry[count].multi = 1;
                     if (i != 0) cards[slot].entry[count].first = 0;

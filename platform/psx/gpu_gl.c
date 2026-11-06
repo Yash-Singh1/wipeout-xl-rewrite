@@ -2000,7 +2000,7 @@ static void BlitPicture(int wide, int left, int top, int right, int bottom, GLui
     if (style < 0) {
         style = portSettings.downsampleStyle;
     }
-    downsample = SDL_clamp(downsample, 0, scale);
+    downsample = PortDownsampleTarget(scale, downsample, style);
     /* A 1:1 Box reduction is an identity. Copy directly with the same nearest
        output sampling rather than rendering a full-size intermediate image. */
     if (!downsample || (downsample == scale && style == DOWNSAMPLE_BOX) || right <= left || bottom <= top) {
