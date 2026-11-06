@@ -10,6 +10,10 @@
 
 #include "framecap.h"
 #include "gpu.h"
+#include "../render/state.h"
+#ifdef __APPLE__
+#include <malloc/malloc.h>
+#endif
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #define STBI_WRITE_NO_STDIO
@@ -58,14 +62,34 @@ static int generation;
 static char savedDir[1024];
 
 /* Video-memory snapshots, shared by the frames drawn while it did not change. */
+#define VRAM_PAGE_WORDS 2048
+#define VRAM_PAGES (sizeof(psxVram) / (VRAM_PAGE_WORDS * sizeof(uint16_t)))
+typedef struct VramPage {
+    int users;
+    uint16_t pixels[VRAM_PAGE_WORDS];
+} VramPage;
 typedef struct Snapshot {
-    uint16_t *pixels;
+    VramPage *pages[VRAM_PAGES];
     int users;
 } Snapshot;
 #define SNAPSHOTS (FRAMES + 2)
 static Snapshot snapshots[SNAPSHOTS];
 static unsigned vramVersion = 1, snapshotVersion;
 static int lastSnapshot = -1;
+static uint16_t *snapshotPixels;
+static int decodedSnapshot = -1;
+static uint8_t *decodedPicture;
+static unsigned decodedPictureToken;
+/* Saved pictures already exist on disk. Keep their paths, not another copy of
+   every full-resolution JPEG while the recorder is frozen. */
+static struct SavedPicture { char *path; unsigned token; } savedPictures[FRAMES];
+static void TrimRecorderMemory(void)
+{
+    RenderTrimMemory();
+#ifdef __APPLE__
+    malloc_zone_pressure_relief(NULL, 0);
+#endif
+}
 
 /* What built the packets: address ranges, rebuilt for each frame the game builds. */
 typedef struct Tag {
@@ -131,7 +155,16 @@ const FrameCapFrame *FrameCapFrameAt(int index)
 
 const uint16_t *FrameCapVram(int snapshot)
 {
-    return snapshot >= 0 && snapshot < SNAPSHOTS ? snapshots[snapshot].pixels : NULL;
+    if (snapshot < 0 || snapshot >= SNAPSHOTS || !snapshots[snapshot].users) return NULL;
+    if (!snapshotPixels) snapshotPixels = malloc(sizeof(psxVram));
+    if (!snapshotPixels) return NULL;
+    if (decodedSnapshot != snapshot) {
+        for (size_t i = 0; i < VRAM_PAGES; i++)
+            memcpy(snapshotPixels + i * VRAM_PAGE_WORDS, snapshots[snapshot].pages[i]->pixels,
+                   VRAM_PAGE_WORDS * sizeof(uint16_t));
+        decodedSnapshot = snapshot;
+    }
+    return snapshotPixels;
 }
 
 void FrameCapVramChanged(void)
@@ -142,8 +175,12 @@ void FrameCapVramChanged(void)
 static void Release(int snapshot)
 {
     if (snapshot >= 0 && --snapshots[snapshot].users <= 0) {
-        free(snapshots[snapshot].pixels);
-        snapshots[snapshot].pixels = NULL;
+        for (size_t i = 0; i < VRAM_PAGES; i++) {
+            VramPage *page = snapshots[snapshot].pages[i];
+            if (!--page->users) free(page);
+            snapshots[snapshot].pages[i] = NULL;
+        }
+        if (decodedSnapshot == snapshot) decodedSnapshot = -1;
         snapshots[snapshot].users = 0;
         if (snapshot == lastSnapshot) {
             lastSnapshot = -1;
@@ -159,14 +196,26 @@ static int TakeSnapshot(void)
         snapshots[lastSnapshot].users++;
         return lastSnapshot;
     }
-    for (i = 0; i < SNAPSHOTS && snapshots[i].pixels; i++) {
+    for (i = 0; i < SNAPSHOTS && snapshots[i].users; i++) {
     }
     if (i == SNAPSHOTS) {
         return -1;
     }
-    snapshots[i].pixels = malloc(sizeof(psxVram));
-    memcpy(snapshots[i].pixels, psxVram, sizeof(psxVram));
+    for (size_t p = 0; p < VRAM_PAGES; p++) {
+        VramPage *page = lastSnapshot >= 0 ? snapshots[lastSnapshot].pages[p] : NULL;
+        const uint8_t *source = (const uint8_t *)psxVram + p * VRAM_PAGE_WORDS * sizeof(uint16_t);
+        if (page && !memcmp(page->pixels, source, sizeof(page->pixels))) {
+            page->users++;
+        } else {
+            page = malloc(sizeof(*page));
+            if (!page) abort();
+            page->users = 1;
+            memcpy(page->pixels, source, sizeof(page->pixels));
+        }
+        snapshots[i].pages[p] = page;
+    }
     snapshots[i].users = 1;
+    if (decodedSnapshot == i) decodedSnapshot = -1;
     lastSnapshot = i;
     snapshotVersion = vramVersion;
     return i;
@@ -204,6 +253,28 @@ typedef struct Output {
     size_t size, capacity;
 } Output;
 
+typedef struct EncodedPicture {
+    uint8_t *data;
+    size_t size;
+    unsigned users;
+} EncodedPicture;
+static EncodedPicture *encodedPictures[FRAMES], *lastEncodedPicture;
+
+/* Caller holds the recorder lock, or has drained all compression jobs. */
+static void ReleaseJpeg(FrameCapFrame *f)
+{
+    EncodedPicture *picture = encodedPictures[f - frames];
+    if (picture) {
+        if (!--picture->users) {
+            if (lastEncodedPicture == picture) lastEncodedPicture = NULL;
+            free(picture->data);
+            free(picture);
+        }
+        encodedPictures[f - frames] = NULL;
+    } else free(f->jpeg);
+    f->jpeg = NULL;
+}
+
 static void Write(void *context, void *data, int size)
 {
     Output *o = (Output *)context;
@@ -233,9 +304,20 @@ static void Encode(Job *job)
     free(job->pixels);
     SDL_LockMutex(Lock());
     if (f->pictureToken == job->token && out.data) {
-        free(f->jpeg);
-        f->jpeg = out.data;
-        f->jpegSize = out.size;
+        ReleaseJpeg(f);
+        EncodedPicture *picture = lastEncodedPicture;
+        if (picture && picture->size == out.size && !memcmp(picture->data, out.data, out.size)) {
+            picture->users++;
+            free(out.data);
+        } else {
+            picture = malloc(sizeof(*picture));
+            if (!picture) abort();
+            *picture = (EncodedPicture){out.data, out.size, 1};
+            lastEncodedPicture = picture;
+        }
+        encodedPictures[f - frames] = picture;
+        f->jpeg = picture->data;
+        f->jpegSize = picture->size;
     } else {
         free(out.data);
     }
@@ -336,17 +418,54 @@ static void FinishPictures(void)
 static void ForgetPicture(FrameCapFrame *f)
 {
     SDL_LockMutex(Lock());
-    free(f->jpeg);
-    f->jpeg = NULL;
+    ReleaseJpeg(f);
     f->jpegSize = 0;
     f->pictureToken = 0;
+    SDL_free(savedPictures[f - frames].path);
+    memset(&savedPictures[f - frames], 0, sizeof(savedPictures[0]));
     SDL_UnlockMutex(lockMutex);
+}
+
+static const uint8_t *PictureJpeg(const FrameCapFrame *f, size_t *size, void **loaded)
+{
+    *loaded = NULL;
+    *size = f->jpegSize;
+    if (f->jpeg) return f->jpeg;
+    const struct SavedPicture *saved = &savedPictures[f - frames];
+    if (!saved->path || saved->token != f->pictureToken) return NULL;
+    *loaded = SDL_LoadFile(saved->path, size);
+    return *loaded;
+}
+
+/* Only drop the RAM copy after a complete successful write. Re-saving a
+   file-backed frame reads it before opening the destination, even at the same path. */
+static int SavePicture(FrameCapFrame *f, const char *path)
+{
+    const struct SavedPicture *existing = &savedPictures[f - frames];
+    if (!f->jpeg && existing->path && existing->token == f->pictureToken && !strcmp(existing->path, path))
+        return 1;
+    size_t size;
+    void *loaded;
+    const uint8_t *jpeg = PictureJpeg(f, &size, &loaded);
+    if (!jpeg || !f->shown) { SDL_free(loaded); return 0; }
+    FILE *file = fopen(path, "wb");
+    if (!file) { SDL_free(loaded); return 0; }
+    size_t written = fwrite(jpeg, 1, size, file);
+    int closed = fclose(file);
+    SDL_free(loaded);
+    if (written != size || closed) return 0;
+    char *copy = SDL_strdup(path);
+    if (!copy) return 0;
+    struct SavedPicture *saved = &savedPictures[f - frames];
+    SDL_free(saved->path);
+    saved->path = copy;
+    saved->token = f->pictureToken;
+    ReleaseJpeg(f);
+    return 1;
 }
 
 const uint8_t *FrameCapPicture(int index, int *w, int *h)
 {
-    static uint8_t *decoded;
-    static unsigned decodedToken;
     const FrameCapFrame *f;
     const uint8_t *jpeg;
     size_t size;
@@ -357,28 +476,27 @@ const uint8_t *FrameCapPicture(int index, int *w, int *h)
         return NULL;
     }
     f = FrameCapFrameAt(index);
+    if (!f->shown) return NULL;
     SDL_LockMutex(Lock());
-    jpeg = f->jpeg;
-    size = f->jpegSize;
     token = f->pictureToken;
-    SDL_UnlockMutex(lockMutex);
-    if (!jpeg || !f->shown) {
-        return NULL;
-    }
-    if (!decoded || decodedToken != token) {
+    if (!decodedPicture || decodedPictureToken != token) {
         int dw, dh;
-
-        stbi_image_free(decoded);
-        decoded = stbi_load_from_memory(jpeg, (int)size, &dw, &dh, &n, 3);
-        decodedToken = token;
-        if (decoded && (dw != f->pictureW || dh != f->pictureH)) {
-            stbi_image_free(decoded);
-            decoded = NULL;
+        void *loaded;
+        jpeg = PictureJpeg(f, &size, &loaded);
+        if (!jpeg) { SDL_UnlockMutex(lockMutex); return NULL; }
+        stbi_image_free(decodedPicture);
+        decodedPicture = stbi_load_from_memory(jpeg, (int)size, &dw, &dh, &n, 3);
+        SDL_free(loaded);
+        decodedPictureToken = token;
+        if (decodedPicture && (dw != f->pictureW || dh != f->pictureH)) {
+            stbi_image_free(decodedPicture);
+            decodedPicture = NULL;
         }
     }
+    SDL_UnlockMutex(lockMutex);
     *w = f->pictureW;
     *h = f->pictureH;
-    return decoded;
+    return decodedPicture;
 }
 
 /* The next frame of the ring (the oldest given up when it is full). */
@@ -778,6 +896,38 @@ static void PutI32(FILE *f, int32_t v)
     Put(f, &v, 4);
 }
 
+/* A rapid re-save can reuse an export directory while ring indices have
+   changed. Read all backing images before overwriting any indexed files. */
+static int ProtectBackingPictures(const char *directory)
+{
+    size_t length = strlen(directory);
+    int overlap = 0;
+    for (int i = 0; i < count; i++) {
+        const struct SavedPicture *saved = &savedPictures[(first + i) % FRAMES];
+        if (saved->path && !strncmp(saved->path, directory, length) && saved->path[length] == '/') {
+            char destination[1200];
+            SDL_snprintf(destination, sizeof(destination), "%s/picture_%03d.jpg", directory, i);
+            if (strcmp(saved->path, destination)) overlap = 1;
+        }
+    }
+    if (!overlap) return 1;
+    for (int i = 0; i < count; i++) {
+        FrameCapFrame *f = &frames[(first + i) % FRAMES];
+        if (!f->jpeg && savedPictures[f - frames].path) {
+            void *loaded;
+            size_t size;
+            const uint8_t *data = PictureJpeg(f, &size, &loaded);
+            if (!data) return 0;
+            f->jpeg = malloc(size);
+            if (f->jpeg) memcpy(f->jpeg, data, size);
+            SDL_free(loaded);
+            if (!f->jpeg) return 0;
+            f->jpegSize = size;
+        }
+    }
+    return 1;
+}
+
 static void Save(void)
 {
     FinishPictures();
@@ -801,6 +951,7 @@ static void Save(void)
         return;
     }
     SDL_CreateDirectory(savedDir);
+    if (!ProtectBackingPictures(savedDir)) return;
     SDL_snprintf(path, sizeof(path), "%s/frames.bin", savedDir);
     if (!(file = fopen(path, "wb"))) {
         savedDir[0] = 0;
@@ -871,25 +1022,18 @@ static void Save(void)
     }
     fclose(file);
     for (i = 0; i < SNAPSHOTS; i++) {
-        if (snapshots[i].pixels) {
+        if (snapshots[i].users) {
             SDL_snprintf(path, sizeof(path), "%s/vram_%d.bin", savedDir, i);
             if ((file = fopen(path, "wb"))) {
-                Put(file, snapshots[i].pixels, sizeof(psxVram));
+                Put(file, FrameCapVram(i), sizeof(psxVram));
                 fclose(file);
             }
         }
     }
     for (i = 0; i < count; i++) {
-        const FrameCapFrame *f = FrameCapFrameAt(i);
-
-        if (!f->jpeg || !f->shown) {
-            continue;
-        }
+        FrameCapFrame *f = &frames[(first + i) % FRAMES];
         SDL_snprintf(path, sizeof(path), "%s/picture_%03d.jpg", savedDir, i);
-        if ((file = fopen(path, "wb"))) {
-            Put(file, f->jpeg, f->jpegSize);
-            fclose(file);
-        }
+        SavePicture(f, path);
     }
     /* what the game was doing (game/src/portinfo.c) and how it was shown */
     SDL_snprintf(path, sizeof(path), "%s/info.json", savedDir);
@@ -909,6 +1053,7 @@ static void Save(void)
 void FrameCapSave(void)
 {
     Save();
+    TrimRecorderMemory();
 }
 
 /* The frame being built when the recording stops: never finished nor shown, nothing to look at. */
@@ -935,6 +1080,7 @@ void FrameCapToggleFreeze(void)
     frozen = 1;
     generation++;
     Save();
+    TrimRecorderMemory();
 }
 
 void FrameCapClear(void)
@@ -953,6 +1099,12 @@ void FrameCapClear(void)
         f->prims = NULL;
         f->count = f->capacity = 0;
     }
+    free(snapshotPixels);
+    snapshotPixels = NULL;
+    stbi_image_free(decodedPicture);
+    decodedPicture = NULL;
+    decodedPictureToken = 0;
+    decodedSnapshot = -1;
     first = count = 0;
     current = -1;
     newFrame = 1;
@@ -962,6 +1114,7 @@ void FrameCapClear(void)
     frozen = taking = 0;
     savedDir[0] = 0;
     generation++;
+    TrimRecorderMemory();
 }
 
 void FrameCapTab(void)
@@ -973,6 +1126,7 @@ void FrameCapTab(void)
         DropUnfinished();
         FinishPictures();
         generation++;
+        TrimRecorderMemory();
     } else {
         FrameCapClear();
         taking = 1;

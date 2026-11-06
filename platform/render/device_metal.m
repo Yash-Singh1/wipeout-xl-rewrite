@@ -132,7 +132,15 @@ static void ReleaseImage(RenderDevice *d, uintptr_t image) { Release(image); }
 /* A retired buffer may still be referenced by an encoder or an in-flight
    command. Reuse only after the last possible command has completed. The pool
    is bounded so a temporary large recording/upload cannot retain memory forever. */
+static void ReleaseCompletedCommands(WipeoutMetalDevice *m) {
+    for (WipeoutMetalReusableBuffer *entry in m.buffers)
+        if (entry.lastUse.status == MTLCommandBufferStatusCompleted)
+            entry.lastUse = nil;
+    if (!m.command && m.lastCommand.status == MTLCommandBufferStatusCompleted)
+        m.lastCommand = nil;
+}
 static id<MTLBuffer> ReuseBuffer(WipeoutMetalDevice *m, size_t size) {
+    ReleaseCompletedCommands(m);
     for (NSUInteger i = 0; i < m.buffers.count; i++) {
         WipeoutMetalReusableBuffer *entry = m.buffers[i];
         if (entry.buffer.length >= size && entry.buffer.length <= SDL_max(size * 2, 4096) &&
@@ -591,11 +599,6 @@ static int Read(RenderDevice *d, RenderTarget target, RenderRect r, RenderFormat
 @interface WipeoutMetalRead : NSObject
 @property id<MTLBuffer> buffer;
 @property id<MTLCommandBuffer> command;
-@property id<MTLCommandBuffer> lastCommand;
-@property NSMutableArray<WipeoutMetalReusableBuffer *> *buffers;
-@property NSUInteger pooledBytes;
-@property RenderDraw previousDraw;
-@property BOOL drawValid;
 @property NSMutableData *packed;
 @property size_t pitch;
 @property int width, height, window, bgra;
@@ -685,12 +688,22 @@ static int Present(RenderDevice *d) {
             m.command = nil;
         }
         m.drawable = nil;
+        ReleaseCompletedCommands(m);
         return 1;
     }
 }
 static void Activate(RenderDevice *d, int active) {
     WipeoutMetalDevice *m = Data(d);
     m.view.hidden = !active;
+}
+static void Trim(RenderDevice *d) {
+    @autoreleasepool {
+        Finish(d);
+        WipeoutMetalDevice *m = Data(d);
+        [m.buffers removeAllObjects];
+        m.pooledBytes = 0;
+        m.lastCommand = nil;
+    }
 }
 static void Destroy(RenderDevice *d) {
     @autoreleasepool {
@@ -773,6 +786,6 @@ int RenderMetalAvailable(void) {
 const RenderDeviceOps *RenderMetalDevice(void) {
     static const RenderDeviceOps ops = {
         Create, Destroy, Image, ReleaseImage, Upload,  Read,     Mipmaps,   Buffer,   ReleaseBuffer,
-        Clear,  Draw,    Copy,  Finish,       Present, Activate, BeginRead, PollRead, ReleaseRead};
+        Clear,  Draw,    Copy,  Finish,       Present, Activate, BeginRead, PollRead, ReleaseRead, NULL, Trim};
     return &ops;
 }

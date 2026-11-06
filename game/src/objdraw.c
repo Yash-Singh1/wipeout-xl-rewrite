@@ -650,7 +650,7 @@ static void SetNearCorner(short *x, short *y, u_char *rgb, const NearCorner *cor
     rgb[2] = (u_char)(corner->c[7] + 0.5);
 }
 
-static int DrawNearPrimitive(Object *object, int index, u_long *ordering, Poly prim)
+static int DrawClippedPrimitive(Object *object, int index, u_long *ordering, Poly prim, DrawKind kind, int fixedSlot)
 {
     const short   *coords;
     const char    *uv = NULL; /* u0, v0, u1, v1... */
@@ -673,6 +673,7 @@ static int DrawNearPrimitive(Object *object, int index, u_long *ordering, Poly p
     case TypeGT3: /* the plain renderer draws it flat, in its first colour */
         coords = prim.gt3->coords, count = 3, uv = &prim.gt3->u0, colours = prim.gt3->colour;
         tsb = prim.gt3->tsb, cba = prim.gt3->cba;
+        gouraud = GouraudColours(kind);
         break;
     case TypeFT4:
         coords = prim.ft4->coords, count = 4, uv = &prim.ft4->u0, colours = &prim.ft4->colour;
@@ -681,9 +682,10 @@ static int DrawNearPrimitive(Object *object, int index, u_long *ordering, Poly p
     case TypeGT4:
         coords = prim.gt4->coords, count = 4, uv = &prim.gt4->u0, colours = prim.gt4->colour;
         tsb = prim.gt4->tsb, cba = prim.gt4->cba;
+        gouraud = GouraudColours(kind);
         break;
-    case TypeG3: coords = prim.g3->coords, count = 3, colours = prim.g3->colour, gouraud = 1; break;
-    case TypeG4: coords = prim.g4->coords, count = 4, colours = prim.g4->colour, gouraud = 1; break;
+    case TypeG3: coords = prim.g3->coords, count = 3, colours = prim.g3->colour, gouraud = kind != DRAW_FIXED || GouraudColours(kind); break;
+    case TypeG4: coords = prim.g4->coords, count = 4, colours = prim.g4->colour, gouraud = kind != DRAW_FIXED || GouraudColours(kind); break;
     case TypeF3: coords = prim.f3->coords, count = 3, colours = &prim.f3->colour; break;
     case TypeF4: coords = prim.f4->coords, count = 4, colours = &prim.f4->colour; break;
     default: return 0;
@@ -701,7 +703,7 @@ static int DrawNearPrimitive(Object *object, int index, u_long *ordering, Poly p
         const CVECTOR *colour = &colours[gouraud ? i : 0];
 
         CameraSpace(&object->vertices[coords[i]], corner[i].c);
-        if (corner[i].c[2] > 32767.0) {
+        if (kind != DRAW_FIXED && corner[i].c[2] > 32767.0) {
             return 0; /* too far: the far view's (portfar.h) */
         }
         corner[i].vertex = coords[i];
@@ -713,7 +715,7 @@ static int DrawNearPrimitive(Object *object, int index, u_long *ordering, Poly p
     }
     /* the facing test of vertices 0, 1 and 2 in camera space: the sign of their screen winding, at any depth */
     a = corner[0].c, b = corner[1].c, c = corner[2].c;
-    if ((flag & SingleSided) &&
+    if ((kind == DRAW_FIXED || (flag & SingleSided)) &&
         a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0]) <= 0) {
         return 0;
     }
@@ -733,7 +735,7 @@ static int DrawNearPrimitive(Object *object, int index, u_long *ordering, Poly p
     /* Keep the original corners and quad diagonal. libgpu clips each of the GPU's triangles at the near plane
        in every presented picture. Clipping the whole outline here changed bent quads' shape and UVs, and stored
        moving cut points as if they were model vertices during interpolation. */
-    slot = DepthSlot(DRAW_PLAIN, ordering, 0, &projected[coords[0]], &projected[coords[1]],
+    slot = DepthSlot(kind, ordering, fixedSlot, &projected[coords[0]], &projected[coords[1]],
                      &projected[coords[2]], count == 4 ? &projected[coords[3]] : NULL);
     start = out = PortNearAlloc((int)sizeof(POLY_GT4));
     if (!out) {
@@ -756,7 +758,7 @@ static int DrawNearPrimitive(Object *object, int index, u_long *ordering, Poly p
         }
         poly->tpage = (u_short)tsb;
         poly->clut = (u_short)cba;
-        poly->code = PolyCode(DRAW_PLAIN, count == 4 ? 0x3C : 0x34, flag);
+        poly->code = PolyCode(kind, count == 4 ? 0x3C : 0x34, flag);
         AddPrim(slot, poly);
         out += count == 4 ? sizeof(POLY_GT4) : sizeof(POLY_GT3);
     } else {
@@ -770,12 +772,31 @@ static int DrawNearPrimitive(Object *object, int index, u_long *ordering, Poly p
         if (count == 4) {
             SetNearCorner(&poly->x3, &poly->y3, &poly->r3, &corner[3], &projected[coords[3]]);
         }
-        poly->code = PolyCode(DRAW_PLAIN, count == 4 ? 0x38 : 0x30, flag);
+        poly->code = PolyCode(kind, count == 4 ? 0x38 : 0x30, flag);
         AddPrim(slot, poly);
         out += count == 4 ? sizeof(POLY_G4) : sizeof(POLY_G3);
     }
-    PortTagPrims(start, out, "near object", object->name, index); /* the frame recorder */
+    PortTagPrims(start, out, kind == DRAW_FIXED ? "clipped sky" : "near object", object->name, index); /* the frame recorder */
     return 1;
+}
+
+static int DrawNearPrimitive(Object *object, int index, u_long *ordering, Poly prim)
+{
+    return DrawClippedPrimitive(object, index, ordering, prim, DRAW_PLAIN, 0);
+}
+
+/* The sky also crosses the GTE's screen-coordinate and near-plane limits.
+   Its rejected faces must remain at the fixed background slot, with background
+   bindings, rather than disappear and expose the black screen clear. */
+static int DrawSkyBoundaryPrimitive(Object *object, int index, u_long *ordering, Poly prim, int fixedSlot)
+{
+    int drawn;
+    GteSetBackground(1);
+    GteSetExactDepth(exactDepth);
+    drawn = DrawClippedPrimitive(object, index, ordering, prim, DRAW_FIXED, fixedSlot);
+    GteSetBackground(0);
+    GteSetExactDepth(0);
+    return drawn;
 }
 
 static void DrawObject(Object *object, DrawKind kind, int roll, const CVECTOR *colour, int fixedSlot)
@@ -871,8 +892,10 @@ static void DrawObject(Object *object, DrawKind kind, int roll, const CVECTOR *c
         default:
             goto finished;
         }
+        int clippedSky = out == before && !culled && kind == DRAW_FIXED && !PortTracing() &&
+                         DrawSkyBoundaryPrimitive(object, index, ordering, prim, fixedSlot);
         if (drawnFlags && index < (u_short)object->primitiveCount) {
-            drawnFlags[index] = out != before || (culled && CulledForCertain(culledVertex[0], culledVertex[1], culledVertex[2])) ||
+            drawnFlags[index] = clippedSky || out != before || (culled && CulledForCertain(culledVertex[0], culledVertex[1], culledVertex[2])) ||
                                 (!culled && kind == DRAW_PLAIN && DrawNearPrimitive(object, index, ordering, prim));
         }
         PortTagPrims(before, out, farView ? "far object" : "object", object->name, index); /* Port: the frame recorder */

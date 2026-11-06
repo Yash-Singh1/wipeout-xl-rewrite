@@ -53,7 +53,7 @@ typedef struct FrameCapFrame {
     int vram;             /* its video-memory snapshot (FrameCapVram) */
     FrameCapPrim *prims;
     int count, capacity;
-    uint8_t *jpeg;        /* the picture shown, at the framebuffer's scale, compressed (FrameCapPicture) */
+    uint8_t *jpeg;        /* resident compressed data, or NULL when backed by a saved picture */
     size_t jpegSize;
     unsigned pictureToken; /* (its compression on the way: framecap.c) */
     int pictureW, pictureH;
@@ -93,6 +93,7 @@ void FrameCapSave(void);
 /* The recording, oldest first. */
 int FrameCapFrameCount(void);
 const FrameCapFrame *FrameCapFrameAt(int index);
+/* Materialized view, valid until the next FrameCapVram call or recorder clear. */
 const uint16_t *FrameCapVram(int snapshot);
 /* The picture frame `index` showed: RGB, top row first, *w x *h (the frame's pictureW x pictureH), or NULL (not
    shown, or still being compressed). Valid until the next call. */

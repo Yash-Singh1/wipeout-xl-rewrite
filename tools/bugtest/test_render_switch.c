@@ -205,8 +205,12 @@ int main(void) {
     RgBindTexture(RG_TEXTURE_2D_ARRAY, immutable);
     uint16_t texels[] = {1, 2, 3, 4, 5, 6, 7, 8};
     RgPixelStorei(RG_UNPACK_ALIGNMENT, 1);
-    RgTexImage3D(RG_TEXTURE_2D_ARRAY, 0, RG_R16UI, 2, 2, 2, 0, RG_RED_INTEGER, RG_UNSIGNED_SHORT,
-                 texels);
+    RgTexImage3D(RG_TEXTURE_2D_ARRAY, 0, RG_R16UI, 2, 2, 256, 0, RG_RED_INTEGER, RG_UNSIGNED_SHORT,
+                 NULL);
+    RgTexSubImage3D(RG_TEXTURE_2D_ARRAY, 0, 0, 0, 0, 2, 2, 2, RG_RED_INTEGER, RG_UNSIGNED_SHORT, texels);
+    assert(!images[immutable].shadow);
+    assert(images[immutable].layerShadows[0] && images[immutable].layerShadows[1]);
+    for (int z = 2; z < 256; z++) assert(!images[immutable].layerShadows[z]);
     RgGenBuffers(1, &buffer);
     RgBindBuffer(RG_ARRAY_BUFFER, buffer);
     RenderVertex verts[3] = {{0}};
@@ -255,6 +259,24 @@ int main(void) {
     }
     assert(!RenderRequestBackend((RenderBackend)99));
     assert(RenderActiveBackend() == RENDER_METAL);
+    RenderStop();
+    assert(!liveDevices && !liveImages && !liveBuffers && !liveReads);
+    /* Large mutable color images use GPU authority, preserving both full
+       uploads and untouched pixels after partial updates during a switch. */
+    assert(RenderStart(NULL));
+    RgHandle large;
+    RgGenTextures(1, &large); RgBindTexture(RG_TEXTURE_2D, large);
+    uint8_t *rgba = malloc(1024 * 1024 * 4);
+    memset(rgba, 42, 1024 * 1024 * 4);
+    RgTexImage2D(RG_TEXTURE_2D, 0, RG_RGBA8, 1024, 1024, 0, RG_RGBA, RG_UNSIGNED_BYTE, rgba);
+    free(rgba);
+    uint8_t patch[16]; memset(patch, 95, sizeof(patch));
+    RgTexSubImage2D(RG_TEXTURE_2D, 0, 2, 3, 2, 2, RG_RGBA, RG_UNSIGNED_BYTE, patch);
+    assert(!images[large].shadow && images[large].dirty);
+    assert(RenderRequestBackend(RENDER_METAL) && RenderApplyBackend());
+    FakeImage *li = (FakeImage *)images[large].native;
+    assert(li->pixels[0] == 42 && li->pixels[(3 * 1024 + 2) * 4] == 95);
+    assert(li->pixels[(3 * 1024 + 4) * 4] == 42);
     RenderStop();
     assert(!liveDevices && !liveImages && !liveBuffers && !liveReads);
     puts("backend switches preserve images, arrays, buffers, uniforms and pending reads; failed "

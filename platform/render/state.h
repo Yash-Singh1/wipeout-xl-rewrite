@@ -149,6 +149,7 @@ int RenderApplyBackend(void);
 const char *RenderBackendError(void);
 void RenderStop(void);
 void RenderPresent(void);
+void RenderTrimMemory(void);
 void RenderSetVsync(int enabled);
 int RgReadbackBusy(int reader);
 int RgReadbackBegin(int reader, int width, int height);

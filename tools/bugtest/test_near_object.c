@@ -127,6 +127,75 @@ int main(void)
                arena.bytes + sizeof(POLY_GT3));
         assert(linked == 1 && packetSlot == ordering + 8191 && ((POLY_GT3 *)arena.bytes)->code == 0x34);
     }
+    /* A sky cap spanning the recording's gap: one corner projects past the -1024 row
+       limit. Rejecting the whole quad exposes the clear at pixel 192,3. */
+    {
+        SVECTOR skyVertices[4] = {{657,-16272,2481}, {5034,-16122,833},
+                                 {1972,-7864,11162}, {6349,-7714,9514}};
+        FT4 sky = {0};
+        sky.type = TypeFT4; sky.flag = Translucent;
+        sky.colour = (CVECTOR){192,96,24,0};
+        for (int i = 0; i < 4; i++) {
+            sky.coords[i] = i;
+            projected[i].flag = 1;
+        }
+        object.vertices = skyVertices;
+        prim.ft4 = &sky;
+        GteWriteControl(24, 160 << 16); GteWriteControl(25, 120 << 16);
+        GteSetBackground(1);
+        for (int i = 0; i < 4; i++) {
+            GteWriteData(0, (uint16_t)skyVertices[i].vx | ((uint32_t)(uint16_t)skyVertices[i].vy << 16));
+            GteWriteData(1, (uint16_t)skyVertices[i].vz);
+            GteExecute(GTE_RTPS);
+            projected[i].screen = GteReadData(14);
+            projected[i].depth = GteReadData(19);
+            projected[i].flag = ((uint32_t)GteReadControl(31) >> 12) & 0x466;
+            projectedHandle[i] = GtePreciseHandle(14);
+        }
+        GteSetBackground(0);
+        assert(projected[1].flag);
+        linked = 0;
+        assert(DrawTexturedQuad(DRAW_FIXED, arena.bytes, ordering, 8191, &sky, &sky.colour) == arena.bytes);
+        assert(!linked); /* the old path drops the whole cap */
+        assert(DrawSkyBoundaryPrimitive(&object, 11, ordering, prim, 8191));
+        assert(linked == 1 && packetSlot == ordering + 8191 && arena.gt.code == 0x3c);
+        const short *at[] = {&arena.gt.x0, &arena.gt.x1, &arena.gt.x2, &arena.gt.x3};
+        float x[4], y[4];
+        for (int i = 0; i < 4; i++) {
+            GtePrecise precise;
+            assert(GtePreciseOf(GteBoundHandle(at[i], *(const uint32_t *)at[i]), &precise));
+            assert(precise.background == 1 && precise.fade == 1.0f);
+            CheckView(at[i], &skyVertices[i]);
+            double view[3] = {precise.view[0], precise.view[1], precise.view[2]};
+            GteProjectView(view, &x[i], &y[i]);
+        }
+        assert(y[1] < -1024); /* the face that used to be thrown away */
+        float a = (x[2]-x[1])*(3-y[1]) - (y[2]-y[1])*(192-x[1]);
+        float b = (x[3]-x[2])*(3-y[2]) - (y[3]-y[2])*(192-x[2]);
+        float c = (x[1]-x[3])*(3-y[3]) - (y[1]-y[3])*(192-x[3]);
+        assert((a >= 0 && b >= 0 && c >= 0) || (a <= 0 && b <= 0 && c <= 0));
+        GtePrecise after;
+        assert(GtePreciseOf(GteRecordProjection(1, 0, 0, 100, 1), &after));
+        assert(!after.background); /* background state must not leak to scenery */
+        G4 coloured = {0};
+        coloured.type = TypeG4;
+        for (int i = 0; i < 4; i++) {
+            coloured.coords[i] = i;
+            coloured.colour[i] = (CVECTOR){20+i*30,40+i*20,60+i*10,0};
+        }
+        prim.g4 = &coloured;
+        for (int guest = 0; guest < 2; guest++) {
+            originalLook = guest;
+            linked = 0;
+            assert(DrawSkyBoundaryPrimitive(&object, 11, ordering, prim, 8191));
+            assert(linked == 1 && packetSlot == ordering + 8191);
+            assert(arena.g.r0 == 20 && arena.g.r3 == (guest ? 110 : 20));
+        }
+        originalLook = 0;
+        for (int i = 0; i < 4; i++) projected[i].flag = 0;
+        linked = 0;
+        assert(!DrawSkyBoundaryPrimitive(&object, 11, ordering, prim, 8191) && !linked);
+    }
     puts("near scenery keeps PS1 quad geometry and original vertex positions: OK");
     puts("1995 sky keeps Gouraud corner colours in the fixed background slot: OK");
     return 0;

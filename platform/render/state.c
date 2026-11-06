@@ -14,6 +14,7 @@ typedef struct Image {
     RenderSampler sampler;
     uintptr_t native;
     uint8_t *shadow;
+    uint8_t **layerShadows;
 } Image;
 typedef struct Buffer {
     int used;
@@ -54,6 +55,15 @@ static void Failed(const char *what) {
 static size_t PixelBytes(RenderFormat f) { return f == RENDER_R16_UINT ? 2 : 4; }
 static size_t ImageBytes(RenderImageDesc d) {
     return (size_t)d.width * d.height * d.layers * PixelBytes(d.format);
+}
+static void FreeShadow(Image *im) {
+    SDL_free(im->shadow);
+    im->shadow = NULL;
+    if (im->layerShadows) {
+        for (int i = 0; i < im->desc.layers; i++) SDL_free(im->layerShadows[i]);
+        SDL_free(im->layerShadows);
+        im->layerShadows = NULL;
+    }
 }
 static RenderTarget TargetOf(RgHandle id) {
     if (!id)
@@ -230,6 +240,13 @@ int RenderApplyBackend(void) {
                     goto done;
                 }
         }
+        if (!pixels && im->layerShadows) {
+            size_t row = (size_t)im->desc.width * PixelBytes(im->desc.format);
+            for (int z = 0; z < im->desc.layers; z++)
+                if (im->layerShadows[z] && !next.ops->upload(&next, newImages[i],
+                    (RenderRect){0, 0, im->desc.width, im->desc.height}, z, im->layerShadows[z], row))
+                    goto done;
+        }
         if (temporary)
             SDL_free(pixels);
         if (im->desc.mipmaps)
@@ -291,7 +308,7 @@ void RenderStop(void) {
             device.ops->releaseImage(&device, images[i].native);
         if (buffers[i].native)
             device.ops->releaseBuffer(&device, buffers[i].native);
-        SDL_free(images[i].shadow);
+        FreeShadow(&images[i]);
         SDL_free(buffers[i].shadow);
     }
     device.ops->destroy(&device);
@@ -299,6 +316,9 @@ void RenderStop(void) {
     memset(buffers, 0, sizeof(buffers));
     memset(targets, 0, sizeof(targets));
     started = 0;
+}
+void RenderTrimMemory(void) {
+    if (started && device.ops->trim) device.ops->trim(&device);
 }
 void RenderPresent(void) {
     if (started)
@@ -389,7 +409,7 @@ void RgDeleteTextures(int n, const RgHandle *ids) {
         Image *im = &images[*ids++];
         if (im->native)
             device.ops->releaseImage(&device, im->native);
-        SDL_free(im->shadow);
+        FreeShadow(im);
         memset(im, 0, sizeof(*im));
     }
 }
@@ -417,16 +437,44 @@ void RgTexSubImage3D(int kind, int level, int x, int y, int layer, int w, int h,
     int inputBpp = format == RG_RGB ? 3 : (int)bpp;
     size_t inputRow = (size_t)(unpackRowLength ? unpackRowLength : w) * inputBpp;
     inputRow = (inputRow + unpackAlignment - 1) / unpackAlignment * unpackAlignment;
-    size_t row = (size_t)im->desc.width * bpp, plane = row * im->desc.height;
-    if (!im->shadow)
-        im->shadow = SDL_calloc(1, ImageBytes(im->desc));
-    if (!im->shadow) {
-        Failed("texture upload allocation");
-        abort();
-    }
-    for (int z = 0; z < layers; z++) {
+    /* Large color textures already have authoritative GPU storage. Keep only
+       the upload rectangle on the CPU, and read the texture if switching APIs.
+       A recorder preview/HD atlas must not pin another full-resolution copy. */
+    if (im->desc.layers == 1 && im->desc.format == RENDER_RGBA8 && ImageBytes(im->desc) >= 4 * 1024 * 1024) {
+        size_t packedRow = (size_t)w * bpp;
+        uint8_t *packed = SDL_malloc(packedRow * h);
+        if (!packed) abort();
         for (int j = 0; j < h; j++) {
-            uint8_t *dst = im->shadow + plane * (layer + z) + row * (y + j) + (size_t)x * bpp;
+            uint8_t *dst = packed + j * packedRow;
+            const uint8_t *src = (const uint8_t *)data + j * inputRow;
+            if (format == RG_RGB) {
+                for (int i = 0; i < w; i++) {
+                    memcpy(dst + i * 4, src + i * 3, 3);
+                    dst[i * 4 + 3] = 255;
+                }
+            } else memcpy(dst, src, packedRow);
+        }
+        int ok = device.ops->upload(&device, im->native, (RenderRect){x, y, w, h}, layer, packed, packedRow);
+        SDL_free(packed);
+        if (!ok) { Failed("texture upload"); abort(); }
+        im->dirty = 1;
+        return;
+    }
+    size_t row = (size_t)im->desc.width * bpp, plane = row * im->desc.height;
+    if (im->desc.layers > 1) {
+        if (!im->layerShadows) im->layerShadows = SDL_calloc(im->desc.layers, sizeof(uint8_t *));
+        if (!im->layerShadows) abort();
+    } else if (!im->shadow) im->shadow = SDL_calloc(1, plane);
+    if (im->desc.layers == 1 && !im->shadow) abort();
+    for (int z = 0; z < layers; z++) {
+        uint8_t *pixels = im->shadow;
+        if (im->layerShadows) {
+            if (!im->layerShadows[layer + z]) im->layerShadows[layer + z] = SDL_calloc(1, plane);
+            pixels = im->layerShadows[layer + z];
+            if (!pixels) abort();
+        }
+        for (int j = 0; j < h; j++) {
+            uint8_t *dst = pixels + row * (y + j) + (size_t)x * bpp;
             const uint8_t *src = (const uint8_t *)data + inputRow * (z * h + j);
             if (format == RG_RGB)
                 for (int i = 0; i < w; i++) {
@@ -437,7 +485,7 @@ void RgTexSubImage3D(int kind, int level, int x, int y, int layer, int w, int h,
                 memcpy(dst, src, (size_t)w * bpp);
         }
         if (!device.ops->upload(&device, im->native, (RenderRect){x, y, w, h}, layer + z,
-                                im->shadow + plane * (layer + z) + row * y + (size_t)x * bpp,
+                                pixels + row * y + (size_t)x * bpp,
                                 row)) {
             Failed("texture upload");
             abort();
@@ -457,8 +505,7 @@ void RgTexImage3D(int kind, int level, int format, int w, int h, int layers, int
                                                       : RENDER_RGBA8;
     if (im->native)
         device.ops->releaseImage(&device, im->native);
-    SDL_free(im->shadow);
-    im->shadow = NULL;
+    FreeShadow(im);
     im->dirty = 0;
     im->desc = (RenderImageDesc){w, h, layers, mipmaps, f};
     im->native = device.ops->image(&device, im->desc);
@@ -493,6 +540,11 @@ void RgGenerateMipmap(int kind) {
         } else if (im->shadow)
             device.ops->upload(&device, next, (RenderRect){0, 0, im->desc.width, im->desc.height},
                                0, im->shadow, (size_t)im->desc.width * PixelBytes(im->desc.format));
+        if (!im->dirty && im->layerShadows)
+            for (int z = 0; z < im->desc.layers; z++)
+                if (im->layerShadows[z]) device.ops->upload(&device, next,
+                    (RenderRect){0, 0, im->desc.width, im->desc.height}, z, im->layerShadows[z],
+                    (size_t)im->desc.width * PixelBytes(im->desc.format));
         device.ops->releaseImage(&device, im->native);
         im->native = next;
     }

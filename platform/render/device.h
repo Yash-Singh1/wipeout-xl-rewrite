@@ -115,6 +115,8 @@ typedef struct RenderDeviceOps {
     /* Optional streaming update. Drivers may orphan native storage while
        keeping the buffer identity. Otherwise the shared layer replaces it. */
     int (*writeBuffer)(RenderDevice *, uintptr_t, const void *, size_t, RenderBufferKind);
+    /* Optional cache release at explicit idle/freeze points. Live resources remain intact. */
+    void (*trim)(RenderDevice *);
 } RenderDeviceOps;
 struct RenderDevice {
     const RenderDeviceOps *ops;
