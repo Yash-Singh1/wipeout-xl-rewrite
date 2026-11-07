@@ -252,6 +252,9 @@ int main(int argc, char **argv)
                         v[i].a = scene & 2 ? 255 : Next();
                         v[i].w = primitive & 1 ? 100 + Next() % 300 : 0;
                         v[i].noDepth = primitive % 11 == 0;
+                        /* These flags affect vertex depth, not the constant metadata varyings. */
+                        v[i].exactDepth = primitive % 9 == 0 && i == 2;
+                        v[i].backFacing = primitive % 13 == 0 && i == 1;
                     }
                     GpuTriangles(&s, v, 3);
                     /* Upload while the last primitive is pending: classification must use the new palette. */

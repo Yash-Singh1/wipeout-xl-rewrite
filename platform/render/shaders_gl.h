@@ -1,5 +1,32 @@
 /* API-specific shader programs. */
+/* Per-triangle metadata is identical at every vertex (gpu_renderer.c:Add).
+   WebKit's older ANGLE Metal path synthesizes provoking-vertex indices for flat
+   varyings and waits for a GPU buffer on each draw. Smooth highp float varyings
+   avoid that path; rounding recovers the original small integer metadata.
+   Keep desktop GL's interface and allow native regression tests to exercise WebGL's. */
+#if defined(__EMSCRIPTEN__) || defined(PORT_TEST_WEBGL_METADATA)
+#define META_OUT(type, storage, name) "out " #storage " " #name "Data;\n" #type " " #name ";\n"
+#define META_IN(type, storage, name) "in " #storage " " #name "Data;\n" #type " " #name ";\n"
+#define META_WRITE(type, storage, name) #name "Data = " #storage "(" #name ");\n"
+#define META_READ(type, storage, name) #name " = " #type "(round(" #name "Data));\n"
+#else
+#define META_OUT(type, storage, name) "flat out " #type " " #name ";\n"
+#define META_IN(type, storage, name) "flat in " #type " " #name ";\n"
+#define META_WRITE(type, storage, name)
+#define META_READ(type, storage, name)
+#endif
+#define META_FIELDS(X) \
+    X(uvec4, vec4, hd) \
+    X(ivec4, vec4, hdTexels) \
+    X(ivec4, vec4, texturePage) \
+    X(ivec4, vec4, clut) \
+    X(ivec4, vec4, vWindow) \
+    X(ivec4, vec4, mode) \
+    X(int, float, semiMode) \
+    X(int, float, hudColourOverlay)
+
 static const char gameVertex[] =
+    META_FIELDS(META_OUT)
     "in vec3 position;\n"
     "in vec4 colour;\n"
     "in vec2 texel;\n"
@@ -8,14 +35,6 @@ static const char gameVertex[] =
     "in uvec4 modeIn;\n"
     "in uvec4 hdIn;\n"
     "in ivec4 hdTexelsIn;\n"
-    "flat out uvec4 hd;\n"
-    "flat out ivec4 hdTexels;\n"
-    "flat out ivec4 texturePage;\n"
-    "flat out ivec4 clut;\n"
-    "flat out ivec4 vWindow;\n"
-    "flat out ivec4 mode;\n"
-    "flat out int semiMode;\n"
-    "flat out int hudColourOverlay;\n"
     "uniform int pass;\n"
     "uniform float depthPull;\n"
     "uniform int depthPass;\n"
@@ -39,6 +58,7 @@ static const char gameVertex[] =
     "    vTexel = vec3(texel, 1.0);\n"
     "    hd = hdIn;\n"
     "    hdTexels = hdTexelsIn;\n"
+    META_FIELDS(META_WRITE)
     "}\n"
 ;
 static const char gameFragment[] =
@@ -48,22 +68,15 @@ static const char gameFragment[] =
     "precision highp usampler2D;\n"
     "precision highp usampler2DArray;\n"
     "#endif\n"
+    META_FIELDS(META_IN)
     "in vec4 vColour;\n"
     "in vec3 vTexel;\n"
-    "flat in int semiMode;\n"
-    "flat in int hudColourOverlay;\n"
     "uniform usampler2D vram;\n"
     "uniform usampler2DArray decoded;\n"
     "uniform sampler2D glyphs;\n"
     "uniform sampler2D portPages;\n"
     "uniform sampler2D hdAtlas;\n"
     "uniform float rasterScale;\n"
-    "flat in uvec4 hd;\n"
-    "flat in ivec4 hdTexels;\n"
-    "flat in ivec4 texturePage;\n"
-    "flat in ivec4 clut;\n"
-    "flat in ivec4 vWindow;\n"
-    "flat in ivec4 mode;\n"
     "out vec4 fragment;\n"
     "uint Fetch(ivec2 p) { return texelFetch(vram, ivec2(p.x & 1023, p.y & 1023), 0).r; }\n"
     "uint FetchClut(ivec2 p) { return texelFetch(vram, ivec2(p.x & 1023, p.y & 1023), 0).r; }\n"
@@ -93,6 +106,7 @@ static const char gameFragment[] =
     "    else fragment = vec4(col, 0.0);\n"
     "}\n"
     "void main() {\n"
+    META_FIELDS(META_READ)
     "    vec3 c = vColour.rgb;\n"
     "    float fade = vColour.a;\n"
     "    if (mode.x == 0) {\n"
@@ -156,6 +170,11 @@ static const char gameFragment[] =
     "    Out(t8, 1.0, semiMode >= 0 && semi);\n"
     "}\n"
 ;
+#undef META_OUT
+#undef META_IN
+#undef META_WRITE
+#undef META_READ
+#undef META_FIELDS
 static const char pictureVertex[] =
     "void main() {\n"
     "    vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);\n"

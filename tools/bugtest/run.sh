@@ -105,6 +105,15 @@ if [ "${WIPEOUT_TEST_GL:-0}" = 1 ]; then
         $gpu_defines -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) tools/bugtest/test_gpu_passes.c platform/render/state.c platform/render/device_gl.c \
         $gpu_objects $(pkg-config --libs sdl3) $gl_libs -lm -o "$test_build/gpu_passes"
     "$test_build/gpu_passes"
+    # WebGL's float metadata must reproduce the desktop flat interface exactly.
+    # Exercise it on a real GL driver even when the other cases selected Metal.
+    env -u WIPEOUT_TEST_METAL "$test_build/gpu_passes" "$test_build/flat.bin"
+    ${CC:-cc} -O1 -DPORT_TEST_WEBGL_METADATA -ffunction-sections -fdata-sections $discard \
+        $gpu_defines -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) tools/bugtest/test_gpu_passes.c platform/render/state.c platform/render/device_gl.c \
+        $gpu_objects $(pkg-config --libs sdl3) $gl_libs -lm -o "$test_build/gpu_metadata"
+    env -u WIPEOUT_TEST_METAL "$test_build/gpu_metadata" "$test_build/float.bin"
+    cmp "$test_build/flat.bin" "$test_build/float.bin"
+    echo 'WebGL float metadata preserves all flat-interface colour/depth hashes: OK'
 fi
 
 ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Wno-deprecated-declarations \
