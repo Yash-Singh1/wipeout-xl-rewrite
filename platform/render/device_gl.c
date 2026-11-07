@@ -209,7 +209,14 @@ static int Upload(RenderDevice *d, uintptr_t p, RenderRect r, int layer, const v
         glTexSubImage2D(target, 0, r.x, r.y, r.w, r.h, ImageFormat(im->desc.format),
                         ImageType(im->desc.format), pixels);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    /* Validated rectangles/formats come from the shared renderer. Polling the
+       driver after every upload forces WebGL command-stream synchronization.
+       Allocation and shader errors are still checked on their cold paths. */
+#ifdef __EMSCRIPTEN__
+    return 1;
+#else
     return glGetError() == GL_NO_ERROR;
+#endif
 }
 static void Target(GlDevice *g, RenderTarget t, GLenum which) {
     if (t.window) {

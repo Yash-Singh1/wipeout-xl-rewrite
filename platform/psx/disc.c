@@ -11,13 +11,21 @@
 #include <windows.h>
 #elif defined(__EMSCRIPTEN__)
 #include <emscripten.h>
-/* The web: the page has read the player's disc files into memory, once (platform/web/shell.html); a file is
-   found there by its name, without a second copy. */
+/* The web: data files are mapped in the WASM heap. Audio-only raw tracks stay in page-owned chunks,
+   with a small mapped prefix for format detection and one sector copied when the CD mixer needs it. */
 EM_JS(const uint8_t *, WebDiscFile, (const char *path, size_t *size), {
     var file = Module.discFiles && Module.discFiles[UTF8ToString(path).split('/').pop()];
     if (!file) return 0;
     HEAPU32[size >> 2] = file.size;
     return file.data;
+});
+EM_JS(int, WebDiscExternal, (const char *path), {
+    var file = Module.discFiles && Module.discFiles[UTF8ToString(path).split('/').pop()];
+    return file && file.external || 0;
+});
+EM_JS(int, WebDiscRead, (int file, size_t offset, size_t count, uint8_t *out), {
+    var track = Module.discExternal && Module.discExternal[file];
+    return track && copyDiscBytes(track, offset, count, HEAPU8.subarray(out, out + count)) ? 1 : 0;
 });
 #else
 #include <sys/mman.h>
@@ -26,6 +34,9 @@ EM_JS(const uint8_t *, WebDiscFile, (const char *path, size_t *size), {
 #endif
 
 typedef struct DiscFile {
+#ifdef __EMSCRIPTEN__
+    int webExternal; /* audio sectors live in page-owned chunks */
+#endif
     const uint8_t *data;
     size_t size;
     size_t offset;   /* where the sectors start: the PCM payload of a WAV, a track in an .mdf (0 for a raw file);
@@ -196,6 +207,7 @@ static bool map_file(DiscFile *f, const char *path)
     return f->data != NULL;
 #elif defined(__EMSCRIPTEN__)
     f->data = WebDiscFile(path, &f->size);
+    f->webExternal = WebDiscExternal(path);
     return f->data != NULL;
 #else
     struct stat st;
@@ -885,6 +897,10 @@ const uint8_t *DiscRawSector(const Disc *disc, int32_t lba)
 {
     static const uint8_t silence[DISC_RAW_SECTOR];
     static THREAD_LOCAL uint8_t made[DISC_RAW_SECTOR];
+#ifdef __EMSCRIPTEN__
+    /* The mixer retains its sector while data reads can synthesize cooked sectors in made. */
+    static THREAD_LOCAL uint8_t webAudio[DISC_RAW_SECTOR];
+#endif
     const DiscFile *last = &disc->files[disc->fileCount - 1];
     int i;
 
@@ -901,6 +917,12 @@ const uint8_t *DiscRawSector(const Disc *disc, int32_t lba)
             int32_t sector = FileSector(disc, i, lba);
 
             if (sector >= 0) {
+#ifdef __EMSCRIPTEN__
+                if (f->webExternal) {
+                    size_t offset = f->offset + (size_t)sector * (size_t)f->stride;
+                    return WebDiscRead(f->webExternal, offset, DISC_RAW_SECTOR, webAudio) ? webAudio : NULL;
+                }
+#endif
                 const uint8_t *data = f->data + f->offset + (size_t)sector * (size_t)f->stride;
 
                 if (f->tail && sector == f->sectors - 1) {

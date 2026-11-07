@@ -3,7 +3,8 @@
      comes from the page's own server when whoever hosts the page put it there, as wipeout-rewrite's page has its
      data: wipeoutxl-data.json names it (the build writes it: -DWIPEOUT_WEB_DISC), else disc/Wipeout XL (USA).cue,
      or the address says (?disc=); only when none is there does the page ask for the player's own files. The
-     page reads the tracks into the game's memory once (platform/psx/disc.c finds them there by name), and keeps
+     page maps data tracks in WASM and keeps raw audio tracks in JavaScript chunks (platform/psx/disc.c reads
+     their sectors by name), and keeps
      a downloaded disc in the browser's cache for the next visit; it keeps the settings and memory cards in the
      browser's storage (IndexedDB, under SDL's data folder /libsdl) and starts the game's main(). Gamepads come
      through the browser's Gamepad API (SDL's joystick driver for the web): press a button on one for the
@@ -141,6 +142,31 @@ function cueFiles(text) {
   return names;
 }
 
+// Audio-only raw BIN files can stay outside WebAssembly's contiguous heap.
+// iOS Safari can refuse a large WASM heap even when JS buffers still fit.
+function audioOnlyFiles(cue) {
+  var files = {}, current = null;
+  cue.split(/\r?\n/).forEach(function (line) {
+    var file = /^\s*FILE\s+"([^"]+)"/i.exec(line);
+    if (file) { current = file[1].split(/[\\/]/).pop(); if (!(current in files)) files[current] = true; }
+    var track = /^\s*TRACK\s+\d+\s+(\S+)/i.exec(line);
+    if (track && current && track[1].toUpperCase() !== 'AUDIO') files[current] = false;
+  });
+  return files;
+}
+var discChunkSize = 1 << 20;
+Module.discExternal = [null];
+function copyDiscBytes(file, offset, count, destination) {
+  if (offset < 0 || count < 0 || offset + count > file.size) return false;
+  for (var copied = 0; copied < count;) {
+    var at = offset + copied, chunk = file.chunks[Math.floor(at / discChunkSize)];
+    var begin = at % discChunkSize, take = Math.min(count - copied, chunk.length - begin);
+    destination.set(chunk.subarray(begin, begin + take), copied);
+    copied += take;
+  }
+  return true;
+}
+
 // A track: its size, and its bytes in pieces (a File chosen or dropped, or a URL on the page's server)
 function fileTrack(file) {
   return { name: file.name, size: async function () { return file.size; },
@@ -184,33 +210,63 @@ async function start(cueName, cueText, trackOf) {
   if (missing.length) { say('Missing: ' + missing.join(', '), true); return; }
   started = true;
 
-  // the tracks into the game's memory, a piece at a time (the memory may grow, and move, meanwhile)
+  // Keep data in WASM and raw audio in page-owned chunks, a piece at a time.
+  // The WASM heap may grow and move while allocating the next data track.
   document.getElementById('progress').style.visibility = 'visible';
+  var allocated = [];
   try {
     var tracks = needed.map(trackOf), sizes = [], total = 0, done = 0;
+    var audio = audioOnlyFiles(cueText);
     for (var i = 0; i < tracks.length; i++) { sizes[i] = await tracks[i].size(); total += sizes[i]; }
     for (i = 0; i < tracks.length; i++) {
-      var data = Module._malloc(sizes[i]), at = 0;
-      if (!data) throw new Error('not enough memory for ' + tracks[i].name);
+      var external = !!audio[tracks[i].name];
+      var file = { size: sizes[i] }, at = 0;
+      allocated.push(file);
+      if (external) file.chunks = [];
+      else {
+        file.data = Module._malloc(sizes[i]);
+        if (!file.data) throw new Error('not enough memory for ' + tracks[i].name);
+      }
       for await (var piece of tracks[i].pieces()) {
         if (at + piece.length > sizes[i]) throw new Error(tracks[i].name + ' is longer than it said');
-        Module.HEAPU8.set(piece, data + at);
-        at += piece.length;
+        if (external) {
+          for (var used = 0; used < piece.length;) {
+            var chunkNumber = Math.floor(at / discChunkSize), begin = at % discChunkSize;
+            if (!file.chunks[chunkNumber])
+              file.chunks[chunkNumber] = new Uint8Array(Math.min(discChunkSize, file.size - chunkNumber * discChunkSize));
+            var take = Math.min(piece.length - used, file.chunks[chunkNumber].length - begin);
+            file.chunks[chunkNumber].set(piece.subarray(used, used + take), begin);
+            used += take; at += take;
+          }
+        } else { Module.HEAPU8.set(piece, file.data + at); at += piece.length; }
         done += piece.length;
         document.getElementById('bar').style.width = (100 * done / total).toFixed(1) + '%';
         say((tracks[i].url && !tracks[i].cached ? 'Downloading' : 'Reading') + ' the disc: ' +
             Math.round(done / 1048576) + ' of ' + Math.round(total / 1048576) + ' MB');
       }
-      Module.discFiles[tracks[i].name] = { data: data, size: at };
+      if (at !== file.size) throw new Error(tracks[i].name + ' is shorter than it said');
+      if (external) {
+        file.data = Module._malloc(Math.min(file.size, 65536));
+        if (!file.data) throw new Error('not enough memory for track header');
+        copyDiscBytes(file, 0, Math.min(file.size, 65536), Module.HEAPU8.subarray(file.data));
+        // Preserve WAV files disguised as BIN; their RIFF parser needs a full mapping.
+        if (Module.HEAPU8[file.data] === 82 && Module.HEAPU8[file.data + 1] === 73 &&
+            Module.HEAPU8[file.data + 2] === 70 && Module.HEAPU8[file.data + 3] === 70) {
+          Module._free(file.data); file.data = Module._malloc(file.size);
+          if (!file.data) throw new Error('not enough memory for WAV track');
+          copyDiscBytes(file, 0, file.size, Module.HEAPU8.subarray(file.data)); delete file.chunks;
+        } else { file.external = Module.discExternal.length; Module.discExternal.push(file); }
+      }
+      Module.discFiles[tracks[i].name] = file;
     }
-    // a downloaded disc kept for the next visit (from the game's memory, a track at a time; the cache may refuse)
+    // Keep downloaded tracks for the next visit; the browser may refuse the cache write.
     var cache = await openDiscCache();
     for (i = 0; cache && i < tracks.length; i++) {
       if (!tracks[i].url || tracks[i].cached) continue;
       say('Keeping the disc in this browser for next time: ' + tracks[i].name);
       var file = Module.discFiles[tracks[i].name];
       try {
-        await cache.put(tracks[i].url, new Response(Module.HEAPU8.slice(file.data, file.data + file.size),
+        await cache.put(tracks[i].url, new Response(file.chunks ? new Blob(file.chunks) : Module.HEAPU8.slice(file.data, file.data + file.size),
                         { headers: { 'Content-Length': String(file.size) } }));
       } catch (e) {
         console.warn('the disc is not kept: ' + e);
@@ -218,6 +274,8 @@ async function start(cueName, cueText, trackOf) {
       }
     }
   } catch (e) {
+    allocated.forEach(function (file) { if (file.data) Module._free(file.data); });
+    Module.discFiles = {}; Module.discExternal = [null];
     say('The disc could not be read: ' + e.message, true);
     started = false;
     return;

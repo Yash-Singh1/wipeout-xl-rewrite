@@ -425,6 +425,7 @@ int main(int argc, char **argv)
         io.wavPath = SDL_getenv("WIPEOUT_WAV"); /* tests: the mixed audio of a fixed-step run */
 #ifdef __EMSCRIPTEN__
         io.queueAudio = 1; /* the page's audio callback runs only while the game waits (psx_io.h) */
+        io.noDevice = portConfig.muted; /* fields already advance time; no dummy audio timer is needed */
 #else
         io.queueAudio = SDL_getenv("WIPEOUT_QUEUE_AUDIO") != NULL; /* tests: as the web does */
 #endif
