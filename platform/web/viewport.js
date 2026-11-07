@@ -3,6 +3,13 @@
 // window resize/orientation events, including while the browser toolbar moves.
 function installGameViewport(canvas, browser) {
   var pending = false, previous = {}, settle = [];
+  // Read CSS env() values after each resize. Keep HUD and touch controls inside
+  // the safe rectangle, including when a Home Screen app fills the display.
+  var safe = browser.document.createElement('div');
+  safe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;' +
+    'padding:env(safe-area-inset-top) env(safe-area-inset-right) ' +
+    'env(safe-area-inset-bottom) env(safe-area-inset-left);';
+  browser.document.body.appendChild(safe);
   function update() {
     pending = false;
     var viewport = browser.visualViewport;
@@ -11,8 +18,16 @@ function installGameViewport(canvas, browser) {
     var width = Math.round(visible ? viewport.width : browser.innerWidth);
     var height = Math.round(visible ? viewport.height : browser.innerHeight);
     if (width <= 0 || height <= 0) return;
-    var left = visible ? Math.round(viewport.offsetLeft || 0) : 0;
-    var top = visible ? Math.round(viewport.offsetTop || 0) : 0;
+    var inset = browser.getComputedStyle(safe);
+    var insetLeft = Math.max(0, Math.round(parseFloat(inset.paddingLeft) || 0));
+    var insetRight = Math.max(0, Math.round(parseFloat(inset.paddingRight) || 0));
+    var insetTop = Math.max(0, Math.round(parseFloat(inset.paddingTop) || 0));
+    var insetBottom = Math.max(0, Math.round(parseFloat(inset.paddingBottom) || 0));
+    width -= insetLeft + insetRight;
+    height -= insetTop + insetBottom;
+    if (width <= 0 || height <= 0) return;
+    var left = (visible ? Math.round(viewport.offsetLeft || 0) : 0) + insetLeft;
+    var top = (visible ? Math.round(viewport.offsetTop || 0) : 0) + insetTop;
     var ratio = browser.devicePixelRatio || 1;
     var resized = width !== previous.width || height !== previous.height || ratio !== previous.ratio;
     if (!resized && left === previous.left && top === previous.top) return;
@@ -37,6 +52,8 @@ function installGameViewport(canvas, browser) {
   }
   browser.addEventListener('resize', schedule);
   browser.addEventListener('orientationchange', rotated);
+  browser.document.addEventListener('fullscreenchange', rotated);
+  browser.document.addEventListener('webkitfullscreenchange', rotated);
   if (browser.visualViewport) {
     browser.visualViewport.addEventListener('resize', schedule);
     browser.visualViewport.addEventListener('scroll', schedule);

@@ -113,6 +113,7 @@ static void SubmitRanges(void);
 
 #define DECODED_PAGES 256
 static RgHandle decodedTexture;
+static int decodedCacheEnabled = 1;
 static unsigned decodeSequence = 1;
 static struct DecodedPage {
     uint64_t key;
@@ -207,6 +208,14 @@ int GpuInit(void)
     if (!RgInit()) {
         return 0;
     }
+#ifdef __EMSCRIPTEN__
+    /* A page/palette cache miss decodes all 65,536 texels on the CPU. The
+       working set of a race churns this cache on older phones. Their existing
+       raw VRAM sampler avoids that work and the 32 MiB array allocation. */
+    decodedCacheEnabled = 0;
+#endif
+    const char *decodedCache = SDL_getenv("WIPEOUT_DECODED_CACHE");
+    if (decodedCache) decodedCacheEnabled = SDL_atoi(decodedCache) != 0;
     program = RgProgram(RENDER_GAME);
     uniformVram = RgGetUniformLocation(program, "vram");
     uniformGlyphs = RgGetUniformLocation(program, "glyphs");
@@ -242,7 +251,9 @@ int GpuInit(void)
 
     RgGenTextures(1, &decodedTexture);
     RgBindTexture(RG_TEXTURE_2D_ARRAY, decodedTexture);
-    RgTexImage3D(RG_TEXTURE_2D_ARRAY, 0, RG_R16UI, 256, 256, DECODED_PAGES, 0,
+    RgTexImage3D(RG_TEXTURE_2D_ARRAY, 0, RG_R16UI,
+                 decodedCacheEnabled ? 256 : 1, decodedCacheEnabled ? 256 : 1,
+                 decodedCacheEnabled ? DECODED_PAGES : 2, 0,
                  RG_RED_INTEGER, RG_UNSIGNED_SHORT, NULL);
     RgTexParameteri(RG_TEXTURE_2D_ARRAY, RG_TEXTURE_MIN_FILTER, RG_NEAREST);
     RgTexParameteri(RG_TEXTURE_2D_ARRAY, RG_TEXTURE_MAG_FILTER, RG_NEAREST);
@@ -696,7 +707,7 @@ static int DecodedLayer(const BatchVertex *v)
 
 static void DecodeBatch(void)
 {
-    if (HdTexActive()) return;
+    if (!decodedCacheEnabled || HdTexActive()) return;
     for (int i = 0; i < batchCount; i += 3) {
         BatchVertex *v = &batch[i];
         if (v->mode[0] && v->mode[2] < 2 && !v->hd[2]) {

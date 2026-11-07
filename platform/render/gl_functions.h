@@ -143,7 +143,9 @@ static int LoadFunctions(void)
     return 1;
 }
 #else
+#ifndef __EMSCRIPTEN__
 #define GPU_READ_ASYNC 1
+#endif
 static int LoadFunctions(void)
 {
     return 1; /* (the platform's OpenGL ES library is linked) */

@@ -1,12 +1,15 @@
-/* OpenGL as each platform has it. The desktop's OpenGL 3.3 and the web's WebGL 2 come through SDL's headers, the
-   functions beyond OpenGL 1.1 looked up by name (gpu_gl.c); iOS and Android have OpenGL ES 3 in a library of
-   their own, whose headers declare every function and which the program links (PORT_GL_LINKED). */
+/* Desktop GL entry points are loaded through SDL. WebGL and mobile GLES expose
+   linked entry points. WebGL calls go directly to Emscripten instead of through
+   SDL procedure-address wrappers and indirect function-table calls. */
 #ifndef PORT_GL_H
 #define PORT_GL_H
 
 #include <SDL3/SDL.h>
 
-#if defined(SDL_PLATFORM_IOS)
+#if defined(__EMSCRIPTEN__)
+#include <GLES3/gl3.h>
+#define PORT_GL_LINKED 1
+#elif defined(SDL_PLATFORM_IOS)
 #include <OpenGLES/ES3/gl.h>
 #include <OpenGLES/ES3/glext.h>
 #define PORT_GL_LINKED 1

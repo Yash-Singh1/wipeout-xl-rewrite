@@ -30,16 +30,19 @@ console.log('CUE data/audio classification and exact cross-chunk sector copies: 
 // and truncated input. Failed loads must release every native allocation before retry.
 async function loaderTests() {
  let message;
- const context = {Module: {HEAPU8: new Uint8Array(8 << 20), discFiles: {}},
+ const context = {Module: {HEAPU8: new Uint8Array(8 << 20), discFiles: {}, gameAudio:{ready(){}}},
   document: {getElementById: () => ({style: {}, remove() {}})},
   runtimeReady: true, started: false, cueFiles: text => [...text.matchAll(/FILE "([^"]+)"/g)].map(x => x[1]),
   say(value) { message = value; }, openDiscCache: async () => null,
-  FS: {mkdir() {}, writeFile() {}, mount() {}, syncfs() {}}, IDBFS: {}};
+  FS: {mkdir() {}, writeFile() {}, mount() {}, syncfs(populate, callback) {callback(null);}},
+  IDBFS: {storeLocalEntry(){},removeLocalEntry(){}},
+  window: {setTimeout,clearTimeout,setInterval(){},addEventListener(){},document:{addEventListener(){}}}};
  const live = new Set(); let next = 8, allocationsLeft = Infinity;
  context.Module._malloc = size => { if (!allocationsLeft--) return 0; const p = next; next += size; live.add(p); return p; };
  context.Module._free = p => { assert(live.delete(p), 'free only live allocations'); };
  vm.createContext(context);
- vm.runInContext(code + html.slice(html.indexOf('async function start('), html.indexOf('// The player\'s files')), context);
+ vm.runInContext(fs.readFileSync('platform/web/saves.js','utf8') + code +
+   html.slice(html.indexOf('async function start('), html.indexOf('// The player\'s files')), context);
  const data = source.slice(0, 128 << 10), music = source.slice(0, (1 << 20) + 73);
  const cue = 'FILE "data.bin" BINARY\nTRACK 01 MODE1/2048\nFILE "song.bin" BINARY\nTRACK 02 AUDIO';
  const track = (name, bytes, declared = bytes.length) => ({name, size: async () => declared,
@@ -70,6 +73,25 @@ async function loaderTests() {
  const mappedWave = context.Module.discFiles['song.bin'];
  assert(!mappedWave.chunks && !mappedWave.external);
  assert.deepEqual(context.Module.HEAPU8.slice(mappedWave.data, mappedWave.data + wave.length), wave);
- console.log('Disc loader fragmented input, allocation failure cleanup, retry and RIFF fallback: OK');
+ // Streamed raw music maps only its prefix and never iterates the full file.
+ for (const file of Object.values(context.Module.discFiles)) context.Module._free(file.data);
+ context.started = false; context.Module.discFiles = {}; context.Module.discExternal = [null];
+ let closed = 0;
+ const streaming = {header: async () => music.slice(0, 65536), close() {closed++;},
+  copy(offset, count, destination) {destination.set(music.subarray(offset, offset + count)); return true;}};
+ tracks['song.bin'] = {name: 'song.bin', size: async () => 500 << 20, stream: streaming,
+  pieces: async function* () {throw new Error('must not preload music');}};
+ await context.start('test.cue', cue, name => tracks[name]);
+ assert.equal(context.started, true); assert.equal(live.size, 2);
+ const streamed = context.Module.discFiles['song.bin'];
+ assert.equal(streamed.size, 500 << 20); assert.equal(streamed.stream, streaming);
+ assert(!streamed.chunks && streamed.external > 0);
+ assert.deepEqual(context.Module.HEAPU8.slice(streamed.data, streamed.data + 65536), music.slice(0, 65536));
+ for (const file of Object.values(context.Module.discFiles)) context.Module._free(file.data);
+ context.started = false; context.Module.discFiles = {}; context.Module.discExternal = [null];
+ streaming.header = async () => {throw new Error('header failed');};
+ await context.start('test.cue', cue, name => tracks[name]);
+ assert.equal(context.started, false); assert.equal(live.size, 0); assert.equal(closed, 1);
+ console.log('Disc loader: fragments, cleanup/retry, RIFF fallback and prefix-only streamed music: OK');
 }
 loaderTests().catch(error => { console.error(error); process.exitCode = 1; });

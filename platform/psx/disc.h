@@ -36,6 +36,11 @@ const DiscTrack *DiscTrackInfo(const Disc *disc, int index);
 int32_t DiscLeadOut(const Disc *disc);
 /* The 2352 raw bytes of a sector, or NULL outside the image. */
 const uint8_t *DiscRawSector(const Disc *disc, int32_t lba);
+#ifdef __EMSCRIPTEN__
+/* Audio must not suspend the SPU for a network read. A cold streamed sector
+   starts a background fetch and sets pending; retry without consuming it. */
+const uint8_t *DiscPollAudioSector(const Disc *disc, int32_t lba, bool *pending);
+#endif
 /* A raw sector made from 2048 bytes of mode 1 user data: the sync, the header with lba's address, the data; the
    error detection and correction codes are left zero. */
 void DiscMakeRawSector(uint8_t *raw, int32_t lba, const uint8_t *data);

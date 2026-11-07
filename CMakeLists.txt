@@ -370,17 +370,38 @@ endif()
 # (up to the 4 GB WebAssembly allows) and keeps the settings and memory cards in the browser's storage.
 if(EMSCRIPTEN)
     set_target_properties(wipeoutxl PROPERTIES SUFFIX ".html")
+    # Let Binaryen inline small hot helpers within the bound below instead of
+    # inheriting LLVM's large single-caller merges before Asyncify runs.
+    foreach(web_target wipeoutxl game psxio)
+        target_compile_options(${web_target} PRIVATE -fno-inline-functions)
+    endforeach()
     set(WEB_SHELL ${CMAKE_SOURCE_DIR}/platform/web/shell.html)
     set(WEB_VIEWPORT ${CMAKE_SOURCE_DIR}/platform/web/viewport.js)
-    set_property(TARGET wipeoutxl APPEND PROPERTY LINK_DEPENDS ${WEB_SHELL} ${WEB_VIEWPORT})
+    set(WEB_FULLSCREEN ${CMAKE_SOURCE_DIR}/platform/web/fullscreen.js)
+    set(WEB_AUDIO ${CMAKE_SOURCE_DIR}/platform/web/audio.js)
+    set(WEB_AUDIO_OUTPUT ${CMAKE_SOURCE_DIR}/platform/web/audio-output.js)
+    set(WEB_PRESENTATION ${CMAKE_SOURCE_DIR}/platform/web/presentation.js)
+    set(WEB_SAVES ${CMAKE_SOURCE_DIR}/platform/web/saves.js)
+    set_property(TARGET wipeoutxl APPEND PROPERTY LINK_DEPENDS ${WEB_SHELL} ${WEB_VIEWPORT} ${WEB_FULLSCREEN} ${WEB_AUDIO} ${WEB_AUDIO_OUTPUT} ${WEB_PRESENTATION} ${WEB_SAVES})
     target_link_options(wipeoutxl PRIVATE
+        --emit-symbol-map
         --shell-file ${WEB_SHELL}
-        --pre-js ${WEB_VIEWPORT}
+        "SHELL:--pre-js '${WEB_VIEWPORT}'"
+        "SHELL:--pre-js '${WEB_FULLSCREEN}'"
+        "SHELL:--pre-js '${WEB_AUDIO}'"
+        "SHELL:--pre-js '${WEB_AUDIO_OUTPUT}'"
+        "SHELL:--pre-js '${WEB_PRESENTATION}'"
+        "SHELL:--pre-js '${WEB_SAVES}'"
         -sENVIRONMENT=web
         -sASYNCIFY -sASYNCIFY_STACK_SIZE=1048576
+        # Binaryen otherwise merges single-caller functions into very large
+        # Asyncify bodies. Older WebKit register allocators exhaust process
+        # memory while compiling them. Keep small-function optimization while
+        # bounding those merges; suspension coverage remains conservative.
+        "-sBINARYEN_EXTRA_PASSES=--inline-max-combined-binary-size=8192"
         -sSTACK_SIZE=8388608
-        -sINITIAL_MEMORY=268435456 -sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=4294967296
-        -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sGL_ENABLE_GET_PROC_ADDRESS=1
+        -sINITIAL_MEMORY=167772160 -sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=4294967296
+        -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2
         -sINVOKE_RUN=0 -sEXIT_RUNTIME=0 -sFORCE_FILESYSTEM=1 -lidbfs.js
         "-sEXPORTED_FUNCTIONS=_main,_malloc,_free"
         "-sEXPORTED_RUNTIME_METHODS=callMain,FS,IDBFS,HEAPU8")

@@ -16,6 +16,17 @@
 
 static uint64_t fields;
 static char saveDir[256];
+int portPal; /* these fixtures use NTSC timing */
+
+uint64_t PsxFieldCount(void)
+{
+    return fields;
+}
+
+int PortLinkRaceActive(void)
+{
+    return 0;
+}
 
 uint64_t test_fields(void)
 {

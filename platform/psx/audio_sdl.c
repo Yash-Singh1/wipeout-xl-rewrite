@@ -5,6 +5,31 @@
 
 #include "internal.h"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+
+EM_JS(int, WebAudioOpen, (int rate), {
+    var context = Module.SDL3 && Module.SDL3.audioContext;
+    return Module.gameAudioOutput.open(context, Module.gameAudio.destination(), rate);
+});
+EM_JS(void, WebAudioQueue, (const int16_t *samples, uint32_t frames), {
+    Module.gameAudioOutput.queue(HEAP16, samples >>> 1, frames);
+});
+EM_JS(void, WebAudioPause, (int paused), { Module.gameAudioOutput.pause(!!paused); });
+EM_JS(void, WebAudioClose, (void), { Module.gameAudioOutput.close(); });
+
+bool PsxAudioDeviceOpen(bool queued)
+{
+    /* Web output is fed by the video fields. No callback may enter WASM while
+       Asyncify has suspended it for a disc fetch or browser presentation. */
+    return queued && WebAudioOpen(SPU_SAMPLE_RATE);
+}
+void PsxAudioDeviceQueue(const int16_t *samples, uint32_t frames) { WebAudioQueue(samples, frames); }
+void PsxAudioDevicePause(bool paused) { WebAudioPause(paused); }
+void PsxAudioDeviceClose(void) { WebAudioClose(); }
+
+#else
+
 #define BLOCK_FRAMES 256
 /* queued samples: enough in hand to bridge the gaps between the game's fields, and not so many that the
    sound lags (a game that falls behind or races ahead, as after a stall, starts again from here) */
@@ -100,3 +125,4 @@ void PsxAudioDeviceClose(void)
         SDL_QuitSubSystem(SDL_INIT_AUDIO);
     }
 }
+#endif

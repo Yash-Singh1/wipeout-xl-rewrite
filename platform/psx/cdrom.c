@@ -127,6 +127,9 @@ static void finish_seek(CdDrive *cd)
     cd->state = cd->afterSeek;
     cd->phase = 0;
     cd->sector = NULL;
+#ifdef __EMSCRIPTEN__
+    cd->audioRetryAt = 0;
+#endif
     cd->nextSector = (double)cd->now + sector_period(cd);
 }
 
@@ -437,7 +440,20 @@ static void play_sample(CdDrive *cd, int16_t out[2])
             return;
         }
         track = DiscTrackAt(cd->disc, cd->pos);
+#ifdef __EMSCRIPTEN__
+        bool pending = false;
+        if (cd->now < cd->audioRetryAt) return;
+        cd->sector = track && track->audio ? DiscPollAudioSector(cd->disc, cd->pos, &pending) : NULL;
+        if (pending) {
+            /* Keep the music position while the fetch runs. The SPU and its
+               effects still advance, and the missing music is silent. */
+            cd->audioRetryAt = cd->now + DISC_SECTOR_FRAMES;
+            return;
+        }
+        cd->audioRetryAt = 0;
+#else
         cd->sector = track && track->audio ? DiscRawSector(cd->disc, cd->pos) : NULL;
+#endif
         cd->track = track ? track->number : 0;
     }
     if (cd->sector && !cd->muted && !cd->silent) {

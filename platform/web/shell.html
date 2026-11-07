@@ -13,17 +13,23 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Wipeout XL">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#000000">
 <title>Wipeout XL</title>
 <style>
   html, body { margin: 0; height: 100%; background: #000; color: #ddd; overflow: hidden;
                font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  *, *::before, *::after { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  input, textarea, [contenteditable="true"] { -webkit-user-select: text; user-select: text; }
   #canvas { display: block; outline: none; position: fixed; top: 0; left: 0;
             width: 100vw; height: 100vh; height: 100dvh;
             touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
             /* (the touch controls: a finger on the game neither scrolls nor zooms the page) */
   #start { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
            background: radial-gradient(circle at 50% 35%, #1b2340, #000 70%); }
-  #panel { width: min(560px, 90vw); padding: 28px 32px; border: 1px solid #3a4670; border-radius: 10px;
+  #panel { box-sizing: border-box; width: min(560px, 90vw); padding: 28px 32px; border: 1px solid #3a4670; border-radius: 10px;
            background: rgba(10, 14, 30, 0.92); box-shadow: 0 10px 40px #000; }
   h1 { margin: 0 0 6px; font-size: 26px; letter-spacing: 0.08em; color: #fff; }
   p { margin: 8px 0; }
@@ -38,6 +44,25 @@
   #bar { height: 100%; width: 0; background: #7f9bff; }
   #status { min-height: 1.45em; }
   #status.error, .error { color: #ff8f8f; }
+  #game-fullscreen { position: fixed; z-index: 3; top: max(6px, env(safe-area-inset-top));
+    right: max(6px, env(safe-area-inset-right)); box-sizing: border-box; width: 44px; height: 44px; padding: 11px;
+    border-radius: 50%; color: #fffa; background: #0003; border-color: #fff5; }
+  #game-fullscreen svg { display: block; width: 100%; height: 100%; }
+  #game-fullscreen:active { background: #fff4; }
+  #fullscreen-help { position: fixed; z-index: 4; inset: 0; background: #000b;
+    padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
+             max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+    display: flex; align-items: center; justify-content: center; }
+  #fullscreen-help[hidden], #game-fullscreen[hidden] { display: none; }
+  #fullscreen-help > div { max-width: 380px; padding: 20px; background: #141a2b;
+    border: 1px solid #5a6aa8; border-radius: 10px; }
+  #fullscreen-help h2 { margin: 0 0 10px; font-size: 20px; }
+  #enable-audio { position: fixed; z-index: 3; top: max(6px, env(safe-area-inset-top));
+    left: 50%; transform: translateX(-50%); min-height: 36px; font-size: 12px;
+    background: #111e; }
+  #enable-audio[hidden], #play[hidden], #play-muted[hidden] { display: none; }
+  #audio-status { color: #ffbd7f; }
+  @media (hover: hover) and (pointer: fine) { #game-fullscreen { display: none; } }
 </style>
 </head>
 <body>
@@ -54,6 +79,9 @@
       </div>
     </div>
     <p id="status"></p>
+    <button id="play" type="button" hidden>Play with sound</button>
+    <button id="play-muted" type="button" hidden>Play without sound</button>
+    <p id="audio-status" role="status"></p>
     <div id="progress"><div id="bar"></div></div>
     <p class="muted" id="note">Settings and memory cards are kept in this browser. Keyboard or gamepad; ~ opens the
       debug console.</p>
@@ -159,6 +187,7 @@ var discChunkSize = 1 << 20;
 Module.discExternal = [null];
 function copyDiscBytes(file, offset, count, destination) {
   if (offset < 0 || count < 0 || offset + count > file.size) return false;
+  if (file.stream) return file.stream.copy(offset, count, destination);
   for (var copied = 0; copied < count;) {
     var at = offset + copied, chunk = file.chunks[Math.floor(at / discChunkSize)];
     var begin = at % discChunkSize, take = Math.min(count - copied, chunk.length - begin);
@@ -218,11 +247,33 @@ async function start(cueName, cueText, trackOf) {
   try {
     var tracks = needed.map(trackOf), sizes = [], total = 0, done = 0;
     var audio = audioOnlyFiles(cueText);
-    for (var i = 0; i < tracks.length; i++) { sizes[i] = await tracks[i].size(); total += sizes[i]; }
+    for (var i = 0; i < tracks.length; i++) {
+      sizes[i] = await tracks[i].size();
+      total += audio[tracks[i].name] && tracks[i].stream ? Math.min(65536, sizes[i]) : sizes[i];
+    }
     for (i = 0; i < tracks.length; i++) {
       var external = !!audio[tracks[i].name];
       var file = { size: sizes[i] }, at = 0;
       allocated.push(file);
+      if (external && tracks[i].stream) {
+        file.stream = tracks[i].stream;
+        var header = await file.stream.header();
+        if (header[0] === 82 && header[1] === 73 && header[2] === 70 && header[3] === 70) {
+          // The native RIFF parser still requires a full WAV mapping.
+          file.stream.close(); delete file.stream;
+          total += file.size - header.length;
+        } else {
+          file.data = Module._malloc(header.length);
+          if (!file.data) throw new Error('not enough memory for track header');
+          Module.HEAPU8.set(header, file.data);
+          file.external = Module.discExternal.length; Module.discExternal.push(file);
+          Module.discFiles[tracks[i].name] = file;
+          done += header.length;
+          document.getElementById('bar').style.width = (100 * done / total).toFixed(1) + '%';
+          say('Preparing music...');
+          continue;
+        }
+      }
       if (external) file.chunks = [];
       else {
         file.data = Module._malloc(sizes[i]);
@@ -261,7 +312,7 @@ async function start(cueName, cueText, trackOf) {
       Module.discFiles[tracks[i].name] = file;
     }
     // Keep downloaded tracks for the next visit; the browser may refuse the cache write.
-    var cache = await openDiscCache();
+    var cache = tracks.some(function (track) { return track.url && !track.cached; }) ? await openDiscCache() : null;
     for (i = 0; cache && i < tracks.length; i++) {
       if (!tracks[i].url || tracks[i].cached) continue;
       say('Keeping the disc in this browser for next time: ' + tracks[i].name);
@@ -275,7 +326,10 @@ async function start(cueName, cueText, trackOf) {
       }
     }
   } catch (e) {
-    allocated.forEach(function (file) { if (file.data) Module._free(file.data); });
+    allocated.forEach(function (file) {
+      if (file.data) Module._free(file.data);
+      if (file.stream) file.stream.close();
+    });
     Module.discFiles = {}; Module.discExternal = [null];
     say('The disc could not be read: ' + e.message, true);
     started = false;
@@ -287,17 +341,22 @@ async function start(cueName, cueText, trackOf) {
   // settings and memory cards: SDL's data folder, kept in IndexedDB
   FS.mkdir('/libsdl');
   FS.mount(IDBFS, {}, '/libsdl');
-  FS.syncfs(true, function (error) {
-    if (error) console.warn('saved data: ' + error);
-    var save = function () { FS.syncfs(false, function (e) { if (e) console.warn('saving: ' + e); }); };
-    setInterval(save, 3000);
-    addEventListener('pagehide', save);
-    document.addEventListener('visibilitychange', function () { if (document.hidden) save(); });
-
+  say('Loading saved data...');
+  Module.gameSaves = Module.createGameSaves(FS, IDBFS, window);
+  var restored = await Module.gameSaves.restore();
+  if (!restored) {
+    console.warn('saved data: ' + Module.gameSaves.snapshot().error);
+    document.getElementById('note').textContent = 'Saved data is unavailable. Changes will not be saved this session.';
+  }
+  var launch = function () {
+    Module.gameSaves.watch();
     document.getElementById('start').remove();
     canvas.focus();
     Module.callMain(['--disc', '/disc/' + cueName]);
-  });
+  };
+  say('Ready to play.');
+  if (Module.gameAudio) Module.gameAudio.ready(launch, typeof ENV !== 'undefined' && 'WIPEOUT_MUTE' in ENV);
+  else launch();
 }
 
 // The player's files, chosen or dropped

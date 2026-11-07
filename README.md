@@ -145,6 +145,11 @@ emcmake cmake -S . -B build/web -G Ninja -DCMAKE_BUILD_TYPE=Release \
 ninja -C build/web
 ```
 
+The web build bounds function inlining to avoid excessive compiler memory use
+in older iOS WebKit. Keep those web-specific compiler/linker options together;
+removing only the LLVM or Binaryen bound can recreate large Asyncify functions.
+`wipeoutxl.html.symbols` maps function indices for profiling.
+
 This makes `wipeoutxl.html`, `wipeoutxl.js` and `wipeoutxl.wasm`, and, as
 wipeout-rewrite's web build has its data beside the page, the disc the page
 loads by itself: `WIPEOUT_WEB_DISC` (your own copy) links the `.cue` and its
@@ -165,6 +170,40 @@ the data track. Small compressed chunks use the HTTP cache even on a plain HTTP
 LAN address. The first preparation creates a compressed cache under `build/phone-cache`.
 This helper requires a CUE with separate data and music files. The normal web page
 and full-music build remain available as above.
+
+Add `--music` to publish `phone-music.html` alongside the muted test. It includes
+every original CD track and enables audio. Tap **Play with sound** after the disc loads. This starts audio inside a user
+gesture before the game opens its audio device. If the browser interrupts audio,
+the **Enable sound** button resumes it. On iOS, the mixed audio plays through a
+media element started by the same gesture. Music streams through a shared six MiB decoded cache with small
+track headers. The server must remain reachable for uncached music chunks.
+The mixer schedules short Web Audio buffers ahead of playback, with a bounded
+queue, so rendering does not have to meet a main-thread audio callback deadline.
+Uncached music sectors load in the background while sound effects continue;
+music resumes from the same sample once its data is ready.
+If browser save storage does not respond within five seconds, Play becomes
+available with a notice that the session will not save changes. Existing browser
+saves remain untouched. Normal save restoration and autosaving continue when
+storage is available.
+
+For static hosting, run `python3 tools/serve_web.py --music --export build/web-static`
+and upload the contents of `build/web-static/`. Its `index.html` enables streamed
+music; `phone.html` is the muted version. These are ordinary HTML, JS, WASM, CUE
+and binary chunk files. They need no API, Python process, service worker or custom
+compression headers, and relative URLs allow hosting under a subdirectory.
+
+For local phone crash checks, `phone-music-check.html` uses the same music build
+and saves a small diagnostic snapshot once per second to `build/phone-diagnostics/`.
+It includes audio activation and media state, scheduled audio queue and underruns,
+FPS, heap capacity, music fetch state, graphics API timings, GPU fence waits and WebGL context loss. The static
+export excludes this diagnostic hook.
+
+The mobile web page has a **Full screen** button. Browsers with the Fullscreen API
+enter full screen directly. On iPhone with iOS 16, open the page in Safari, use
+**Share > Add to Home Screen**, and launch Wipeout XL from that icon to remove the
+browser bars. The game resizes on rotation and keeps its HUD and touch controls
+clear of the notch and home indicator. This does not require a service worker;
+the game still needs access to the server for files missing from the HTTP cache.
 
 ## Phones and tablets (iOS, Android)
 

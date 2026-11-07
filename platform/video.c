@@ -24,21 +24,15 @@ static SDL_GLContext context;
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
-/* The web: the browser shows the canvas at its next display refresh after the game gives it its turn. A
-   picture ends the game's turn without waiting for that refresh (the game's time must not follow the
-   display's), and is marked unseen until then. */
+/* One visible presentation per browser refresh. Resume after its compositor
+   turn, so another picture cannot overwrite it or accumulate extra GPU work.
+   Field catch-up in libetc keeps simulation time separate from presentation. */
 EM_ASYNC_JS(void, ShowPicture, (void), {
     Module.pictureUnseen = true;
-    requestAnimationFrame(function () { Module.pictureUnseen = false; });
-    await new Promise(function (resolve) { setTimeout(resolve, 0); });
-});
-/* ... and a picture between the game's frames waits until the one before it has been shown (in a hidden page,
-   which shows nothing, it does not wait). */
-EM_ASYNC_JS(void, WaitPictureShown, (void), {
-    if (Module.pictureUnseen && !document.hidden) {
-        await new Promise(requestAnimationFrame);
-        await new Promise(function (resolve) { setTimeout(resolve, 0); });
-    }
+    if (!document.hidden) await new Promise(requestAnimationFrame);
+    await Module.gamePresentation.wait();
+    await new Promise(function (resolve) { setTimeout(resolve, document.hidden ? 16 : 0); });
+    Module.pictureUnseen = false;
 });
 #endif
 
@@ -90,6 +84,11 @@ int PortVideoInit(void)
 #if defined(__EMSCRIPTEN__) || defined(PORT_MOBILE)
 #ifdef __EMSCRIPTEN__
     /* viewport.js owns CSS bounds; SDL's resizable window follows them at the current pixel density. */
+    /* The game owns its offscreen depth and alpha buffers. The browser's
+       presentation surface is opaque and needs neither attachment. */
+    SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
+    SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
 #else
     flags |= SDL_WINDOW_FULLSCREEN; /* a phone or tablet: the whole screen */
 #endif
@@ -362,13 +361,10 @@ void PortVideoPresent(void)
 #endif
 }
 
-/* Before a picture between the game's frames: on the desktop the swap's VSync (the settings) paces them; the
-   web's pictures are paced here, one per display refresh at most. */
+/* Native swap pacing belongs to the device. Web pacing is completed by
+   ShowPicture for both game and interpolated pictures. */
 void PortVideoBetweenFrames(void)
 {
-#ifdef __EMSCRIPTEN__
-    WaitPictureShown();
-#endif
 }
 
 /* The hidden test window never has the focus: it counts as focused unless its script says otherwise. */

@@ -103,6 +103,16 @@ static const BackendEntry backends[] = {
 #endif
 #endif
 };
+#if defined(__EMSCRIPTEN__) || defined(PORT_TEST_WEBGL_UPLOADS)
+static int KeepMigrationShadow(void) {
+#ifdef PORT_TEST_WEBGL_UPLOADS
+    return 0;
+#else
+    /* Adding another web backend automatically restores migration copies. */
+    return SDL_arraysize(backends) > 1;
+#endif
+}
+#endif
 static const BackendEntry *Backend(RenderBackend id) {
     for (size_t i = 0; i < sizeof(backends) / sizeof(*backends); i++)
         if (backends[i].id == id)
@@ -437,6 +447,21 @@ void RgTexSubImage3D(int kind, int level, int x, int y, int layer, int w, int h,
     int inputBpp = format == RG_RGB ? 3 : (int)bpp;
     size_t inputRow = (size_t)(unpackRowLength ? unpackRowLength : w) * inputBpp;
     inputRow = (inputRow + unpackAlignment - 1) / unpackAlignment * unpackAlignment;
+#if defined(__EMSCRIPTEN__) || defined(PORT_TEST_WEBGL_UPLOADS)
+    /* WebGL has one backend. Decoded indexed pages can be rebuilt from VRAM,
+       so keeping another full array for backend migration only wastes memory
+       and copies every decoded page twice on the main thread. */
+    if (!KeepMigrationShadow() && im->desc.layers > 1 && im->desc.format == RENDER_R16_UINT && format == RG_RED_INTEGER) {
+        for (int z = 0; z < layers; z++) {
+            if (!device.ops->upload(&device, im->native, (RenderRect){x, y, w, h}, layer + z,
+                                    (const uint8_t *)data + inputRow * h * z, inputRow)) {
+                Failed("texture upload"); abort();
+            }
+        }
+        im->dirty = 1;
+        return;
+    }
+#endif
     /* Large color textures already have authoritative GPU storage. Keep only
        the upload rectangle on the CPU, and read the texture if switching APIs.
        A recorder preview/HD atlas must not pin another full-resolution copy. */
@@ -607,24 +632,36 @@ void RgBufferData(int kind, size_t size, const void *data, int usage) {
                          : kind == RG_ELEMENT_ARRAY_BUFFER ? indexBuffer
                                                            : vertexBuffer];
     b->kind = kind == RG_ELEMENT_ARRAY_BUFFER ? RENDER_INDEX_BUFFER : RENDER_VERTEX_BUFFER;
-    void *copy = SDL_realloc(b->shadow, size);
-    if (!copy && size) {
-        Failed("vertex allocation");
-        abort();
+    const void *upload = data;
+    int keepShadow = 1;
+#if defined(__EMSCRIPTEN__) || defined(PORT_TEST_WEBGL_UPLOADS)
+    keepShadow = KeepMigrationShadow() || kind == RG_PIXEL_PACK_BUFFER;
+#endif
+    if (keepShadow) {
+        void *copy = SDL_realloc(b->shadow, size);
+        if (!copy && size) {
+            Failed("vertex allocation");
+            abort();
+        }
+        b->shadow = copy;
+        if (data) memcpy(copy, data, size);
+        upload = copy;
+    } else {
+        /* A WebGL upload consumes the source before returning. No migration
+           copy, per-frame memcpy or repeated shadow reallocations are needed. */
+        SDL_free(b->shadow);
+        b->shadow = NULL;
     }
-    b->shadow = copy;
     b->size = size;
-    if (data)
-        memcpy(copy, data, size);
     if (b->native && device.ops->writeBuffer) {
-        if (!device.ops->writeBuffer(&device, b->native, copy, size, b->kind)) {
+        if (!device.ops->writeBuffer(&device, b->native, upload, size, b->kind)) {
             Failed("buffer upload");
             abort();
         }
     } else {
         if (b->native)
             device.ops->releaseBuffer(&device, b->native);
-        b->native = device.ops->buffer(&device, copy, size, b->kind);
+        b->native = device.ops->buffer(&device, upload, size, b->kind);
     }
 }
 void RgGenVertexArrays(int n, RgHandle *out) {

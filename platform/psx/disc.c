@@ -27,6 +27,29 @@ EM_JS(int, WebDiscRead, (int file, size_t offset, size_t count, uint8_t *out), {
     var track = Module.discExternal && Module.discExternal[file];
     return track && copyDiscBytes(track, offset, count, HEAPU8.subarray(out, out + count)) ? 1 : 0;
 });
+/* Explicit raw reads can wait for a streamed cache miss. The mixer uses
+   WebDiscRequest instead, so music buffering never suspends sound effects. */
+EM_ASYNC_JS(int, WebDiscFetch, (int file, size_t offset, size_t count), {
+    var track = Module.discExternal && Module.discExternal[file];
+    if (!track || !track.stream) return 0;
+    try { return await track.stream.ensure(offset, count) ? 1 : 0; }
+    catch (error) {
+        Module.printErr('Music could not be read: ' + error.message);
+        return 0;
+    }
+});
+EM_JS(int, WebDiscRequest, (int file, size_t offset, size_t count), {
+    var track = Module.discExternal && Module.discExternal[file];
+    if (!track || !track.stream) return 0;
+    if (track.audioRequest) return 1;
+    track.audioRequest = true;
+    track.stream.ensure(offset, count).catch(function (error) {
+        Module.printErr('Music could not be read: ' + error.message);
+    }).then(function () {
+        track.audioRequest = false;
+    });
+    return 1;
+});
 #else
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -920,7 +943,13 @@ const uint8_t *DiscRawSector(const Disc *disc, int32_t lba)
 #ifdef __EMSCRIPTEN__
                 if (f->webExternal) {
                     size_t offset = f->offset + (size_t)sector * (size_t)f->stride;
-                    return WebDiscRead(f->webExternal, offset, DISC_RAW_SECTOR, webAudio) ? webAudio : NULL;
+                    if (!WebDiscRead(f->webExternal, offset, DISC_RAW_SECTOR, webAudio)) {
+                        if (!WebDiscFetch(f->webExternal, offset, DISC_RAW_SECTOR) ||
+                            !WebDiscRead(f->webExternal, offset, DISC_RAW_SECTOR, webAudio)) {
+                            return NULL;
+                        }
+                    }
+                    return webAudio;
                 }
 #endif
                 const uint8_t *data = f->data + f->offset + (size_t)sector * (size_t)f->stride;
@@ -939,6 +968,31 @@ const uint8_t *DiscRawSector(const Disc *disc, int32_t lba)
     }
     return NULL;
 }
+
+#ifdef __EMSCRIPTEN__
+const uint8_t *DiscPollAudioSector(const Disc *disc, int32_t lba, bool *pending)
+{
+    static THREAD_LOCAL uint8_t audio[DISC_RAW_SECTOR];
+    int i;
+
+    *pending = false;
+    for (i = disc->fileCount - 1; i >= 0; i--) {
+        const DiscFile *file = &disc->files[i];
+
+        if (lba >= file->start) {
+            int32_t sector = FileSector(disc, i, lba);
+            if (sector >= 0 && file->webExternal) {
+                size_t offset = file->offset + (size_t)sector * (size_t)file->stride;
+                if (WebDiscRead(file->webExternal, offset, DISC_RAW_SECTOR, audio)) return audio;
+                *pending = WebDiscRequest(file->webExternal, offset, DISC_RAW_SECTOR) != 0;
+                return NULL;
+            }
+            break;
+        }
+    }
+    return DiscRawSector(disc, lba);
+}
+#endif
 
 void DiscPrefetch(const Disc *disc, int32_t lba, int sectors)
 {

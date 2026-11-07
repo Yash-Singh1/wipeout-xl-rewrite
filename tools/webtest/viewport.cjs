@@ -10,8 +10,10 @@ function events() {
 }
 function fixture(visual) {
   const canvas = {style: {}}, frames = [], timers = new Map(); let timerId = 0, resizes = 0;
+  const insets = {paddingLeft: '0px', paddingRight: '0px', paddingTop: '0px', paddingBottom: '0px'};
   const browser = Object.assign(events(), {innerWidth: 375, innerHeight: 600, devicePixelRatio: 2,
-    document: events(), Event: class {constructor(type) {this.type = type;}},
+    document: Object.assign(events(), {createElement() {return {style: {}};}, body: {appendChild() {}}}),
+    getComputedStyle() {return insets;}, Event: class {constructor(type) {this.type = type;}},
     requestAnimationFrame(use) {frames.push(use);},
     setTimeout(use) {timers.set(++timerId, use); return timerId;}, clearTimeout(id) {timers.delete(id);}});
   if (visual) browser.visualViewport = Object.assign(events(),
@@ -25,7 +27,7 @@ function fixture(visual) {
   const emit = (target, type) => target.dispatchEvent(new browser.Event(type));
   const flush = () => {let limit = 10; while (frames.length) {assert(limit-- > 0, 'resize event loop'); frames.shift()();}};
   scope.installGameViewport(canvas, browser); flush();
-  return {canvas, browser, timers, flush, emit, resizes: () => resizes};
+  return {canvas, browser, timers, flush, emit, insets, resizes: () => resizes};
 }
 const f = fixture(true), {canvas, browser, flush, emit} = f;
 assert.equal(canvas.width, 750); assert.equal(canvas.height, 1100);
@@ -55,4 +57,14 @@ const fallback = fixture(false);
 fallback.browser.innerWidth = 800; fallback.browser.innerHeight = 450;
 fallback.emit(fallback.browser, 'resize'); fallback.flush();
 assert.equal(fallback.canvas.width, 1600); assert.equal(fallback.canvas.height, 900);
-console.log('Viewport: delayed orientation, both directions, visible-height changes, DPR, coalescing and fallback: OK');
+// Notched landscape display, then portrait with a status area and home indicator.
+Object.assign(fallback.insets, {paddingLeft: '44px', paddingRight: '44px', paddingBottom: '21px'});
+fallback.emit(fallback.browser.document, 'fullscreenchange'); fallback.flush();
+assert.equal(fallback.canvas.style.left, '44px'); assert.equal(fallback.canvas.width, 1424);
+assert.equal(fallback.canvas.height, 858);
+Object.assign(fallback.insets, {paddingLeft: '0px', paddingRight: '0px', paddingTop: '44px', paddingBottom: '34px'});
+fallback.browser.innerWidth = 375; fallback.browser.innerHeight = 812;
+fallback.emit(fallback.browser, 'orientationchange'); fallback.flush();
+assert.equal(fallback.canvas.style.left, '0px'); assert.equal(fallback.canvas.style.top, '44px');
+assert.equal(fallback.canvas.height, 1468);
+console.log('Viewport: delayed orientation, both directions, visible-height changes, DPR, safe areas and fallback: OK');

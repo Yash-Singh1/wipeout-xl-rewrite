@@ -18,6 +18,10 @@ ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard \
     tools/bugtest/test_movie.c $(pkg-config --libs sdl3) -o "$test_build/movie"
 "$test_build/movie"
 
+${CC:-cc} -O2 -Iplatform -Iplatform/psx -iquote game/include $(pkg-config --cflags sdl3) \
+    tools/bugtest/test_glyph_strokes.c platform/keyglyphs.c $(pkg-config --libs sdl3) -o "$test_build/glyph_strokes"
+"$test_build/glyph_strokes"
+
 ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Wno-deprecated-declarations \
     -include platform/include/port.h -iquote game/include tools/bugtest/test_lobby.c \
     game/data/menus_data.c -o "$test_build/lobby"
@@ -108,12 +112,15 @@ if [ "${WIPEOUT_TEST_GL:-0}" = 1 ]; then
     # WebGL's float metadata must reproduce the desktop flat interface exactly.
     # Exercise it on a real GL driver even when the other cases selected Metal.
     env -u WIPEOUT_TEST_METAL "$test_build/gpu_passes" "$test_build/flat.bin"
-    ${CC:-cc} -O1 -DPORT_TEST_WEBGL_METADATA -ffunction-sections -fdata-sections $discard \
+    ${CC:-cc} -O1 -DPORT_TEST_WEBGL_METADATA -DPORT_TEST_WEBGL_UPLOADS -ffunction-sections -fdata-sections $discard \
         $gpu_defines -Iplatform -Iplatform/psx $(pkg-config --cflags sdl3) tools/bugtest/test_gpu_passes.c platform/render/state.c platform/render/device_gl.c \
         $gpu_objects $(pkg-config --libs sdl3) $gl_libs -lm -o "$test_build/gpu_metadata"
     env -u WIPEOUT_TEST_METAL "$test_build/gpu_metadata" "$test_build/float.bin"
     cmp "$test_build/flat.bin" "$test_build/float.bin"
-    echo 'WebGL float metadata preserves all flat-interface colour/depth hashes: OK'
+    echo 'WebGL float metadata and direct indexed uploads preserve all colour/depth hashes: OK'
+    env -u WIPEOUT_TEST_METAL WIPEOUT_DECODED_CACHE=0 "$test_build/gpu_metadata" "$test_build/raw.bin"
+    cmp "$test_build/flat.bin" "$test_build/raw.bin"
+    echo 'WebGL raw VRAM sampler preserves all cached colour/depth hashes: OK'
 fi
 
 ${CC:-cc} -O1 -ffunction-sections -fdata-sections $discard -Wno-deprecated-declarations \

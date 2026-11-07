@@ -20,6 +20,8 @@ int PortGamepadSteering(void);
    takes beyond the console's 16 pixels is returned (the label moves right by it); otherwise the
    quad stays and 0 is returned. */
 int PortButtonGlyph(POLY_FT4 *poly, int icon, int x, int y);
+/* Prepare the immutable atlas after GPU initialization, before audio starts. */
+void PortPrepareButtonGlyphs(void);
 
 /* The controller configuration shows the key of each action where the console shows the button
    bound to it: DoButton icon PORT_ICON_ACTION + row, the rows being thrust, fire, view, drop

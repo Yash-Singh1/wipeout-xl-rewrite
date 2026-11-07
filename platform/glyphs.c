@@ -136,49 +136,69 @@ static float Arc(float x, float y, float cx, float cy, float r, float a0, float 
     }
 }
 
-/* ---- the lettering: a stroke face of the gamepad buttons' letters on a 4 x 6 grid ----
+/* ---- the lettering: a stroke face of the gamepad buttons' letters on a 4 x 6 grid ---- */
 
-   Each character is strokes: "L x0,y0 x1,y1" a line, "A cx,cy,r,a0,a1" an arc; separated by '|'. */
+typedef struct Stroke {
+    char kind;
+    union {
+        struct { float x0, y0, x1, y1; } line;
+        struct { float x, y, radius, start, end; } arc;
+    } shape;
+} Stroke;
 
-static const struct { char c; const char *strokes; } font[] = {
-    {'A', "L0,6 2,0|L2,0 4,6|L0.7,4 3.3,4"},
-    {'B', "L0,0 0,6|L0,0 2.5,0|A2.5,1.5,1.5,270,450|L0,3 2.6,3|A2.6,4.5,1.5,270,450|L0,6 2.6,6"},
-    {'X', "L0,0 4,6|L4,0 0,6"},
-    {'Y', "L0,0 2,3|L4,0 2,3|L2,3 2,6"}};
+typedef struct Letter {
+    char character;
+    const Stroke *strokes;
+    size_t count;
+} Letter;
+
+#define LINE(x0, y0, x1, y1) {'L', {.line = {x0, y0, x1, y1}}}
+#define ARC(x, y, radius, start, end) {'A', {.arc = {x, y, radius, start, end}}}
+
+/* Numeric strokes avoid parsing the same coordinates for every atlas pixel. */
+static const Stroke letterA[] = {LINE(0, 6, 2, 0), LINE(2, 0, 4, 6), LINE(0.7f, 4, 3.3f, 4)};
+static const Stroke letterB[] = {
+    LINE(0, 0, 0, 6), LINE(0, 0, 2.5f, 0), ARC(2.5f, 1.5f, 1.5f, 270, 450),
+    LINE(0, 3, 2.6f, 3), ARC(2.6f, 4.5f, 1.5f, 270, 450), LINE(0, 6, 2.6f, 6)
+};
+static const Stroke letterX[] = {LINE(0, 0, 4, 6), LINE(4, 0, 0, 6)};
+static const Stroke letterY[] = {LINE(0, 0, 2, 3), LINE(4, 0, 2, 3), LINE(2, 3, 2, 6)};
+
+#undef LINE
+#undef ARC
+
+static const Letter font[] = {
+    {'A', letterA, SDL_arraysize(letterA)}, {'B', letterB, SDL_arraysize(letterB)},
+    {'X', letterX, SDL_arraysize(letterX)}, {'Y', letterY, SDL_arraysize(letterY)}
+};
 
 #define FONT_ADVANCE 5.4f /* grid units from one character to the next */
 
-static const char *Strokes(char c)
+static const Letter *FindLetter(char character)
 {
-    size_t i;
-
-    for (i = 0; i < SDL_arraysize(font); i++) {
-        if (font[i].c == c) {
-            return font[i].strokes;
-        }
+    for (size_t i = 0; i < SDL_arraysize(font); i++) {
+        if (font[i].character == character) return &font[i];
     }
     return NULL;
 }
 
-/* Distance from (x, y), in grid units, to a character's strokes (their centre lines). */
-static float CharDistance(const char *strokes, float x, float y)
+/* Distance from (x, y), in grid units, to a character's stroke centre lines. */
+static float CharDistance(const Letter *letter, float x, float y)
 {
     float best = 1e9f;
 
-    while (strokes && *strokes) {
-        float v[5];
-        float d = 1e9f;
-
-        if (*strokes == 'L' && SDL_sscanf(strokes + 1, "%f,%f %f,%f", &v[0], &v[1], &v[2], &v[3]) == 4) {
-            d = Segment(x, y, v[0], v[1], v[2], v[3]);
-        } else if (*strokes == 'A' && SDL_sscanf(strokes + 1, "%f,%f,%f,%f,%f", &v[0], &v[1], &v[2], &v[3], &v[4]) == 5) {
-            d = Arc(x, y, v[0], v[1], v[2], v[3], v[4]);
+    if (!letter) return best;
+    for (size_t i = 0; i < letter->count; i++) {
+        const Stroke *stroke = &letter->strokes[i];
+        float distance;
+        if (stroke->kind == 'L') {
+            distance = Segment(x, y, stroke->shape.line.x0, stroke->shape.line.y0,
+                               stroke->shape.line.x1, stroke->shape.line.y1);
+        } else {
+            distance = Arc(x, y, stroke->shape.arc.x, stroke->shape.arc.y, stroke->shape.arc.radius,
+                           stroke->shape.arc.start, stroke->shape.arc.end);
         }
-        best = SDL_min(best, d);
-        strokes = SDL_strchr(strokes, '|');
-        if (strokes) {
-            strokes++;
-        }
+        best = SDL_min(best, distance);
     }
     return best;
 }
@@ -210,7 +230,7 @@ static void PaintText(int gx, int gy, int w, int h, float x, float y, const char
             }
             for (c = text; *c; c++, cx += FONT_ADVANCE * unit) {
                 if (px > cx - weight && px < cx + 4 * unit + weight) {
-                    d = SDL_min(d, CharDistance(Strokes(*c), (px - cx) / unit, (py - y) / unit) * unit);
+                    d = SDL_min(d, CharDistance(FindLetter(*c), (px - cx) / unit, (py - y) / unit) * unit);
                 }
             }
             Over(ax, ay, colour, Coverage(d - weight / 2));
@@ -356,6 +376,11 @@ static void Build(void)
             fclose(file);
         }
     }
+}
+
+void PortPrepareButtonGlyphs(void)
+{
+    if (!built) Build();
 }
 
 /* The glyph of the player's device for a console icon, or NULL to keep the console's. */

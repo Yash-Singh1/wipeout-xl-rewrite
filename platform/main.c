@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "platform.h"
+#include "controls.h"
 #include "psx/disc.h"
 #include "psx/gte.h"
 #include "psx/pad.h"
@@ -340,6 +341,9 @@ int main(int argc, char **argv)
     if (!PortVideoInit()) {
         return 1;
     }
+#ifdef __EMSCRIPTEN__
+    PortPrepareButtonGlyphs(); /* keep first-use rasterization out of the title sound */
+#endif
 #ifdef PORT_MOBILE
     if (!portConfig.discPath && !(portConfig.discPath = MobileDisc())) {
         return 1;
@@ -424,7 +428,7 @@ int main(int argc, char **argv)
         io.oneCard = SDL_getenv("WIPEOUT_TRACE") != NULL; /* (the console recordings were made with one card) */
         io.wavPath = SDL_getenv("WIPEOUT_WAV"); /* tests: the mixed audio of a fixed-step run */
 #ifdef __EMSCRIPTEN__
-        io.queueAudio = 1; /* the page's audio callback runs only while the game waits (psx_io.h) */
+        io.queueAudio = 1; /* video fields feed scheduled browser playback (psx_io.h) */
         io.noDevice = portConfig.muted; /* fields already advance time; no dummy audio timer is needed */
 #else
         io.queueAudio = SDL_getenv("WIPEOUT_QUEUE_AUDIO") != NULL; /* tests: as the web does */

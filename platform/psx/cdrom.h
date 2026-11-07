@@ -75,6 +75,9 @@ typedef struct CdDrive {
     double nextSector;       /* READING: sample time the next sector arrives */
     unsigned phase;          /* PLAYING: sample within the current sector */
     const uint8_t *sector;   /* PLAYING: raw bytes of the current sector, or NULL for silence */
+#ifdef __EMSCRIPTEN__
+    uint64_t audioRetryAt;   /* retry a cold music sector once per sector period */
+#endif
     int track;               /* PLAYING: the number of the audio track it is in */
 
     uint64_t ackAt;          /* the first response of the last command arrives */

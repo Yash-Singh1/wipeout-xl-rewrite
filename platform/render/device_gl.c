@@ -7,6 +7,10 @@
 #include <SDL3/SDL.h>
 #include <stddef.h>
 #include <string.h>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+EM_JS(void, WebFrameSubmitted, (void), { Module.gamePresentation.submitted(GLctx); });
+#endif
 
 typedef struct GlImage {
     GLuint name;
@@ -438,12 +442,20 @@ static void Finish(RenderDevice *d) { glFinish(); }
 static int Present(RenderDevice *d) {
     GlDevice *g = d->data;
     g->valid = 0;
+#ifdef __EMSCRIPTEN__
+    /* SDL's WebGL swap only sleeps through Asyncify. ShowPicture owns that
+       handoff and its refresh tracking; a second yield exposes an extra task
+       boundary after the browser has consumed the default framebuffer. */
+    WebFrameSubmitted();
+    return 1;
+#else
     if (g->swapInterval != d->vsync) {
         g->swapInterval = d->vsync;
         if (!d->vsync || !SDL_GL_SetSwapInterval(-1))
             SDL_GL_SetSwapInterval(d->vsync);
     }
     return !g->window || SDL_GL_SwapWindow(g->window);
+#endif
 }
 static void Activate(RenderDevice *d, int active) {
     GlDevice *g = d->data;
