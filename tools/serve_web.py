@@ -46,7 +46,15 @@ def prepare(build, cue, cache):
     (build / 'phone-disc.cue').write_text(cue_text)
     page = (build / 'wipeoutxl.html').read_text()
     loader = (ROOT / 'platform/web/phone-loader.js').read_text()
-    revision = str((build / 'wipeoutxl.wasm').stat().st_mtime_ns)
+    # Keep the published JS/WASM pair stable while another build links new files.
+    runtime = {name: (build / name).read_bytes() for name in ('wipeoutxl.js', 'wipeoutxl.wasm')}
+    revision = hashlib.sha256(b''.join(runtime.values())).hexdigest()
+    runtime_path = build / 'phone-runtime' / revision
+    runtime_path.mkdir(parents=True, exist_ok=True)
+    for name, data in runtime.items():
+        destination = runtime_path / name
+        if not destination.exists():
+            destination.write_bytes(data)
     hook = '''<script>
 LOADER
 var phoneManifest = MANIFEST;
@@ -56,7 +64,7 @@ urlTrack = function (url) {
   return decodeURIComponent(new URL(url).pathname.split('/').pop()) === phoneManifest.name
     ? phoneTrackChunks(phoneManifest) : fullUrlTrack(url);
 };
-Module.locateFile = function (name) { return name + '?rev=REVISION'; };
+Module.locateFile = function (name) { return '/phone-runtime/REVISION/' + name; };
 Module.preRun = [function () {
   Object.assign(ENV, {WIPEOUT_MUTE:'1', WIPEOUT_SKIP_INTRO:'1', WIPEOUT_SKIP_LOGOS:'1',
     WIPEOUT_TOUCH:'1', WIPEOUT_RENDER_SCALE:'3', WIPEOUT_WIDESCREEN:'1', WIPEOUT_FRAME_RATE:'uncapped'});
@@ -70,7 +78,7 @@ Module.preRun = [function () {
 }];
 </script>'''.replace('LOADER', loader).replace('MANIFEST', json.dumps(manifest)).replace('REVISION', revision)
     pattern = r'<script\s+async\s+src=(?:"wipeoutxl\.js"|wipeoutxl\.js)></script>'
-    replacement = hook + f'<script async src="wipeoutxl.js?rev={revision}"></script>'
+    replacement = hook + f'<script async src="/phone-runtime/{revision}/wipeoutxl.js"></script>'
     page, count = re.subn(pattern, lambda _: replacement, page)
     if count != 1:
         raise ValueError('Could not find the generated game script tag')

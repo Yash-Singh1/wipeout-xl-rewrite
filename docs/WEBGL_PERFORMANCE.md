@@ -45,3 +45,12 @@ The full Japanese disc was 662,967,648 bytes, including 571,307,856 bytes of mus
 The helper serves data in fingerprinted 1 MiB chunks, with gzip and immutable HTTP caching. The Japanese track transfers 59,891,626 compressed bytes, plus the game JS/WASM. Four requests run at a time, and decoded chunks are copied into WASM in order. The loader does not retain the entire track in JavaScript or make a full-track Cache API copy before starting the game. The bounded HTTP cache works on a plain LAN HTTP address, where the browser Cache API is unavailable. The simulator's cached reload issued zero additional chunk requests.
 
 Validation checks gzip and identity HTTP responses, content lengths, the complete original data SHA-256, invalidation when data changes, ordered loading, the four-request bound, truncated chunks, HTTP failure and cancellation cleanup. Existing web disc-sector tests pass. Rendering remains 3x widescreen, recording off and audio muted. Physical iOS 16.3 needs a retry on the updated page to confirm whether this resolves the reported crash.
+
+
+## Phone orientation and visible viewport
+
+The canvas previously relied on SDL's fill-document mode and its window-resize callback, which leaves an inline CSS size. Mobile orientation and browser-toolbar changes can publish their final visible dimensions later or through visualViewport alone.
+
+The web canvas now has CSS-controlled bounds. A pre-runtime viewport bridge follows visualViewport resize/scroll, window resize, orientation and visibility changes. Rotation schedules bounded follow-up measurements for delayed dimensions. Changes coalesce to animation frames; unchanged sizes do not dispatch further resize events. Pinch zoom is not applied twice, and hidden zero-sized viewports do not collapse the drawing buffer. SDL's external-size callback updates its logical window and the high-DPI drawing buffer together, so the renderer and touch controls use the same size.
+
+Tests cover delayed orientation, portrait/landscape transitions, toolbar/keyboard height changes, DPR changes, duplicate events, hidden viewports and the window-only fallback. The compiled iOS 16.2 simulator build was checked in both orientations: 375x548 CSS pixels with a 750x1096 buffer in portrait, then 667x325 with a 1334x650 buffer in landscape. Touch controls move to the new bounds and steady presentation returns to roughly 60 FPS. The current LAN phone page includes the bridge; existing tabs need a reload.

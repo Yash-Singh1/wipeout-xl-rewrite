@@ -371,9 +371,11 @@ endif()
 if(EMSCRIPTEN)
     set_target_properties(wipeoutxl PROPERTIES SUFFIX ".html")
     set(WEB_SHELL ${CMAKE_SOURCE_DIR}/platform/web/shell.html)
-    set_property(TARGET wipeoutxl APPEND PROPERTY LINK_DEPENDS ${WEB_SHELL})
+    set(WEB_VIEWPORT ${CMAKE_SOURCE_DIR}/platform/web/viewport.js)
+    set_property(TARGET wipeoutxl APPEND PROPERTY LINK_DEPENDS ${WEB_SHELL} ${WEB_VIEWPORT})
     target_link_options(wipeoutxl PRIVATE
         --shell-file ${WEB_SHELL}
+        --pre-js ${WEB_VIEWPORT}
         -sENVIRONMENT=web
         -sASYNCIFY -sASYNCIFY_STACK_SIZE=1048576
         -sSTACK_SIZE=8388608

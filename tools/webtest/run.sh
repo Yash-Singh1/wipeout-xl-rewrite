@@ -3,6 +3,7 @@ set -eu
 cd "$(dirname "$0")/../.."
 node tools/webtest/disc_storage.cjs
 node tools/webtest/phone_chunks.cjs
+node tools/webtest/viewport.cjs
 python3 tools/webtest/test_phone_server.py
 test_build=$(mktemp -d)
 trap 'rm -rf "$test_build"' EXIT HUP INT TERM

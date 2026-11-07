@@ -17,7 +17,8 @@
 <style>
   html, body { margin: 0; height: 100%; background: #000; color: #ddd; overflow: hidden;
                font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  #canvas { display: block; outline: none;  /* SDL sizes it to the page (SDL_WINDOW_FILL_DOCUMENT) */
+  #canvas { display: block; outline: none; position: fixed; top: 0; left: 0;
+            width: 100vw; height: 100vh; height: 100dvh;
             touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
             /* (the touch controls: a finger on the game neither scrolls nor zooms the page) */
   #start { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;

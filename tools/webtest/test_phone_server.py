@@ -5,6 +5,7 @@ from pathlib import Path
 import tempfile
 import threading
 import unittest
+import re
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -25,11 +26,14 @@ class PhoneServerTest(unittest.TestCase):
                            'FILE "missing-music.bin" BINARY\n TRACK 02 AUDIO\n INDEX 01 00:00:00\n')
             (root / 'wipeoutxl.html').write_text('<script async src=wipeoutxl.js></script>')
             (root / 'wipeoutxl.wasm').write_bytes(b'wasm fixture')
+            (root / 'wipeoutxl.js').write_bytes(b'original runtime')
             manifest, served = server.prepare(root, cue, root / 'cache')
             self.assertEqual(manifest['size'], len(source))
             self.assertEqual(len(manifest['chunks']), 3)
             self.assertNotIn('AUDIO', (root / 'phone-disc.cue').read_text())
             self.assertIn('phone-data.bin', (root / 'phone-disc.cue').read_text())
+            runtime_url = re.search(r'src="(/phone-runtime/[^\"]+/wipeoutxl.js)"',
+                                    (root / 'phone.html').read_text())[1]
             self.assertEqual(b''.join(gzip.decompress(path.read_bytes()) for path, _ in served.values()), source)
             http = server.ThreadingHTTPServer(('127.0.0.1', 0), server.handler_for(root, served))
             thread = threading.Thread(target=http.serve_forever, daemon=True)
@@ -53,8 +57,11 @@ class PhoneServerTest(unittest.TestCase):
                 http.shutdown(); http.server_close(); thread.join()
             first_url = manifest['chunks'][0]['url']
             (root / 'data.bin').write_bytes(source + b'changed')
+            (root / 'wipeoutxl.js').write_bytes(b'new runtime')
             changed, _ = server.prepare(root, cue, root / 'cache')
             self.assertNotEqual(first_url, changed['chunks'][0]['url'])
+            self.assertEqual((root / runtime_url.lstrip('/')).read_bytes(), b'original runtime')
+            self.assertNotIn(runtime_url, (root / 'phone.html').read_text())
 
 
 if __name__ == '__main__':

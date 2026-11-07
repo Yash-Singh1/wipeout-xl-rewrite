@@ -89,7 +89,7 @@ int PortVideoInit(void)
     }
 #if defined(__EMSCRIPTEN__) || defined(PORT_MOBILE)
 #ifdef __EMSCRIPTEN__
-    flags |= SDL_WINDOW_FILL_DOCUMENT; /* the web: the whole page, following the browser window's size */
+    /* viewport.js owns CSS bounds; SDL's resizable window follows them at the current pixel density. */
 #else
     flags |= SDL_WINDOW_FULLSCREEN; /* a phone or tablet: the whole screen */
 #endif
