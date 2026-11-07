@@ -34,3 +34,14 @@ A native GL test build can select the WebGL interface with PORT_TEST_WEBGL_METAD
 The final compiled WebGL build is tested directly in Safari, with no JavaScript shader override. Local logs and native samples are in the ignored build/web-opt/metadata and build/web-opt/simulator directories. These measurements describe the simulator on an M5 Pro Mac, not physical iPhone throughput. Test audio remains disabled.
 
 The active-race interval from seconds 15 to 55 averages 60.0 FPS over 40 seconds. The longer run also includes the end-of-race screen because the unattended ship eventually times out. The compiled simulator run averaged 60.001 displayed FPS and 29.975 game updates/second over 59.999 seconds, with 3,600 presentation intervals. The p99 interval was 25 ms, the maximum was 30 ms, and none exceeded 33.3 ms. Settings were 3x rendering, widescreen, foreground Safari, recording off and muted audio. An earlier matched-setting foreground race sample averaged 5.656 displayed FPS and 6.953 updates/second; native traces showed repeated draw-time Metal waits. The shader trial separately held roughly 60 FPS for more than two minutes before the final compiled build was tested.
+
+
+## Muted phone loading over the LAN
+
+The full Japanese disc was 662,967,648 bytes, including 571,307,856 bytes of music. The old HTTP phone page downloaded every track and kept raw music in JavaScript even while muted. A physical iOS 16.3 Chrome report described a crash when the race loaded. That makes memory pressure a plausible cause, but no physical-device crash log was available to establish it.
+
+`tools/serve_web.py` now generates the muted phone page with the existing data-track-only disc support. It retains the complete 91,659,792-byte data track and all game graphics. The virtual silent music tracks are supplied by the existing disc reader. The full-disc web page is unchanged.
+
+The helper serves data in fingerprinted 1 MiB chunks, with gzip and immutable HTTP caching. The Japanese track transfers 59,891,626 compressed bytes, plus the game JS/WASM. Four requests run at a time, and decoded chunks are copied into WASM in order. The loader does not retain the entire track in JavaScript or make a full-track Cache API copy before starting the game. The bounded HTTP cache works on a plain LAN HTTP address, where the browser Cache API is unavailable. The simulator's cached reload issued zero additional chunk requests.
+
+Validation checks gzip and identity HTTP responses, content lengths, the complete original data SHA-256, invalidation when data changes, ordered loading, the four-request bound, truncated chunks, HTTP failure and cancellation cleanup. Existing web disc-sector tests pass. Rendering remains 3x widescreen, recording off and audio muted. Physical iOS 16.3 needs a retry on the updated page to confirm whether this resolves the reported crash.

@@ -158,6 +158,14 @@ can point anywhere on the site. With `-DWIPEOUT_WEB_DISC_MUSIC=OFF` only the
 data track goes into `disc/` (about 86 MB in place of about 700): the game
 plays, without its music.
 
+For a muted phone test over your LAN, run `python3 tools/serve_web.py --host YOUR_LAN_IP`
+from the repository root and open `http://YOUR_LAN_IP:8768/phone.html`. It keeps 3x
+widescreen rendering, enables touch controls and the FPS counter, and serves only
+the data track. Small compressed chunks use the HTTP cache even on a plain HTTP
+LAN address. The first preparation creates a compressed cache under `build/phone-cache`.
+This helper requires a CUE with separate data and music files. The normal web page
+and full-music build remain available as above.
+
 ## Phones and tablets (iOS, Android)
 
 The same game runs on iPhone, iPad and Android, landscape and full screen (OpenGL ES 3), with touch controls
