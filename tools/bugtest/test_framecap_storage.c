@@ -11,6 +11,7 @@ void PortLog(const char *format, ...) {}
 int PortGameInfo(char *info, int size) { info[0] = 0; return 0; }
 int portPal;
 uint16_t psxVram[VRAM_HEIGHT][VRAM_WIDTH];
+uint64_t PortGameFrames(void) { return 0; }
 PortConfig portConfig;
 PortSettings portSettings;
 int PortLinkDownsample(void) { return -1; }
@@ -60,6 +61,7 @@ int main(void)
                .slot = (int)(imageFrame - frames), .token = imageFrame->pictureToken};
     for (int i = 0; i < 8 * 8 * 4; i++) job.pixels[i] = i;
     Encode(&job);
+    assert(FrameCapPictureReady(0));
     int width, height;
     uint8_t expected[8 * 8 * 3];
     memcpy(expected, FrameCapPicture(0, &width, &height), sizeof(expected));
@@ -77,6 +79,7 @@ int main(void)
     assert(imageFrame->jpeg);
     assert(SavePicture(imageFrame, path));
     assert(!imageFrame->jpeg && imageFrame->jpegSize > 0);
+    assert(FrameCapPictureReady(0)); /* Disk-backed frames remain in the viewer. */
     assert(same->jpeg && !memcmp(expected, FrameCapPicture(1, &width, &height), sizeof(expected)));
     stbi_image_free(decodedPicture); decodedPicture = NULL;
     assert(!memcmp(expected, FrameCapPicture(0, &width, &height), sizeof(expected)));
@@ -154,6 +157,19 @@ int main(void)
     TakePicture(gpuBusy, 0, 0, 320, 240);
     assert(!readWait && FrameCapPictureSkipped(0) && readSlot == 7);
     readBusy = 0; readSlot = -1; FrameCapClear();
+    FrameCapDisplayEnabled(0);
+    FrameCapTable(0, 0, 0, 0, 320, 240);
+    assert(!count && !FrameCapAdd());
+    FrameCapDisplayEnabled(1);
+    FrameCapTable(0, 0, 0, 0, 320, 240);
+    assert(count == 1 && FrameCapAdd());
+    FrameCapDisplayEnabled(0);
+    assert(!FrameCapAdd());
+    FrameCapDisplayEnabled(1);
+    FrameCapTable(0, 256, 0, 256, 320, 240);
+    assert(count == 2 && FrameCapFrameAt(1)->count == 0);
+    assert(!FrameCapPictureReady(0)); /* Unshown draws cannot enter the picture viewer. */
+    FrameCapClear();
     for (int n = 0; n < FRAMES * 3; n++) {
         FrameCapFrame *f = NewFrame();
         f->vram = -1;

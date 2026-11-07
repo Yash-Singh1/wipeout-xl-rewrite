@@ -179,8 +179,8 @@ int PsxMain(void) { /* Port: was void main(void), noreturn; the platform owns th
         }
     }
     frame = 0;
-    startupHidden = !PortStartupLoading();
-    if (startupHidden) SetDispMask(0); /* Resident loaders also draw loading messages. */
+    startupHidden = PortStartupLoading() ? 0 : 2;
+    if (startupHidden) PsxStartupDisplay(0); /* Loaders may enable the GPU display themselves. */
     if (!startupHidden) {
         ShowLoadMessage();
         do {
@@ -332,9 +332,9 @@ music_done:
                     }
                     promptTimer += 1;
                     Swap();
-                    if (startupHidden) {
-                        SetDispMask(1); /* Both the title picture and its display buffer are ready. */
-                        startupHidden = 0;
+                    if (startupHidden && !--startupHidden) {
+                        /* Swap draws the other buffer. Prime both before showing either. */
+                        PsxStartupDisplay(1);
                     }
                 }
             }

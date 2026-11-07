@@ -48,6 +48,7 @@ void anim(char *fileName)
     iso_init(mainheapcopy);
     InitController();
     SpuStart();
+    PsxHoldPicture(); /* Keep the last image while the movie player rebuilds both screen buffers. */
     SetDispMask(0);
     clear.w = 0x140;
     clear.x = 0;
